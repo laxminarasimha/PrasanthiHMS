@@ -1,72 +1,34 @@
-import { useEffect, useState } from 'react'
-import { api } from './api'
-import './App.css'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { AuthProvider, useAuth } from './auth'
+import { Layout } from './components/Layout'
+import { Login } from './pages/Login'
+import { Patients } from './pages/Patients'
+import { Staff } from './pages/Staff'
 
-type Health = {
-  app: string
-  status: string
-  database: string
-  php: string
-  laravel: string
+function Protected() {
+  const { user, loading } = useAuth()
+  if (loading) return <p className="loading">Loading…</p>
+  return user ? <Layout /> : <Navigate to="/login" replace />
 }
 
-const modules = [
-  'Patients',
-  'Doctors',
-  'Front Desk',
-  'Lab',
-  'Inpatient',
-  'Pharmacy',
-]
+function StaffOnly() {
+  const { user } = useAuth()
+  return user?.can_manage_staff ? <Staff /> : <Navigate to="/patients" replace />
+}
 
-function App() {
-  const [health, setHealth] = useState<Health | null>(null)
-  const [error, setError] = useState(false)
-
-  useEffect(() => {
-    api
-      .get<Health>('/health')
-      .then((res) => setHealth(res.data))
-      .catch(() => setError(true))
-  }, [])
-
+export default function App() {
   return (
-    <main className="shell">
-      <h1>Prasanthi HMS</h1>
-      <p className="subtitle">Hospital Management System</p>
-
-      <section className="status">
-        <h2>System status</h2>
-        {error && <p className="bad">API is not reachable. Is the backend running?</p>}
-        {!error && !health && <p>Checking API…</p>}
-        {health && (
-          <ul>
-            <li>
-              API: <strong className="good">{health.status}</strong>
-            </li>
-            <li>
-              Database:{' '}
-              <strong className={health.database === 'connected' ? 'good' : 'bad'}>
-                {health.database}
-              </strong>
-            </li>
-            <li>
-              PHP {health.php} · Laravel {health.laravel}
-            </li>
-          </ul>
-        )}
-      </section>
-
-      <section>
-        <h2>Planned modules</h2>
-        <ul className="modules">
-          {modules.map((name) => (
-            <li key={name}>{name}</li>
-          ))}
-        </ul>
-      </section>
-    </main>
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route element={<Protected />}>
+            <Route path="/patients" element={<Patients />} />
+            <Route path="/staff" element={<StaffOnly />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/patients" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   )
 }
-
-export default App
