@@ -1,6 +1,9 @@
 <?php
 
-use Illuminate\Http\Request;
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\PatientController;
+use App\Http\Controllers\Api\StaffController;
+use App\Http\Middleware\EnsureCanManageStaff;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
@@ -16,11 +19,20 @@ Route::get('/health', function () {
         'app' => config('app.name'),
         'status' => 'ok',
         'database' => $database,
-        'php' => PHP_VERSION,
-        'laravel' => app()->version(),
     ]);
 });
 
-Route::get('/user', function (Request $request) {
-    return $request->user();
-})->middleware('auth:sanctum');
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/me', [AuthController::class, 'me']);
+    Route::post('/logout', [AuthController::class, 'logout']);
+
+    Route::apiResource('patients', PatientController::class)->except('destroy');
+
+    Route::middleware(EnsureCanManageStaff::class)->group(function () {
+        Route::get('/staff', [StaffController::class, 'index']);
+        Route::post('/staff', [StaffController::class, 'store']);
+        Route::put('/staff/{staff}', [StaffController::class, 'update']);
+    });
+});
