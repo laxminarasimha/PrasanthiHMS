@@ -12,7 +12,9 @@ export function Layout() {
           Prasanthi <span>HMS</span>
         </div>
         <nav>
+          <NavLink to="/front-desk">Front Desk</NavLink>
           <NavLink to="/patients">Patients</NavLink>
+          <NavLink to="/services">Services</NavLink>
           {user.can_manage_staff && <NavLink to="/staff">Staff</NavLink>}
         </nav>
         <div className="whoami">

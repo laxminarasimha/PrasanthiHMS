@@ -1,7 +1,10 @@
 <?php
 
+use App\Http\Controllers\Api\AppointmentController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BillController;
 use App\Http\Controllers\Api\PatientController;
+use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\StaffController;
 use App\Http\Middleware\EnsureCanManageStaff;
 use Illuminate\Support\Facades\DB;
@@ -29,6 +32,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
 
     Route::apiResource('patients', PatientController::class)->except('destroy');
+
+    Route::get('/doctors', [ServiceController::class, 'doctors']);
+    Route::apiResource('services', ServiceController::class)->only(['index', 'store', 'update']);
+    Route::apiResource('appointments', AppointmentController::class)->only(['index', 'store', 'update']);
+
+    Route::apiResource('bills', BillController::class)->only(['show', 'store', 'update']);
+    Route::post('/bills/{bill}/items', [BillController::class, 'addItem']);
+    Route::delete('/bills/{bill}/items/{item}', [BillController::class, 'removeItem']);
+    Route::post('/bills/{bill}/payments', [BillController::class, 'addPayment']);
 
     Route::middleware(EnsureCanManageStaff::class)->group(function () {
         Route::get('/staff', [StaffController::class, 'index']);
