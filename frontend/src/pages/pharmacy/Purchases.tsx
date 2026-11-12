@@ -7,6 +7,8 @@ import { expiryLabel, longDate, rupees, today } from '../../format'
 import type { Medicine, PurchaseInvoice, Stockist } from '../../types'
 
 type Line = {
+  /** Set when the line is an existing batch on an invoice being corrected. */
+  id?: number
   medicine_id: string
   batch_no: string
   expiry: string
@@ -32,6 +34,8 @@ export function PharmacyPurchases() {
   const [invoices, setInvoices] = useState<PurchaseInvoice[]>([])
   const [viewing, setViewing] = useState<PurchaseInvoice | null>(null)
   const [adding, setAdding] = useState(false)
+  const [editing, setEditing] = useState<PurchaseInvoice | null>(null)
+  const [reason, setReason] = useState('')
   const [stockists, setStockists] = useState<Stockist[]>([])
   const [medicines, setMedicines] = useState<Medicine[]>([])
   const [stockistId, setStockistId] = useState('')
@@ -53,6 +57,35 @@ export function PharmacyPurchases() {
   const startAdding = () => {
     api.get<Stockist[]>('/pharmacy/stockists').then((res) => setStockists(res.data))
     api.get<Medicine[]>('/pharmacy/medicines').then((res) => setMedicines(res.data))
+    setViewing(null)
+    setEditing(null)
+    setStockistId('')
+    setInvoiceNo('')
+    setInvoiceDate(today())
+    setRemarks('')
+    setLines([emptyLine()])
+    setAdding(true)
+    setNotice('')
+    setErrors([])
+  }
+
+  // Opens a saved invoice in the same form, to correct what was typed.
+  const startEditing = (invoice: PurchaseInvoice) => {
+    api.get<Stockist[]>('/pharmacy/stockists').then((res) => setStockists(res.data))
+    setMedicines((invoice.batches ?? []).map((b) => ({ id: b.medicine_id, name: b.medicine?.name ?? '' }) as Medicine))
+    setEditing(invoice)
+    setStockistId(String(invoice.stockist.id))
+    setInvoiceNo(invoice.invoice_no)
+    setInvoiceDate(invoice.invoice_date.slice(0, 10))
+    setRemarks(invoice.remarks ?? '')
+    setReason('')
+    setLines(
+      (invoice.batches ?? []).map((b) => ({
+        id: b.id, medicine_id: String(b.medicine_id), batch_no: b.batch_no, expiry: b.expiry.slice(0, 7), units_per_pack: String(b.units_per_pack),
+        packs: String(b.packs), free_packs: String(b.free_packs), pack_price: String(b.pack_price), pack_mrp: String(b.pack_mrp),
+        discount_percent: String(b.discount_percent), gst_percent: String(b.gst_percent), rack_no: b.rack_no ?? '',
+      })),
+    )
     setViewing(null)
     setAdding(true)
     setNotice('')
@@ -85,14 +118,16 @@ export function PharmacyPurchases() {
     setSaving(true)
     setErrors([])
     try {
-      const res = await api.post<PurchaseInvoice>('/pharmacy/purchases', {
+      const body = {
         stockist_id: stockistId || null,
         invoice_no: invoiceNo,
         invoice_date: invoiceDate,
         remarks: remarks || null,
         items: filled.map((l) => ({ ...l, free_packs: l.free_packs || 0, discount_percent: l.discount_percent || 0, rack_no: l.rack_no || null })),
-      })
-      setNotice(`Invoice ${res.data.invoice_no} saved. ${res.data.batches?.length ?? 0} batch(es) added to stock.`)
+      }
+      const res = editing ? await api.put<PurchaseInvoice>(`/pharmacy/purchases/${editing.id}`, { ...body, reason }) : await api.post<PurchaseInvoice>('/pharmacy/purchases', body)
+      setNotice(editing ? `Invoice ${res.data.invoice_no} changed and stock corrected. The change is recorded in the Invoice modified report.` : `Invoice ${res.data.invoice_no} saved. ${res.data.batches?.length ?? 0} batch(es) added to stock.`)
+      setEditing(null)
       setAdding(false)
       setInvoiceNo('')
       setRemarks('')
@@ -116,7 +151,7 @@ export function PharmacyPurchases() {
       {adding ? (
         <form className="card" onSubmit={save} noValidate>
           <div className="toolbar">
-            <h1 className="grow">Add purchase invoice</h1>
+            <h1 className="grow">{editing ? `Correct invoice ${editing.invoice_no}` : 'Add purchase invoice'}</h1>
             <button type="button" className="btn ghost" onClick={() => setAdding(false)}>
               Cancel
             </button>
@@ -129,6 +164,7 @@ export function PharmacyPurchases() {
           </div>
           {stockists.length === 0 && <p className="muted small">No stockists yet. Add one under "Medicines &amp; stockists" first.</p>}
 
+          {editing && <p className="muted small">Correct what was typed wrongly. Changing the packs changes the stock by the same number of units. Medicines cannot be added or removed here; use a stock return or a new invoice for that.</p>}
           <h3>Medicines received</h3>
           <div className="rx">
             <div className="purchase-row rx-head">
@@ -148,7 +184,7 @@ export function PharmacyPurchases() {
             </div>
             {lines.map((l, i) => (
               <div className="purchase-row" key={i}>
-                <select value={l.medicine_id} onChange={(e) => setLine(i, 'medicine_id', e.target.value)} aria-label={`Medicine ${i + 1}`}>
+                <select value={l.medicine_id} disabled={Boolean(editing)} onChange={(e) => setLine(i, 'medicine_id', e.target.value)} aria-label={`Medicine ${i + 1}`}>
                   <option value="">Select medicine</option>
                   {medicines.map((m) => (
                     <option key={m.id} value={m.id}>
@@ -158,7 +194,7 @@ export function PharmacyPurchases() {
                 </select>
                 <input value={l.batch_no} onChange={(e) => setLine(i, 'batch_no', e.target.value)} aria-label="Batch number" />
                 <input type="month" value={l.expiry} onChange={(e) => setLine(i, 'expiry', e.target.value)} aria-label="Expiry month" />
-                <input type="number" min={1} value={l.units_per_pack} onChange={(e) => setLine(i, 'units_per_pack', e.target.value)} aria-label="Units per pack" />
+                <input type="number" min={1} value={l.units_per_pack} disabled={Boolean(editing)} onChange={(e) => setLine(i, 'units_per_pack', e.target.value)} aria-label="Units per pack" />
                 <input type="number" min={1} value={l.packs} onChange={(e) => setLine(i, 'packs', e.target.value)} aria-label="Packs" />
                 <input type="number" min={0} value={l.free_packs} onChange={(e) => setLine(i, 'free_packs', e.target.value)} aria-label="Free packs" />
                 <input type="number" min={0} step="0.01" value={l.pack_price} onChange={(e) => setLine(i, 'pack_price', e.target.value)} aria-label="Price per pack" />
@@ -167,15 +203,21 @@ export function PharmacyPurchases() {
                 <input type="number" min={0} step="0.01" value={l.gst_percent} onChange={(e) => setLine(i, 'gst_percent', e.target.value)} aria-label="GST percent" />
                 <input value={l.rack_no} onChange={(e) => setLine(i, 'rack_no', e.target.value)} aria-label="Rack" />
                 <span className="num mono">{rupees(Math.round(lineNet(l) * 100) / 100)}</span>
-                <button type="button" className="link danger" onClick={() => setLines((rows) => (rows.length > 1 ? rows.filter((_, r) => r !== i) : [emptyLine()]))}>
-                  Remove
-                </button>
+                {editing ? (
+                  <span />
+                ) : (
+                  <button type="button" className="link danger" onClick={() => setLines((rows) => (rows.length > 1 ? rows.filter((_, r) => r !== i) : [emptyLine()]))}>
+                    Remove
+                  </button>
+                )}
               </div>
             ))}
           </div>
-          <button type="button" className="link add-medicine" onClick={() => setLines((rows) => [...rows, emptyLine()])}>
-            + Add another medicine
-          </button>
+          {!editing && (
+            <button type="button" className="link add-medicine" onClick={() => setLines((rows) => [...rows, emptyLine()])}>
+              + Add another medicine
+            </button>
+          )}
 
           <dl className="totals narrow-totals">
             <dt>Total before tax</dt>
@@ -193,9 +235,14 @@ export function PharmacyPurchases() {
               ))}
             </div>
           )}
+          {editing && (
+            <div className="gap-top">
+              <TextField label="Reason for the change" required value={reason} onChange={setReason} />
+            </div>
+          )}
           <div className="panel-foot">
-            <button className="btn primary" disabled={saving || filled.length === 0}>
-              {saving ? 'Saving…' : 'Save invoice and add to stock'}
+            <button className="btn primary" disabled={saving || filled.length === 0 || (Boolean(editing) && reason.trim().length < 3)}>
+              {saving ? 'Saving…' : editing ? 'Save corrections' : 'Save invoice and add to stock'}
             </button>
           </div>
         </form>
@@ -257,9 +304,16 @@ export function PharmacyPurchases() {
                     {viewing.stockist.name} · {longDate(viewing.invoice_date)}
                   </span>
                 </div>
-                <button className="btn ghost" onClick={() => setViewing(null)}>
-                  Close
-                </button>
+                <div className="row">
+                  {canEdit && (
+                    <button className="btn ghost" onClick={() => startEditing(viewing)}>
+                      Edit
+                    </button>
+                  )}
+                  <button className="btn ghost" onClick={() => setViewing(null)}>
+                    Close
+                  </button>
+                </div>
               </div>
               <table className="compact">
                 <thead>

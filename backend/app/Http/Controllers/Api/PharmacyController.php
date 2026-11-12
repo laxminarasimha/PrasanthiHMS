@@ -52,7 +52,16 @@ class PharmacyController extends Controller
         $this->authorizePharmacy($request);
         $data = $this->medicineData($request, $medicine);
         $this->rememberManufacturer($data['manufacturer'] ?? null);
+
+        // Keep a note of what was changed, for the "medicine data updated" report.
+        $labels = ['name' => 'Name', 'type' => 'Type', 'manufacturer' => 'Manufacturer', 'category' => 'Category', 'is_scheduled' => 'Scheduled drug', 'hsn_code' => 'HSN code', 'gst_percent' => 'GST %', 'units_per_pack' => 'Units per pack', 'reorder_level' => 'Reorder level', 'is_active' => 'In use'];
+        $before = $medicine->only(array_keys($labels));
+        $label = $medicine->name;
         $medicine->update($data);
+        $changes = \App\Models\PharmacyChange::differences($labels, $before, $medicine->only(array_keys($labels)));
+        if ($changes) {
+            \App\Models\PharmacyChange::create(['kind' => 'medicine', 'subject_id' => $medicine->id, 'label' => $label, 'summary' => implode("\n", $changes), 'created_by' => $request->user()->id]);
+        }
 
         return response()->json($medicine);
     }

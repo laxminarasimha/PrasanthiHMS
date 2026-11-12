@@ -15,6 +15,8 @@ export function PharmacyStock() {
   const [count, setCount] = useState('')
   const [reason, setReason] = useState('')
   const [error, setError] = useState('')
+  const [details, setDetails] = useState({ batch_no: '', expiry: '', pack_mrp: '', rack_no: '', reason: '' })
+  const [detailsError, setDetailsError] = useState('')
   const [notice, setNotice] = useState('')
 
   const load = useCallback(() => {
@@ -36,6 +38,21 @@ export function PharmacyStock() {
     setReason('')
     setError('')
     setNotice('')
+    setDetails({ batch_no: batch.batch_no, expiry: batch.expiry.slice(0, 7), pack_mrp: String(batch.pack_mrp), rack_no: batch.rack_no ?? '', reason: '' })
+    setDetailsError('')
+  }
+
+  const saveDetails = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!adjusting) return
+    try {
+      await api.put(`/pharmacy/stock/${adjusting.id}`, { ...details, rack_no: details.rack_no || null })
+      setNotice(`Details of ${adjusting.medicine?.name} batch ${details.batch_no} corrected. The change is recorded in the Stock data update report.`)
+      setAdjusting(null)
+      load()
+    } catch (err) {
+      setDetailsError(Object.values(fieldErrors(err))[0])
+    }
   }
 
   const adjust = async (e: FormEvent) => {
@@ -123,7 +140,7 @@ export function PharmacyStock() {
                       <td className="num">
                         {canEdit && (
                           <button className="link" onClick={() => startAdjust(b)}>
-                            Adjust
+                            Adjust / edit
                           </button>
                         )}
                       </td>
@@ -141,7 +158,8 @@ export function PharmacyStock() {
         </section>
 
         {adjusting && (
-          <form className="card panel" onSubmit={adjust}>
+          <div className="card panel">
+          <form onSubmit={adjust}>
             <div className="panel-head">
               <h2>Adjust stock</h2>
               <button type="button" className="btn ghost" onClick={() => setAdjusting(null)}>
@@ -170,6 +188,39 @@ export function PharmacyStock() {
               </button>
             </div>
           </form>
+
+          <form onSubmit={saveDetails}>
+            <h3>Correct batch details</h3>
+            <div className="grid">
+              <label className="field">
+                <span className="field-label">Batch number</span>
+                <input value={details.batch_no} onChange={(e) => setDetails({ ...details, batch_no: e.target.value })} />
+              </label>
+              <label className="field">
+                <span className="field-label">Expiry</span>
+                <input type="month" value={details.expiry} onChange={(e) => setDetails({ ...details, expiry: e.target.value })} />
+              </label>
+              <label className="field">
+                <span className="field-label">MRP per pack (₹)</span>
+                <input type="number" min={0} step="0.01" value={details.pack_mrp} onChange={(e) => setDetails({ ...details, pack_mrp: e.target.value })} />
+              </label>
+              <label className="field">
+                <span className="field-label">Rack</span>
+                <input value={details.rack_no} onChange={(e) => setDetails({ ...details, rack_no: e.target.value })} />
+              </label>
+              <label className="field span-2">
+                <span className="field-label">Reason</span>
+                <input placeholder="Label read wrongly, price revised…" value={details.reason} onChange={(e) => setDetails({ ...details, reason: e.target.value })} />
+              </label>
+            </div>
+            {detailsError && <p className="form-error">{detailsError}</p>}
+            <div className="panel-foot">
+              <button className="btn primary" disabled={!details.batch_no.trim() || !details.expiry || details.reason.trim().length < 3}>
+                Save details
+              </button>
+            </div>
+          </form>
+          </div>
         )}
       </div>
     </>
