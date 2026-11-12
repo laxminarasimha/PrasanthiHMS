@@ -31,6 +31,16 @@ The app deploys as one site: Laravel serves both the API (`/api/...`) and the bu
 3. In cPanel **File Manager**, go to the home folder (the one that contains `public_html`), upload `deploy/package/prasanthihms.zip`, and **Extract** it there. When redeploying, delete the old `prasanthihms` folder first, keeping `prasanthihms/storage/logs` only if you want the old logs.
 4. Open the site and sign in.
 
+## Deploying over FTP only (web folder is all you can reach)
+
+Some hosts give an FTP login that opens straight into the site's web folder, with no folder above it. For those, use:
+
+```bash
+deploy/ftp-deploy.sh https://hms.yourdomain.com
+```
+
+It builds the package, puts the public files in the web folder and the rest of the app in `app/` beside them (blocked from the web by `app/.htaccess`), uploads one archive and unpacks it on the server. It stops if `app/` turns out not to be blocked. FTP settings are read from `backend/.env`: `DEPLOY_FTP_HOST`, `DEPLOY_FTP_USER`, `DEPLOY_FTP_PASSWORD` and, if the server's certificate carries the hosting company's name, `DEPLOY_FTP_TLS_NAME`.
+
 ## Before real patients go in (once)
 
 The server database was first filled from sample data, including logins ending in `@prasanthi.test` whose password is public. Create your own admin login and switch those off. Run this on your computer; it asks for the password in the terminal and does not store it anywhere:
