@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { homeFor } from './access'
 import { AuthProvider, useAuth } from './auth'
 import { Layout } from './components/Layout'
 import { BillPrint } from './pages/BillPrint'
@@ -25,6 +26,7 @@ import { Reports } from './pages/Reports'
 import { Services } from './pages/Services'
 import { Staff } from './pages/Staff'
 import { VisitPad } from './pages/VisitPad'
+import type { User } from './types'
 
 function Protected() {
   const { user, loading } = useAuth()
@@ -38,9 +40,16 @@ function PrintOnly({ children }: { children: ReactNode }) {
   return user ? children : <Navigate to="/login" replace />
 }
 
-function StaffOnly({ children }: { children: ReactNode }) {
+/** Shows a page only to roles with the given ability; everyone else goes to their own home screen. */
+function Only({ when, children }: { when: keyof User; children: ReactNode }) {
   const { user } = useAuth()
-  return user?.can_manage_staff ? children : <Navigate to="/patients" replace />
+  if (!user) return null
+  return user[when] ? children : <Navigate to={homeFor(user)} replace />
+}
+
+function Home() {
+  const { user } = useAuth()
+  return <Navigate to={user ? homeFor(user) : '/login'} replace />
 }
 
 export default function App() {
@@ -55,25 +64,27 @@ export default function App() {
           <Route path="/ipd/:id/print" element={<PrintOnly><IpdPrint /></PrintOnly>} />
           <Route path="/pharmacy/bills/:id/print" element={<PrintOnly><PharmacySalePrint /></PrintOnly>} />
           <Route element={<Protected />}>
-            <Route path="/front-desk" element={<FrontDesk />} />
-            <Route path="/doctor" element={<DoctorQueue />} />
-            <Route path="/visits/:id" element={<VisitPad />} />
+            <Route path="/front-desk" element={<Only when="can_front_desk"><FrontDesk /></Only>} />
+            <Route path="/doctor" element={<Only when="can_consult"><DoctorQueue /></Only>} />
+            <Route path="/visits/:id" element={<Only when="can_consult"><VisitPad /></Only>} />
             <Route path="/lab" element={<Lab />} />
             <Route path="/lab/tests" element={<LabTests />} />
-            <Route path="/pharmacy" element={<PharmacyBilling />} />
-            <Route path="/pharmacy/bills" element={<PharmacyBills />} />
-            <Route path="/pharmacy/stock" element={<PharmacyStock />} />
-            <Route path="/pharmacy/purchases" element={<PharmacyPurchases />} />
-            <Route path="/pharmacy/medicines" element={<PharmacyMedicines />} />
-            <Route path="/ipd" element={<Ipd />} />
-            <Route path="/ipd/setup" element={<IpdSetup />} />
-            <Route path="/ipd/:id" element={<IpdCase />} />
+            <Route path="/pharmacy" element={<Only when="can_run_pharmacy"><PharmacyBilling /></Only>} />
+            <Route path="/pharmacy/bills" element={<Only when="can_run_pharmacy"><PharmacyBills /></Only>} />
+            <Route path="/pharmacy/stock" element={<Only when="can_run_pharmacy"><PharmacyStock /></Only>} />
+            <Route path="/pharmacy/purchases" element={<Only when="can_run_pharmacy"><PharmacyPurchases /></Only>} />
+            <Route path="/pharmacy/medicines" element={<Only when="can_run_pharmacy"><PharmacyMedicines /></Only>} />
+            <Route path="/ipd" element={<Only when="can_ipd"><Ipd /></Only>} />
+            <Route path="/ipd/setup" element={<Only when="can_manage_setup"><IpdSetup /></Only>} />
+            <Route path="/ipd/:id" element={<Only when="can_ipd"><IpdCase /></Only>} />
             <Route path="/patients" element={<Patients />} />
-            <Route path="/services" element={<Services />} />
-            <Route path="/staff" element={<StaffOnly><Staff /></StaffOnly>} />
-            <Route path="/reports" element={<StaffOnly><Reports /></StaffOnly>} />
+            <Route path="/services" element={<Only when="can_manage_setup"><Services /></Only>} />
+            <Route path="/staff" element={<Only when="can_manage_staff"><Staff /></Only>} />
+            <Route path="/reports" element={<Only when="can_manage_staff"><Reports /></Only>} />
           </Route>
-          <Route path="*" element={<Navigate to="/front-desk" replace />} />
+          <Route path="*" element={<Protected />}>
+            <Route path="*" element={<Home />} />
+          </Route>
         </Routes>
       </BrowserRouter>
     </AuthProvider>

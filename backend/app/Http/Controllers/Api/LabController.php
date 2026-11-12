@@ -14,7 +14,7 @@ use Illuminate\Validation\Rule;
 
 class LabController extends Controller
 {
-    private const ORDER_WITH = ['patient:id,uhid,name,gender,date_of_birth,mobile', 'items:id,lab_order_id,test_name,reported_at', 'bill:id,bill_no,total,paid'];
+    private const ORDER_WITH = ['patient:id,uhid,name,gender,date_of_birth,mobile', 'items:id,lab_order_id,test_name,reported_at'];
 
     // ---- Test catalogue ----
 
@@ -100,7 +100,8 @@ class LabController extends Controller
                     ->orWhere('uhid', 'like', "{$term}%"))))
             ->when($filters['status'] ?? null, fn ($q, $s) => $q->where('status', $s))
             // A patient's history is shown with the values, so the doctor can read them in the visit pad.
-            ->with($patientId ? ['items.results', 'bill:id,bill_no,total,paid'] : self::ORDER_WITH)
+            ->with($patientId ? ['items.results'] : self::ORDER_WITH)
+            ->with(['bill' => fn ($bill) => $bill->select('id', 'bill_no', 'total', 'paid')->withIpdTransfers()])
             ->latest('ordered_at')->latest('id')
             ->limit($patientId ? 15 : 200)
             ->get();

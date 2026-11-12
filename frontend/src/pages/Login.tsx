@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
 import { fieldErrors } from '../api'
+import { homeFor } from '../access'
 import { useAuth } from '../auth'
 import { TextField } from '../components/Field'
 
@@ -11,7 +12,7 @@ export function Login() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  if (user) return <Navigate to={user.role === 'doctor' ? '/doctor' : user.role === 'lab_tech' ? '/lab' : user.role === 'pharmacist' ? '/pharmacy' : '/front-desk'} replace />
+  if (user) return <Navigate to={homeFor(user)} replace />
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()

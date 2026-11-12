@@ -55,6 +55,12 @@ class Bill extends Model
         return $this->hasMany(Payment::class);
     }
 
+    /** Adds `moved_to_ipd`: the part of the bill that will be collected through an IPD bill. */
+    public function scopeWithIpdTransfers($query): void
+    {
+        $query->withSum(['payments as moved_to_ipd' => fn ($payments) => $payments->where('mode', 'ipd')], 'amount');
+    }
+
     public function getDueAttribute(): float
     {
         return round($this->total - $this->paid, 2);

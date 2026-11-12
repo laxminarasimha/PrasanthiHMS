@@ -40,11 +40,17 @@ class FrontDeskTest extends TestCase
 
     public function test_services_can_be_added_and_listed(): void
     {
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
         $this->postJson('/api/services', ['name' => 'ECG', 'type' => 'other', 'price' => 300, 'gst_percent' => 5])
             ->assertCreated()->assertJsonPath('price', 300);
 
         $this->getJson('/api/services')->assertOk()->assertJsonCount(2);
         $this->getJson('/api/doctors')->assertOk()->assertJsonCount(1);
+
+        // The price list is read-only for front desk staff.
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->postJson('/api/services', ['name' => 'X-ray', 'type' => 'other', 'price' => 400])->assertForbidden();
+        $this->getJson('/api/services')->assertOk()->assertJsonCount(2);
     }
 
     public function test_booking_an_appointment_opens_a_bill_for_the_service(): void

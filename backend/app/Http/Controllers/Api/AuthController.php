@@ -63,6 +63,9 @@ class AuthController extends Controller
             'can_consult' => $user->role->canConsult(),
             'can_run_lab' => $user->role->canRunLab(),
             'can_run_pharmacy' => $user->role->canRunPharmacy(),
+            'can_manage_setup' => $user->role->canManageSetup(),
+            'can_front_desk' => $user->role->canWorkFrontDesk(),
+            'can_ipd' => $user->role->canWorkIpd(),
             'branch' => $user->branch?->only(['id', 'name', 'city']),
         ];
     }

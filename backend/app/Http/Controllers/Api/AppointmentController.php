@@ -14,7 +14,17 @@ use Illuminate\Validation\Rule;
 
 class AppointmentController extends Controller
 {
-    private const WITH = ['patient:id,uhid,name,gender,date_of_birth,mobile', 'doctor:id,name', 'service:id,name', 'bills:id,appointment_id,bill_no,total,paid', 'bills.labOrder:id,bill_id,order_no'];
+    private const WITH = ['patient:id,uhid,name,gender,date_of_birth,mobile', 'doctor:id,name', 'service:id,name', 'bills.labOrder:id,bill_id,order_no'];
+
+    /**
+     * The bills on a visit, each with the amount moved to an IPD bill.
+     *
+     * @return array<string, \Closure>
+     */
+    private static function bills(): array
+    {
+        return ['bills' => fn ($bills) => $bills->select('id', 'appointment_id', 'bill_no', 'total', 'paid')->withIpdTransfers()];
+    }
 
     /** One day's appointments, oldest first, with counts per status for the filter tabs. */
     public function index(Request $request): JsonResponse
@@ -37,7 +47,7 @@ class AppointmentController extends Controller
         return response()->json([
             'counts' => (clone $day)->selectRaw('status, count(*) as total')->groupBy('status')->pluck('total', 'status'),
             'data' => $day->when($filters['status'] ?? null, fn ($q, $s) => $q->where('status', $s))
-                ->with(self::WITH)->orderBy('scheduled_at')->orderBy('id')->get(),
+                ->with(self::WITH)->with(self::bills())->orderBy('scheduled_at')->orderBy('id')->get(),
         ]);
     }
 
@@ -67,7 +77,7 @@ class AppointmentController extends Controller
             return $appointment;
         });
 
-        return response()->json($appointment->fresh()->load(self::WITH), 201);
+        return response()->json($appointment->fresh()->load(self::WITH)->load(self::bills()), 201);
     }
 
     public function update(Request $request, Appointment $appointment): JsonResponse
@@ -81,7 +91,7 @@ class AppointmentController extends Controller
 
         $appointment->update($data);
 
-        return response()->json($appointment->load(self::WITH));
+        return response()->json($appointment->load(self::WITH)->load(self::bills()));
     }
 
     /**

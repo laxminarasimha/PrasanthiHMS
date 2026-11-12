@@ -4,7 +4,7 @@ import { api } from '../api'
 import { BillPanel } from '../components/BillPanel'
 import { LabOrderForm } from '../components/LabOrderForm'
 import { LabResults } from '../components/LabResults'
-import { clock, longDate, rupees, today } from '../format'
+import { clock, longDate, rupees, settlement, today } from '../format'
 import type { LabCatalogueTest, LabOrder, Service } from '../types'
 
 type Panel = { kind: 'new' } | { kind: 'results'; orderId: number } | { kind: 'bill'; billId: number } | null
@@ -103,7 +103,7 @@ export function Lab() {
                         <button className="link" onClick={() => setPanel({ kind: 'bill', billId: o.bill!.id })}>
                           {rupees(o.bill.total)}
                         </button>
-                        <small className={`block ${o.bill.due > 0 ? 'due' : 'settled'}`}>{o.bill.due > 0 ? `${rupees(o.bill.due)} due` : 'Paid'}</small>
+                        <small className={`block ${o.bill.due > 0 ? 'due' : 'settled'}`}>{settlement(o.bill.due, o.bill.moved_to_ipd)}</small>
                       </>
                     )}
                   </td>
