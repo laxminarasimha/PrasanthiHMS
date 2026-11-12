@@ -19,6 +19,7 @@ export function Layout() {
           <NavLink to="/ipd">IPD</NavLink>
           <NavLink to="/patients">Patients</NavLink>
           <NavLink to="/services">Services</NavLink>
+          {user.can_manage_staff && <NavLink to="/reports">Reports</NavLink>}
           {user.can_manage_staff && <NavLink to="/staff">Staff</NavLink>}
         </nav>
         <div className="whoami">

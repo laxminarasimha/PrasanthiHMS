@@ -21,6 +21,7 @@ import { PharmacyPurchases } from './pages/pharmacy/Purchases'
 import { PharmacySalePrint } from './pages/pharmacy/SalePrint'
 import { PharmacyStock } from './pages/pharmacy/Stock'
 import { PrescriptionPrint } from './pages/PrescriptionPrint'
+import { Reports } from './pages/Reports'
 import { Services } from './pages/Services'
 import { Staff } from './pages/Staff'
 import { VisitPad } from './pages/VisitPad'
@@ -37,9 +38,9 @@ function PrintOnly({ children }: { children: ReactNode }) {
   return user ? children : <Navigate to="/login" replace />
 }
 
-function StaffOnly() {
+function StaffOnly({ children }: { children: ReactNode }) {
   const { user } = useAuth()
-  return user?.can_manage_staff ? <Staff /> : <Navigate to="/patients" replace />
+  return user?.can_manage_staff ? children : <Navigate to="/patients" replace />
 }
 
 export default function App() {
@@ -69,7 +70,8 @@ export default function App() {
             <Route path="/ipd/:id" element={<IpdCase />} />
             <Route path="/patients" element={<Patients />} />
             <Route path="/services" element={<Services />} />
-            <Route path="/staff" element={<StaffOnly />} />
+            <Route path="/staff" element={<StaffOnly><Staff /></StaffOnly>} />
+            <Route path="/reports" element={<StaffOnly><Reports /></StaffOnly>} />
           </Route>
           <Route path="*" element={<Navigate to="/front-desk" replace />} />
         </Routes>

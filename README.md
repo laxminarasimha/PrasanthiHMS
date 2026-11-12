@@ -46,6 +46,7 @@ Sign in with the seeded admin account `admin@prasanthi.test` (a sample doctor, `
 - Lab: test list with parameters and reference ranges, lab orders with billing, results entry with high/low flags, and a printable report
 - Pharmacy: medicine list, stockists, purchase invoices that add stock by batch and expiry, stock view with expiry and low-stock warnings, billing from stock, and a printable bill
 - IPD: beds by ward, IPD services, admissions, a running bill with charges, advances, payments and refunds, bed moves, discharge with summary, and a printable bill
+- Reports (Admin and Doctor): billed and collected amounts by department and payment mode for any date range, with activity counts
 
 Run the backend tests with `php artisan test` from `backend/`.
 
