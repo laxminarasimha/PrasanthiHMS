@@ -21,6 +21,7 @@ export function DoctorQueue() {
   const [doctors, setDoctors] = useState<Doctor[]>([])
   const [queue, setQueue] = useState<QueueEntry[] | null>(null)
   const [now, setNow] = useState(() => Date.now())
+  const [search, setSearch] = useState('')
 
   const load = useCallback(() => {
     api.get<QueueEntry[]>('/doctor/queue', { params: { date, doctor_id: doctorId || undefined } }).then((res) => {
@@ -42,6 +43,12 @@ export function DoctorQueue() {
 
   const pending = queue?.filter((q) => q.status !== 'reviewed').length ?? 0
   const done = queue?.filter((q) => q.status === 'reviewed').length ?? 0
+  const term = search.trim().toLowerCase()
+  const shown = queue?.filter((q) => !term || q.patient.name.toLowerCase().includes(term) || q.patient.uhid.toLowerCase().includes(term) || q.patient.mobile.startsWith(term))
+  // How the day splits by reason for the visit, e.g. "Consultation 9 · Review 2".
+  const purposes = Object.entries(
+    (queue ?? []).reduce<Record<string, number>>((all, q) => ({ ...all, [q.service?.name ?? 'No service']: (all[q.service?.name ?? 'No service'] ?? 0) + 1 }), {}),
+  )
 
   return (
     <>
@@ -65,8 +72,10 @@ export function DoctorQueue() {
             ))}
           </select>
         )}
-        <span className="muted grow">
+        <input className="search" type="search" placeholder="Search by name, mobile or ID" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <span className="muted">
           Pending: <strong>{pending}</strong> · Completed: <strong>{done}</strong>
+          {purposes.length > 0 && <small className="block">{purposes.map(([name, count]) => `${name} ${count}`).join(' · ')}</small>}
         </span>
       </div>
 
@@ -86,11 +95,17 @@ export function DoctorQueue() {
             </tr>
           </thead>
           <tbody>
-            {queue?.map((q) => (
-              <tr key={q.id} className="static">
-                <td className="mono">{clock(q.scheduled_at)}</td>
+            {shown?.map((q) => (
+              <tr key={q.id} className={`static ${q.status === 'booked' ? 'not-here' : ''}`}>
+                <td className="mono">
+                  {clock(q.scheduled_at)}
+                  {q.token_no && <small className="muted block">Token {q.token_no}</small>}
+                </td>
                 <td>
-                  <strong>{q.patient.name}</strong>
+                  {/* The name opens the pad too, so a phone needs no sideways scrolling to reach the button. */}
+                  <Link className="link" to={`/visits/${q.id}`}>
+                    {q.patient.name}
+                  </Link>
                   <small className="muted block">
                     {q.patient.uhid} · {q.patient.age}y / {q.patient.gender.charAt(0).toUpperCase()}
                   </small>
@@ -102,6 +117,7 @@ export function DoctorQueue() {
                 <td>{waiting(q, now)}</td>
                 <td>
                   <span className={`pill status-${q.status}`}>{STATUS_LABELS[q.status]}</span>
+                  {q.vitals_ready && q.status !== 'reviewed' && <small className="settled block">Vitals taken</small>}
                 </td>
                 <td className="num">
                   <Link className={q.status === 'reviewed' ? 'btn ghost' : 'btn primary'} to={`/visits/${q.id}`}>
@@ -110,6 +126,11 @@ export function DoctorQueue() {
                 </td>
               </tr>
             ))}
+            {queue && queue.length > 0 && shown?.length === 0 && (
+              <tr className="empty">
+                <td colSpan={isDoctor ? 8 : 9}>No patient matches that search.</td>
+              </tr>
+            )}
             {queue && queue.length === 0 && (
               <tr className="empty">
                 <td colSpan={isDoctor ? 8 : 9}>No patients for this day yet. Appointments booked at the front desk appear here.</td>

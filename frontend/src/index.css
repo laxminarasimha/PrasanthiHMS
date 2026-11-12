@@ -493,3 +493,17 @@ td.wrap.wide { max-width: 640px; }
   .cal .cal-time { min-width: 64px; width: 64px; padding-left: 6px; padding-right: 4px; }
   .cal td { height: 44px; }
 }
+
+/* Front desk and doctor working together */
+td.advice { white-space: normal; min-width: 120px; }
+.advice-chip { display: inline-block; font: inherit; font-size: 0.78rem; font-weight: 700; line-height: 1.4; padding: 2px 8px; margin: 2px 4px 2px 0; border-radius: 6px; border: 1px solid transparent; text-decoration: none; cursor: pointer; white-space: nowrap; }
+.advice-chip.rx { color: var(--brand); background: var(--brand-soft); border-color: #d9c3ea; }
+.advice-chip.tests { color: #1d4f91; background: #dcebff; border-color: #9bc0f5; }
+.advice-chip.next { color: #8a4a08; background: var(--accent-soft); border-color: #f1c58f; }
+.advice-chip.refer { color: var(--muted); background: var(--bg); border-color: var(--border); cursor: default; }
+.btn .count { display: inline-block; min-width: 1.5em; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 0.8rem; text-align: center; }
+.menu > button:disabled { color: var(--muted); cursor: default; }
+.menu > button:disabled:hover { background: none; }
+tbody tr.not-here td:nth-child(2) strong { font-weight: 500; }
+tbody tr.not-here { color: var(--muted); }
+.history li > span { min-width: 0; }

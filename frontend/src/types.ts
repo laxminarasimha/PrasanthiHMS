@@ -81,7 +81,19 @@ export type Appointment = {
   patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile'>
   doctor: { id: number; name: string }
   service: { id: number; name: string } | null
+  /** What the doctor decided, once the visit pad has been saved. */
+  consultation?: { id: number; completed_at: string | null; tests_advised: string | null; follow_up_on: string | null; refer_to: string | null; medicines_count: number } | null
   bills: { id: number; bill_no: string; kind: BillKind; total: number; paid: number; due: number; moved_to_ipd: number | null; lab_order: { id: number; order_no: string } | null }[]
+}
+
+export type FollowUp = {
+  id: number
+  follow_up_on: string
+  completed_at: string
+  diagnosis: string | null
+  booked: boolean
+  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile'>
+  doctor: { id: number; name: string }
 }
 
 export type CalendarSettings = { slot_minutes: number; morning_start: string; morning_end: string; evening_start: string; evening_end: string }
@@ -184,6 +196,8 @@ export type QueueEntry = {
   doctor: { id: number; name: string }
   service: { id: number; name: string } | null
   consultation: { id: number; completed_at: string | null } | null
+  token_no: number | null
+  vitals_ready: boolean
   visits: number
   last_visit: string | null
 }

@@ -68,6 +68,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/front-desk/bills', 'walkInBills');
         Route::get('/front-desk/summary', 'summary');
         Route::get('/front-desk/queue', 'queue');
+        Route::get('/front-desk/follow-ups', 'followUps');
         Route::get('/patients/{patient}/overview', 'overview');
         Route::get('/patients/{patient}/attachments', 'attachments');
         Route::get('/attachments/{attachment}/download', 'download');

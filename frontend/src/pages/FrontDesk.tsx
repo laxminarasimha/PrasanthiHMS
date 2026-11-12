@@ -5,13 +5,14 @@ import { AppointmentForm } from '../components/AppointmentForm'
 import { BillPanel } from '../components/BillPanel'
 import { AttachmentsPanel, EditAppointmentPanel, SummaryPanel, VitalsPanel } from '../components/FrontDeskPanels'
 import { PatientPicker } from '../components/PatientPicker'
-import { STATUS_LABELS, clock, rupees, stampTime, today } from '../format'
-import type { Appointment, AppointmentStatus, Bill, Doctor, Patient, Service, WalkInBill } from '../types'
+import { STATUS_LABELS, clock, longDate, rupees, stampTime, today } from '../format'
+import type { Appointment, AppointmentStatus, Bill, Doctor, FollowUp, Patient, Service, WalkInBill } from '../types'
 
 type DayList = { data: Appointment[]; counts: Partial<Record<AppointmentStatus, number>> }
 type Department = 'all' | 'appointment' | 'lab' | 'other'
 type Panel =
-  | { kind: 'new' }
+  | { kind: 'new'; preset?: { patient: Appointment['patient']; doctorId: string; date: string } }
+  | { kind: 'followups' }
   | { kind: 'bill'; billId: number }
   | { kind: 'walkin' }
   | { kind: 'vitals' | 'attachments' | 'edit'; appointment: Appointment }
@@ -39,6 +40,7 @@ export function FrontDesk() {
   const [query, setQuery] = useState('')
   const [list, setList] = useState<DayList | null>(null)
   const [walkIns, setWalkIns] = useState<WalkInBill[]>([])
+  const [followUps, setFollowUps] = useState<FollowUp[]>([])
   const [doctors, setDoctors] = useState<Doctor[]>([])
   const [services, setServices] = useState<Service[]>([])
   const [panel, setPanel] = useState<Panel>(null)
@@ -52,11 +54,17 @@ export function FrontDesk() {
       .get<DayList>('/appointments', { params: { date, status: status || undefined, doctor_id: doctorId || undefined, q: query || undefined } })
       .then((res) => setList(res.data))
     api.get<WalkInBill[]>('/front-desk/bills', { params: { date, q: query || undefined } }).then((res) => setWalkIns(res.data))
+    api.get<FollowUp[]>('/front-desk/follow-ups', { params: { date } }).then((res) => setFollowUps(res.data))
   }, [date, status, doctorId, query])
 
   useEffect(() => {
     const timer = setTimeout(load, 200)
-    return () => clearTimeout(timer)
+    // Keep in step with the doctor's room: statuses and advice change there, not here.
+    const refresh = setInterval(load, 30000)
+    return () => {
+      clearTimeout(timer)
+      clearInterval(refresh)
+    }
   }, [load])
 
   useEffect(() => {
@@ -142,6 +150,9 @@ export function FrontDesk() {
           <button className="btn ghost" onClick={() => open({ kind: 'summary' })}>
             Summary
           </button>
+          <button className="btn ghost" onClick={() => open({ kind: 'followups' })} title="Patients asked by a doctor to come back on this day">
+            Follow-ups{followUps.some((f) => !f.booked) && <span className="count">{followUps.filter((f) => !f.booked).length}</span>}
+          </button>
           <Link className="btn ghost" to="/queue" target="_blank">
             Patient queue
           </Link>
@@ -186,6 +197,7 @@ export function FrontDesk() {
                 <th>Status</th>
                 <th>Doctor</th>
                 <th>Service</th>
+                <th>Doctor's advice</th>
                 <th />
               </tr>
             </thead>
@@ -231,6 +243,32 @@ export function FrontDesk() {
                     </td>
                     <td>{a.doctor.name}</td>
                     <td>{a.service?.name ?? '—'}</td>
+                    <td className="advice">
+                      {a.consultation?.completed_at && (
+                        <a className="advice-chip rx" href={`/visits/${a.id}/print`} target="_blank" rel="noreferrer" title="Print the prescription">
+                          Rx{a.consultation.medicines_count > 0 ? ` · ${a.consultation.medicines_count}` : ''}
+                        </a>
+                      )}
+                      {a.consultation?.tests_advised && (
+                        <Link className="advice-chip tests" to="/lab" title={`Tests advised: ${a.consultation.tests_advised}`}>
+                          Tests
+                        </Link>
+                      )}
+                      {a.consultation?.follow_up_on && (
+                        <button
+                          className="advice-chip next"
+                          title="Book the next visit"
+                          onClick={() => open({ kind: 'new', preset: { patient: a.patient, doctorId: String(a.doctor.id), date: a.consultation!.follow_up_on! } })}
+                        >
+                          Next {longDate(a.consultation.follow_up_on).slice(0, 6)}
+                        </button>
+                      )}
+                      {a.consultation?.refer_to && (
+                        <span className="advice-chip refer" title={`Referred to ${a.consultation.refer_to}`}>
+                          Refer
+                        </span>
+                      )}
+                    </td>
                     <td className="num menu-cell">
                       <button className="btn ghost small-btn menu-button" onClick={(e) => toggleMenu(a.id, e.currentTarget)} aria-haspopup="menu" aria-expanded={menu === a.id}>
                         More ▾
@@ -243,9 +281,15 @@ export function FrontDesk() {
                           <Link role="menuitem" to="/lab" onClick={() => setMenu(null)}>
                             Lab tests and results
                           </Link>
-                          <a role="menuitem" href={`/visits/${a.id}/print`} target="_blank" rel="noreferrer" onClick={() => setMenu(null)}>
-                            Prescription
-                          </a>
+                          {a.consultation ? (
+                            <a role="menuitem" href={`/visits/${a.id}/print`} target="_blank" rel="noreferrer" onClick={() => setMenu(null)}>
+                              Prescription
+                            </a>
+                          ) : (
+                            <button role="menuitem" disabled title="The doctor has not written one yet">
+                              Prescription (not written yet)
+                            </button>
+                          )}
                           <button role="menuitem" onClick={() => open({ kind: 'attachments', appointment: a })}>
                             Attachments
                           </button>
@@ -277,7 +321,7 @@ export function FrontDesk() {
                     <BillChip total={b.total} due={b.due} movedToIpd={b.moved_to_ipd} onOpen={() => open({ kind: 'bill', billId: b.id })} />
                   </td>
                   <td className="mono">{stampTime(b.created_at)}</td>
-                  <td colSpan={3} className="muted">
+                  <td colSpan={4} className="muted">
                     {b.lab_order ? `${b.lab_order.items.length} lab test${b.lab_order.items.length === 1 ? '' : 's'} · ${b.lab_order.order_no}` : b.items.map((i) => i.description).join(', ') || 'Other services'}
                   </td>
                   <td />
@@ -285,7 +329,7 @@ export function FrontDesk() {
               ))}
               {list && (hideVisits ? 0 : visits.length) + walkInRows.length === 0 && (
                 <tr className="empty">
-                  <td colSpan={8}>Nothing to show for this day and filter.</td>
+                  <td colSpan={9}>Nothing to show for this day and filter.</td>
                 </tr>
               )}
             </tbody>
@@ -298,7 +342,12 @@ export function FrontDesk() {
 
       {panel?.kind === 'new' && (
         <AppointmentForm
-          date={date}
+          key={panel.preset ? `${panel.preset.patient.id} ${panel.preset.date}` : 'new'}
+          date={panel.preset?.date ?? date}
+          patient={panel.preset?.patient}
+          doctorId={panel.preset?.doctorId}
+          status={panel.preset && panel.preset.date > today() ? 'booked' : undefined}
+          time={panel.preset && panel.preset.date > today() ? '10:30' : undefined}
           doctors={doctors}
           services={services}
           onClose={() => setPanel(null)}
@@ -314,6 +363,38 @@ export function FrontDesk() {
         />
       )}
       {panel?.kind === 'bill' && <BillPanel key={panel.billId} billId={panel.billId} services={services} onClose={() => setPanel(null)} onChange={load} onAnotherBill={(bill) => newBill(bill.patient.id, bill.appointment?.id)} />}
+      {panel?.kind === 'followups' && (
+        <aside className="card panel">
+          <div className="panel-head">
+            <h2>Follow-ups due {longDate(date)}</h2>
+            <button className="btn ghost" onClick={() => setPanel(null)}>
+              Close
+            </button>
+          </div>
+          <p className="muted small">Patients a doctor asked to come back on this day. Change the date at the top to see another day.</p>
+          <ul className="history">
+            {followUps.map((f) => (
+              <li key={f.id}>
+                <span>
+                  <strong>{f.patient.name}</strong>
+                  <small className="muted block">
+                    {f.patient.uhid} · {f.patient.mobile} · {f.doctor.name}
+                  </small>
+                  <small className="muted block">Seen {longDate(f.completed_at)}</small>
+                </span>
+                {f.booked ? (
+                  <span className="pill ok">Booked</span>
+                ) : (
+                  <button className="btn ghost small-btn" onClick={() => open({ kind: 'new', preset: { patient: f.patient, doctorId: String(f.doctor.id), date: f.follow_up_on } })}>
+                    Book
+                  </button>
+                )}
+              </li>
+            ))}
+            {followUps.length === 0 && <li className="muted">No one is due on this day.</li>}
+          </ul>
+        </aside>
+      )}
       {panel?.kind === 'walkin' && (
         <aside className="card panel">
           <div className="panel-head">
