@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { SelectField, TextField } from '../components/Field'
 import type { Patient } from '../types'
@@ -125,7 +126,11 @@ export function Patients() {
             <tbody>
               {page?.data.map((p) => (
                 <tr key={p.id} onClick={() => open(p)} className={editing !== 'new' && editing?.id === p.id ? 'selected' : ''}>
-                  <td className="mono">{p.uhid}</td>
+                  <td className="mono">
+                    <Link className="link" to={`/patients/${p.id}`} onClick={(e) => e.stopPropagation()} title="View patient dashboard">
+                      {p.uhid}
+                    </Link>
+                  </td>
                   <td>
                     <strong>{p.name}</strong>
                   </td>

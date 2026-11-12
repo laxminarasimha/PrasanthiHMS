@@ -9,7 +9,12 @@ const TYPES = [
   { value: 'other', label: 'Other service' },
 ]
 
-const blank = { code: '', name: '', type: 'appointment', price: '', gst_percent: '0', doctor_id: '', is_active: true }
+const blank = { code: '', name: '', type: 'appointment', price: '', gst_percent: '0', priority: '2', doctor_id: '', is_active: true }
+const PRIORITIES = [
+  { value: '1', label: '1 — shown first' },
+  { value: '2', label: '2 — normal' },
+  { value: '3', label: '3 — shown last' },
+]
 type Form = typeof blank
 
 export function Services() {
@@ -20,6 +25,7 @@ export function Services() {
   const [errors, setErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
+  const [tab, setTab] = useState<'appointment' | 'other'>('appointment')
 
   const load = useCallback(() => {
     api.get<Service[]>('/services', { params: { all: 1 } }).then((res) => setServices(res.data))
@@ -36,10 +42,10 @@ export function Services() {
     setNotice('')
     setForm(
       target === 'new'
-        ? blank
+        ? { ...blank, type: tab }
         : {
             code: target.code ?? '', name: target.name, type: target.type, price: String(target.price),
-            gst_percent: String(target.gst_percent), doctor_id: target.doctor_id ? String(target.doctor_id) : '', is_active: target.is_active,
+            gst_percent: String(target.gst_percent), priority: String(target.priority ?? 2), doctor_id: target.doctor_id ? String(target.doctor_id) : '', is_active: target.is_active,
           },
     )
   }
@@ -74,6 +80,15 @@ export function Services() {
           </button>
         </div>
 
+        <div className="tabs">
+          <button className={tab === 'appointment' ? 'active' : ''} onClick={() => setTab('appointment')}>
+            Appointment services <span>{services.filter((s) => s.type === 'appointment').length}</span>
+          </button>
+          <button className={tab === 'other' ? 'active' : ''} onClick={() => setTab('other')}>
+            Other services <span>{services.filter((s) => s.type === 'other').length}</span>
+          </button>
+        </div>
+
         {notice && <p className="notice">{notice}</p>}
 
         <div className="table-wrap">
@@ -81,7 +96,7 @@ export function Services() {
             <thead>
               <tr>
                 <th>Service</th>
-                <th>Type</th>
+                <th>Code</th>
                 <th className="num">Price</th>
                 <th className="num">GST %</th>
                 <th>Doctor</th>
@@ -89,13 +104,12 @@ export function Services() {
               </tr>
             </thead>
             <tbody>
-              {services.map((s) => (
+              {services.filter((s) => s.type === tab).map((s) => (
                 <tr key={s.id} onClick={() => open(s)} className={editing !== 'new' && editing?.id === s.id ? 'selected' : ''}>
                   <td>
                     <strong>{s.name}</strong>
-                    {s.code && <small className="muted"> {s.code}</small>}
                   </td>
-                  <td>{s.type === 'appointment' ? 'Appointment' : 'Other'}</td>
+                  <td>{s.code ?? '—'}</td>
                   <td className="num">{rupees(s.price)}</td>
                   <td className="num">{s.gst_percent}</td>
                   <td>{s.doctor?.name ?? 'Any doctor'}</td>
@@ -104,7 +118,7 @@ export function Services() {
                   </td>
                 </tr>
               ))}
-              {services.length === 0 && (
+              {services.filter((s) => s.type === tab).length === 0 && (
                 <tr className="empty">
                   <td colSpan={6}>No services yet. Add a consultation service to start booking appointments.</td>
                 </tr>
@@ -130,7 +144,8 @@ export function Services() {
             <TextField label="Code (optional)" value={form.code} onChange={set('code')} error={errors.code} />
             <TextField label="Price (₹)" required type="number" min={0} step="0.01" value={form.price} onChange={set('price')} error={errors.price} />
             <TextField label="GST %" type="number" min={0} max={100} step="0.01" value={form.gst_percent} onChange={set('gst_percent')} error={errors.gst_percent} />
-            <div className="span-2">
+            <SelectField label="Priority in lists" value={form.priority} onChange={set('priority')} options={PRIORITIES} error={errors.priority} />
+            <div>
               <SelectField
                 label="Doctor"
                 value={form.doctor_id}

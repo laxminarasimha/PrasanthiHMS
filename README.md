@@ -40,7 +40,7 @@ Sign in with the seeded admin account `admin@prasanthi.test` (a sample doctor, `
 - Sign in and sign out for staff, with roles: Admin, Doctor, Nurse, Pharmacist, Lab Technician, Front Desk
 - Staff management (Admin and Doctor only): add, edit, deactivate
 - Patient registration, search by name, mobile or patient ID, and editing
-- Front Desk: the day's appointment queue with status tracking, booking, billing, payments, refunds and a printable receipt
+- Front Desk: the day's visits with lab and other walk-in bills, tokens, booking with a new patient on the spot, price, quantity, discount and payment at booking, bills with any service or typed charge, more bills per visit, refund with discount, vitals, attachments, day summary, patient dashboard and a waiting-room queue screen
 - Services: the price list used for appointments and bills
 - Doctor: the day's patient queue, a visit pad (vitals, notes, medicines, tests, advice, follow-up), past visits and a printable prescription
 - Lab: test list with parameters and reference ranges, lab orders with billing, results entry with high/low flags, and a printable report

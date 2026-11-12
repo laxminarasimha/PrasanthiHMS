@@ -126,6 +126,7 @@ class LabController extends Controller
                 'branch_id' => $user->branch_id,
                 'patient_id' => $data['patient_id'],
                 'appointment_id' => $data['appointment_id'] ?? null,
+                'kind' => 'lab',
                 'created_by' => $user->id,
             ]);
 

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['branch_id', 'patient_id', 'appointment_id', 'discount', 'created_by'])]
+#[Fillable(['branch_id', 'patient_id', 'appointment_id', 'kind', 'discount', 'created_by'])]
 class Bill extends Model
 {
     protected $appends = ['due'];
@@ -71,16 +71,20 @@ class Bill extends Model
         return $this->addLine($service->name, $service->price, $quantity, $service->gst_percent, $service->id);
     }
 
-    /** Adds a charge that is not in the services list, such as a lab test. */
-    public function addLine(string $description, float $unitPrice, int $quantity = 1, float $gstPercent = 0, ?int $serviceId = null): BillItem
+    /**
+     * Adds a charge to the bill. The price, quantity and a rupee discount can differ from the
+     * price list; GST is worked out on what is left after the discount.
+     */
+    public function addLine(string $description, float $unitPrice, int $quantity = 1, float $gstPercent = 0, ?int $serviceId = null, float $discount = 0): BillItem
     {
-        $amount = round($unitPrice * $quantity, 2);
+        $amount = round(max(0, $unitPrice * $quantity - $discount), 2);
 
         $item = $this->items()->create([
             'service_id' => $serviceId,
             'description' => $description,
             'quantity' => $quantity,
             'unit_price' => $unitPrice,
+            'discount' => $discount,
             'gst_percent' => $gstPercent,
             'amount' => $amount,
             'tax' => round($amount * $gstPercent / 100, 2),

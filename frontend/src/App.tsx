@@ -14,6 +14,7 @@ import { Lab } from './pages/Lab'
 import { LabReportPrint } from './pages/LabReportPrint'
 import { LabTests } from './pages/LabTests'
 import { Login } from './pages/Login'
+import { PatientDashboard } from './pages/PatientDashboard'
 import { Patients } from './pages/Patients'
 import { PharmacyBilling } from './pages/pharmacy/Billing'
 import { PharmacyBills } from './pages/pharmacy/Bills'
@@ -29,6 +30,7 @@ import { PharmacySalePrint } from './pages/pharmacy/SalePrint'
 import { PharmacyStock } from './pages/pharmacy/Stock'
 import { PharmacyStockReturns } from './pages/pharmacy/StockReturns'
 import { PrescriptionPrint } from './pages/PrescriptionPrint'
+import { QueueBoard } from './pages/QueueBoard'
 import { Reports } from './pages/Reports'
 import { Services } from './pages/Services'
 import { Staff } from './pages/Staff'
@@ -65,6 +67,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/queue" element={<PrintOnly><QueueBoard /></PrintOnly>} />
           <Route path="/bills/:id/print" element={<PrintOnly><BillPrint /></PrintOnly>} />
           <Route path="/visits/:id/print" element={<PrintOnly><PrescriptionPrint /></PrintOnly>} />
           <Route path="/lab/orders/:id/print" element={<PrintOnly><LabReportPrint /></PrintOnly>} />
@@ -92,6 +95,7 @@ export default function App() {
             <Route path="/ipd/setup" element={<Only when="can_manage_setup"><IpdSetup /></Only>} />
             <Route path="/ipd/:id" element={<Only when="can_ipd"><IpdCase /></Only>} />
             <Route path="/patients" element={<Patients />} />
+            <Route path="/patients/:id" element={<PatientDashboard />} />
             <Route path="/services" element={<Only when="can_manage_setup"><Services /></Only>} />
             <Route path="/staff" element={<Only when="can_manage_staff"><Staff /></Only>} />
             <Route path="/reports" element={<Only when="can_manage_staff"><Reports /></Only>} />

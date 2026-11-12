@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AppointmentController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BillController;
 use App\Http\Controllers\Api\ConsultationController;
+use App\Http\Controllers\Api\FrontDeskController;
 use App\Http\Controllers\Api\IpdController;
 use App\Http\Controllers\Api\LabController;
 use App\Http\Controllers\Api\PatientController;
@@ -59,6 +60,21 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/bills/{bill}/items', [BillController::class, 'addItem']);
     Route::delete('/bills/{bill}/items/{item}', [BillController::class, 'removeItem']);
     Route::post('/bills/{bill}/payments', [BillController::class, 'addPayment']);
+
+    Route::controller(FrontDeskController::class)->group(function () {
+        Route::get('/front-desk/bills', 'walkInBills');
+        Route::get('/front-desk/summary', 'summary');
+        Route::get('/front-desk/queue', 'queue');
+        Route::get('/patients/{patient}/overview', 'overview');
+        Route::get('/patients/{patient}/attachments', 'attachments');
+        Route::get('/attachments/{attachment}/download', 'download');
+
+        Route::middleware('ability:canWorkFrontDesk')->group(function () {
+            Route::put('/appointments/{appointment}/vitals', 'saveVitals');
+            Route::post('/patients/{patient}/attachments', 'storeAttachment');
+            Route::delete('/attachments/{attachment}', 'destroyAttachment');
+        });
+    });
 
     Route::get('/doctor/queue', [ConsultationController::class, 'queue']);
     Route::get('/appointments/{appointment}/consultation', [ConsultationController::class, 'show']);

@@ -10,14 +10,18 @@ type Props = {
   onClose: () => void
   /** Called after every change so the day list can refresh its amounts. */
   onChange: () => void
+  /** Lets the front desk open another bill for the same patient and visit. */
+  onAnotherBill?: (bill: Bill) => void
 }
 
-export function BillPanel({ billId, services, onClose, onChange }: Props) {
+const KIND = { appointment: 'Appointment bill', lab: 'Lab bill', other: 'Other services bill' } as const
+
+export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }: Props) {
   const [bill, setBill] = useState<Bill | null>(null)
   const [error, setError] = useState('')
-  const [serviceId, setServiceId] = useState('')
-  const [quantity, setQuantity] = useState('1')
+  const [line, setLine] = useState({ service_id: '', description: '', unit_price: '', quantity: '1', line_discount: '' })
   const [discount, setDiscount] = useState('')
+  const [refundMode, setRefundMode] = useState('cash')
   const [payType, setPayType] = useState<'payment' | 'refund'>('payment')
   const [amount, setAmount] = useState('')
   const [mode, setMode] = useState('cash')
@@ -40,36 +44,52 @@ export function BillPanel({ billId, services, onClose, onChange }: Props) {
     try {
       apply((await request).data)
       onChange()
+      return true
     } catch (err) {
       setError(Object.values(fieldErrors(err))[0])
+      return false
     }
   }
 
-  const addItem = (e: FormEvent) => {
+  const pickService = (value: string) => {
+    const service = services.find((s) => String(s.id) === value)
+    setLine((l) => ({ ...l, service_id: value, description: service?.name ?? '', unit_price: service ? String(service.price) : l.unit_price }))
+  }
+
+  const addLine = async (e: FormEvent) => {
     e.preventDefault()
-    if (!serviceId) return
-    run(api.post(`/bills/${billId}/items`, { service_id: serviceId, quantity })).then(() => {
-      setServiceId('')
-      setQuantity('1')
-    })
+    const ok = await run(
+      api.post(`/bills/${billId}/items`, {
+        service_id: line.service_id || null,
+        description: line.description || null,
+        unit_price: line.unit_price === '' ? null : line.unit_price,
+        quantity: line.quantity || 1,
+        line_discount: line.line_discount || 0,
+      }),
+    )
+    if (ok) setLine({ service_id: '', description: '', unit_price: '', quantity: '1', line_discount: '' })
   }
 
   const pay = (e: FormEvent) => {
     e.preventDefault()
-    run(api.post(`/bills/${billId}/payments`, { type: payType, amount, mode, reference: reference || null })).then(() =>
-      setReference(''),
-    )
+    run(api.post(`/bills/${billId}/payments`, { type: payType, amount, mode, reference: reference || null })).then(() => setReference(''))
   }
 
-  if (!bill) return <aside className="card panel">Loading bill…</aside>
+  if (!bill) return <aside className="card panel wide">Loading bill…</aside>
+
+  // A discount that takes the bill below what is paid needs the difference handed back.
+  const worth = bill.subtotal + bill.tax - Number(discount || 0)
+  const excess = Math.round((bill.paid - worth) * 100) / 100
+  const isLab = bill.kind === 'lab'
 
   return (
-    <aside className="card panel">
+    <aside className="card panel wide">
       <div className="panel-head">
         <div>
           <h2>Bill {bill.bill_no}</h2>
           <span className="muted">
-            {bill.patient.name} · {bill.patient.uhid}
+            {bill.patient.name} · {bill.patient.uhid} · {KIND[bill.kind]}
+            {bill.lab_order ? ` · ${bill.lab_order.order_no}` : ''}
           </span>
         </div>
         <div className="row">
@@ -88,6 +108,7 @@ export function BillPanel({ billId, services, onClose, onChange }: Props) {
             <th>Service</th>
             <th className="num">Qty</th>
             <th className="num">Price</th>
+            <th className="num">Disc.</th>
             <th className="num">Amount</th>
             <th />
           </tr>
@@ -101,36 +122,46 @@ export function BillPanel({ billId, services, onClose, onChange }: Props) {
               </td>
               <td className="num">{item.quantity}</td>
               <td className="num">{rupees(item.unit_price)}</td>
+              <td className="num">{item.discount > 0 ? rupees(item.discount) : '—'}</td>
               <td className="num">{rupees(item.amount)}</td>
               <td className="num">
-                <button className="link danger" title="Remove from bill" onClick={() => run(api.delete(`/bills/${billId}/items/${item.id}`))}>
-                  Remove
-                </button>
+                {!isLab && (
+                  <button className="link danger" title="Remove from bill" onClick={() => run(api.delete(`/bills/${billId}/items/${item.id}`))}>
+                    Remove
+                  </button>
+                )}
               </td>
             </tr>
           ))}
           {bill.items.length === 0 && (
             <tr className="empty">
-              <td colSpan={5}>No services on this bill yet.</td>
+              <td colSpan={6}>No services on this bill yet.</td>
             </tr>
           )}
         </tbody>
       </table>
 
-      <form className="row add-row" onSubmit={addItem}>
-        <select value={serviceId} onChange={(e) => setServiceId(e.target.value)} aria-label="Service to add">
-          <option value="">Add a service…</option>
-          {services.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name} — {rupees(s.price)}
-            </option>
-          ))}
-        </select>
-        <input className="qty" type="number" min={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} aria-label="Quantity" />
-        <button className="btn ghost" disabled={!serviceId}>
-          Add
-        </button>
-      </form>
+      {isLab ? (
+        <p className="muted small">Lab tests are added or changed from the Lab screen.</p>
+      ) : (
+        <form className="line-row" onSubmit={addLine}>
+          <select value={line.service_id} onChange={(e) => pickService(e.target.value)} aria-label="Service to add">
+            <option value="">Choose a service…</option>
+            {services.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name} — {rupees(s.price)}
+              </option>
+            ))}
+          </select>
+          <input placeholder="or type a charge" value={line.description} onChange={(e) => setLine((l) => ({ ...l, description: e.target.value }))} aria-label="Charge description" />
+          <input type="number" min={0} step="0.01" placeholder="Price ₹" value={line.unit_price} onChange={(e) => setLine((l) => ({ ...l, unit_price: e.target.value }))} aria-label="Price" />
+          <input type="number" min={1} placeholder="Qty" value={line.quantity} onChange={(e) => setLine((l) => ({ ...l, quantity: e.target.value }))} aria-label="Quantity" />
+          <input type="number" min={0} step="0.01" placeholder="Disc. ₹" value={line.line_discount} onChange={(e) => setLine((l) => ({ ...l, line_discount: e.target.value }))} aria-label="Line discount" />
+          <button className="btn ghost" disabled={(!line.service_id && !line.description.trim()) || line.unit_price === ''}>
+            Add
+          </button>
+        </form>
+      )}
 
       <dl className="totals">
         <dt>Subtotal</dt>
@@ -141,20 +172,32 @@ export function BillPanel({ billId, services, onClose, onChange }: Props) {
             <dd>{rupees(bill.tax)}</dd>
           </>
         )}
-        <dt>Discount</dt>
+        <dt>Bill discount</dt>
         <dd>
           <form
             className="row"
             onSubmit={(e) => {
               e.preventDefault()
-              run(api.put(`/bills/${billId}`, { discount: discount || 0 }))
+              run(api.put(`/bills/${billId}`, { discount: discount || 0, ...(excess > 0 ? { refund_excess: true, refund_mode: refundMode } : {}) }))
             }}
           >
             <input className="qty" type="number" min={0} step="0.01" value={discount} onChange={(e) => setDiscount(e.target.value)} aria-label="Discount amount" />
             <button className="btn ghost" disabled={Number(discount || 0) === bill.discount}>
-              Apply
+              {excess > 0 ? `Apply and refund ${rupees(excess)}` : 'Apply'}
             </button>
           </form>
+          {excess > 0 && (
+            <div className="row refund-by">
+              <small className="muted">Refund by</small>
+              <select value={refundMode} onChange={(e) => setRefundMode(e.target.value)} aria-label="Refund mode">
+                {PAYMENT_MODES.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </dd>
         <dt className="strong">Total</dt>
         <dd className="strong">{rupees(bill.total)}</dd>
@@ -168,12 +211,10 @@ export function BillPanel({ billId, services, onClose, onChange }: Props) {
 
       <h3>{payType === 'payment' ? 'Collect payment' : 'Give refund'}</h3>
       <form onSubmit={pay}>
-        <div className="grid">
+        <div className="grid three">
           <TextField label="Amount (₹)" required type="number" min={0} step="0.01" value={amount} onChange={setAmount} />
           <SelectField label="Mode" required value={mode} onChange={setMode} options={PAYMENT_MODES} />
-          <div className="span-2">
-            <TextField label="Reference (optional)" placeholder="UPI or card transaction number" value={reference} onChange={setReference} />
-          </div>
+          <TextField label="Reference" placeholder="optional" value={reference} onChange={setReference} />
         </div>
         <div className="panel-foot between">
           <button
@@ -215,6 +256,12 @@ export function BillPanel({ billId, services, onClose, onChange }: Props) {
             ))}
           </ul>
         </>
+      )}
+
+      {onAnotherBill && (
+        <button type="button" className="link add-medicine" onClick={() => onAnotherBill(bill)}>
+          + Add another bill for {bill.patient.name}
+        </button>
       )}
     </aside>
   )

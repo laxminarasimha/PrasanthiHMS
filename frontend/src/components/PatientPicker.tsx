@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { api } from '../api'
+import { useEffect, useState, type FormEvent } from 'react'
+import { api, fieldErrors, type FieldErrors } from '../api'
 import type { Patient } from '../types'
 import { Field } from './Field'
 
@@ -12,10 +11,13 @@ type Props = {
 
 const summary = (p: Patient) => `${p.uhid} · ${p.age}y / ${p.gender.charAt(0).toUpperCase()} · ${p.mobile}`
 
-/** Search box that finds a registered patient by name, mobile or patient ID. */
+/** Finds a registered patient by name, mobile or patient ID, or registers a new one on the spot. */
 export function PatientPicker({ patient, onChange, error }: Props) {
   const [search, setSearch] = useState('')
   const [matches, setMatches] = useState<Patient[]>([])
+  const [adding, setAdding] = useState(false)
+  const [form, setForm] = useState({ name: '', gender: '', age: '', mobile: '' })
+  const [errors, setErrors] = useState<FieldErrors>({})
 
   useEffect(() => {
     if (search.trim().length < 2) return
@@ -39,6 +41,59 @@ export function PatientPicker({ patient, onChange, error }: Props) {
     )
   }
 
+  const register = async (e: FormEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setErrors({})
+    try {
+      const res = await api.post<Patient>('/patients', form)
+      setAdding(false)
+      setForm({ name: '', gender: '', age: '', mobile: '' })
+      onChange(res.data)
+    } catch (err) {
+      setErrors(fieldErrors(err))
+    }
+  }
+
+  if (adding) {
+    const set = (key: keyof typeof form) => (value: string) => setForm((f) => ({ ...f, [key]: value }))
+    return (
+      <div className="quick-patient">
+        <div className="row">
+          <strong className="grow">New patient</strong>
+          <button type="button" className="link" onClick={() => setAdding(false)}>
+            Search instead
+          </button>
+        </div>
+        <div className="grid gap-top">
+          <Field label="Name" required error={errors.name}>
+            <input value={form.name} onChange={(e) => set('name')(e.target.value)} autoFocus />
+          </Field>
+          <Field label="Mobile" required error={errors.mobile}>
+            <input inputMode="numeric" maxLength={10} value={form.mobile} onChange={(e) => set('mobile')(e.target.value)} />
+          </Field>
+          <Field label="Gender" required error={errors.gender}>
+            <select value={form.gender} onChange={(e) => set('gender')(e.target.value)}>
+              <option value="">Select</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+              <option value="other">Other</option>
+            </select>
+          </Field>
+          <Field label="Age (years)" required error={errors.age}>
+            <input type="number" min={0} max={130} value={form.age} onChange={(e) => set('age')(e.target.value)} />
+          </Field>
+        </div>
+        <div className="row gap-top">
+          <span className="muted small grow">Other details can be added later under Patients.</span>
+          <button type="button" className="btn primary" onClick={register}>
+            Register
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   const shown = search.trim().length >= 2 ? matches : []
 
   return (
@@ -56,11 +111,18 @@ export function PatientPicker({ patient, onChange, error }: Props) {
           ))}
         </ul>
       )}
-      {search.trim().length >= 2 && shown.length === 0 && (
-        <small className="muted">
-          No patient found. <Link to="/patients">Register a new patient</Link> first.
-        </small>
-      )}
+      <button
+        type="button"
+        className="link add-medicine"
+        onClick={() => {
+          // Carry over what was typed: digits are a mobile number, anything else a name.
+          const typed = search.trim()
+          setForm((f) => ({ ...f, name: /^\d+$/.test(typed) ? '' : typed, mobile: /^\d+$/.test(typed) ? typed : '' }))
+          setAdding(true)
+        }}
+      >
+        + Add new patient{search.trim().length >= 2 && shown.length === 0 ? ' (no match found)' : ''}
+      </button>
     </Field>
   )
 }

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['branch_id', 'patient_id', 'doctor_id', 'service_id', 'scheduled_at', 'duration_minutes', 'status', 'arrived_at', 'notes', 'created_by'])]
+#[Fillable(['branch_id', 'patient_id', 'doctor_id', 'service_id', 'scheduled_at', 'duration_minutes', 'status', 'token_no', 'arrived_at', 'notes', 'created_by'])]
 class Appointment extends Model
 {
     public const STATUSES = ['booked', 'arrived', 'ongoing', 'reviewed', 'cancelled'];

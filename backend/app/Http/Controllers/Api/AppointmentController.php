@@ -23,7 +23,7 @@ class AppointmentController extends Controller
      */
     private static function bills(): array
     {
-        return ['bills' => fn ($bills) => $bills->select('id', 'appointment_id', 'bill_no', 'total', 'paid')->withIpdTransfers()];
+        return ['bills' => fn ($bills) => $bills->select('id', 'appointment_id', 'bill_no', 'kind', 'total', 'paid')->withIpdTransfers()];
     }
 
     /** One day's appointments, oldest first, with counts per status for the filter tabs. */
@@ -35,6 +35,7 @@ class AppointmentController extends Controller
             'doctor_id' => ['nullable', 'integer'],
             'q' => ['nullable', 'string', 'max:100'],
         ]);
+
 
         $day = Appointment::query()
             ->whereDate('scheduled_at', $filters['date'] ?? today())
@@ -51,27 +52,61 @@ class AppointmentController extends Controller
         ]);
     }
 
-    /** Books the visit and opens a bill for the chosen service in one step. */
+    /**
+     * Books the visit and, unless billing is skipped, opens a bill for the chosen service.
+     * The front desk may change the price, quantity and discount, and take payment at once.
+     */
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate($this->rules() + [
             'patient_id' => ['required', 'exists:patients,id'],
+            'skip_billing' => ['sometimes', 'boolean'],
+            'unit_price' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
+            'quantity' => ['nullable', 'integer', 'min:1', 'max:99'],
+            'discount' => ['nullable', 'numeric', 'min:0'],
+            'paid' => ['nullable', 'numeric', 'min:0'],
+            'payment_mode' => ['nullable', 'required_with:paid', Rule::in(\App\Models\Payment::MODES)],
         ]);
 
-        $appointment = DB::transaction(function () use ($data, $request) {
+        $billing = array_intersect_key($data, array_flip(['skip_billing', 'unit_price', 'quantity', 'discount', 'paid', 'payment_mode']));
+        $data = array_diff_key($data, $billing);
+
+        $appointment = DB::transaction(function () use ($data, $billing, $request) {
+            $day = \Illuminate\Support\Carbon::parse($data['scheduled_at'])->toDateString();
             $appointment = Appointment::create($data + [
                 'branch_id' => $request->user()->branch_id,
                 'created_by' => $request->user()->id,
                 'arrived_at' => ($data['status'] ?? 'booked') === 'arrived' ? now() : null,
+                // Next number in this doctor's line for that day.
+                'token_no' => (int) Appointment::where('doctor_id', $data['doctor_id'])->whereDate('scheduled_at', $day)->lockForUpdate()->max('token_no') + 1,
             ]);
 
-            if ($service = Service::find($data['service_id'] ?? null)) {
-                Bill::create([
+            $service = Service::find($data['service_id'] ?? null);
+            if ($service && ! ($billing['skip_billing'] ?? false)) {
+                $quantity = (int) ($billing['quantity'] ?? 1);
+                $price = (float) ($billing['unit_price'] ?? $service->price);
+                $discount = (float) ($billing['discount'] ?? 0);
+                if ($discount > $price * $quantity) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['discount' => 'The discount cannot be more than the charge.']);
+                }
+
+                $bill = Bill::create([
                     'branch_id' => $appointment->branch_id,
                     'patient_id' => $appointment->patient_id,
                     'appointment_id' => $appointment->id,
+                    'kind' => 'appointment',
                     'created_by' => $request->user()->id,
-                ])->addService($service);
+                ]);
+                $bill->addLine($service->name, $price, $quantity, $service->gst_percent, $service->id, $discount);
+
+                $paid = (float) ($billing['paid'] ?? 0);
+                if ($paid > $bill->fresh()->total) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['paid' => 'That is more than the bill amount.']);
+                }
+                if ($paid > 0) {
+                    $bill->payments()->create(['type' => 'payment', 'amount' => $paid, 'mode' => $billing['payment_mode'], 'received_by' => $request->user()->id]);
+                    $bill->recalculate();
+                }
             }
 
             return $appointment;

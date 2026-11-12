@@ -16,7 +16,7 @@ class ServiceController extends Controller
     {
         $services = Service::with('doctor:id,name')
             ->when(! $request->boolean('all'), fn ($q) => $q->where('is_active', true))
-            ->orderBy('type')->orderBy('name')
+            ->orderBy('type')->orderBy('priority')->orderBy('name')
             ->get();
 
         return response()->json($services);
@@ -53,8 +53,9 @@ class ServiceController extends Controller
             'type' => ['required', Rule::in(['appointment', 'other'])],
             'price' => ['required', 'numeric', 'min:0', 'max:9999999'],
             'gst_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'priority' => ['nullable', 'integer', 'between:1,3'],
             'doctor_id' => ['nullable', Rule::exists('users', 'id')->where('role', Role::Doctor->value)],
             'is_active' => ['sometimes', 'boolean'],
-        ]) + ['gst_percent' => 0];
+        ]) + ['gst_percent' => 0, 'priority' => 2];
     }
 }
