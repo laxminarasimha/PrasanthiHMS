@@ -4,7 +4,7 @@ import { api, fieldErrors, type FieldErrors } from '../api'
 import { useAuth } from '../auth'
 import { Field, TextField } from '../components/Field'
 import { clock, longDate } from '../format'
-import type { Consultation, Medicine, Visit } from '../types'
+import type { Consultation, PrescribedMedicine as Medicine, Visit } from '../types'
 
 const VITALS = [
   { key: 'weight_kg', label: 'Weight (kg)' },

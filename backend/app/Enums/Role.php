@@ -40,4 +40,10 @@ enum Role: string
     {
         return in_array($this, [self::Admin, self::Doctor, self::LabTech], true);
     }
+
+    /** Roles allowed to receive stock, sell medicines and edit the medicine list. */
+    public function canRunPharmacy(): bool
+    {
+        return in_array($this, [self::Admin, self::Doctor, self::Pharmacist], true);
+    }
 }

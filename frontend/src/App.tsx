@@ -10,6 +10,12 @@ import { LabReportPrint } from './pages/LabReportPrint'
 import { LabTests } from './pages/LabTests'
 import { Login } from './pages/Login'
 import { Patients } from './pages/Patients'
+import { PharmacyBilling } from './pages/pharmacy/Billing'
+import { PharmacyBills } from './pages/pharmacy/Bills'
+import { PharmacyMedicines } from './pages/pharmacy/Medicines'
+import { PharmacyPurchases } from './pages/pharmacy/Purchases'
+import { PharmacySalePrint } from './pages/pharmacy/SalePrint'
+import { PharmacyStock } from './pages/pharmacy/Stock'
 import { PrescriptionPrint } from './pages/PrescriptionPrint'
 import { Services } from './pages/Services'
 import { Staff } from './pages/Staff'
@@ -41,12 +47,18 @@ export default function App() {
           <Route path="/bills/:id/print" element={<PrintOnly><BillPrint /></PrintOnly>} />
           <Route path="/visits/:id/print" element={<PrintOnly><PrescriptionPrint /></PrintOnly>} />
           <Route path="/lab/orders/:id/print" element={<PrintOnly><LabReportPrint /></PrintOnly>} />
+          <Route path="/pharmacy/bills/:id/print" element={<PrintOnly><PharmacySalePrint /></PrintOnly>} />
           <Route element={<Protected />}>
             <Route path="/front-desk" element={<FrontDesk />} />
             <Route path="/doctor" element={<DoctorQueue />} />
             <Route path="/visits/:id" element={<VisitPad />} />
             <Route path="/lab" element={<Lab />} />
             <Route path="/lab/tests" element={<LabTests />} />
+            <Route path="/pharmacy" element={<PharmacyBilling />} />
+            <Route path="/pharmacy/bills" element={<PharmacyBills />} />
+            <Route path="/pharmacy/stock" element={<PharmacyStock />} />
+            <Route path="/pharmacy/purchases" element={<PharmacyPurchases />} />
+            <Route path="/pharmacy/medicines" element={<PharmacyMedicines />} />
             <Route path="/patients" element={<Patients />} />
             <Route path="/services" element={<Services />} />
             <Route path="/staff" element={<StaffOnly />} />

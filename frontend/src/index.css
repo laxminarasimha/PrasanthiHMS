@@ -219,3 +219,24 @@ input.result.high { border-color: var(--danger); color: var(--danger); font-weig
 input.result.low { border-color: #1d4f91; color: #1d4f91; font-weight: 700; }
 .lab-param { display: grid; grid-template-columns: 1.6fr 0.7fr 1.1fr 1fr auto; gap: 6px; align-items: center; min-width: 520px; }
 @media (max-width: 1000px) { .panel.wide { width: 100%; } }
+
+/* Pharmacy */
+.subnav { display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap; }
+.subnav a { padding: 6px 14px; border-radius: 999px; text-decoration: none; color: var(--muted); border: 1px solid var(--border); background: var(--surface); }
+.subnav a.active { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+.stack { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.panel.narrow { width: 340px; }
+.grid.three { grid-template-columns: repeat(3, 1fr); }
+.grid.four { grid-template-columns: repeat(4, 1fr); }
+.tabs.flush { margin-bottom: 0; }
+.check.flush { margin-top: 0; white-space: nowrap; }
+.medicine-search { position: relative; }
+.picker.floating { position: absolute; left: 0; right: 0; z-index: 5; background: #fff; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12); max-height: 320px; overflow-y: auto; }
+.purchase-row { display: grid; grid-template-columns: minmax(180px, 2fr) 1fr 1.25fr 0.7fr 0.7fr 0.6fr 0.9fr 0.9fr 0.7fr 0.7fr 0.7fr 0.9fr auto; gap: 6px; align-items: center; min-width: 1180px; }
+.purchase-row input, .purchase-row select { padding: 6px 8px; }
+.narrow-totals { max-width: 320px; margin-left: auto; }
+.notice a { color: inherit; font-weight: 700; }
+@media (max-width: 1000px) { .panel.narrow { width: 100%; } }
+@media (max-width: 700px) { .grid.three, .grid.four { grid-template-columns: 1fr; } }
+.receipt table { font-size: 0.88rem; }
+.receipt th, .receipt td { padding: 6px 5px; white-space: normal; }

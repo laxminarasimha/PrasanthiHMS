@@ -36,3 +36,10 @@ export const PAYMENT_MODES = [
 ]
 
 export const modeLabel = (mode: string) => PAYMENT_MODES.find((m) => m.value === mode)?.label ?? mode
+
+/** "2027-05-31" -> "May 2027", the way expiry is printed on a strip. */
+export const expiryLabel = (date: string) =>
+  new Date(date.slice(0, 10) + 'T00:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
+
+/** Whole days from today until the given date (negative once it has passed). */
+export const daysUntil = (date: string) => Math.round((new Date(date.slice(0, 10) + 'T00:00:00').getTime() - new Date(today() + 'T00:00:00').getTime()) / 86400000)

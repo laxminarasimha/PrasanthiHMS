@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\BillController;
 use App\Http\Controllers\Api\ConsultationController;
 use App\Http\Controllers\Api\LabController;
 use App\Http\Controllers\Api\PatientController;
+use App\Http\Controllers\Api\PharmacyController;
 use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\StaffController;
 use App\Http\Middleware\EnsureCanManageStaff;
@@ -57,6 +58,23 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/lab/orders', [LabController::class, 'storeOrder']);
     Route::get('/lab/orders/{order}', [LabController::class, 'showOrder']);
     Route::put('/lab/orders/{order}/items/{item}', [LabController::class, 'saveResults']);
+
+    Route::prefix('pharmacy')->controller(PharmacyController::class)->group(function () {
+        Route::get('/medicines', 'medicines');
+        Route::post('/medicines', 'storeMedicine');
+        Route::put('/medicines/{medicine}', 'updateMedicine');
+        Route::get('/stockists', 'stockists');
+        Route::post('/stockists', 'storeStockist');
+        Route::put('/stockists/{stockist}', 'updateStockist');
+        Route::get('/purchases', 'purchases');
+        Route::post('/purchases', 'storePurchase');
+        Route::get('/purchases/{purchase}', 'showPurchase');
+        Route::get('/stock', 'stock');
+        Route::get('/sell-search', 'sellSearch');
+        Route::get('/sales', 'sales');
+        Route::post('/sales', 'storeSale');
+        Route::get('/sales/{sale}', 'showSale');
+    });
 
     Route::middleware(EnsureCanManageStaff::class)->group(function () {
         Route::get('/staff', [StaffController::class, 'index']);
