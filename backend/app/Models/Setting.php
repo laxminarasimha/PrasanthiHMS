@@ -28,6 +28,15 @@ class Setting extends Model
         'approval_required' => false,
     ];
 
+    /** OPD hours and slot length for the appointment calendar. */
+    public const CALENDAR_DEFAULTS = [
+        'slot_minutes' => 15,
+        'morning_start' => '10:30',
+        'morning_end' => '14:00',
+        'evening_start' => '18:00',
+        'evening_end' => '21:00',
+    ];
+
     /**
      * @return array<string, string>
      */

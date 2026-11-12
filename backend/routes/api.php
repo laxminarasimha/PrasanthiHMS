@@ -46,10 +46,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/doctors', [ServiceController::class, 'doctors']);
     Route::get('/services', [ServiceController::class, 'index']);
     Route::get('/appointments', [AppointmentController::class, 'index']);
+    Route::get('/appointments/calendar', [AppointmentController::class, 'calendar']);
 
     Route::middleware('ability:canManageSetup')->group(function () {
         Route::post('/services', [ServiceController::class, 'store']);
         Route::put('/services/{service}', [ServiceController::class, 'update']);
+        Route::put('/appointments/calendar-settings', [AppointmentController::class, 'saveCalendarSettings']);
     });
 
     Route::middleware('ability:canWorkFrontDesk')->group(function () {
