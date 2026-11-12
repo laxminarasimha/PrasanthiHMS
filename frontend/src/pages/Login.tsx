@@ -31,10 +31,11 @@ export function Login() {
   return (
     <div className="login">
       <form className="card login-card" onSubmit={submit}>
+        <span className="eyebrow">Prasanthi Hospitals · Vijayawada</span>
         <div className="brand large">
           Prasanthi <span>HMS</span>
         </div>
-        <p className="muted">Sign in with your staff account.</p>
+        <p className="muted">Multi Speciality Centre. Sign in with your staff account.</p>
         <TextField label="Email" type="email" value={email} onChange={setEmail} autoComplete="username" required />
         <TextField
           label="Password"
