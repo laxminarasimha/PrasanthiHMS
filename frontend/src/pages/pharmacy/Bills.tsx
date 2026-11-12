@@ -178,9 +178,11 @@ export function PharmacyBills() {
                           <button className="link" onClick={() => show(s, 'return')}>
                             Return
                           </button>
-                          <button className="link danger" onClick={() => show(s, 'delete')}>
-                            Delete
-                          </button>
+                          {user?.can_delete_bills && (
+                            <button className="link danger" onClick={() => show(s, 'delete')}>
+                              Delete
+                            </button>
+                          )}
                         </>
                       )}
                     </td>

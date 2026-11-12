@@ -10,7 +10,7 @@ class EnsureCanManageStaff
 {
     public function handle(Request $request, Closure $next): Response
     {
-        abort_unless($request->user()?->role->canManageStaff(), 403, 'You are not allowed to manage staff.');
+        abort_unless($request->user()?->allows('canManageStaff'), 403, 'You are not allowed to manage staff.');
 
         return $next($request);
     }

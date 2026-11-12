@@ -38,7 +38,7 @@ class ServiceController extends Controller
     public function doctors(): JsonResponse
     {
         return response()->json(
-            User::where('role', Role::Doctor)->where('is_active', true)->orderBy('name')->get(['id', 'name', 'department'])
+            User::where('role', Role::Doctor)->where('is_active', true)->orderBy('name')->get(['id', 'name', 'department', 'availability'])
         );
     }
 

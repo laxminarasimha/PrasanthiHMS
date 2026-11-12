@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { useAuth } from '../auth'
 import { api, fieldErrors } from '../api'
 import { PAYMENT_MODES, modeLabel, rupees } from '../format'
 import type { Bill, Service } from '../types'
@@ -17,6 +18,7 @@ type Props = {
 const KIND = { appointment: 'Appointment bill', lab: 'Lab bill', other: 'Other services bill' } as const
 
 export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }: Props) {
+  const { user } = useAuth()
   const [bill, setBill] = useState<Bill | null>(null)
   const [error, setError] = useState('')
   const [line, setLine] = useState({ service_id: '', description: '', unit_price: '', quantity: '1', line_discount: '' })
@@ -154,7 +156,7 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
             ))}
           </select>
           <input placeholder="or type a charge" value={line.description} onChange={(e) => setLine((l) => ({ ...l, description: e.target.value }))} aria-label="Charge description" />
-          <input type="number" min={0} step="0.01" placeholder="Price ₹" value={line.unit_price} onChange={(e) => setLine((l) => ({ ...l, unit_price: e.target.value }))} aria-label="Price" />
+          <input type="number" min={0} step="0.01" placeholder="Price ₹" value={line.unit_price} disabled={Boolean(line.service_id) && !user?.can_change_price} onChange={(e) => setLine((l) => ({ ...l, unit_price: e.target.value }))} aria-label="Price" />
           <input type="number" min={1} placeholder="Qty" value={line.quantity} onChange={(e) => setLine((l) => ({ ...l, quantity: e.target.value }))} aria-label="Quantity" />
           <input type="number" min={0} step="0.01" placeholder="Disc. ₹" value={line.line_discount} onChange={(e) => setLine((l) => ({ ...l, line_discount: e.target.value }))} aria-label="Line discount" />
           <button className="btn ghost" disabled={(!line.service_id && !line.description.trim()) || line.unit_price === ''}>

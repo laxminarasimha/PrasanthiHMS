@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
+import { useAuth } from '../auth'
 import { PAYMENT_MODES, rupees } from '../format'
 import type { Appointment, Doctor, Patient, Service } from '../types'
 import { SelectField, TextField } from './Field'
@@ -31,6 +32,7 @@ const STATUSES = [
 const nowTime = () => new Date().toTimeString().slice(0, 5)
 
 export function AppointmentForm({ patient: startPatient, date, time: startTime, doctorId: startDoctor, status: startStatus, doctors, services, onClose, onBooked }: Props) {
+  const { user } = useAuth()
   const [patient, setPatient] = useState<Patient | null>((startPatient as Patient | undefined) ?? null)
   const [doctorId, setDoctorId] = useState(startDoctor || (doctors.length === 1 ? String(doctors[0].id) : ''))
   const [serviceId, setServiceId] = useState('')
@@ -142,7 +144,7 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
           {!skipBilling && (
             <>
               <div className="grid three gap-top">
-                <TextField label="Unit price (₹)" type="number" min={0} step="0.01" value={price} onChange={setPrice} error={errors.unit_price} />
+                <TextField label="Unit price (₹)" type="number" min={0} step="0.01" value={price} onChange={setPrice} error={errors.unit_price} disabled={!user?.can_change_price} title={user?.can_change_price ? undefined : 'You are not allowed to change the price'} />
                 <TextField label="Qty" type="number" min={1} value={quantity} onChange={setQuantity} error={errors.quantity} />
                 <TextField label="Discount (₹)" type="number" min={0} step="0.01" value={discount} onChange={setDiscount} error={errors.discount} />
               </div>

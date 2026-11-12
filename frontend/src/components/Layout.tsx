@@ -28,7 +28,7 @@ export function Layout() {
           {user.can_ipd && <NavLink to="/ipd">IPD</NavLink>}
           <NavLink to="/patients">Patients</NavLink>
           {user.can_manage_setup && <NavLink to="/services">Services</NavLink>}
-          {user.can_manage_staff && <NavLink to="/reports">Reports</NavLink>}
+          {user.can_view_reports && <NavLink to="/reports">Reports</NavLink>}
           {user.can_manage_staff && <NavLink to="/staff">Staff</NavLink>}
           <div className="nav-foot">
             <div>

@@ -59,6 +59,24 @@ enum Role: string
         return in_array($this, [self::Admin, self::Doctor, self::Nurse, self::Frontdesk], true);
     }
 
+    /** Roles allowed to see the hospital's money and activity reports. */
+    public function canViewReports(): bool
+    {
+        return in_array($this, [self::Admin, self::Doctor], true);
+    }
+
+    /** Roles allowed to delete a pharmacy bill, which restocks it and refunds the money. */
+    public function canDeleteBills(): bool
+    {
+        return in_array($this, [self::Admin, self::Doctor, self::Pharmacist], true);
+    }
+
+    /** Roles allowed to charge a different price from the price list while billing. */
+    public function canChangePrice(): bool
+    {
+        return in_array($this, [self::Admin, self::Doctor, self::Nurse, self::Frontdesk], true);
+    }
+
     /** Roles allowed to admit patients, add IPD charges, take IPD money and discharge. */
     public function canWorkIpd(): bool
     {

@@ -108,7 +108,7 @@ export default function App() {
             <Route path="/patients/:id" element={<PatientDashboard />} />
             <Route path="/services" element={<Only when="can_manage_setup"><Services /></Only>} />
             <Route path="/staff" element={<Only when="can_manage_staff"><Staff /></Only>} />
-            <Route path="/reports" element={<Only when="can_manage_staff"><Reports /></Only>} />
+            <Route path="/reports" element={<Only when="can_view_reports"><Reports /></Only>} />
           </Route>
           <Route path="*" element={<Protected />}>
             <Route path="*" element={<Home />} />

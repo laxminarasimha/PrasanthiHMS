@@ -62,7 +62,7 @@ class ConsultationController extends Controller
 
     public function save(Request $request, Appointment $appointment): JsonResponse
     {
-        abort_unless($request->user()->role->canConsult(), 403, 'You are not allowed to write consultation notes.');
+        abort_unless($request->user()->allows('canConsult'), 403, 'You are not allowed to write consultation notes.');
         abort_if($appointment->status === 'cancelled', 422, 'This appointment was cancelled.');
 
         $data = $request->validate([

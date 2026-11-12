@@ -43,7 +43,7 @@ class PharmacyReportController extends Controller
 
     public function show(Request $request, string $type): JsonResponse
     {
-        abort_unless($request->user()->role->canRunPharmacy(), 403, 'You are not allowed to view pharmacy reports.');
+        abort_unless($request->user()->allows('canRunPharmacy'), 403, 'You are not allowed to view pharmacy reports.');
         abort_unless(isset(self::REPORTS[$type]), 404, 'There is no such report.');
 
         $range = $request->validate(['from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from']]);

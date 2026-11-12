@@ -11,6 +11,9 @@ export type User = {
   can_manage_setup: boolean
   can_front_desk: boolean
   can_ipd: boolean
+  can_view_reports: boolean
+  can_delete_bills: boolean
+  can_change_price: boolean
   pad_hidden_sections?: string[]
   branch: { id: number; name: string; city: string | null } | null
 }
@@ -25,7 +28,17 @@ export type Staff = {
   department: string | null
   signature_text: string | null
   is_active: boolean
+  /** What this person may do, after their own permissions are applied to their role. */
+  abilities: Record<string, boolean>
+  has_signature: boolean
+  availability: Availability | null
 }
+
+/** One permission that can be given to or taken from a person, and the roles that get it by default. */
+export type Ability = { key: string; label: string; hint: string; roles: string[] }
+
+/** A doctor's usual hours for each day of the week; a day left out means no set hours. */
+export type Availability = Partial<Record<'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun', { from: string; to: string }[]>>
 
 export type RoleOption = { value: string; label: string }
 
@@ -54,7 +67,7 @@ export type Patient = {
   created_at: string
 }
 
-export type Doctor = { id: number; name: string; department: string | null }
+export type Doctor = { id: number; name: string; department: string | null; availability?: Availability | null }
 
 export type Service = {
   id: number

@@ -171,6 +171,7 @@ class PharmacySalesController extends Controller
     public function void(Request $request, PharmacySale $sale): JsonResponse
     {
         $this->authorizePharmacy($request);
+        abort_unless($request->user()->allows('canDeleteBills'), 403, 'You are not allowed to delete bills.');
         $this->refuseIfVoided($sale);
 
         $data = $request->validate([
@@ -214,6 +215,6 @@ class PharmacySalesController extends Controller
 
     private function authorizePharmacy(Request $request): void
     {
-        abort_unless($request->user()->role->canRunPharmacy(), 403, 'You are not allowed to do this in the pharmacy.');
+        abort_unless($request->user()->allows('canRunPharmacy'), 403, 'You are not allowed to do this in the pharmacy.');
     }
 }
