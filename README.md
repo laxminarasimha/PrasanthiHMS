@@ -33,13 +33,15 @@ npm run dev
 
 The frontend proxies `/api/*` to the Laravel server, so open http://localhost:5173.
 
-Sign in with the seeded admin account: `admin@prasanthi.test`, with the password set by `SEED_ADMIN_PASSWORD` in `backend/.env` (see `.env.example` for the default). This account is for local development only.
+Sign in with the seeded admin account `admin@prasanthi.test` (a sample doctor, `doctor@prasanthi.test`, is seeded too), with the password set by `SEED_ADMIN_PASSWORD` in `backend/.env` (see `.env.example` for the default). This account is for local development only.
 
 ## What works so far
 
 - Sign in and sign out for staff, with roles: Admin, Doctor, Nurse, Pharmacist, Lab Technician, Front Desk
 - Staff management (Admin and Doctor only): add, edit, deactivate
 - Patient registration, search by name, mobile or patient ID, and editing
+- Front Desk: the day's appointment queue with status tracking, booking, billing, payments, refunds and a printable receipt
+- Services: the price list used for appointments and bills
 
 Run the backend tests with `php artisan test` from `backend/`.
 
