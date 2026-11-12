@@ -28,4 +28,10 @@ enum Role: string
     {
         return in_array($this, [self::Admin, self::Doctor], true);
     }
+
+    /** Roles allowed to write clinical notes and prescriptions. Nurses are included so they can record vitals. */
+    public function canConsult(): bool
+    {
+        return in_array($this, [self::Admin, self::Doctor, self::Nurse], true);
+    }
 }

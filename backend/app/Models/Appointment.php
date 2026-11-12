@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable(['branch_id', 'patient_id', 'doctor_id', 'service_id', 'scheduled_at', 'duration_minutes', 'status', 'arrived_at', 'notes', 'created_by'])]
 class Appointment extends Model
@@ -33,6 +34,11 @@ class Appointment extends Model
     public function service(): BelongsTo
     {
         return $this->belongsTo(Service::class);
+    }
+
+    public function consultation(): HasOne
+    {
+        return $this->hasOne(Consultation::class);
     }
 
     public function bills(): HasMany

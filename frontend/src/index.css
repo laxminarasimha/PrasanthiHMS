@@ -171,3 +171,32 @@ table.compact th, table.compact td { padding: 6px 6px; white-space: normal; }
   body { background: #fff; }
   .receipt { padding: 0; }
 }
+
+/* Doctor */
+fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+textarea { font: inherit; color: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; width: 100%; resize: vertical; }
+textarea:focus { outline: 2px solid var(--brand); outline-offset: -1px; border-color: var(--brand); }
+fieldset .field { margin-top: 12px; }
+fieldset .grid .field, fieldset .vitals .field { margin-top: 0; }
+.vitals { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
+.rx { display: flex; flex-direction: column; gap: 6px; overflow-x: auto; }
+.rx-row { display: grid; grid-template-columns: minmax(180px, 2.2fr) 0.9fr 0.9fr 1fr 0.9fr 1.4fr auto; gap: 6px; align-items: center; min-width: 760px; }
+.rx-head { font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.add-medicine { margin-top: 8px; }
+.pill.status-booked { background: #eef2f7; color: var(--muted); }
+.pill.status-arrived { background: #fff4d6; color: #8a6100; }
+.pill.status-ongoing { background: #dcebff; color: #1d4f91; }
+.pill.status-reviewed { background: var(--ok-soft); color: var(--ok); }
+.pill.status-cancelled { background: var(--danger-soft); color: var(--danger); }
+.past { border-bottom: 1px solid var(--border); padding: 10px 0; }
+.past summary { cursor: pointer; }
+.past p { margin: 6px 0; white-space: pre-wrap; }
+.past ul { margin: 6px 0; padding-left: 18px; }
+.toolbar h1 + .muted { display: block; font-size: 0.88rem; }
+
+/* Printed prescription */
+.prescription section { margin-top: 14px; }
+.prescription h3 { margin: 0 0 4px; }
+.prescription p { margin: 0; white-space: pre-wrap; }
+.rx-vitals { color: var(--muted); border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+.signature { margin-top: 64px; text-align: right; }
