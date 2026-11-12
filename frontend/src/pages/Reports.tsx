@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { ReportScreen } from '../components/ReportScreen'
 import { modeLabel, rupees, today } from '../format'
 
 type Department = { label: string; billed: number; collected: Record<string, number>; collected_total: number }
@@ -29,6 +30,7 @@ export function Reports() {
   const [to, setTo] = useState(today())
   const [summary, setSummary] = useState<Summary | null>(null)
   const [error, setError] = useState('')
+  const [tab, setTab] = useState<'summary' | 'detailed'>('summary')
 
   useEffect(() => {
     if (from > to) return
@@ -45,7 +47,29 @@ export function Reports() {
   const billed = departments.reduce((sum, d) => sum + d.billed, 0)
   const collected = departments.reduce((sum, d) => sum + d.collected_total, 0)
 
+  const tabs = (
+    <div className="tabs no-print">
+      <button className={tab === 'summary' ? 'active' : ''} onClick={() => setTab('summary')}>
+        Summary
+      </button>
+      <button className={tab === 'detailed' ? 'active' : ''} onClick={() => setTab('detailed')}>
+        Front desk and doctor reports
+      </button>
+    </div>
+  )
+
+  if (tab === 'detailed') {
+    return (
+      <>
+        {tabs}
+        <ReportScreen base="/reports/list" first="bills" firstLabel="Front desk: bill report" />
+      </>
+    )
+  }
+
   return (
+    <>
+    {tabs}
     <section className="card">
       <div className="toolbar">
         <h1>Organisation report</h1>
@@ -155,5 +179,6 @@ export function Reports() {
         </>
       )}
     </section>
+    </>
   )
 }
