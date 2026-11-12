@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['code', 'name', 'department', 'sample_type', 'price', 'print_order', 'is_active'])]
+#[Fillable(['code', 'name', 'kind', 'department', 'sample_type', 'price', 'print_order', 'default_comment', 'is_active'])]
 class LabTest extends Model
 {
     /**

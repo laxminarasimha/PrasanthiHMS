@@ -66,6 +66,7 @@ class AuthController extends Controller
             'can_manage_setup' => $user->role->canManageSetup(),
             'can_front_desk' => $user->role->canWorkFrontDesk(),
             'can_ipd' => $user->role->canWorkIpd(),
+            'pad_hidden_sections' => $user->pad_hidden_sections ?? [],
             'branch' => $user->branch?->only(['id', 'name', 'city']),
         ];
     }

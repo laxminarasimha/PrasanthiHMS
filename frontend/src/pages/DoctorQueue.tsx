@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
+import { DoctorTabs } from '../components/DoctorTabs'
 import { STATUS_LABELS, clock, longDate, today } from '../format'
 import type { Doctor, QueueEntry } from '../types'
 
@@ -43,6 +44,8 @@ export function DoctorQueue() {
   const done = queue?.filter((q) => q.status === 'reviewed').length ?? 0
 
   return (
+    <>
+    <DoctorTabs />
     <section className="card">
       <div className="toolbar">
         <h1>{isDoctor ? 'My patients' : 'Doctor queue'}</h1>
@@ -116,5 +119,6 @@ export function DoctorQueue() {
         </table>
       </div>
     </section>
+    </>
   )
 }
