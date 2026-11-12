@@ -14,6 +14,7 @@ export function Layout() {
         <nav>
           <NavLink to="/front-desk">Front Desk</NavLink>
           <NavLink to="/doctor">Doctor</NavLink>
+          <NavLink to="/lab">Lab</NavLink>
           <NavLink to="/patients">Patients</NavLink>
           <NavLink to="/services">Services</NavLink>
           {user.can_manage_staff && <NavLink to="/staff">Staff</NavLink>}

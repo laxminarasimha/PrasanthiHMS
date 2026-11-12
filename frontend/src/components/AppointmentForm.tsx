@@ -1,8 +1,8 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import type { Appointment, Doctor, Patient, Service } from '../types'
-import { Field, SelectField, TextField } from './Field'
+import { SelectField, TextField } from './Field'
+import { PatientPicker } from './PatientPicker'
 
 type Props = {
   date: string
@@ -21,8 +21,6 @@ const nowTime = () => new Date().toTimeString().slice(0, 5)
 
 export function AppointmentForm({ date, doctors, services, onClose, onBooked }: Props) {
   const [patient, setPatient] = useState<Patient | null>(null)
-  const [search, setSearch] = useState('')
-  const [matches, setMatches] = useState<Patient[]>([])
   const [doctorId, setDoctorId] = useState(doctors.length === 1 ? String(doctors[0].id) : '')
   const [serviceId, setServiceId] = useState('')
   const [day, setDay] = useState(date)
@@ -32,16 +30,6 @@ export function AppointmentForm({ date, doctors, services, onClose, onBooked }: 
   const [notes, setNotes] = useState('')
   const [errors, setErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    if (search.trim().length < 2) return
-    const timer = setTimeout(() => {
-      api.get<{ data: Patient[] }>('/patients', { params: { q: search.trim() } }).then((res) => setMatches(res.data.data.slice(0, 6)))
-    }, 250)
-    return () => clearTimeout(timer)
-  }, [search])
-
-  const shown = search.trim().length >= 2 ? matches : []
 
   // Offer the services that are open to every doctor plus the chosen doctor's own.
   const offered = services.filter((s) => s.type === 'appointment' && (!s.doctor_id || String(s.doctor_id) === doctorId))
@@ -81,42 +69,7 @@ export function AppointmentForm({ date, doctors, services, onClose, onBooked }: 
         </button>
       </div>
 
-      {patient ? (
-        <div className="chosen">
-          <div>
-            <strong>{patient.name}</strong>
-            <small className="muted">
-              {patient.uhid} · {patient.age}y / {patient.gender.charAt(0).toUpperCase()} · {patient.mobile}
-            </small>
-          </div>
-          <button type="button" className="link" onClick={() => setPatient(null)}>
-            Change
-          </button>
-        </div>
-      ) : (
-        <Field label="Patient" required error={errors.patient_id}>
-          <input type="search" autoFocus placeholder="Search by name, mobile or patient ID" value={search} onChange={(e) => setSearch(e.target.value)} />
-          {shown.length > 0 && (
-            <ul className="picker">
-              {shown.map((p) => (
-                <li key={p.id}>
-                  <button type="button" onClick={() => setPatient(p)}>
-                    <strong>{p.name}</strong>
-                    <small className="muted">
-                      {p.uhid} · {p.age}y / {p.gender.charAt(0).toUpperCase()} · {p.mobile}
-                    </small>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {search.trim().length >= 2 && shown.length === 0 && (
-            <small className="muted">
-              No patient found. <Link to="/patients">Register a new patient</Link> first.
-            </small>
-          )}
-        </Field>
-      )}
+      <PatientPicker patient={patient} onChange={setPatient} error={errors.patient_id} />
 
       <div className="grid gap-top">
         <SelectField

@@ -43,6 +43,7 @@ Sign in with the seeded admin account `admin@prasanthi.test` (a sample doctor, `
 - Front Desk: the day's appointment queue with status tracking, booking, billing, payments, refunds and a printable receipt
 - Services: the price list used for appointments and bills
 - Doctor: the day's patient queue, a visit pad (vitals, notes, medicines, tests, advice, follow-up), past visits and a printable prescription
+- Lab: test list with parameters and reference ranges, lab orders with billing, results entry with high/low flags, and a printable report
 
 Run the backend tests with `php artisan test` from `backend/`.
 

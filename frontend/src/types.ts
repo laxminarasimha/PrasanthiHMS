@@ -6,6 +6,7 @@ export type User = {
   role_label: string
   can_manage_staff: boolean
   can_consult: boolean
+  can_run_lab: boolean
   branch: { id: number; name: string; city: string | null } | null
 }
 
@@ -163,4 +164,51 @@ export type QueueEntry = {
   consultation: { id: number; completed_at: string | null } | null
   visits: number
   last_visit: string | null
+}
+
+export type LabParameter = { id?: number; name: string; unit: string | null; reference_range: string | null; method: string | null }
+
+export type LabCatalogueTest = {
+  id: number
+  code: string | null
+  name: string
+  department: string | null
+  sample_type: string | null
+  price: number
+  print_order: number
+  is_active: boolean
+  parameters: LabParameter[]
+}
+
+export type LabResult = {
+  id: number
+  parameter: string
+  unit: string | null
+  reference_range: string | null
+  method: string | null
+  value: string | null
+  flag: 'high' | 'low' | null
+}
+
+export type LabOrderItem = {
+  id: number
+  test_name: string
+  department: string | null
+  sample_type: string | null
+  price: number
+  remarks: string | null
+  reported_at: string | null
+  reporter?: { id: number; name: string; signature_text: string | null } | null
+  results?: LabResult[]
+}
+
+export type LabOrder = {
+  id: number
+  order_no: string
+  status: 'pending' | 'partial' | 'completed'
+  ordered_at: string
+  referred_by: string | null
+  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile'>
+  items: LabOrderItem[]
+  bill: { id: number; bill_no: string; total: number; paid: number; due: number } | null
 }

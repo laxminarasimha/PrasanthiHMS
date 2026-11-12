@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AppointmentController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BillController;
 use App\Http\Controllers\Api\ConsultationController;
+use App\Http\Controllers\Api\LabController;
 use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\StaffController;
@@ -48,6 +49,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/appointments/{appointment}/consultation', [ConsultationController::class, 'save']);
     Route::get('/patients/{patient}/consultations', [ConsultationController::class, 'history']);
     Route::get('/medicines/suggest', [ConsultationController::class, 'suggestMedicines']);
+
+    Route::get('/lab/tests', [LabController::class, 'tests']);
+    Route::post('/lab/tests', [LabController::class, 'storeTest']);
+    Route::put('/lab/tests/{test}', [LabController::class, 'updateTest']);
+    Route::get('/lab/orders', [LabController::class, 'orders']);
+    Route::post('/lab/orders', [LabController::class, 'storeOrder']);
+    Route::get('/lab/orders/{order}', [LabController::class, 'showOrder']);
+    Route::put('/lab/orders/{order}/items/{item}', [LabController::class, 'saveResults']);
 
     Route::middleware(EnsureCanManageStaff::class)->group(function () {
         Route::get('/staff', [StaffController::class, 'index']);

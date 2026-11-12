@@ -34,4 +34,10 @@ enum Role: string
     {
         return in_array($this, [self::Admin, self::Doctor, self::Nurse], true);
     }
+
+    /** Roles allowed to enter lab results and edit the test catalogue. */
+    public function canRunLab(): bool
+    {
+        return in_array($this, [self::Admin, self::Doctor, self::LabTech], true);
+    }
 }
