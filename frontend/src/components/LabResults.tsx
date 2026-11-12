@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api, fieldErrors } from '../api'
 import { useAuth } from '../auth'
-import { clock, longDate } from '../format'
-import type { LabOrder, LabOrderItem, LabResult } from '../types'
+import { clock, longDate, STAGE_CLASS, STAGE_LABEL } from '../format'
+import type { LabOrder, LabOrderItem, LabResult, LabSettings } from '../types'
 
 type Props = {
   orderId: number
@@ -20,43 +20,45 @@ export function flagFor(value: string, range: string | null): LabResult['flag'] 
   return null
 }
 
-type Draft = { values: Record<number, string>; remarks: string }
+type Draft = { values: Record<number, string>; remarks: string; text: string }
 
 const draftOf = (item: LabOrderItem): Draft => ({
   values: Object.fromEntries((item.results ?? []).map((r) => [r.id, r.value ?? ''])),
   remarks: item.remarks ?? '',
+  text: item.report_text ?? '',
 })
+
+const stamp = (at: string) => `${longDate(at)} ${clock(at)}`
 
 export function LabResults({ orderId, onClose, onChange }: Props) {
   const { user } = useAuth()
   const canEdit = Boolean(user?.can_run_lab)
   const [order, setOrder] = useState<LabOrder | null>(null)
+  const [settings, setSettings] = useState<LabSettings | null>(null)
   const [drafts, setDrafts] = useState<Record<number, Draft>>({})
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [letterhead, setLetterhead] = useState(false)
+  const [skip, setSkip] = useState<number[]>([])
 
-  const apply = (next: LabOrder) => {
+  /** Shows the saved order. Only the test that was just saved has its typed values replaced, so work on the others is kept. */
+  const apply = (next: LabOrder, reset: number | 'all' | null) => {
     setOrder(next)
-    setDrafts(Object.fromEntries(next.items.map((item) => [item.id, draftOf(item)])))
+    setDrafts((current) => Object.fromEntries(next.items.map((item) => [item.id, reset === 'all' || reset === item.id || !current[item.id] ? draftOf(item) : current[item.id]])))
   }
 
   useEffect(() => {
-    api.get<LabOrder>(`/lab/orders/${orderId}`).then((res) => apply(res.data))
+    api.get<LabOrder>(`/lab/orders/${orderId}`).then((res) => apply(res.data, 'all'))
+    api.get<LabSettings>('/lab/settings').then((res) => setSettings(res.data))
   }, [orderId])
 
   if (!order) return <aside className="card panel wide">Loading results…</aside>
 
-  const save = async (item: LabOrderItem, complete?: boolean) => {
+  const send = async (url: string, body: object, reset: number | null = null) => {
     setSaving(true)
     setError('')
-    const draft = drafts[item.id]
     try {
-      const res = await api.put<LabOrder>(`/lab/orders/${order.id}/items/${item.id}`, {
-        remarks: draft.remarks || null,
-        ...(complete === undefined ? {} : { complete }),
-        results: (item.results ?? []).map((r) => ({ id: r.id, value: draft.values[r.id] || null, flag: flagFor(draft.values[r.id] ?? '', r.reference_range) })),
-      })
-      apply(res.data)
+      apply((await api.put<LabOrder>(`/lab/orders/${order.id}/items/${url}`, body)).data, reset)
       onChange()
     } catch (err) {
       setError(Object.values(fieldErrors(err))[0])
@@ -65,8 +67,29 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
     }
   }
 
-  const setValue = (itemId: number, resultId: number, value: string) =>
-    setDrafts((d) => ({ ...d, [itemId]: { ...d[itemId], values: { ...d[itemId].values, [resultId]: value } } }))
+  const save = (item: LabOrderItem, complete?: boolean) => {
+    const draft = drafts[item.id]
+    return send(String(item.id), {
+      remarks: draft.remarks || null,
+      ...(item.kind === 'text' ? { report_text: draft.text || null } : {}),
+      ...(complete === undefined ? {} : { complete }),
+      results: (item.results ?? [])
+        .filter((r) => !r.is_heading)
+        .map((r) => ({ id: r.id, value: draft.values[r.id] || null, flag: flagFor(draft.values[r.id] ?? '', r.reference_range) })),
+    }, item.id)
+  }
+
+  const setDraft = (itemId: number, change: Partial<Draft>) => setDrafts((d) => ({ ...d, [itemId]: { ...d[itemId], ...change } }))
+
+  // What may go on the printed report: approved tests if the lab insists on approval, otherwise reported ones.
+  const printable = order.items.filter((item) => (settings?.approval_required ? item.approved_at : item.reported_at))
+  const chosen = printable.filter((item) => !skip.includes(item.id))
+  const unpaid = Boolean(settings && !settings.allow_print_without_payment && order.bill && order.bill.due > 0)
+  const printQuery = new URLSearchParams({
+    ...(letterhead ? { letterhead: '1' } : {}),
+    ...(chosen.length < printable.length ? { items: chosen.map((item) => item.id).join(',') } : {}),
+  }).toString()
+  const printUrl = `/lab/orders/${order.id}/print${printQuery ? `?${printQuery}` : ''}`
 
   return (
     <aside className="card panel wide">
@@ -77,14 +100,34 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
             {order.patient.name} · {order.patient.uhid} · {order.patient.age}y / {order.patient.gender.charAt(0).toUpperCase()}
           </span>
         </div>
-        <div className="row">
-          <a className="btn ghost" href={`/lab/orders/${order.id}/print`} target="_blank" rel="noreferrer">
+        <button type="button" className="btn ghost" onClick={onClose}>
+          Close
+        </button>
+      </div>
+
+      <div className="print-bar">
+        <label className="check flush">
+          <input type="checkbox" checked={letterhead} onChange={(e) => setLetterhead(e.target.checked)} />
+          Print on letterhead
+        </label>
+        <span className="muted small grow">
+          {unpaid
+            ? 'The bill must be paid before this report can be printed.'
+            : printable.length === 0
+              ? settings?.approval_required
+                ? 'Nothing to print until a result is approved.'
+                : 'Nothing to print until a result is reported.'
+              : `${chosen.length} of ${order.items.length} test${order.items.length === 1 ? '' : 's'} will be printed. Untick a test below to leave it out.`}
+        </span>
+        {unpaid || chosen.length === 0 ? (
+          <button className="btn primary" disabled>
+            Print report
+          </button>
+        ) : (
+          <a className="btn primary" href={printUrl} target="_blank" rel="noreferrer">
             Print report
           </a>
-          <button type="button" className="btn ghost" onClick={onClose}>
-            Close
-          </button>
-        </div>
+        )}
       </div>
 
       {error && <p className="form-error">{error}</p>}
@@ -93,64 +136,108 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
       {order.items.map((item) => {
         const draft = drafts[item.id]
         const reported = Boolean(item.reported_at)
+        const locked = !canEdit || reported
         return (
           <section key={item.id} className="lab-test">
             <header>
+              {printable.includes(item) && (
+                <input
+                  type="checkbox"
+                  className="auto"
+                  checked={!skip.includes(item.id)}
+                  onChange={() => setSkip((ids) => (ids.includes(item.id) ? ids.filter((i) => i !== item.id) : [...ids, item.id]))}
+                  aria-label={`Print ${item.test_name}`}
+                  title="Include in the printed report"
+                />
+              )}
               <strong>{item.test_name}</strong>
               {item.sample_type && <small className="muted"> · {item.sample_type}</small>}
-              <span className={`pill ${reported ? 'ok' : 'status-arrived'}`}>
-                {reported ? `Reported ${longDate(item.reported_at!)} ${clock(item.reported_at!)}` : 'Pending'}
-              </span>
+              {item.package_name && <small className="muted"> · {item.package_name}</small>}
+              <span className={`pill ${STAGE_CLASS[item.stage]}`}>{STAGE_LABEL[item.stage]}</span>
             </header>
-            <table className="compact">
-              <thead>
-                <tr>
-                  <th>Parameter</th>
-                  <th>Result</th>
-                  <th>Unit</th>
-                  <th>Reference range</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(item.results ?? []).map((r) => {
-                  const flag = flagFor(draft.values[r.id] ?? '', r.reference_range)
-                  return (
-                    <tr key={r.id} className="static">
-                      <td>{r.parameter}</td>
-                      <td>
-                        <div className="row">
-                          <input
-                            className={`result ${flag ?? ''}`}
-                            value={draft.values[r.id] ?? ''}
-                            disabled={!canEdit || reported}
-                            onChange={(e) => setValue(item.id, r.id, e.target.value)}
-                            aria-label={`Result for ${r.parameter}`}
-                          />
-                          {flag && <span className={`pill ${flag === 'high' ? 'off' : 'status-ongoing'}`}>{flag === 'high' ? 'High' : 'Low'}</span>}
-                        </div>
-                      </td>
-                      <td>{r.unit ?? ''}</td>
-                      <td>{r.reference_range ?? ''}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-            <input
+
+            {(item.collected_at || item.reported_at) && (
+              <p className="muted small lab-trail">
+                {item.collected_at && <>Sample collected {stamp(item.collected_at)}</>}
+                {item.reported_at && <> · Reported {stamp(item.reported_at)}{item.reporter ? ` by ${item.reporter.name}` : ''}</>}
+                {item.approved_at && <> · Approved {stamp(item.approved_at)}{item.approver ? ` by ${item.approver.name}` : ''}</>}
+              </p>
+            )}
+
+            {item.kind === 'text' ? (
+              <textarea
+                rows={8}
+                placeholder="Write the report here"
+                value={draft.text}
+                disabled={locked}
+                onChange={(e) => setDraft(item.id, { text: e.target.value })}
+                aria-label={`Report for ${item.test_name}`}
+              />
+            ) : (
+              <table className="compact">
+                <thead>
+                  <tr>
+                    <th>Parameter</th>
+                    <th>Result</th>
+                    <th>Unit</th>
+                    <th>Reference range</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(item.results ?? []).map((r) => {
+                    if (r.is_heading) {
+                      return (
+                        <tr key={r.id} className="static lab-heading">
+                          <td colSpan={4}>{r.parameter}</td>
+                        </tr>
+                      )
+                    }
+                    const flag = flagFor(draft.values[r.id] ?? '', r.reference_range)
+                    return (
+                      <tr key={r.id} className="static">
+                        <td>{r.parameter}</td>
+                        <td>
+                          <div className="row">
+                            <input
+                              className={`result ${flag ?? ''}`}
+                              value={draft.values[r.id] ?? ''}
+                              disabled={locked}
+                              onChange={(e) => setDraft(item.id, { values: { ...draft.values, [r.id]: e.target.value } })}
+                              aria-label={`Result for ${r.parameter}`}
+                            />
+                            {flag && <span className={`pill ${flag === 'high' ? 'off' : 'status-ongoing'}`}>{flag === 'high' ? 'High' : 'Low'}</span>}
+                          </div>
+                        </td>
+                        <td>{r.unit ?? ''}</td>
+                        <td>{r.reference_range ?? ''}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+            <textarea
               className="gap-top"
-              placeholder="Remarks for this test (optional)"
+              rows={draft.remarks.includes('\n') ? 3 : 1}
+              placeholder="Comment printed under this test (optional)"
               value={draft.remarks}
-              disabled={!canEdit || reported}
-              onChange={(e) => setDrafts((d) => ({ ...d, [item.id]: { ...d[item.id], remarks: e.target.value } }))}
-              aria-label={`Remarks for ${item.test_name}`}
+              disabled={locked}
+              onChange={(e) => setDraft(item.id, { remarks: e.target.value })}
+              aria-label={`Comment for ${item.test_name}`}
             />
             {canEdit && (
               <div className="panel-foot row">
-                {reported ? (
-                  <button className="btn ghost" disabled={saving} onClick={() => save(item, false)}>
-                    Reopen to correct
+                {item.stage === 'booked' && (
+                  <button className="btn ghost" disabled={saving} onClick={() => send(`${item.id}/collect`, { collected: true })}>
+                    Sample collected
                   </button>
-                ) : (
+                )}
+                {item.stage === 'collected' && (
+                  <button className="link" disabled={saving} onClick={() => send(`${item.id}/collect`, { collected: false })}>
+                    Undo collection
+                  </button>
+                )}
+                {!reported && (
                   <>
                     <button className="btn ghost" disabled={saving} onClick={() => save(item)}>
                       Save draft
@@ -159,6 +246,21 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
                       Mark reported
                     </button>
                   </>
+                )}
+                {reported && (
+                  <button className="btn ghost" disabled={saving} onClick={() => save(item, false)}>
+                    Reopen to correct
+                  </button>
+                )}
+                {item.stage === 'reported' && (
+                  <button className="btn primary" disabled={saving} onClick={() => send(`${item.id}/approve`, { approved: true })}>
+                    Approve
+                  </button>
+                )}
+                {item.stage === 'approved' && (
+                  <button className="link" disabled={saving} onClick={() => send(`${item.id}/approve`, { approved: false })}>
+                    Withdraw approval
+                  </button>
                 )}
               </div>
             )}

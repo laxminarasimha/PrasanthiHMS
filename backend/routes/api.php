@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AppointmentController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BillController;
 use App\Http\Controllers\Api\ConsultationController;
+use App\Http\Controllers\Api\DoctorLibraryController;
 use App\Http\Controllers\Api\FrontDeskController;
 use App\Http\Controllers\Api\IpdController;
 use App\Http\Controllers\Api\LabController;
@@ -77,6 +78,20 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::get('/doctor/queue', [ConsultationController::class, 'queue']);
+
+    Route::prefix('doctor')->controller(DoctorLibraryController::class)->group(function () {
+        Route::get('/consults', 'consults');
+        Route::get('/library', 'show');
+        Route::post('/phrases', 'storePhrase');
+        Route::put('/phrases/{phrase}', 'updatePhrase');
+        Route::delete('/phrases', 'destroyPhrases');
+        Route::post('/rx-groups', 'storeRxGroup');
+        Route::put('/rx-groups/{group}', 'updateRxGroup');
+        Route::delete('/rx-groups/{group}', 'destroyRxGroup');
+        Route::post('/templates', 'storeTemplate');
+        Route::delete('/templates/{template}', 'destroyTemplate');
+        Route::put('/pad-sections', 'savePadSections');
+    });
     Route::get('/appointments/{appointment}/consultation', [ConsultationController::class, 'show']);
     Route::put('/appointments/{appointment}/consultation', [ConsultationController::class, 'save']);
     Route::get('/patients/{patient}/consultations', [ConsultationController::class, 'history']);
@@ -89,6 +104,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/lab/orders', [LabController::class, 'storeOrder']);
     Route::get('/lab/orders/{order}', [LabController::class, 'showOrder']);
     Route::put('/lab/orders/{order}/items/{item}', [LabController::class, 'saveResults']);
+    Route::put('/lab/orders/{order}/items/{item}/collect', [LabController::class, 'collectSample']);
+    Route::put('/lab/orders/{order}/items/{item}/approve', [LabController::class, 'approve']);
+    Route::get('/lab/packages', [LabController::class, 'packages']);
+    Route::post('/lab/packages', [LabController::class, 'storePackage']);
+    Route::put('/lab/packages/{package}', [LabController::class, 'updatePackage']);
+    Route::get('/lab/settings', [LabController::class, 'settings']);
+    Route::put('/lab/settings', [LabController::class, 'saveSettings']);
 
     Route::prefix('pharmacy')->controller(PharmacyController::class)->group(function () {
         Route::get('/medicines', 'medicines');

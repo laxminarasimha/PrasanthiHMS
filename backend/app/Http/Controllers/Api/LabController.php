@@ -6,15 +6,18 @@ use App\Http\Controllers\Controller;
 use App\Models\Bill;
 use App\Models\LabOrder;
 use App\Models\LabOrderItem;
+use App\Models\LabPackage;
 use App\Models\LabTest;
+use App\Models\Setting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class LabController extends Controller
 {
-    private const ORDER_WITH = ['patient:id,uhid,name,gender,date_of_birth,mobile', 'items:id,lab_order_id,test_name,reported_at'];
+    private const ORDER_WITH = ['patient:id,uhid,name,gender,date_of_birth,mobile', 'items:id,lab_order_id,test_name,package_name,collected_at,reported_at,approved_at'];
 
     // ---- Test catalogue ----
 
@@ -44,16 +47,22 @@ class LabController extends Controller
 
     private function saveTest(LabTest $test, Request $request): LabTest
     {
+        $text = $request->input('kind') === 'text';
+
         $data = $request->validate([
             'code' => ['nullable', 'string', 'max:30'],
             'name' => ['required', 'string', 'max:255'],
+            'kind' => ['nullable', Rule::in(['values', 'text'])],
             'department' => ['nullable', 'string', 'max:255'],
             'sample_type' => ['nullable', 'string', 'max:50'],
             'price' => ['required', 'numeric', 'min:0', 'max:9999999'],
             'print_order' => ['nullable', 'integer', 'min:0', 'max:65000'],
+            'default_comment' => ['nullable', 'string', 'max:5000'],
             'is_active' => ['sometimes', 'boolean'],
-            'parameters' => ['required', 'array', 'min:1', 'max:80'],
+            // A written report (ECG, X-ray) has no parameters; a values report needs at least one.
+            'parameters' => [$text ? 'nullable' : 'required', 'array', $text ? 'min:0' : 'min:1', 'max:120'],
             'parameters.*.name' => ['required', 'string', 'max:255'],
+            'parameters.*.is_heading' => ['sometimes', 'boolean'],
             'parameters.*.unit' => ['nullable', 'string', 'max:30'],
             'parameters.*.reference_range' => ['nullable', 'string', 'max:255'],
             'parameters.*.method' => ['nullable', 'string', 'max:255'],
@@ -62,10 +71,10 @@ class LabController extends Controller
             'parameters.*.name.required' => 'Name every parameter or remove the empty row.',
         ]);
 
-        return DB::transaction(function () use ($test, $data) {
-            $parameters = $data['parameters'];
+        return DB::transaction(function () use ($test, $data, $text) {
+            $parameters = $text ? [] : ($data['parameters'] ?? []);
             unset($data['parameters']);
-            $test->fill($data + ['print_order' => 0])->save();
+            $test->fill($data + ['print_order' => 0, 'kind' => 'values'])->save();
 
             $test->parameters()->delete();
             foreach (array_values($parameters) as $position => $row) {
@@ -74,6 +83,77 @@ class LabController extends Controller
 
             return $test->load('parameters');
         });
+    }
+
+    // ---- Packages: several tests sold together for one price ----
+
+    public function packages(Request $request): JsonResponse
+    {
+        return response()->json(
+            LabPackage::with('tests:id,name,price')->when(! $request->boolean('all'), fn ($q) => $q->where('is_active', true))->orderBy('name')->get()
+        );
+    }
+
+    public function storePackage(Request $request): JsonResponse
+    {
+        $this->authorizeLab($request);
+
+        return response()->json($this->savePackage(new LabPackage, $request), 201);
+    }
+
+    public function updatePackage(Request $request, LabPackage $package): JsonResponse
+    {
+        $this->authorizeLab($request);
+
+        return response()->json($this->savePackage($package, $request));
+    }
+
+    private function savePackage(LabPackage $package, Request $request): LabPackage
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'price' => ['required', 'numeric', 'min:0', 'max:9999999'],
+            'is_active' => ['sometimes', 'boolean'],
+            'test_ids' => ['required', 'array', 'min:2', 'max:80'],
+            'test_ids.*' => ['integer', 'distinct', 'exists:lab_tests,id'],
+        ], ['test_ids.min' => 'A package needs at least two tests.']);
+
+        return DB::transaction(function () use ($package, $data) {
+            $package->fill($data)->save();
+            $package->tests()->sync($data['test_ids']);
+
+            return $package->load('tests:id,name,price');
+        });
+    }
+
+    // ---- Lab preferences ----
+
+    public function settings(): JsonResponse
+    {
+        return response()->json(Setting::group('lab', Setting::LAB_DEFAULTS));
+    }
+
+    public function saveSettings(Request $request): JsonResponse
+    {
+        $this->authorizeLab($request);
+
+        $data = $request->validate([
+            'lab_name' => ['nullable', 'string', 'max:255'],
+            'lab_address' => ['nullable', 'string', 'max:500'],
+            'technician_1' => ['nullable', 'string', 'max:255'],
+            'technician_2' => ['nullable', 'string', 'max:255'],
+            'letterhead_top_mm' => ['required', 'integer', 'between:0,150'],
+            'letterhead_bottom_mm' => ['required', 'integer', 'between:0,100'],
+            'each_test_on_new_page' => ['required', 'boolean'],
+            'allow_print_without_payment' => ['required', 'boolean'],
+            'print_sample_date' => ['required', 'boolean'],
+            'print_approved_date' => ['required', 'boolean'],
+            'approval_required' => ['required', 'boolean'],
+        ]);
+
+        Setting::updateOrCreate(['key' => 'lab'], ['value' => $data]);
+
+        return response()->json(Setting::group('lab', Setting::LAB_DEFAULTS));
     }
 
     // ---- Orders ----
@@ -109,16 +189,25 @@ class LabController extends Controller
         return response()->json($orders);
     }
 
-    /** Creates the order, a result sheet for every test, and the bill, in one step. */
+    /**
+     * Creates the order, a result sheet for every test, and the bill, in one step.
+     * Tests can be chosen one by one, as packages, or both; a package is billed as one line at its own price.
+     */
     public function storeOrder(Request $request): JsonResponse
     {
         $data = $request->validate([
             'patient_id' => ['required', 'exists:patients,id'],
             'appointment_id' => ['nullable', 'exists:appointments,id'],
             'referred_by' => ['nullable', 'string', 'max:255'],
-            'test_ids' => ['required', 'array', 'min:1', 'max:60'],
+            'test_ids' => ['nullable', 'required_without:package_ids', 'array', 'max:60'],
             'test_ids.*' => ['integer', 'distinct', Rule::exists('lab_tests', 'id')->where('is_active', true)],
-        ], ['test_ids.required' => 'Choose at least one test.']);
+            'package_ids' => ['nullable', 'array', 'max:20'],
+            'package_ids.*' => ['integer', 'distinct', Rule::exists('lab_packages', 'id')->where('is_active', true)],
+        ], ['test_ids.required_without' => 'Choose at least one test or package.']);
+
+        if (empty($data['test_ids']) && empty($data['package_ids'])) {
+            throw ValidationException::withMessages(['test_ids' => 'Choose at least one test or package.']);
+        }
 
         $order = DB::transaction(function () use ($data, $request) {
             $user = $request->user();
@@ -140,25 +229,47 @@ class LabController extends Controller
                 'created_by' => $user->id,
             ]);
 
-            $tests = LabTest::with('parameters')->whereIn('id', $data['test_ids'])->orderBy('print_order')->orderBy('name')->get();
-            foreach ($tests as $test) {
+            $added = [];
+            $addTest = function (LabTest $test, ?string $package, float $price) use ($order, &$added) {
+                if (isset($added[$test->id])) {
+                    return; // already on this order, singly or through another package
+                }
+                $added[$test->id] = true;
+
                 $item = $order->items()->create([
                     'lab_test_id' => $test->id,
                     'test_name' => $test->name,
+                    'kind' => $test->kind,
+                    'package_name' => $package,
                     'department' => $test->department,
                     'sample_type' => $test->sample_type,
-                    'price' => $test->price,
+                    'price' => $price,
+                    'remarks' => $test->default_comment,
                 ]);
                 foreach ($test->parameters as $parameter) {
                     $item->results()->create([
                         'parameter' => $parameter->name,
+                        'is_heading' => $parameter->is_heading,
                         'unit' => $parameter->unit,
                         'reference_range' => $parameter->reference_range,
                         'method' => $parameter->method,
                         'position' => $parameter->position,
                     ]);
                 }
-                $bill->addLine($test->name, $test->price);
+            };
+
+            foreach (LabPackage::with('tests.parameters')->whereIn('id', $data['package_ids'] ?? [])->orderBy('name')->get() as $package) {
+                foreach ($package->tests as $test) {
+                    $addTest($test, $package->name, 0);
+                }
+                $bill->addLine($package->name.' (package)', $package->price);
+            }
+
+            foreach (LabTest::with('parameters')->whereIn('id', $data['test_ids'] ?? [])->orderBy('print_order')->orderBy('name')->get() as $test) {
+                if (! isset($added[$test->id])) {
+                    $addTest($test, null, $test->price);
+                    $bill->addLine($test->name, $test->price);
+                }
             }
 
             return $order;
@@ -172,20 +283,44 @@ class LabController extends Controller
         return response()->json($this->present($order));
     }
 
-    /** Saves the values for one test; `complete` marks that test as reported. */
+    /** Notes that the sample has been taken from the patient (or undoes that before any result is entered). */
+    public function collectSample(Request $request, LabOrder $order, LabOrderItem $item): JsonResponse
+    {
+        $this->authorizeLab($request);
+        abort_unless($item->lab_order_id === $order->id, 404);
+
+        $collected = $request->validate(['collected' => ['required', 'boolean']])['collected'];
+        if (! $collected && $item->reported_at) {
+            throw ValidationException::withMessages(['collected' => 'This test already has a result.']);
+        }
+
+        $item->update(['collected_at' => $collected ? ($item->collected_at ?? now()) : null, 'collected_by' => $collected ? $request->user()->id : null]);
+
+        return response()->json($this->present($order));
+    }
+
+    /**
+     * Saves the result of one test: the values, or the written report. `complete` marks it
+     * reported (and so collected); reopening it also withdraws any approval.
+     */
     public function saveResults(Request $request, LabOrder $order, LabOrderItem $item): JsonResponse
     {
         $this->authorizeLab($request);
         abort_unless($item->lab_order_id === $order->id, 404);
 
         $data = $request->validate([
-            'remarks' => ['nullable', 'string', 'max:1000'],
+            'remarks' => ['nullable', 'string', 'max:5000'],
+            'report_text' => ['nullable', 'string', 'max:20000'],
             'complete' => ['sometimes', 'boolean'],
             'results' => ['present', 'array'],
             'results.*.id' => ['required', 'integer'],
             'results.*.value' => ['nullable', 'string', 'max:255'],
             'results.*.flag' => ['nullable', Rule::in(['high', 'low'])],
         ]);
+
+        if ($item->approved_at && ($data['complete'] ?? true)) {
+            throw ValidationException::withMessages(['results' => 'This result is approved. Reopen it to make changes.']);
+        }
 
         DB::transaction(function () use ($data, $item, $order, $request) {
             $rows = $item->results()->get()->keyBy('id');
@@ -194,13 +329,39 @@ class LabController extends Controller
             }
 
             $item->remarks = $data['remarks'] ?? null;
+            if (array_key_exists('report_text', $data)) {
+                $item->report_text = $data['report_text'];
+            }
             if (array_key_exists('complete', $data)) {
                 $item->reported_at = $data['complete'] ? ($item->reported_at ?? now()) : null;
                 $item->reported_by = $data['complete'] ? $request->user()->id : null;
+                if ($data['complete']) {
+                    $item->collected_at ??= now();
+                    $item->collected_by ??= $request->user()->id;
+                } else {
+                    $item->approved_at = null;
+                    $item->approved_by = null;
+                }
             }
             $item->save();
             $order->refreshStatus();
         });
+
+        return response()->json($this->present($order));
+    }
+
+    /** A second person signs off a reported result, or withdraws that sign-off. */
+    public function approve(Request $request, LabOrder $order, LabOrderItem $item): JsonResponse
+    {
+        $this->authorizeLab($request);
+        abort_unless($item->lab_order_id === $order->id, 404);
+
+        $approved = $request->validate(['approved' => ['required', 'boolean']])['approved'];
+        if ($approved && ! $item->reported_at) {
+            throw ValidationException::withMessages(['approved' => 'Enter and report the result before approving it.']);
+        }
+
+        $item->update(['approved_at' => $approved ? now() : null, 'approved_by' => $approved ? $request->user()->id : null]);
 
         return response()->json($this->present($order));
     }
@@ -213,7 +374,7 @@ class LabController extends Controller
     private function present(LabOrder $order): LabOrder
     {
         return $order->fresh()->load([
-            'patient:id,uhid,name,gender,date_of_birth,mobile', 'items.results', 'items.reporter:id,name,signature_text',
+            'patient:id,uhid,name,gender,date_of_birth,mobile', 'items.results', 'items.reporter:id,name,signature_text', 'items.approver:id,name,signature_text',
             'bill:id,bill_no,total,paid',
         ]);
     }

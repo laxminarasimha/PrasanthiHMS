@@ -4,6 +4,8 @@ import { homeFor } from './access'
 import { AuthProvider, useAuth } from './auth'
 import { Layout } from './components/Layout'
 import { BillPrint } from './pages/BillPrint'
+import { DoctorConsults } from './pages/DoctorConsults'
+import { DoctorLibrary } from './pages/DoctorLibrary'
 import { DoctorQueue } from './pages/DoctorQueue'
 import { FrontDesk } from './pages/FrontDesk'
 import { Ipd } from './pages/ipd/Ipd'
@@ -12,6 +14,8 @@ import { IpdPrint } from './pages/ipd/IpdPrint'
 import { IpdSetup } from './pages/ipd/IpdSetup'
 import { Lab } from './pages/Lab'
 import { LabReportPrint } from './pages/LabReportPrint'
+import { LabPackages } from './pages/LabPackages'
+import { LabSettings } from './pages/LabSettings'
 import { LabTests } from './pages/LabTests'
 import { Login } from './pages/Login'
 import { PatientDashboard } from './pages/PatientDashboard'
@@ -76,9 +80,13 @@ export default function App() {
           <Route element={<Protected />}>
             <Route path="/front-desk" element={<Only when="can_front_desk"><FrontDesk /></Only>} />
             <Route path="/doctor" element={<Only when="can_consult"><DoctorQueue /></Only>} />
+            <Route path="/doctor/consults" element={<Only when="can_consult"><DoctorConsults /></Only>} />
+            <Route path="/doctor/library" element={<Only when="can_consult"><DoctorLibrary /></Only>} />
             <Route path="/visits/:id" element={<Only when="can_consult"><VisitPad /></Only>} />
             <Route path="/lab" element={<Lab />} />
             <Route path="/lab/tests" element={<LabTests />} />
+            <Route path="/lab/packages" element={<LabPackages />} />
+            <Route path="/lab/settings" element={<LabSettings />} />
             <Route path="/pharmacy" element={<Only when="can_run_pharmacy"><PharmacyBilling /></Only>} />
             <Route path="/pharmacy/bills" element={<Only when="can_run_pharmacy"><PharmacyBills /></Only>} />
             <Route path="/pharmacy/dashboard" element={<Only when="can_run_pharmacy"><PharmacyDashboard /></Only>} />

@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { useAuth } from '../auth'
 import { TextField } from '../components/Field'
+import { LabTabs } from '../components/LabTabs'
 import { rupees } from '../format'
 import type { LabCatalogueTest, LabParameter } from '../types'
 
-const emptyParameter = (): LabParameter => ({ name: '', unit: '', reference_range: '', method: '' })
-const blank = { code: '', name: '', department: '', sample_type: 'Blood', price: '', print_order: '', is_active: true }
+const emptyParameter = (is_heading = false): LabParameter => ({ name: '', is_heading, unit: '', reference_range: '', method: '' })
+const blank = { code: '', name: '', kind: 'values' as 'values' | 'text', default_comment: '', department: '', sample_type: 'Blood', price: '', print_order: '', is_active: true }
 type Form = typeof blank
 
 export function LabTests() {
@@ -27,24 +27,24 @@ export function LabTests() {
   }, [])
   useEffect(load, [load])
 
-  const open = (target: LabCatalogueTest | 'new') => {
+  const open = (target: LabCatalogueTest | 'new', kind: Form['kind'] = 'values') => {
     setEditing(target)
     setErrors({})
     setNotice('')
     if (target === 'new') {
-      setForm(blank)
+      setForm({ ...blank, kind, sample_type: kind === 'text' ? '' : 'Blood' })
       setParameters([emptyParameter()])
     } else {
       setForm({
-        code: target.code ?? '', name: target.name, department: target.department ?? '', sample_type: target.sample_type ?? '',
+        code: target.code ?? '', name: target.name, kind: target.kind, default_comment: target.default_comment ?? '', department: target.department ?? '', sample_type: target.sample_type ?? '',
         price: String(target.price), print_order: String(target.print_order), is_active: target.is_active,
       })
       setParameters(target.parameters.length ? target.parameters : [emptyParameter()])
     }
   }
 
-  const set = (key: keyof Form) => (value: string) => setForm((f) => ({ ...f, [key]: value }))
-  const setParameter = (index: number, key: keyof LabParameter, value: string) =>
+  const set = (key: 'name' | 'code' | 'department' | 'sample_type' | 'price' | 'print_order' | 'default_comment') => (value: string) => setForm((f) => ({ ...f, [key]: value }))
+  const setParameter = (index: number, key: 'name' | 'unit' | 'reference_range' | 'method', value: string) =>
     setParameters((rows) => rows.map((row, i) => (i === index ? { ...row, [key]: value } : row)))
 
   const save = async (e: FormEvent) => {
@@ -55,9 +55,15 @@ export function LabTests() {
       ...form,
       code: form.code || null,
       print_order: form.print_order || 0,
-      parameters: parameters
-        .filter((p) => p.name || p.unit || p.reference_range || p.method)
-        .map(({ name, unit, reference_range, method }) => ({ name, unit: unit || null, reference_range: reference_range || null, method: method || null })),
+      default_comment: form.default_comment || null,
+      parameters:
+        form.kind === 'text'
+          ? []
+          : parameters
+              .filter((p) => p.name || p.unit || p.reference_range || p.method)
+              .map(({ name, is_heading, unit, reference_range, method }) =>
+                is_heading ? { name, is_heading: true } : { name, is_heading: false, unit: unit || null, reference_range: reference_range || null, method: method || null },
+              ),
     }
     try {
       const res = editing === 'new' ? await api.post<LabCatalogueTest>('/lab/tests', payload) : await api.put<LabCatalogueTest>(`/lab/tests/${(editing as LabCatalogueTest).id}`, payload)
@@ -72,21 +78,25 @@ export function LabTests() {
   }
 
   const visible = tests.filter((t) => t.name.toLowerCase().includes(filter.trim().toLowerCase()))
-  const errorList = Object.entries(errors).filter(([field]) => field.startsWith('parameters') || field === '_')
+  const errorList = Object.entries(errors).filter(([field]) => field.startsWith('parameters') || field === '_' || field === 'kind' || field === 'default_comment')
 
   return (
+    <>
+    <LabTabs />
     <div className="split">
       <section className="card">
         <div className="toolbar">
-          <Link className="btn ghost" to="/lab">
-            ← Lab
-          </Link>
-          <h1>Lab test list</h1>
+          <h1>Report templates</h1>
           <input className="search" type="search" placeholder="Filter tests" value={filter} onChange={(e) => setFilter(e.target.value)} />
           {canEdit && (
-            <button className="btn primary" onClick={() => open('new')}>
-              + New test
-            </button>
+            <>
+              <button className="btn ghost" onClick={() => open('new', 'text')}>
+                + New written report
+              </button>
+              <button className="btn primary" onClick={() => open('new')}>
+                + New test
+              </button>
+            </>
           )}
         </div>
 
@@ -113,7 +123,7 @@ export function LabTests() {
                   </td>
                   <td>{t.department ?? '—'}</td>
                   <td>{t.sample_type ?? '—'}</td>
-                  <td className="num">{t.parameters.length}</td>
+                  <td className="num">{t.kind === 'text' ? 'Written' : t.parameters.filter((p) => !p.is_heading).length}</td>
                   <td className="num">{rupees(t.price)}</td>
                   <td>
                     <span className={t.is_active ? 'pill ok' : 'pill off'}>{t.is_active ? 'Active' : 'Hidden'}</span>
@@ -133,7 +143,7 @@ export function LabTests() {
       {editing && (
         <form className="card panel wide" onSubmit={save} noValidate>
           <div className="panel-head">
-            <h2>{editing === 'new' ? 'Add test' : editing.name}</h2>
+            <h2>{editing === 'new' ? (form.kind === 'text' ? 'Add written report' : 'Add test') : editing.name}</h2>
             <button type="button" className="btn ghost" onClick={() => setEditing(null)}>
               Close
             </button>
@@ -149,31 +159,51 @@ export function LabTests() {
               <TextField label="Print order" type="number" min={0} value={form.print_order} onChange={set('print_order')} error={errors.print_order} />
             </div>
 
-            <h3>Parameters reported</h3>
-            <div className="rx">
-              <div className="lab-param rx-head">
-                <span>Parameter</span>
-                <span>Unit</span>
-                <span>Reference range</span>
-                <span>Method</span>
-                <span />
-              </div>
-              {parameters.map((p, i) => (
-                <div className="lab-param" key={i}>
-                  <input placeholder="Haemoglobin" value={p.name} onChange={(e) => setParameter(i, 'name', e.target.value)} aria-label={`Parameter ${i + 1}`} />
-                  <input placeholder="g/dL" value={p.unit ?? ''} onChange={(e) => setParameter(i, 'unit', e.target.value)} aria-label="Unit" />
-                  <input placeholder="12 - 16" value={p.reference_range ?? ''} onChange={(e) => setParameter(i, 'reference_range', e.target.value)} aria-label="Reference range" />
-                  <input value={p.method ?? ''} onChange={(e) => setParameter(i, 'method', e.target.value)} aria-label="Method" />
-                  <button type="button" className="link danger" onClick={() => setParameters((rows) => (rows.length > 1 ? rows.filter((_, r) => r !== i) : [emptyParameter()]))}>
-                    Remove
+            {form.kind === 'text' ? (
+              <p className="muted small gap-top">A written report (ECG, X-ray, scan) has no parameters: the result is typed as free text when the test is reported.</p>
+            ) : (
+              <>
+                <h3>Parameters reported</h3>
+                <div className="rx">
+                  <div className="lab-param rx-head">
+                    <span>Parameter</span>
+                    <span>Unit</span>
+                    <span>Reference range</span>
+                    <span>Method</span>
+                    <span />
+                  </div>
+                  {parameters.map((p, i) => (
+                    <div className={`lab-param ${p.is_heading ? 'heading' : ''}`} key={i}>
+                      <input placeholder={p.is_heading ? 'Sub heading, e.g. Differential count' : 'Haemoglobin'} value={p.name} onChange={(e) => setParameter(i, 'name', e.target.value)} aria-label={p.is_heading ? `Sub heading ${i + 1}` : `Parameter ${i + 1}`} />
+                      {!p.is_heading && (
+                        <>
+                          <input placeholder="g/dL" value={p.unit ?? ''} onChange={(e) => setParameter(i, 'unit', e.target.value)} aria-label="Unit" />
+                          <input placeholder="12 - 16" value={p.reference_range ?? ''} onChange={(e) => setParameter(i, 'reference_range', e.target.value)} aria-label="Reference range" />
+                          <input value={p.method ?? ''} onChange={(e) => setParameter(i, 'method', e.target.value)} aria-label="Method" />
+                        </>
+                      )}
+                      <button type="button" className="link danger" onClick={() => setParameters((rows) => (rows.length > 1 ? rows.filter((_, r) => r !== i) : [emptyParameter()]))}>
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="row gap-top">
+                  <button type="button" className="link" onClick={() => setParameters((rows) => [...rows, emptyParameter()])}>
+                    + Add parameter
+                  </button>
+                  <button type="button" className="link" onClick={() => setParameters((rows) => [...rows, emptyParameter(true)])}>
+                    + Add sub heading
                   </button>
                 </div>
-              ))}
-            </div>
-            <button type="button" className="link add-medicine" onClick={() => setParameters((rows) => [...rows, emptyParameter()])}>
-              + Add parameter
-            </button>
-            <p className="muted small">Write number ranges as "70 - 140" so high and low results are flagged automatically.</p>
+                <p className="muted small">Write number ranges as "70 - 140" so high and low results are flagged automatically.</p>
+              </>
+            )}
+
+            <label className="field">
+              <span className="field-label">Default comment</span>
+              <textarea rows={2} placeholder="Printed under this test on every report unless changed" value={form.default_comment} onChange={(e) => set('default_comment')(e.target.value)} />
+            </label>
 
             {editing !== 'new' && (
               <label className="check">
@@ -200,5 +230,6 @@ export function LabTests() {
         </form>
       )}
     </div>
+    </>
   )
 }

@@ -11,6 +11,7 @@ export type User = {
   can_manage_setup: boolean
   can_front_desk: boolean
   can_ipd: boolean
+  pad_hidden_sections?: string[]
   branch: { id: number; name: string; city: string | null } | null
 }
 
@@ -185,12 +186,14 @@ export type QueueEntry = {
   last_visit: string | null
 }
 
-export type LabParameter = { id?: number; name: string; unit: string | null; reference_range: string | null; method: string | null }
+export type LabParameter = { id?: number; name: string; is_heading?: boolean; unit: string | null; reference_range: string | null; method: string | null }
 
 export type LabCatalogueTest = {
   id: number
   code: string | null
   name: string
+  kind: 'values' | 'text'
+  default_comment: string | null
   department: string | null
   sample_type: string | null
   price: number
@@ -202,6 +205,7 @@ export type LabCatalogueTest = {
 export type LabResult = {
   id: number
   parameter: string
+  is_heading: boolean
   unit: string | null
   reference_range: string | null
   method: string | null
@@ -216,9 +220,34 @@ export type LabOrderItem = {
   sample_type: string | null
   price: number
   remarks: string | null
+  kind: 'values' | 'text'
+  package_name: string | null
+  report_text: string | null
+  stage: LabStage
+  collected_at: string | null
   reported_at: string | null
+  approved_at: string | null
   reporter?: { id: number; name: string; signature_text: string | null } | null
+  approver?: { id: number; name: string; signature_text: string | null } | null
   results?: LabResult[]
+}
+
+export type LabStage = 'booked' | 'collected' | 'reported' | 'approved'
+
+export type LabPackage = { id: number; name: string; price: number; is_active: boolean; tests: { id: number; name: string; price: number }[] }
+
+export type LabSettings = {
+  lab_name: string | null
+  lab_address: string | null
+  technician_1: string | null
+  technician_2: string | null
+  letterhead_top_mm: number
+  letterhead_bottom_mm: number
+  each_test_on_new_page: boolean
+  allow_print_without_payment: boolean
+  print_sample_date: boolean
+  print_approved_date: boolean
+  approval_required: boolean
 }
 
 export type LabOrder = {
@@ -496,4 +525,37 @@ export type PatientOverview = {
   pharmacy_bills: { id: number; bill_no: string; sold_at: string; total: number; due: number }[]
   admissions: { id: number; ipd_no: string; status: string; admitted_at: string; discharged_at: string | null; due: number; doctor: { name: string }; bed: { ward: string; bed_no: string } | null }[]
   attachments: Attachment[]
+}
+
+export type PhraseKind = 'complaint' | 'diagnosis' | 'advice'
+export type RememberedPhrase = { id: number; kind: PhraseKind; text: string; uses: number; last_used_at: string | null }
+export type RxGroup = { id: number; name: string; medicines: PrescribedMedicine[] }
+export type TemplateContent = {
+  complaints?: string | null
+  findings?: string | null
+  diagnosis?: string | null
+  assessment_plan?: string | null
+  tests_advised?: string | null
+  advice?: string | null
+  medicines?: PrescribedMedicine[] | null
+}
+export type PrescriptionTemplate = { id: number; name: string; content: TemplateContent }
+export type DoctorLibrary = {
+  doctor_id: number
+  // The server sends an empty list instead of an object when nothing is remembered yet.
+  phrases: Partial<Record<PhraseKind, RememberedPhrase[]>> | []
+  rx_groups: RxGroup[]
+  templates: PrescriptionTemplate[]
+  medicine_defaults: PrescribedMedicine[]
+  pad_hidden_sections: string[]
+  pad_sections: string[]
+}
+export type ConsultRow = {
+  id: number
+  appointment_id: number
+  diagnosis: string | null
+  follow_up_on: string | null
+  completed_at: string
+  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile'>
+  doctor: { id: number; name: string }
 }

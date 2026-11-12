@@ -138,6 +138,7 @@ class ConsultationController extends Controller
 
             // Keep the front desk queue in step with what the doctor is doing.
             if ($complete) {
+                DoctorLibraryController::learn($appointment->doctor_id, $consultation, $consultation->medicines()->get()->toArray());
                 $appointment->update(['status' => 'reviewed']);
             } elseif (in_array($appointment->status, ['booked', 'arrived'], true)) {
                 $appointment->update(['status' => 'ongoing', 'arrived_at' => $appointment->arrived_at ?? now()]);

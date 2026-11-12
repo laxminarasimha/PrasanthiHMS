@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { BillPanel } from '../components/BillPanel'
 import { LabOrderForm } from '../components/LabOrderForm'
 import { LabResults } from '../components/LabResults'
-import { clock, longDate, rupees, settlement, today } from '../format'
-import type { LabCatalogueTest, LabOrder, Service } from '../types'
+import { LabTabs } from '../components/LabTabs'
+import { clock, longDate, rupees, settlement, STAGE_CLASS, STAGE_LABEL, today } from '../format'
+import type { LabCatalogueTest, LabOrder, LabPackage, Service } from '../types'
 
 type Panel = { kind: 'new' } | { kind: 'results'; orderId: number } | { kind: 'bill'; billId: number } | null
 
@@ -18,6 +18,8 @@ export function Lab() {
   const [orders, setOrders] = useState<LabOrder[] | null>(null)
   const [tests, setTests] = useState<LabCatalogueTest[]>([])
   const [services, setServices] = useState<Service[]>([])
+  const [packages, setPackages] = useState<LabPackage[]>([])
+  const [showTests, setShowTests] = useState(true)
   const [panel, setPanel] = useState<Panel>(null)
   const [notice, setNotice] = useState('')
 
@@ -34,10 +36,13 @@ export function Lab() {
 
   useEffect(() => {
     api.get<LabCatalogueTest[]>('/lab/tests').then((res) => setTests(res.data))
+    api.get<LabPackage[]>('/lab/packages').then((res) => setPackages(res.data))
     api.get<Service[]>('/services').then((res) => setServices(res.data))
   }, [])
 
   return (
+    <>
+    <LabTabs />
     <div className="split">
       <section className="card">
         <div className="toolbar">
@@ -49,9 +54,9 @@ export function Lab() {
             </button>
           )}
           <input className="search" type="search" placeholder="Find reports by patient name, mobile, ID or order no. (all dates)" value={query} onChange={(e) => setQuery(e.target.value)} />
-          <Link className="btn ghost" to="/lab/tests">
-            Test list
-          </Link>
+          <button className="btn ghost" onClick={() => setShowTests((s) => !s)}>
+            {showTests ? 'Hide tests' : 'Show tests'}
+          </button>
           <button
             className="btn primary"
             onClick={() => {
@@ -93,7 +98,20 @@ export function Lab() {
                       {o.patient.uhid} · {o.patient.age}y / {o.patient.gender.charAt(0).toUpperCase()}
                     </small>
                   </td>
-                  <td className="wrap">{o.items.map((i) => i.test_name).join(', ')}</td>
+                  <td className="wrap">
+                    {showTests ? (
+                      o.items.map((i) => (
+                        <span key={i.id} className="lab-line">
+                          {i.test_name} <span className={`pill ${STAGE_CLASS[i.stage]}`}>{STAGE_LABEL[i.stage]}</span>
+                        </span>
+                      ))
+                    ) : (
+                      <>
+                        {o.items.length} test{o.items.length === 1 ? '' : 's'}
+                        <small className="muted block">{o.items.filter((i) => i.stage === 'approved').length} approved</small>
+                      </>
+                    )}
+                  </td>
                   <td>
                     <span className={`pill ${STATUS_CLASS[o.status]}`}>{STATUS[o.status]}</span>
                   </td>
@@ -127,6 +145,7 @@ export function Lab() {
       {panel?.kind === 'new' && (
         <LabOrderForm
           tests={tests}
+          packages={packages}
           onClose={() => setPanel(null)}
           onCreated={(order) => {
             setDate(today())
@@ -141,5 +160,6 @@ export function Lab() {
       {panel?.kind === 'results' && <LabResults key={panel.orderId} orderId={panel.orderId} onClose={() => setPanel(null)} onChange={load} />}
       {panel?.kind === 'bill' && <BillPanel key={panel.billId} billId={panel.billId} services={services} onClose={() => setPanel(null)} onChange={load} />}
     </div>
+    </>
   )
 }
