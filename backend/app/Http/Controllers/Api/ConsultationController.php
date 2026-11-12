@@ -87,6 +87,10 @@ class ConsultationController extends Controller
             'findings' => ['nullable', 'string', 'max:5000'],
             'diagnosis' => ['nullable', 'string', 'max:5000'],
             'tests_advised' => ['nullable', 'string', 'max:5000'],
+            'investigations' => ['sometimes', 'nullable', 'array', 'max:40'],
+            'investigations.*.name' => ['required', 'string', 'max:100'],
+            'investigations.*.result' => ['nullable', 'string', 'max:100'],
+            'investigations.*.date' => ['nullable', 'date', 'before_or_equal:today'],
             'advice' => ['nullable', 'string', 'max:5000'],
             'follow_up_on' => ['nullable', 'date', 'after_or_equal:today'],
             'complete' => ['sometimes', 'boolean'],
@@ -99,6 +103,8 @@ class ConsultationController extends Controller
             'medicines.*.instructions' => ['nullable', 'string', 'max:255'],
         ], [
             'medicines.*.medicine.required' => 'Enter the medicine name or remove the empty row.',
+            'investigations.*.name.required' => 'Enter the test name or remove the empty row.',
+            'investigations.*.date.before_or_equal' => 'A test result cannot be dated in the future.',
             'bp_systolic.required_with' => 'Enter both blood pressure values.',
             'bp_diastolic.required_with' => 'Enter both blood pressure values.',
         ], [
@@ -112,6 +118,9 @@ class ConsultationController extends Controller
         // Keep only the signs that were actually marked.
         if (isset($data['general_exam'])) {
             $data['general_exam'] = array_filter($data['general_exam']) ?: null;
+        }
+        if (array_key_exists('investigations', $data)) {
+            $data['investigations'] = collect($data['investigations'] ?? [])->map(fn ($row) => ['name' => $row['name'], 'result' => $row['result'] ?? null, 'date' => $row['date'] ?? null])->values()->all() ?: null;
         }
         unset($data['complete'], $data['medicines'], $data['allergies']);
 

@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { useAuth } from '../auth'
 import { Field, TextField } from '../components/Field'
 import { MedicineRows, emptyMedicine, filledMedicines } from '../components/MedicineRows'
 import { PhraseChips } from '../components/PhraseChips'
-import { clock, longDate, rupees } from '../format'
+import { clock, longDate, rupees, today } from '../format'
 import type { Consultation, DoctorLibrary, LabCatalogueTest, LabOrder, PhraseKind, PrescribedMedicine as Medicine, PrescriptionTemplate, RxGroup, Visit } from '../types'
 
 const VITALS = [
@@ -18,6 +18,9 @@ const VITALS = [
   { key: 'spo2', label: 'SpO₂ (%)' },
   { key: 'resp_rate', label: 'Resp. rate (/min)' },
 ] as const
+
+/** The standard order of the pad, used until the doctor's own order has loaded. */
+const PAD_ORDER = ['quick_notes', 'vitals', 'complaints', 'history', 'past_medication', 'general_exam', 'systemic_exam', 'diagnosis', 'assessment_plan', 'tests', 'results', 'prescription', 'advice', 'follow_up']
 
 /** The general examination checklist, in the order doctors recite it. */
 const SIGNS = [
@@ -59,6 +62,7 @@ export function VisitPad() {
   const [form, setForm] = useState<Form>(toForm(null))
   const [medicines, setMedicines] = useState<Medicine[]>([emptyMedicine()])
   const [exam, setExam] = useState<Exam>(toExam(null))
+  const [investigations, setInvestigations] = useState<{ name: string; result: string; date: string }[]>([])
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [history, setHistory] = useState<Consultation[]>([])
   const [errors, setErrors] = useState<FieldErrors>({})
@@ -76,6 +80,7 @@ export function VisitPad() {
     setVisit(next)
     setForm(toForm(next.consultation, next.patient.allergies))
     setExam(toExam(next.consultation))
+    setInvestigations((next.consultation?.investigations ?? []).map((row) => ({ name: row.name, result: row.result ?? '', date: row.date ?? '' })))
     setMedicines(next.consultation?.medicines.length ? next.consultation.medicines : [emptyMedicine()])
   }
 
@@ -100,6 +105,7 @@ export function VisitPad() {
   const phrases = (kind: PhraseKind) => (library && !Array.isArray(library.phrases) ? (library.phrases[kind] ?? []) : [])
   /** A part of the pad the doctor has switched off, unless this visit already has something in it. */
   const hidden = (section: string, ...keys: string[]) => Boolean(library?.pad_hidden_sections.includes(section)) && keys.every((key) => !form[key])
+  const setInvestigation = (index: number, key: 'name' | 'result' | 'date', value: string) => setInvestigations((rows) => rows.map((row, i) => (i === index ? { ...row, [key]: value } : row)))
   const filled = () => medicines.filter((m) => m.medicine.trim())
   const addMedicines = (rows: Medicine[]) => setMedicines([...filled(), ...rows.map((m) => ({ ...emptyMedicine(), ...m }))])
 
@@ -138,6 +144,7 @@ export function VisitPad() {
     const payload: Record<string, unknown> = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v === '' ? null : v]))
     payload.general_exam = Object.fromEntries(SIGNS.map((sign) => [sign.key, exam[sign.key] || null]))
     payload.medicines = filledMedicines(medicines)
+    payload.investigations = investigations.filter((row) => row.name.trim() || row.result.trim()).map((row) => ({ name: row.name.trim(), result: row.result.trim() || null, date: row.date || null }))
     if (complete) payload.complete = true
     try {
       const res = await api.put<Visit>(`/appointments/${id}/consultation`, payload)
@@ -178,6 +185,243 @@ export function VisitPad() {
   const visibleTests = labTests.filter((t) => t.name.toLowerCase().includes(testFilter.trim().toLowerCase()))
   const errorList = Object.entries(errors)
   const pastVisits = history.filter((h) => h.id !== visit.consultation?.id)
+
+  // Each movable part of the pad, so it can be laid out in the order this doctor prefers.
+  const sections: Record<string, ReactNode> = {
+    quick_notes: (
+          <>
+          {!hidden('quick_notes', 'quick_notes') && (
+            <Field label="Quick notes (for you only; not printed)" error={errors.quick_notes}>
+              <textarea rows={2} placeholder="" value={form.quick_notes} onChange={(e) => set('quick_notes')(e.target.value)} />
+            </Field>
+          )}
+          </>
+    ),
+    vitals: (
+          <>
+          <h3>Vitals</h3>
+          <div className="vitals">
+            {VITALS.map((v) => (
+              <TextField key={v.key} label={v.label} type="number" step="any" value={form[v.key]} onChange={set(v.key)} error={errors[v.key]} />
+            ))}
+            <label className="field">
+              <span className="field-label">BMI</span>
+              <output className="bmi">{bmi ?? '—'}</output>
+            </label>
+          </div>
+          </>
+    ),
+    complaints: (
+          <>
+          <Field label="Complaints" error={errors.complaints}>
+            <textarea rows={2} placeholder="What the patient reports, and for how long" value={form.complaints} onChange={(e) => set('complaints')(e.target.value)} />
+          </Field>
+          <PhraseChips phrases={phrases('complaint')} text={form.complaints} onPick={set('complaints')} />
+          </>
+    ),
+    history: (
+          <>
+          {!hidden('history', 'history') && (
+            <Field label="History" error={errors.history}>
+              <textarea rows={2} placeholder="Past illnesses, surgeries, family and personal history" value={form.history} onChange={(e) => set('history')(e.target.value)} />
+            </Field>
+          )}
+          </>
+    ),
+    past_medication: (
+          <>
+          {!hidden('past_medication', 'past_medication') && (
+            <Field label="Past medication" error={errors.past_medication}>
+              <textarea rows={2} placeholder="Medicines the patient is already taking" value={form.past_medication} onChange={(e) => set('past_medication')(e.target.value)} />
+            </Field>
+          )}
+          </>
+    ),
+    general_exam: (
+          <>
+          {!(hidden('general_exam', 'general_exam_notes') && SIGNS.every((sign) => !exam[sign.key])) && (
+          <>
+          <h3>General examination</h3>
+          <div className="signs">
+            {SIGNS.map((sign) => (
+              <div key={sign.key} className="sign">
+                <span>{sign.label}</span>
+                {(['present', 'absent'] as const).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`chip ${exam[sign.key] === value ? value : ''}`}
+                    aria-pressed={exam[sign.key] === value}
+                    onClick={() => setExam((current) => ({ ...current, [sign.key]: current[sign.key] === value ? '' : value }))}
+                  >
+                    {value === 'present' ? 'Present' : 'Absent'}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+          <Field label="General examination notes" error={errors.general_exam_notes}>
+            <textarea rows={2} placeholder="" value={form.general_exam_notes} onChange={(e) => set('general_exam_notes')(e.target.value)} />
+          </Field>
+          </>
+          )}
+          </>
+    ),
+    systemic_exam: (
+          <>
+          {!hidden('systemic_exam', 'findings') && (
+            <Field label="Systemic examination" error={errors.findings}>
+              <textarea rows={2} placeholder="CVS, RS, P/A, CNS" value={form.findings} onChange={(e) => set('findings')(e.target.value)} />
+            </Field>
+          )}
+          </>
+    ),
+    diagnosis: (
+          <>
+          <Field label="Diagnosis" error={errors.diagnosis}>
+            <textarea rows={2} placeholder="" value={form.diagnosis} onChange={(e) => set('diagnosis')(e.target.value)} />
+          </Field>
+          <PhraseChips phrases={phrases('diagnosis')} text={form.diagnosis} onPick={set('diagnosis')} />
+          </>
+    ),
+    assessment_plan: (
+          <>
+          {!hidden('assessment_plan', 'assessment_plan') && (
+            <Field label="Assessment / plan" error={errors.assessment_plan}>
+              <textarea rows={2} placeholder="" value={form.assessment_plan} onChange={(e) => set('assessment_plan')(e.target.value)} />
+            </Field>
+          )}
+          </>
+    ),
+    tests: (
+          <>
+          {!hidden('tests', 'tests_advised') && (
+          <>
+          <h3>Tests prescribed</h3>
+          {picking ? (
+            <div className="lab-pick">
+              <input type="search" placeholder="Filter tests" value={testFilter} onChange={(e) => setTestFilter(e.target.value)} aria-label="Filter lab tests" />
+              <ul className="checklist short">
+                {visibleTests.map((t) => (
+                  <li key={t.id}>
+                    <label>
+                      <input type="checkbox" checked={chosenTests.includes(t.id)} onChange={() => setChosenTests((ids) => (ids.includes(t.id) ? ids.filter((i) => i !== t.id) : [...ids, t.id]))} />
+                      <span className="grow">{t.name}</span>
+                      <span className="mono">{rupees(t.price)}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              <div className="row gap-top">
+                <button type="button" className="btn primary" disabled={chosenTests.length === 0} onClick={orderTests}>
+                  Send {chosenTests.length || ''} test{chosenTests.length === 1 ? '' : 's'} to lab
+                </button>
+                <button type="button" className="btn ghost" onClick={() => setPicking(false)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="link" onClick={() => setPicking(true)}>
+              + Order lab tests
+            </button>
+          )}
+          <Field label="Other tests advised (done outside)" error={errors.tests_advised}>
+            <textarea rows={2} placeholder="One test per line" value={form.tests_advised} onChange={(e) => set('tests_advised')(e.target.value)} />
+          </Field>
+
+          </>
+          )}
+          </>
+    ),
+    results: (
+          <>
+          {!(library?.pad_hidden_sections.includes('results') && investigations.every((row) => !row.name.trim())) && (
+          <>
+          <h3>Test results</h3>
+          <p className="muted small">Type in results from reports the patient has brought. Results from our own lab show in the panel beside the pad.</p>
+          {investigations.map((row, i) => (
+            <div className="inv-row" key={i}>
+              <input list="inv-tests" placeholder="Test" value={row.name} onChange={(e) => setInvestigation(i, 'name', e.target.value)} aria-label={`Test ${i + 1}`} aria-invalid={Boolean(errors[`investigations.${i}.name`])} />
+              <input placeholder="Result" value={row.result} onChange={(e) => setInvestigation(i, 'result', e.target.value)} aria-label={`Result ${i + 1}`} />
+              <input type="date" max={today()} value={row.date} onChange={(e) => setInvestigation(i, 'date', e.target.value)} aria-label={`Date of test ${i + 1}`} aria-invalid={Boolean(errors[`investigations.${i}.date`])} />
+              <button type="button" className="link danger" onClick={() => setInvestigations((rows) => rows.filter((_, r) => r !== i))}>
+                Remove
+              </button>
+            </div>
+          ))}
+          <datalist id="inv-tests">
+            {labTests.map((t) => (
+              <option key={t.id} value={t.name} />
+            ))}
+          </datalist>
+          <button type="button" className="link" onClick={() => setInvestigations((rows) => [...rows, { name: '', result: '', date: '' }])}>
+            + Add a result
+          </button>
+          </>
+          )}
+          </>
+    ),
+    prescription: (
+          <>
+          <h3>Prescription</h3>
+          {library && (
+            <div className="pad-tools">
+              <select
+                value=""
+                disabled={library.rx_groups.length === 0}
+                onChange={(e) => {
+                  const group = library.rx_groups.find((g) => g.id === Number(e.target.value))
+                  if (group) addMedicines(group.medicines)
+                }}
+                aria-label="Add an Rx group"
+              >
+                <option value="">{library.rx_groups.length ? 'Add an Rx group…' : 'No Rx groups saved yet'}</option>
+                {library.rx_groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name} ({g.medicines.length})
+                  </option>
+                ))}
+              </select>
+              {naming?.what === 'group' ? (
+                <>
+                  <input autoFocus placeholder="Group name, e.g. Fever basic" value={naming.name} onChange={(e) => setNaming({ what: 'group', name: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), saveNamed())} aria-label="Rx group name" />
+                  <button type="button" className="btn primary small-btn" onClick={saveNamed}>
+                    Save
+                  </button>
+                  <button type="button" className="btn ghost small-btn" onClick={() => setNaming(null)}>
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                filled().length > 0 && (
+                  <button type="button" className="link" onClick={() => setNaming({ what: 'group', name: '' })}>
+                    Save these medicines as an Rx group
+                  </button>
+                )
+              )}
+            </div>
+          )}
+          <MedicineRows rows={medicines} onChange={setMedicines} names={suggestions} defaults={library?.medicine_defaults} invalid={(i) => Boolean(errors[`medicines.${i}.medicine`])} />
+          </>
+    ),
+    advice: (
+          <>
+          <Field label="Advice" error={errors.advice}>
+            <textarea rows={2} placeholder="Diet, rest, warning signs" value={form.advice} onChange={(e) => set('advice')(e.target.value)} />
+          </Field>
+          <PhraseChips phrases={phrases('advice')} text={form.advice} onPick={set('advice')} />
+          </>
+    ),
+    follow_up: (
+          <>
+          <div className="grid gap-top">
+            {!hidden('refer_to', 'refer_to') && <TextField label="Refer to" placeholder="Doctor or hospital, and why" value={form.refer_to} onChange={set('refer_to')} error={errors.refer_to} />}
+            <TextField label="Next visit date" type="date" value={form.follow_up_on} onChange={set('follow_up_on')} error={errors.follow_up_on} />
+          </div>
+          </>
+    ),
+  }
 
   return (
     <div className="split main-first">
@@ -251,165 +495,9 @@ export function VisitPad() {
               )}
             </div>
           )}
-          {!hidden('quick_notes', 'quick_notes') && (
-            <Field label="Quick notes (for you only; not printed)" error={errors.quick_notes}>
-              <textarea rows={2} placeholder="" value={form.quick_notes} onChange={(e) => set('quick_notes')(e.target.value)} />
-            </Field>
-          )}
-
-          <h3>Vitals</h3>
-          <div className="vitals">
-            {VITALS.map((v) => (
-              <TextField key={v.key} label={v.label} type="number" step="any" value={form[v.key]} onChange={set(v.key)} error={errors[v.key]} />
-            ))}
-            <label className="field">
-              <span className="field-label">BMI</span>
-              <output className="bmi">{bmi ?? '—'}</output>
-            </label>
-          </div>
-
-          <Field label="Complaints" error={errors.complaints}>
-            <textarea rows={2} placeholder="What the patient reports, and for how long" value={form.complaints} onChange={(e) => set('complaints')(e.target.value)} />
-          </Field>
-          <PhraseChips phrases={phrases('complaint')} text={form.complaints} onPick={set('complaints')} />
-          {!hidden('history', 'history') && (
-            <Field label="History" error={errors.history}>
-              <textarea rows={2} placeholder="Past illnesses, surgeries, family and personal history" value={form.history} onChange={(e) => set('history')(e.target.value)} />
-            </Field>
-          )}
-          {!hidden('past_medication', 'past_medication') && (
-            <Field label="Past medication" error={errors.past_medication}>
-              <textarea rows={2} placeholder="Medicines the patient is already taking" value={form.past_medication} onChange={(e) => set('past_medication')(e.target.value)} />
-            </Field>
-          )}
-
-          {!(hidden('general_exam', 'general_exam_notes') && SIGNS.every((sign) => !exam[sign.key])) && (
-          <>
-          <h3>General examination</h3>
-          <div className="signs">
-            {SIGNS.map((sign) => (
-              <div key={sign.key} className="sign">
-                <span>{sign.label}</span>
-                {(['present', 'absent'] as const).map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    className={`chip ${exam[sign.key] === value ? value : ''}`}
-                    aria-pressed={exam[sign.key] === value}
-                    onClick={() => setExam((current) => ({ ...current, [sign.key]: current[sign.key] === value ? '' : value }))}
-                  >
-                    {value === 'present' ? 'Present' : 'Absent'}
-                  </button>
-                ))}
-              </div>
-            ))}
-          </div>
-          <Field label="General examination notes" error={errors.general_exam_notes}>
-            <textarea rows={2} placeholder="" value={form.general_exam_notes} onChange={(e) => set('general_exam_notes')(e.target.value)} />
-          </Field>
-          </>
-          )}
-          {!hidden('systemic_exam', 'findings') && (
-            <Field label="Systemic examination" error={errors.findings}>
-              <textarea rows={2} placeholder="CVS, RS, P/A, CNS" value={form.findings} onChange={(e) => set('findings')(e.target.value)} />
-            </Field>
-          )}
-          <Field label="Diagnosis" error={errors.diagnosis}>
-            <textarea rows={2} placeholder="" value={form.diagnosis} onChange={(e) => set('diagnosis')(e.target.value)} />
-          </Field>
-          <PhraseChips phrases={phrases('diagnosis')} text={form.diagnosis} onPick={set('diagnosis')} />
-          {!hidden('assessment_plan', 'assessment_plan') && (
-            <Field label="Assessment / plan" error={errors.assessment_plan}>
-              <textarea rows={2} placeholder="" value={form.assessment_plan} onChange={(e) => set('assessment_plan')(e.target.value)} />
-            </Field>
-          )}
-
-          {!hidden('tests', 'tests_advised') && (
-          <>
-          <h3>Tests prescribed</h3>
-          {picking ? (
-            <div className="lab-pick">
-              <input type="search" placeholder="Filter tests" value={testFilter} onChange={(e) => setTestFilter(e.target.value)} aria-label="Filter lab tests" />
-              <ul className="checklist short">
-                {visibleTests.map((t) => (
-                  <li key={t.id}>
-                    <label>
-                      <input type="checkbox" checked={chosenTests.includes(t.id)} onChange={() => setChosenTests((ids) => (ids.includes(t.id) ? ids.filter((i) => i !== t.id) : [...ids, t.id]))} />
-                      <span className="grow">{t.name}</span>
-                      <span className="mono">{rupees(t.price)}</span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-              <div className="row gap-top">
-                <button type="button" className="btn primary" disabled={chosenTests.length === 0} onClick={orderTests}>
-                  Send {chosenTests.length || ''} test{chosenTests.length === 1 ? '' : 's'} to lab
-                </button>
-                <button type="button" className="btn ghost" onClick={() => setPicking(false)}>
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button type="button" className="link" onClick={() => setPicking(true)}>
-              + Order lab tests
-            </button>
-          )}
-          <Field label="Other tests advised (done outside)" error={errors.tests_advised}>
-            <textarea rows={2} placeholder="One test per line" value={form.tests_advised} onChange={(e) => set('tests_advised')(e.target.value)} />
-          </Field>
-
-          </>
-          )}
-
-          <h3>Prescription</h3>
-          {library && (
-            <div className="pad-tools">
-              <select
-                value=""
-                disabled={library.rx_groups.length === 0}
-                onChange={(e) => {
-                  const group = library.rx_groups.find((g) => g.id === Number(e.target.value))
-                  if (group) addMedicines(group.medicines)
-                }}
-                aria-label="Add an Rx group"
-              >
-                <option value="">{library.rx_groups.length ? 'Add an Rx group…' : 'No Rx groups saved yet'}</option>
-                {library.rx_groups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name} ({g.medicines.length})
-                  </option>
-                ))}
-              </select>
-              {naming?.what === 'group' ? (
-                <>
-                  <input autoFocus placeholder="Group name, e.g. Fever basic" value={naming.name} onChange={(e) => setNaming({ what: 'group', name: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), saveNamed())} aria-label="Rx group name" />
-                  <button type="button" className="btn primary small-btn" onClick={saveNamed}>
-                    Save
-                  </button>
-                  <button type="button" className="btn ghost small-btn" onClick={() => setNaming(null)}>
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                filled().length > 0 && (
-                  <button type="button" className="link" onClick={() => setNaming({ what: 'group', name: '' })}>
-                    Save these medicines as an Rx group
-                  </button>
-                )
-              )}
-            </div>
-          )}
-          <MedicineRows rows={medicines} onChange={setMedicines} names={suggestions} defaults={library?.medicine_defaults} invalid={(i) => Boolean(errors[`medicines.${i}.medicine`])} />
-
-          <Field label="Advice" error={errors.advice}>
-            <textarea rows={2} placeholder="Diet, rest, warning signs" value={form.advice} onChange={(e) => set('advice')(e.target.value)} />
-          </Field>
-          <PhraseChips phrases={phrases('advice')} text={form.advice} onPick={set('advice')} />
-          <div className="grid gap-top">
-            {!hidden('refer_to', 'refer_to') && <TextField label="Refer to" placeholder="Doctor or hospital, and why" value={form.refer_to} onChange={set('refer_to')} error={errors.refer_to} />}
-            <TextField label="Next visit date" type="date" value={form.follow_up_on} onChange={set('follow_up_on')} error={errors.follow_up_on} />
-          </div>
+          {(library?.pad_section_order ?? PAD_ORDER).map((key) => (
+            <Fragment key={key}>{sections[key]}</Fragment>
+          ))}
         </fieldset>
 
         {canEdit ? (
@@ -477,6 +565,7 @@ export function VisitPad() {
             {h.complaints && <p><b>Complaints:</b> {h.complaints}</p>}
             {h.history && <p><b>History:</b> {h.history}</p>}
             {h.findings && <p><b>Examination:</b> {h.findings}</p>}
+            {h.investigations?.length ? <p><b>Test results:</b> {h.investigations.map((r) => `${r.name}${r.result ? ` ${r.result}` : ''}`).join('; ')}</p> : null}
             {h.assessment_plan && <p><b>Plan:</b> {h.assessment_plan}</p>}
             {h.bp_systolic && <p><b>BP:</b> {h.bp_systolic}/{h.bp_diastolic}{h.weight_kg ? ` · ${h.weight_kg} kg` : ''}</p>}
             {h.medicines.length > 0 && (

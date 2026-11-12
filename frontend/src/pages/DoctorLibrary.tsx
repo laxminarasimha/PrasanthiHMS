@@ -11,7 +11,8 @@ type Tab = PhraseKind | 'rx' | 'templates' | 'pad'
 
 const SECTION_LABELS: Record<string, string> = {
   quick_notes: 'Quick notes', history: 'History', past_medication: 'Past medication', general_exam: 'General examination',
-  systemic_exam: 'Systemic examination', assessment_plan: 'Assessment / plan', tests: 'Tests prescribed', refer_to: 'Refer to',
+  systemic_exam: 'Systemic examination', assessment_plan: 'Assessment / plan', tests: 'Tests prescribed', results: 'Test results', refer_to: 'Refer to',
+  vitals: 'Vitals', complaints: 'Complaints', diagnosis: 'Diagnosis', prescription: 'Prescription', advice: 'Advice', follow_up: 'Refer to and next visit date',
 }
 
 /** A doctor's own shortcuts for the visit pad. */
@@ -151,6 +152,39 @@ export function DoctorLibrary() {
               </label>
             ))}
             <p className="muted small gap-top">Vitals, complaints, diagnosis, prescription and advice are always shown.</p>
+
+            <h3>Order of the visit pad</h3>
+            <p className="muted">Move a part up or down to change where it sits on this doctor's visit pad. The printed prescription keeps its usual order.</p>
+            <ol className="pad-order">
+              {library.pad_section_order.map((key, i) => {
+                const swap = (to: number) => {
+                  const order = [...library.pad_section_order]
+                  ;[order[i], order[to]] = [order[to], order[i]]
+                  run(() => api.put('/doctor/pad-sections', { doctor_id: doctorId, hidden: library.pad_hidden_sections, order }), 'Visit pad order saved.')
+                }
+                return (
+                  <li key={key} className={library.pad_hidden_sections.includes(key) ? 'off' : ''}>
+                    <span className="grow">
+                      {SECTION_LABELS[key] ?? key}
+                      {library.pad_hidden_sections.includes(key) && <small className="muted"> · hidden</small>}
+                    </span>
+                    <button type="button" className="btn ghost small-btn" disabled={i === 0} onClick={() => swap(i - 1)} aria-label={`Move ${SECTION_LABELS[key] ?? key} up`}>
+                      ↑
+                    </button>
+                    <button type="button" className="btn ghost small-btn" disabled={i === library.pad_section_order.length - 1} onClick={() => swap(i + 1)} aria-label={`Move ${SECTION_LABELS[key] ?? key} down`}>
+                      ↓
+                    </button>
+                  </li>
+                )
+              })}
+            </ol>
+            <button
+              type="button"
+              className="link"
+              onClick={() => run(() => api.put('/doctor/pad-sections', { doctor_id: doctorId, hidden: library.pad_hidden_sections, order: [] }), 'Visit pad put back in the standard order.')}
+            >
+              Put back the standard order
+            </button>
           </div>
         ) : (
           <Phrases key={`${doctorId}-${tab}`} kind={tab} rows={phrases(tab)} doctorId={doctorId} run={run} />

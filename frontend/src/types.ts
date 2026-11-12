@@ -154,6 +154,8 @@ export type PrescribedMedicine = {
 
 export type Consultation = {
   id: number
+  /** Results typed in from reports the patient brought. */
+  investigations?: { name: string; result: string | null; date: string | null }[] | null
   weight_kg: number | null
   height_cm: number | null
   bp_systolic: number | null
@@ -576,6 +578,8 @@ export type DoctorLibrary = {
   medicine_defaults: PrescribedMedicine[]
   pad_hidden_sections: string[]
   pad_sections: string[]
+  /** Every movable part of the pad, in this doctor's order. */
+  pad_section_order: string[]
 }
 export type ConsultRow = {
   id: number
