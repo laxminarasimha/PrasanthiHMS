@@ -33,6 +33,7 @@ rsync -a \
   --exclude '.env' --exclude '.env.*' --exclude 'vendor' --exclude 'node_modules' --exclude 'tests' \
   --exclude 'storage/logs/*' --exclude 'storage/framework/cache/data/*' --exclude 'storage/framework/sessions/*' \
   --exclude 'storage/framework/views/*' --exclude 'bootstrap/cache/*.php' --exclude 'database/*.sqlite' \
+  --exclude 'storage/app/private/*/' --exclude 'storage/app/public/*/' \
   --exclude 'public/spa.html' --exclude 'public/assets' --exclude 'public/hot' --exclude 'public/storage' \
   "$ROOT/backend/" "$APP/"
 

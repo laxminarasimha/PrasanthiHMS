@@ -11,6 +11,7 @@ const TOGGLES: [keyof Settings, string, string][] = [
   ['each_test_on_new_page', 'Print each test on a separate page', ''],
   ['print_sample_date', 'Print the sample collection date', ''],
   ['print_approved_date', 'Print the approval date', ''],
+  ['tabular_print', 'Print in tabular layout', 'All tests in one table instead of a section for each test. It can still be changed when printing.'],
 ]
 
 export function LabSettings() {
@@ -37,6 +38,26 @@ export function LabSettings() {
     onChange: (value: string) => setForm({ ...form, [key]: value === '' ? 0 : Number(value) }),
     error: errors[key],
   })
+
+  // Signature pictures are saved straight away, apart from the rest of the form.
+  const signature = async (slot: 1 | 2, file?: File) => {
+    setErrors({})
+    try {
+      let res
+      if (file) {
+        const body = new FormData()
+        body.append('slot', String(slot))
+        body.append('file', file)
+        res = await api.post<Settings>('/lab/settings/signature', body)
+      } else {
+        res = await api.delete<Settings>(`/lab/settings/signature/${slot}`)
+      }
+      setForm({ ...form, technician_1_signature: res.data.technician_1_signature, technician_2_signature: res.data.technician_2_signature })
+      setNotice(file ? 'Signature saved.' : 'Signature removed.')
+    } catch (err) {
+      setErrors({ _: Object.values(fieldErrors(err))[0] })
+    }
+  }
 
   const save = async (e: FormEvent) => {
     e.preventDefault()
@@ -69,6 +90,39 @@ export function LabSettings() {
             <TextField label="Lab address" {...text('lab_address')} />
             <TextField label="Lab technician 1" placeholder="Name printed at the foot of reports" {...text('technician_1')} />
             <TextField label="Lab technician 2" {...text('technician_2')} />
+          </div>
+
+          <h3>Technician signatures</h3>
+          <p className="muted small">A picture of each signature (PNG or JPG, up to 300 KB) is printed above the name at the foot of reports.</p>
+          <div className="grid">
+            {([1, 2] as const).map((slot) => {
+              const picture = form[`technician_${slot}_signature`]
+              return (
+                <div className="signature-box" key={slot}>
+                  <span className="field-label">{form[`technician_${slot}`] || `Lab technician ${slot}`}</span>
+                  {picture ? <img src={picture} alt={`Signature of technician ${slot}`} /> : <span className="muted small">No signature picture</span>}
+                  <div className="row">
+                    <label className="btn ghost small-btn">
+                      {picture ? 'Replace' : 'Upload'}
+                      <input
+                        type="file"
+                        hidden
+                        accept="image/png,image/jpeg"
+                        onChange={(e) => {
+                          signature(slot, e.target.files?.[0])
+                          e.target.value = ''
+                        }}
+                      />
+                    </label>
+                    {picture && (
+                      <button type="button" className="link danger" onClick={() => signature(slot)}>
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
 
           <h3>Printing on letterhead</h3>

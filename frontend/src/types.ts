@@ -267,7 +267,14 @@ export type LabSettings = {
   print_sample_date: boolean
   print_approved_date: boolean
   approval_required: boolean
+  /** One table for the whole report instead of a section per test. */
+  tabular_print: boolean
+  /** Signature pictures, sent as embedded images; null when none is uploaded. */
+  technician_1_signature: string | null
+  technician_2_signature: string | null
 }
+
+export type LabOrderFile = { id: number; lab_order_item_id: number | null; title: string; original_name: string; mime: string; size: number; created_at: string; uploader?: { id: number; name: string } | null }
 
 export type LabOrder = {
   id: number
@@ -277,6 +284,7 @@ export type LabOrder = {
   referred_by: string | null
   patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile'>
   items: LabOrderItem[]
+  files?: LabOrderFile[]
   bill: { id: number; bill_no: string; total: number; paid: number; due: number; moved_to_ipd?: number | null } | null
 }
 

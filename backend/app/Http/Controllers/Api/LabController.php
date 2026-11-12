@@ -5,12 +5,15 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Bill;
 use App\Models\LabOrder;
+use App\Models\LabOrderFile;
 use App\Models\LabOrderItem;
 use App\Models\LabPackage;
 use App\Models\LabTest;
 use App\Models\Setting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -130,7 +133,62 @@ class LabController extends Controller
 
     public function settings(): JsonResponse
     {
-        return response()->json(Setting::group('lab', Setting::LAB_DEFAULTS));
+        return response()->json($this->labSettings());
+    }
+
+    /**
+     * The lab preferences as the screens need them: signature images are sent as embedded pictures
+     * so the printed report can show them, and where they are stored is left out.
+     *
+     * @return array<string, mixed>
+     */
+    private function labSettings(): array
+    {
+        $settings = Setting::group('lab', Setting::LAB_DEFAULTS);
+        foreach ([1, 2] as $slot) {
+            $path = $settings["technician_{$slot}_signature_path"] ?? null;
+            unset($settings["technician_{$slot}_signature_path"]);
+            $settings["technician_{$slot}_signature"] = $path && Storage::disk('local')->exists($path)
+                ? 'data:'.Storage::disk('local')->mimeType($path).';base64,'.base64_encode(Storage::disk('local')->get($path))
+                : null;
+        }
+
+        return $settings;
+    }
+
+    /** Stores a picture of a technician's signature, printed above their name on reports. */
+    public function saveSignature(Request $request): JsonResponse
+    {
+        $this->authorizeLab($request);
+        $data = $request->validate([
+            'slot' => ['required', Rule::in([1, 2])],
+            'file' => ['required', 'file', 'max:300', 'mimes:png,jpg,jpeg'],
+        ], ['file.max' => 'The signature picture must be 300 KB or smaller.', 'file.mimes' => 'Use a PNG or JPG picture of the signature.']);
+
+        $this->forgetSignature((int) $data['slot'], $request->file('file')->store('lab-signatures', 'local'));
+
+        return response()->json($this->labSettings());
+    }
+
+    public function destroySignature(Request $request, int $slot): JsonResponse
+    {
+        $this->authorizeLab($request);
+        abort_unless(in_array($slot, [1, 2], true), 404);
+        $this->forgetSignature($slot, null);
+
+        return response()->json($this->labSettings());
+    }
+
+    /** Replaces (or clears) one signature picture and deletes the old file. */
+    private function forgetSignature(int $slot, ?string $newPath): void
+    {
+        $settings = Setting::group('lab', Setting::LAB_DEFAULTS);
+        $key = "technician_{$slot}_signature_path";
+        if (! empty($settings[$key])) {
+            Storage::disk('local')->delete($settings[$key]);
+        }
+        $settings[$key] = $newPath;
+        Setting::updateOrCreate(['key' => 'lab'], ['value' => $settings]);
     }
 
     public function saveSettings(Request $request): JsonResponse
@@ -149,11 +207,13 @@ class LabController extends Controller
             'print_sample_date' => ['required', 'boolean'],
             'print_approved_date' => ['required', 'boolean'],
             'approval_required' => ['required', 'boolean'],
+            'tabular_print' => ['sometimes', 'boolean'],
         ]);
 
-        Setting::updateOrCreate(['key' => 'lab'], ['value' => $data]);
+        // Keep what this form does not send, such as the signature pictures.
+        Setting::updateOrCreate(['key' => 'lab'], ['value' => array_merge(Setting::group('lab', Setting::LAB_DEFAULTS), $data)]);
 
-        return response()->json(Setting::group('lab', Setting::LAB_DEFAULTS));
+        return response()->json($this->labSettings());
     }
 
     // ---- Orders ----
@@ -366,6 +426,48 @@ class LabController extends Controller
         return response()->json($this->present($order));
     }
 
+    // ---- Result files ----
+
+    /** Attaches a file to an order: a report from an outside lab, an ECG strip, a scanned sheet. */
+    public function storeFile(Request $request, LabOrder $order): JsonResponse
+    {
+        $this->authorizeLab($request);
+        $data = $request->validate([
+            'title' => ['nullable', 'string', 'max:255'],
+            'lab_order_item_id' => ['nullable', Rule::exists('lab_order_items', 'id')->where('lab_order_id', $order->id)],
+            'file' => ['required', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,webp'],
+        ], ['file.mimes' => 'Attach a PDF or an image (JPG, PNG or WebP).', 'file.max' => 'The file must be 10 MB or smaller.']);
+
+        $file = $request->file('file');
+        // Kept on the private disk: these are medical records and are only ever served to signed-in staff.
+        $order->files()->create([
+            'lab_order_item_id' => $data['lab_order_item_id'] ?? null,
+            'title' => filled($data['title'] ?? null) ? $data['title'] : pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME),
+            'path' => $file->store("lab-files/{$order->id}", 'local'),
+            'original_name' => $file->getClientOriginalName(), 'mime' => $file->getMimeType(), 'size' => $file->getSize(),
+            'uploaded_by' => $request->user()->id,
+        ]);
+
+        return response()->json($this->present($order), 201);
+    }
+
+    public function downloadFile(LabOrderFile $file): StreamedResponse
+    {
+        abort_unless(Storage::disk('local')->exists($file->path), 404, 'The file is missing.');
+
+        return Storage::disk('local')->response($file->path, $file->original_name, ['Content-Type' => $file->mime]);
+    }
+
+    public function destroyFile(Request $request, LabOrderFile $file): JsonResponse
+    {
+        $this->authorizeLab($request);
+        Storage::disk('local')->delete($file->path);
+        $order = $file->order;
+        $file->delete();
+
+        return response()->json($this->present($order));
+    }
+
     private function authorizeLab(Request $request): void
     {
         abort_unless($request->user()->role->canRunLab(), 403, 'You are not allowed to do this in the lab.');
@@ -375,7 +477,7 @@ class LabController extends Controller
     {
         return $order->fresh()->load([
             'patient:id,uhid,name,gender,date_of_birth,mobile', 'items.results', 'items.reporter:id,name,signature_text', 'items.approver:id,name,signature_text',
-            'bill:id,bill_no,total,paid',
+            'bill:id,bill_no,total,paid', 'files.uploader:id,name',
         ]);
     }
 }
