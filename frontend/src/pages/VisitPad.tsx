@@ -180,7 +180,7 @@ export function VisitPad() {
   const pastVisits = history.filter((h) => h.id !== visit.consultation?.id)
 
   return (
-    <div className="split">
+    <div className="split main-first">
       <section className="card">
         <div className="toolbar">
           <Link className="btn ghost" to="/doctor">

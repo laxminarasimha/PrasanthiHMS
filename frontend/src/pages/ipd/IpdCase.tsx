@@ -97,7 +97,7 @@ export function IpdCase() {
   const freeBeds = beds.filter((b) => b.is_active && (!b.current_admission || b.id === admission.bed?.id))
 
   return (
-    <div className="split">
+    <div className="split main-first">
       <section className="card">
         <div className="toolbar">
           <Link className="btn ghost" to="/ipd">
