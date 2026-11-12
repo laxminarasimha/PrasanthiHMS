@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
@@ -9,7 +9,7 @@ const stamp = (at: string) => `${longDate(at)} ${clock(at)}`
 
 /**
  * The lab report as given to the patient. `?letterhead=1` leaves the top and bottom of each page
- * blank for pre-printed paper; `?items=1,2` prints only those tests.
+ * blank for pre-printed paper; `?items=1,2` prints only those tests; `?tabular=1` puts every test in one table.
  */
 export function LabReportPrint() {
   const { id } = useParams()
@@ -26,6 +26,7 @@ export function LabReportPrint() {
   }, [id])
 
   const letterhead = params.get('letterhead') === '1'
+  const tabular = params.get('tabular') === '1'
   const only = params.get('items')?.split(',').map(Number)
   const ready = (order?.items ?? []).filter((item) => (settings?.approval_required ? item.approved_at : item.reported_at))
   const printed = ready.filter((item) => !only || only.includes(item.id))
@@ -84,9 +85,68 @@ export function LabReportPrint() {
         </header>
       )}
 
-      {!settings.each_test_on_new_page && patientBlock}
+      {(tabular || !settings.each_test_on_new_page) && patientBlock}
 
-      {printed.map((item, index) => (
+      {tabular && (
+        <table className="lab-tabular">
+          <thead>
+            <tr>
+              <th>Test / parameter</th>
+              <th>Result</th>
+              <th>Unit</th>
+              <th>Reference range</th>
+            </tr>
+          </thead>
+          <tbody>
+            {printed.map((item) => (
+              <Fragment key={item.id}>
+                <tr className="lab-test-row">
+                  <td colSpan={4}>
+                    {item.test_name}
+                    {item.sample_type ? ` (${item.sample_type})` : ''}
+                    <small>
+                      {settings.print_sample_date && item.collected_at && <> Sample: {stamp(item.collected_at)} ·</>}
+                      {item.reported_at && <> Reported: {stamp(item.reported_at)}</>}
+                      {settings.print_approved_date && item.approved_at && <> · Approved: {stamp(item.approved_at)}</>}
+                    </small>
+                  </td>
+                </tr>
+                {item.kind === 'text' ? (
+                  <tr>
+                    <td colSpan={4} className="report-text">
+                      {item.report_text}
+                    </td>
+                  </tr>
+                ) : (
+                  (item.results ?? []).map((r) =>
+                    r.is_heading ? (
+                      <tr key={r.id} className="lab-heading">
+                        <td colSpan={4}>{r.parameter}</td>
+                      </tr>
+                    ) : (
+                      <tr key={r.id}>
+                        <td>{r.parameter}</td>
+                        <td>{r.flag ? <strong>{r.value} {r.flag === 'high' ? '(H)' : '(L)'}</strong> : r.value}</td>
+                        <td>{r.unit}</td>
+                        <td>{r.reference_range}</td>
+                      </tr>
+                    ),
+                  )
+                )}
+                {item.remarks && (
+                  <tr>
+                    <td colSpan={4} className="report-text">
+                      Comment: {item.remarks}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {!tabular && printed.map((item, index) => (
         <section key={item.id} className={settings.each_test_on_new_page && index > 0 ? 'new-page' : ''}>
           {settings.each_test_on_new_page && patientBlock}
           <h3>
@@ -138,9 +198,10 @@ export function LabReportPrint() {
       {pending > 0 && <p className="rx-vitals gap-top">{pending} test(s) in this order are still pending.</p>}
 
       <div className="lab-signatures">
-        {[settings.technician_1, settings.technician_2].filter(Boolean).map((name) => (
-          <div key={name}>
-            <strong>{name}</strong>
+        {([1, 2] as const).filter((slot) => settings[`technician_${slot}`]).map((slot) => (
+          <div key={slot}>
+            {settings[`technician_${slot}_signature`] && <img src={settings[`technician_${slot}_signature`]!} alt="" />}
+            <strong>{settings[`technician_${slot}`]}</strong>
             <br />
             <small>Lab technician</small>
           </div>

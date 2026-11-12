@@ -115,6 +115,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/lab/packages', [LabController::class, 'packages']);
     Route::post('/lab/packages', [LabController::class, 'storePackage']);
     Route::put('/lab/packages/{package}', [LabController::class, 'updatePackage']);
+    Route::post('/lab/orders/{order}/files', [LabController::class, 'storeFile']);
+    Route::get('/lab/files/{file}/download', [LabController::class, 'downloadFile']);
+    Route::delete('/lab/files/{file}', [LabController::class, 'destroyFile']);
+    Route::post('/lab/settings/signature', [LabController::class, 'saveSignature']);
+    Route::delete('/lab/settings/signature/{slot}', [LabController::class, 'destroySignature']);
     Route::get('/lab/settings', [LabController::class, 'settings']);
     Route::put('/lab/settings', [LabController::class, 'saveSettings']);
 

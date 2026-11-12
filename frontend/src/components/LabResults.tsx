@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, fieldErrors } from '../api'
 import { useAuth } from '../auth'
 import { clock, longDate, STAGE_CLASS, STAGE_LABEL } from '../format'
-import type { LabOrder, LabOrderItem, LabResult, LabSettings } from '../types'
+import type { LabOrder, LabOrderFile, LabOrderItem, LabResult, LabSettings } from '../types'
 
 type Props = {
   orderId: number
@@ -40,6 +40,11 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
   const [saving, setSaving] = useState(false)
   const [letterhead, setLetterhead] = useState(false)
   const [skip, setSkip] = useState<number[]>([])
+  // Follows the lab's preference until the box is ticked or unticked here.
+  const [tabularChoice, setTabularChoice] = useState<boolean | null>(null)
+  const [fileFor, setFileFor] = useState('')
+  const [fileTitle, setFileTitle] = useState('')
+  const [fileError, setFileError] = useState('')
 
   /** Shows the saved order. Only the test that was just saved has its typed values replaced, so work on the others is kept. */
   const apply = (next: LabOrder, reset: number | 'all' | null) => {
@@ -79,6 +84,30 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
     }, item.id)
   }
 
+  const upload = async (file: File | undefined) => {
+    if (!file) return
+    const body = new FormData()
+    body.append('file', file)
+    if (fileTitle.trim()) body.append('title', fileTitle.trim())
+    if (fileFor) body.append('lab_order_item_id', fileFor)
+    setFileError('')
+    try {
+      setOrder((await api.post<LabOrder>(`/lab/orders/${order.id}/files`, body)).data)
+      setFileTitle('')
+    } catch (err) {
+      setFileError(Object.values(fieldErrors(err))[0])
+    }
+  }
+  const openFile = async (f: LabOrderFile) => {
+    const res = await api.get<Blob>(`/lab/files/${f.id}/download`, { responseType: 'blob' })
+    window.open(URL.createObjectURL(res.data), '_blank')
+  }
+  const removeFile = async (f: LabOrderFile) => {
+    if (!window.confirm(`Remove "${f.title}" from this order?`)) return
+    setOrder((await api.delete<LabOrder>(`/lab/files/${f.id}`)).data)
+  }
+  const tabular = tabularChoice ?? Boolean(settings?.tabular_print)
+
   const setDraft = (itemId: number, change: Partial<Draft>) => setDrafts((d) => ({ ...d, [itemId]: { ...d[itemId], ...change } }))
 
   // What may go on the printed report: approved tests if the lab insists on approval, otherwise reported ones.
@@ -87,6 +116,7 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
   const unpaid = Boolean(settings && !settings.allow_print_without_payment && order.bill && order.bill.due > 0)
   const printQuery = new URLSearchParams({
     ...(letterhead ? { letterhead: '1' } : {}),
+    ...(tabular ? { tabular: '1' } : {}),
     ...(chosen.length < printable.length ? { items: chosen.map((item) => item.id).join(',') } : {}),
   }).toString()
   const printUrl = `/lab/orders/${order.id}/print${printQuery ? `?${printQuery}` : ''}`
@@ -109,6 +139,10 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
         <label className="check flush">
           <input type="checkbox" checked={letterhead} onChange={(e) => setLetterhead(e.target.checked)} />
           Print on letterhead
+        </label>
+        <label className="check flush" title="All tests in one table, instead of a section for each test">
+          <input type="checkbox" checked={tabular} onChange={(e) => setTabularChoice(e.target.checked)} />
+          Tabular
         </label>
         <span className="muted small grow">
           {unpaid
@@ -267,6 +301,62 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
           </section>
         )
       })}
+
+      <section className="lab-test">
+        <header>
+          <strong>Result files</strong>
+          <small className="muted"> · an outside lab's report, an ECG strip, a scanned sheet</small>
+        </header>
+        <ul className="history">
+          {(order.files ?? []).map((f) => (
+            <li key={f.id}>
+              <span>
+                <button type="button" className="link" onClick={() => openFile(f)}>
+                  {f.title}
+                </button>
+                <small className="muted">
+                  {' '}
+                  {order.items.find((i) => i.id === f.lab_order_item_id)?.test_name ?? 'Whole order'} · {Math.max(1, Math.round(f.size / 1024))} KB
+                  {f.uploader ? ` · ${f.uploader.name}` : ''} · {longDate(f.created_at)}
+                </small>
+              </span>
+              {canEdit && (
+                <button type="button" className="link danger" onClick={() => removeFile(f)}>
+                  Remove
+                </button>
+              )}
+            </li>
+          ))}
+          {(order.files ?? []).length === 0 && <li className="muted">No files attached.</li>}
+        </ul>
+        {canEdit && (
+          <div className="file-add">
+            <input placeholder="Title (optional)" value={fileTitle} onChange={(e) => setFileTitle(e.target.value)} aria-label="File title" />
+            <select value={fileFor} onChange={(e) => setFileFor(e.target.value)} aria-label="Which test the file is for">
+              <option value="">Whole order</option>
+              {order.items.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.test_name}
+                </option>
+              ))}
+            </select>
+            <label className="btn ghost">
+              + Attach file
+              <input
+                type="file"
+                hidden
+                accept="application/pdf,image/jpeg,image/png,image/webp"
+                onChange={(e) => {
+                  upload(e.target.files?.[0])
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          </div>
+        )}
+        {fileError && <p className="form-error">{fileError}</p>}
+        <p className="muted small">PDF or image, up to 10 MB. Files are kept with the order and are not part of the printed report.</p>
+      </section>
     </aside>
   )
 }

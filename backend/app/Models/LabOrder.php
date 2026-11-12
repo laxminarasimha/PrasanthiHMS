@@ -41,6 +41,11 @@ class LabOrder extends Model
         return $this->hasMany(LabOrderItem::class);
     }
 
+    public function files(): HasMany
+    {
+        return $this->hasMany(LabOrderFile::class)->orderBy('id');
+    }
+
     /** Pending until any test is reported, completed once all are. */
     public function refreshStatus(): void
     {

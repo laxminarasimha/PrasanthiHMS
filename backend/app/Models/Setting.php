@@ -26,6 +26,7 @@ class Setting extends Model
         'print_sample_date' => true,
         'print_approved_date' => true,
         'approval_required' => false,
+        'tabular_print' => false, // one table for the whole report instead of a section per test
     ];
 
     /** OPD hours and slot length for the appointment calendar. */
