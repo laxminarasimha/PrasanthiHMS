@@ -62,6 +62,10 @@ php artisan db:sync-remote --status   # only show what is pending
 
 It changes table structure only. It never copies or deletes rows, and the remote server must allow your IP address (Remote MySQL in the hosting panel).
 
+## Deployment
+
+The app deploys to shared hosting as one site (Laravel serves the API and the built React app) and needs PHP 8.3 or newer. `deploy/build.sh https://your-domain` produces an upload-ready zip; the steps are in [deploy/README.md](deploy/README.md).
+
 ## Workflow
 
 Each module is built on its own branch (`feature/<module>`), pushed when testable, and merged through a pull request.
