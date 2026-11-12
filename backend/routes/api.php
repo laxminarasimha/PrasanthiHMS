@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\IpdController;
 use App\Http\Controllers\Api\LabController;
 use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\PharmacyController;
+use App\Http\Controllers\Api\PharmacyEditController;
 use App\Http\Controllers\Api\PharmacyReportController;
 use App\Http\Controllers\Api\PharmacySalesController;
 use App\Http\Controllers\Api\PharmacyStockController;
@@ -157,6 +158,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/purchase-orders', 'storePurchaseOrder');
         Route::get('/purchase-orders/{order}', 'showPurchaseOrder');
         Route::put('/purchase-orders/{order}', 'updatePurchaseOrder');
+    });
+
+    Route::prefix('pharmacy')->controller(PharmacyEditController::class)->group(function () {
+        Route::put('/sales/{sale}', 'updateSale');
+        Route::put('/purchases/{purchase}', 'updatePurchase');
+        Route::put('/stock/{batch}', 'updateBatch');
     });
 
     Route::get('/pharmacy/reports/{type}', [PharmacyReportController::class, 'show']);

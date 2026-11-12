@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Medicine;
+use App\Models\PharmacyChange;
 use App\Models\PharmacySale;
 use App\Models\PharmacySaleItem;
 use App\Models\PharmacySaleReturn;
@@ -32,6 +33,10 @@ class PharmacyReportController extends Controller
         'date-margin' => 'Date wise margin report',
         'stock-adjustments' => 'Stock adjustment report',
         'deleted-bills' => 'Deleted bills report',
+        'bills-modified' => 'Bill modified report',
+        'invoices-modified' => 'Invoice modified report',
+        'stock-updated' => 'Stock data update report',
+        'medicines-updated' => 'Medicine data updated report',
         'schedule-drugs' => 'Schedule drug report',
         'moving' => 'Moving and non-moving medicines',
     ];
@@ -232,6 +237,40 @@ class PharmacyReportController extends Controller
         return [[
             self::col('bill_no', 'Bill'), self::col('billed_on', 'Billed on'), self::col('deleted_on', 'Deleted on'),
             self::col('customer', 'Customer'), self::col('total', 'Bill total', 'money'), self::col('reason', 'Reason'),
+        ], $rows];
+    }
+
+    private function BillsModified(Carbon $from, Carbon $to): array
+    {
+        return $this->changes('sale', 'Bill', $from, $to);
+    }
+
+    private function InvoicesModified(Carbon $from, Carbon $to): array
+    {
+        return $this->changes('invoice', 'Invoice', $from, $to);
+    }
+
+    private function StockUpdated(Carbon $from, Carbon $to): array
+    {
+        return $this->changes('stock', 'Batch', $from, $to);
+    }
+
+    private function MedicinesUpdated(Carbon $from, Carbon $to): array
+    {
+        return $this->changes('medicine', 'Medicine', $from, $to);
+    }
+
+    /** Edits of one kind from the change log: when, to what, by whom, what changed and why. */
+    private function changes(string $kind, string $heading, Carbon $from, Carbon $to): array
+    {
+        $rows = PharmacyChange::where('kind', $kind)->whereBetween('created_at', [$from, $to])->with('user:id,name')->latest()->latest('id')->get()
+            ->map(fn (PharmacyChange $c) => [
+                'date' => $c->created_at->format('Y-m-d H:i'), 'subject' => $c->label, 'person' => $c->user?->name,
+                'changes' => str_replace("\n", '; ', $c->summary), 'reason' => $c->reason,
+            ]);
+
+        return [[
+            self::col('date', 'Time'), self::col('subject', $heading), self::col('person', 'Changed by'), self::col('changes', 'What changed'), self::col('reason', 'Reason'),
         ], $rows];
     }
 
