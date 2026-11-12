@@ -67,6 +67,28 @@ return [
             ], fn ($value) => $value !== null) : [],
         ],
 
+        // The shared dev database on the hosting server. Day-to-day work uses the local
+        // "mysql" connection; `php artisan db:sync-remote` brings this one's tables up to date.
+        'remote' => [
+            'driver' => 'mysql',
+            'host' => env('REMOTE_DB_HOST'),
+            'port' => env('REMOTE_DB_PORT', '3306'),
+            'database' => env('REMOTE_DB_DATABASE'),
+            'username' => env('REMOTE_DB_USERNAME'),
+            'password' => env('REMOTE_DB_PASSWORD', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+            // Always encrypted; the host's certificate cannot be verified.
+            'options' => extension_loaded('pdo_mysql') ? [
+                Mysql::ATTR_SSL_CA => env('REMOTE_DB_SSL_CA', '/etc/ssl/cert.pem'),
+                Mysql::ATTR_SSL_VERIFY_SERVER_CERT => false,
+            ] : [],
+        ],
+
         'mariadb' => [
             'driver' => 'mariadb',
             'url' => env('DB_URL'),
