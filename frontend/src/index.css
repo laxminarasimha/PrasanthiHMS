@@ -240,3 +240,12 @@ input.result.low { border-color: #1d4f91; color: #1d4f91; font-weight: 700; }
 @media (max-width: 700px) { .grid.three, .grid.four { grid-template-columns: 1fr; } }
 .receipt table { font-size: 0.88rem; }
 .receipt th, .receipt td { padding: 6px 5px; white-space: normal; }
+
+/* IPD */
+.tabs .push { margin-left: auto; align-self: center; }
+.gap-bottom { margin-bottom: 12px; }
+.charge-row { display: grid; grid-template-columns: 1.4fr 1.6fr 1fr 0.6fr 0.8fr auto; gap: 6px; margin-top: 10px; align-items: center; }
+.charge-row.pay { grid-template-columns: 0.9fr 0.9fr 1fr 1.6fr auto; }
+.stack.panel { width: 400px; flex-shrink: 0; }
+.stack.panel .card h2 { margin-bottom: 4px; }
+@media (max-width: 1000px) { .stack.panel { width: 100%; } .charge-row, .charge-row.pay { grid-template-columns: 1fr 1fr; } }

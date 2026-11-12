@@ -1,0 +1,87 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+#[Fillable([
+    'branch_id', 'patient_id', 'doctor_id', 'bed_id', 'admitted_at', 'discharged_at', 'status', 'reason',
+    'attendant_name', 'attendant_phone', 'discharge_summary', 'discount', 'created_by',
+])]
+class Admission extends Model
+{
+    public const CLOSED_STATUSES = ['discharged', 'lama', 'dama', 'absconded', 'died'];
+
+    protected $appends = ['net', 'due'];
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'admitted_at' => 'datetime:Y-m-d H:i', 'discharged_at' => 'datetime:Y-m-d H:i',
+            'total' => 'float', 'discount' => 'float', 'paid' => 'float',
+        ];
+    }
+
+    protected static function booted(): void
+    {
+        static::created(function (Admission $admission) {
+            $admission->ipd_no = 'IP'.str_pad((string) $admission->id, 5, '0', STR_PAD_LEFT);
+            $admission->saveQuietly();
+        });
+    }
+
+    public function patient(): BelongsTo
+    {
+        return $this->belongsTo(Patient::class);
+    }
+
+    public function doctor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'doctor_id');
+    }
+
+    public function bed(): BelongsTo
+    {
+        return $this->belongsTo(Bed::class);
+    }
+
+    public function charges(): HasMany
+    {
+        return $this->hasMany(AdmissionCharge::class)->orderBy('charged_on')->orderBy('id');
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(AdmissionPayment::class)->orderBy('id');
+    }
+
+    /** Charges less discount. */
+    public function getNetAttribute(): float
+    {
+        return round(max(0, $this->total - $this->discount), 2);
+    }
+
+    /** Positive when the patient owes money, negative when advances exceed the bill. */
+    public function getDueAttribute(): float
+    {
+        return round($this->net - $this->paid, 2);
+    }
+
+    /** Recomputes the stored totals from the charge and payment rows. */
+    public function recalculate(): void
+    {
+        $this->total = round((float) $this->charges()->sum('amount'), 2);
+        $this->paid = round(
+            (float) $this->payments()->whereIn('type', ['advance', 'payment'])->sum('amount')
+            - (float) $this->payments()->where('type', 'refund')->sum('amount'),
+            2
+        );
+        $this->save();
+    }
+}

@@ -43,3 +43,18 @@ export const expiryLabel = (date: string) =>
 
 /** Whole days from today until the given date (negative once it has passed). */
 export const daysUntil = (date: string) => Math.round((new Date(date.slice(0, 10) + 'T00:00:00').getTime() - new Date(today() + 'T00:00:00').getTime()) / 86400000)
+
+export const ADMISSION_STATUS: Record<string, string> = {
+  admitted: 'Admitted',
+  discharged: 'Discharged',
+  lama: 'LAMA',
+  dama: 'DAMA',
+  absconded: 'Absconded',
+  died: 'Died',
+}
+
+/** Current local date and time as "YYYY-MM-DDTHH:MM", the format date-time inputs use. */
+export const nowLocal = () => {
+  const d = new Date()
+  return `${today()}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
