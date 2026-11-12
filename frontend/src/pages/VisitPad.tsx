@@ -14,13 +14,25 @@ const VITALS = [
   { key: 'pulse', label: 'Pulse (/min)' },
   { key: 'temperature_f', label: 'Temp (°F)' },
   { key: 'spo2', label: 'SpO₂ (%)' },
+  { key: 'resp_rate', label: 'Resp. rate (/min)' },
 ] as const
 
-const NOTES = [
-  { key: 'complaints', label: 'Complaints', hint: 'What the patient reports, and for how long' },
-  { key: 'findings', label: 'Examination findings', hint: '' },
-  { key: 'diagnosis', label: 'Diagnosis', hint: '' },
+/** The general examination checklist, in the order doctors recite it. */
+const SIGNS = [
+  { key: 'pallor', label: 'Pallor' },
+  { key: 'icterus', label: 'Icterus' },
+  { key: 'cyanosis', label: 'Cyanosis' },
+  { key: 'clubbing', label: 'Clubbing' },
+  { key: 'lymphadenopathy', label: 'Lymphadenopathy' },
+  { key: 'edema', label: 'Edema' },
 ] as const
+
+const TEXT_KEYS = [
+  'quick_notes', 'complaints', 'history', 'past_medication', 'general_exam_notes', 'findings', 'diagnosis',
+  'assessment_plan', 'tests_advised', 'advice', 'refer_to', 'follow_up_on',
+]
+
+type Exam = Record<string, 'present' | 'absent' | ''>
 
 const FREQUENCIES = ['1-0-0', '0-1-0', '0-0-1', '1-0-1', '1-1-0', '0-1-1', '1-1-1', '1-1-1-1', 'SOS', 'Once a week']
 const TIMINGS = ['After food', 'Before food', 'Empty stomach', 'At bedtime']
@@ -29,14 +41,16 @@ const emptyMedicine = (): Medicine => ({ medicine: '', dose: '', frequency: '', 
 
 type Form = Record<string, string>
 
-function toForm(c: Consultation | null): Form {
-  const form: Form = {}
-  for (const key of [...VITALS.map((v) => v.key), ...NOTES.map((n) => n.key), 'tests_advised', 'advice', 'follow_up_on']) {
+function toForm(c: Consultation | null, allergies: string | null = null): Form {
+  const form: Form = { allergies: allergies ?? '' }
+  for (const key of [...VITALS.map((v) => v.key), ...TEXT_KEYS]) {
     const value = c?.[key as keyof Consultation]
     form[key] = value === null || value === undefined ? '' : String(value)
   }
   return form
 }
+
+const toExam = (c: Consultation | null): Exam => Object.fromEntries(SIGNS.map((sign) => [sign.key, c?.general_exam?.[sign.key] ?? '']))
 
 export function VisitPad() {
   const { id } = useParams()
@@ -44,6 +58,7 @@ export function VisitPad() {
   const [visit, setVisit] = useState<Visit | null>(null)
   const [form, setForm] = useState<Form>(toForm(null))
   const [medicines, setMedicines] = useState<Medicine[]>([emptyMedicine()])
+  const [exam, setExam] = useState<Exam>(toExam(null))
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [history, setHistory] = useState<Consultation[]>([])
   const [errors, setErrors] = useState<FieldErrors>({})
@@ -57,7 +72,8 @@ export function VisitPad() {
 
   const apply = (next: Visit) => {
     setVisit(next)
-    setForm(toForm(next.consultation))
+    setForm(toForm(next.consultation, next.patient.allergies))
+    setExam(toExam(next.consultation))
     setMedicines(next.consultation?.medicines.length ? next.consultation.medicines : [emptyMedicine()])
   }
 
@@ -84,6 +100,7 @@ export function VisitPad() {
     setErrors({})
     setNotice('')
     const payload: Record<string, unknown> = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v === '' ? null : v]))
+    payload.general_exam = Object.fromEntries(SIGNS.map((sign) => [sign.key, exam[sign.key] || null]))
     // Rows left completely blank are dropped rather than reported as errors.
     payload.medicines = medicines
       .filter((m) => Object.entries(m).some(([k, v]) => k !== 'id' && v))
@@ -119,6 +136,9 @@ export function VisitPad() {
     }
   }
 
+  const height = Number(form.height_cm) / 100
+  const bmi = height > 0 && Number(form.weight_kg) > 0 ? (Number(form.weight_kg) / (height * height)).toFixed(1) : null
+
   const visibleTests = labTests.filter((t) => t.name.toLowerCase().includes(testFilter.trim().toLowerCase()))
   const errorList = Object.entries(errors)
   const pastVisits = history.filter((h) => h.id !== visit.consultation?.id)
@@ -134,7 +154,8 @@ export function VisitPad() {
             <h1>{visit.patient.name}</h1>
             <span className="muted">
               {visit.patient.uhid} · {visit.patient.age}y / {visit.patient.gender.charAt(0).toUpperCase()} · {visit.patient.mobile}
-              {visit.patient.blood_group ? ` · ${visit.patient.blood_group}` : ''} · {visit.service?.name ?? 'Visit'} with {visit.doctor.name},{' '}
+              {visit.patient.blood_group ? ` · ${visit.patient.blood_group}` : ''}
+              {visit.patient.allergies ? <strong className="due"> · Allergic to {visit.patient.allergies}</strong> : null} · {visit.service?.name ?? 'Visit'} with {visit.doctor.name},{' '}
               {longDate(visit.appointment.scheduled_at)} {clock(visit.appointment.scheduled_at)}
             </span>
           </div>
@@ -156,20 +177,100 @@ export function VisitPad() {
         )}
 
         <fieldset disabled={!canEdit}>
+          <div className={`allergy ${form.allergies.trim() ? 'has' : ''}`}>
+            <TextField label="Allergies (kept on the patient's record)" placeholder="None known" value={form.allergies} onChange={set('allergies')} error={errors.allergies} />
+          </div>
+          <Field label="Quick notes (for you only; not printed)" error={errors.quick_notes}>
+            <textarea rows={2} placeholder="" value={form.quick_notes} onChange={(e) => set('quick_notes')(e.target.value)} />
+          </Field>
+
           <h3>Vitals</h3>
           <div className="vitals">
             {VITALS.map((v) => (
               <TextField key={v.key} label={v.label} type="number" step="any" value={form[v.key]} onChange={set(v.key)} error={errors[v.key]} />
             ))}
+            <label className="field">
+              <span className="field-label">BMI</span>
+              <output className="bmi">{bmi ?? '—'}</output>
+            </label>
           </div>
 
-          {NOTES.map((n) => (
-            <Field key={n.key} label={n.label} error={errors[n.key]}>
-              <textarea rows={2} placeholder={n.hint} value={form[n.key]} onChange={(e) => set(n.key)(e.target.value)} />
-            </Field>
-          ))}
+          <Field label="Complaints" error={errors.complaints}>
+            <textarea rows={2} placeholder="What the patient reports, and for how long" value={form.complaints} onChange={(e) => set('complaints')(e.target.value)} />
+          </Field>
+          <Field label="History" error={errors.history}>
+            <textarea rows={2} placeholder="Past illnesses, surgeries, family and personal history" value={form.history} onChange={(e) => set('history')(e.target.value)} />
+          </Field>
+          <Field label="Past medication" error={errors.past_medication}>
+            <textarea rows={2} placeholder="Medicines the patient is already taking" value={form.past_medication} onChange={(e) => set('past_medication')(e.target.value)} />
+          </Field>
 
-          <h3>Medicines</h3>
+          <h3>General examination</h3>
+          <div className="signs">
+            {SIGNS.map((sign) => (
+              <div key={sign.key} className="sign">
+                <span>{sign.label}</span>
+                {(['present', 'absent'] as const).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`chip ${exam[sign.key] === value ? value : ''}`}
+                    aria-pressed={exam[sign.key] === value}
+                    onClick={() => setExam((current) => ({ ...current, [sign.key]: current[sign.key] === value ? '' : value }))}
+                  >
+                    {value === 'present' ? 'Present' : 'Absent'}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+          <Field label="General examination notes" error={errors.general_exam_notes}>
+            <textarea rows={2} placeholder="" value={form.general_exam_notes} onChange={(e) => set('general_exam_notes')(e.target.value)} />
+          </Field>
+          <Field label="Systemic examination" error={errors.findings}>
+            <textarea rows={2} placeholder="CVS, RS, P/A, CNS" value={form.findings} onChange={(e) => set('findings')(e.target.value)} />
+          </Field>
+          <Field label="Diagnosis" error={errors.diagnosis}>
+            <textarea rows={2} placeholder="" value={form.diagnosis} onChange={(e) => set('diagnosis')(e.target.value)} />
+          </Field>
+          <Field label="Assessment / plan" error={errors.assessment_plan}>
+            <textarea rows={2} placeholder="" value={form.assessment_plan} onChange={(e) => set('assessment_plan')(e.target.value)} />
+          </Field>
+
+          <h3>Tests prescribed</h3>
+          {picking ? (
+            <div className="lab-pick">
+              <input type="search" placeholder="Filter tests" value={testFilter} onChange={(e) => setTestFilter(e.target.value)} aria-label="Filter lab tests" />
+              <ul className="checklist short">
+                {visibleTests.map((t) => (
+                  <li key={t.id}>
+                    <label>
+                      <input type="checkbox" checked={chosenTests.includes(t.id)} onChange={() => setChosenTests((ids) => (ids.includes(t.id) ? ids.filter((i) => i !== t.id) : [...ids, t.id]))} />
+                      <span className="grow">{t.name}</span>
+                      <span className="mono">{rupees(t.price)}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              <div className="row gap-top">
+                <button type="button" className="btn primary" disabled={chosenTests.length === 0} onClick={orderTests}>
+                  Send {chosenTests.length || ''} test{chosenTests.length === 1 ? '' : 's'} to lab
+                </button>
+                <button type="button" className="btn ghost" onClick={() => setPicking(false)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="link" onClick={() => setPicking(true)}>
+              + Order lab tests
+            </button>
+          )}
+          <Field label="Other tests advised (done outside)" error={errors.tests_advised}>
+            <textarea rows={2} placeholder="One test per line" value={form.tests_advised} onChange={(e) => set('tests_advised')(e.target.value)} />
+          </Field>
+
+          <h3>Prescription</h3>
           <datalist id="medicine-names">
             {suggestions.map((name) => (
               <option key={name} value={name} />
@@ -213,44 +314,12 @@ export function VisitPad() {
             + Add medicine
           </button>
 
-          <h3>Lab tests</h3>
-          {picking ? (
-            <div className="lab-pick">
-              <input type="search" placeholder="Filter tests" value={testFilter} onChange={(e) => setTestFilter(e.target.value)} aria-label="Filter lab tests" />
-              <ul className="checklist short">
-                {visibleTests.map((t) => (
-                  <li key={t.id}>
-                    <label>
-                      <input type="checkbox" checked={chosenTests.includes(t.id)} onChange={() => setChosenTests((ids) => (ids.includes(t.id) ? ids.filter((i) => i !== t.id) : [...ids, t.id]))} />
-                      <span className="grow">{t.name}</span>
-                      <span className="mono">{rupees(t.price)}</span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-              <div className="row gap-top">
-                <button type="button" className="btn primary" disabled={chosenTests.length === 0} onClick={orderTests}>
-                  Send {chosenTests.length || ''} test{chosenTests.length === 1 ? '' : 's'} to lab
-                </button>
-                <button type="button" className="btn ghost" onClick={() => setPicking(false)}>
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button type="button" className="link" onClick={() => setPicking(true)}>
-              + Order lab tests
-            </button>
-          )}
-
+          <Field label="Advice" error={errors.advice}>
+            <textarea rows={2} placeholder="Diet, rest, warning signs" value={form.advice} onChange={(e) => set('advice')(e.target.value)} />
+          </Field>
           <div className="grid gap-top">
-            <Field label="Other tests advised (done outside)" error={errors.tests_advised}>
-              <textarea rows={2} placeholder="One test per line" value={form.tests_advised} onChange={(e) => set('tests_advised')(e.target.value)} />
-            </Field>
-            <Field label="Advice" error={errors.advice}>
-              <textarea rows={2} placeholder="Diet, rest, warning signs" value={form.advice} onChange={(e) => set('advice')(e.target.value)} />
-            </Field>
-            <TextField label="Follow-up date" type="date" value={form.follow_up_on} onChange={set('follow_up_on')} error={errors.follow_up_on} />
+            <TextField label="Refer to" placeholder="Doctor or hospital, and why" value={form.refer_to} onChange={set('refer_to')} error={errors.refer_to} />
+            <TextField label="Next visit date" type="date" value={form.follow_up_on} onChange={set('follow_up_on')} error={errors.follow_up_on} />
           </div>
         </fieldset>
 
@@ -317,7 +386,9 @@ export function VisitPad() {
             </summary>
             {h.doctor && <p className="muted">{h.doctor.name}</p>}
             {h.complaints && <p><b>Complaints:</b> {h.complaints}</p>}
-            {h.findings && <p><b>Findings:</b> {h.findings}</p>}
+            {h.history && <p><b>History:</b> {h.history}</p>}
+            {h.findings && <p><b>Examination:</b> {h.findings}</p>}
+            {h.assessment_plan && <p><b>Plan:</b> {h.assessment_plan}</p>}
             {h.bp_systolic && <p><b>BP:</b> {h.bp_systolic}/{h.bp_diastolic}{h.weight_kg ? ` · ${h.weight_kg} kg` : ''}</p>}
             {h.medicines.length > 0 && (
               <ul>

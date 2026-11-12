@@ -12,10 +12,13 @@ use App\Models\PrescriptionItem;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class ConsultationController extends Controller
 {
-    private const PATIENT = 'patient:id,uhid,name,gender,date_of_birth,mobile,blood_group';
+    private const PATIENT = 'patient:id,uhid,name,gender,date_of_birth,mobile,blood_group,allergies';
+
+    public const GENERAL_EXAM_SIGNS = ['pallor', 'icterus', 'cyanosis', 'clubbing', 'lymphadenopathy', 'edema'];
 
     /**
      * One day's patients for the doctor's screen. Doctors see their own list;
@@ -68,6 +71,16 @@ class ConsultationController extends Controller
             'pulse' => ['nullable', 'integer', 'between:20,250'],
             'temperature_f' => ['nullable', 'numeric', 'between:85,112'],
             'spo2' => ['nullable', 'integer', 'between:40,100'],
+            'resp_rate' => ['nullable', 'integer', 'between:4,80'],
+            'allergies' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'quick_notes' => ['nullable', 'string', 'max:5000'],
+            'history' => ['nullable', 'string', 'max:5000'],
+            'past_medication' => ['nullable', 'string', 'max:5000'],
+            'general_exam' => ['nullable', 'array:'.implode(',', self::GENERAL_EXAM_SIGNS)],
+            'general_exam.*' => ['nullable', Rule::in(['present', 'absent'])],
+            'general_exam_notes' => ['nullable', 'string', 'max:5000'],
+            'assessment_plan' => ['nullable', 'string', 'max:5000'],
+            'refer_to' => ['nullable', 'string', 'max:500'],
             'complaints' => ['nullable', 'string', 'max:5000'],
             'findings' => ['nullable', 'string', 'max:5000'],
             'diagnosis' => ['nullable', 'string', 'max:5000'],
@@ -88,14 +101,23 @@ class ConsultationController extends Controller
             'bp_diastolic.required_with' => 'Enter both blood pressure values.',
         ], [
             'weight_kg' => 'weight', 'height_cm' => 'height', 'bp_systolic' => 'BP systolic', 'bp_diastolic' => 'BP diastolic',
-            'temperature_f' => 'temperature', 'spo2' => 'SpO₂', 'follow_up_on' => 'follow-up date',
+            'temperature_f' => 'temperature', 'spo2' => 'SpO₂', 'resp_rate' => 'respiratory rate', 'follow_up_on' => 'next visit date',
         ]);
 
         $complete = (bool) ($data['complete'] ?? false);
         $medicines = $data['medicines'] ?? null;
-        unset($data['complete'], $data['medicines']);
+        $allergies = array_key_exists('allergies', $data) ? ['allergies' => $data['allergies']] : null;
+        // Keep only the signs that were actually marked.
+        if (isset($data['general_exam'])) {
+            $data['general_exam'] = array_filter($data['general_exam']) ?: null;
+        }
+        unset($data['complete'], $data['medicines'], $data['allergies']);
 
-        DB::transaction(function () use ($appointment, $data, $medicines, $complete) {
+        DB::transaction(function () use ($appointment, $data, $medicines, $complete, $allergies) {
+            if ($allergies) {
+                $appointment->patient()->update($allergies);
+            }
+
             $consultation = Consultation::firstOrNew(['appointment_id' => $appointment->id]);
             $consultation->fill($data + [
                 'patient_id' => $appointment->patient_id,

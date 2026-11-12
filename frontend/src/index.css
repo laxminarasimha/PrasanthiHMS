@@ -273,3 +273,16 @@ h2.gap-top { margin-top: 20px; }
 .rx-card { border: 1px solid var(--border); border-left: 4px solid var(--brand); border-radius: 8px; padding: 10px 12px; margin-top: 12px; background: #fbfdfd; }
 .rx-card ul { list-style: none; margin: 8px 0 0; padding: 0; }
 .rx-card li { display: flex; gap: 12px; align-items: center; padding: 5px 0; border-top: 1px solid var(--border); }
+
+/* Visit pad sections matched to the reference layout */
+.allergy input { border-color: var(--border); }
+.allergy.has input { border-color: var(--danger); background: var(--danger-soft); color: var(--danger); font-weight: 600; }
+.bmi { padding: 8px 10px; border: 1px dashed var(--border); border-radius: 6px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.signs { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px 20px; }
+.sign { display: flex; align-items: center; gap: 6px; }
+.sign span { flex: 1; }
+.chip { font: inherit; font-size: 0.82rem; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); background: #fff; cursor: pointer; color: var(--muted); }
+.chip.present { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); font-weight: 700; }
+.chip.absent { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); font-weight: 700; }
+.rx-allergy { color: var(--danger); font-weight: 700; margin-bottom: 6px; }
+.capitalise::first-letter { text-transform: uppercase; }
