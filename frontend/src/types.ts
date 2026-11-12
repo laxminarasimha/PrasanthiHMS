@@ -7,6 +7,7 @@ export type User = {
   can_manage_staff: boolean
   can_consult: boolean
   can_run_lab: boolean
+  can_run_pharmacy: boolean
   branch: { id: number; name: string; city: string | null } | null
 }
 
@@ -113,7 +114,7 @@ export type Bill = {
   appointment: { id: number; scheduled_at: string; doctor: { id: number; name: string } } | null
 }
 
-export type Medicine = {
+export type PrescribedMedicine = {
   id?: number
   medicine: string
   dose: string | null
@@ -139,7 +140,7 @@ export type Consultation = {
   advice: string | null
   follow_up_on: string | null
   completed_at: string | null
-  medicines: Medicine[]
+  medicines: PrescribedMedicine[]
   doctor?: { id: number; name: string }
 }
 
@@ -211,4 +212,94 @@ export type LabOrder = {
   patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile'>
   items: LabOrderItem[]
   bill: { id: number; bill_no: string; total: number; paid: number; due: number } | null
+}
+
+export type Medicine = {
+  id: number
+  name: string
+  type: string | null
+  manufacturer: string | null
+  category: string | null
+  hsn_code: string | null
+  gst_percent: number
+  units_per_pack: number
+  reorder_level: number
+  is_active: boolean
+  units_in_stock: number
+}
+
+export type Stockist = { id: number; name: string; phone: string | null; gstin: string | null; address: string | null }
+
+export type StockBatch = {
+  id: number
+  medicine_id: number
+  batch_no: string
+  expiry: string
+  units_per_pack: number
+  packs: number
+  free_packs: number
+  pack_price: number
+  pack_mrp: number
+  unit_mrp: number
+  discount_percent: number
+  gst_percent: number
+  units_received: number
+  units_in_stock: number
+  rack_no: string | null
+  medicine?: { id: number; name: string; reorder_level?: number }
+  invoice?: { id: number; invoice_no: string } | null
+}
+
+export type PurchaseInvoice = {
+  id: number
+  invoice_no: string
+  invoice_date: string
+  subtotal: number
+  tax: number
+  total: number
+  remarks: string | null
+  stockist: { id: number; name: string }
+  batches_count?: number
+  batches?: StockBatch[]
+}
+
+export type SellableMedicine = {
+  id: number
+  name: string
+  type: string | null
+  sellable_batches: Pick<StockBatch, 'id' | 'batch_no' | 'expiry' | 'unit_mrp' | 'gst_percent' | 'units_in_stock' | 'rack_no'>[]
+}
+
+export type PharmacySaleItem = {
+  id: number
+  medicine_name: string
+  batch_no: string
+  expiry: string
+  quantity: number
+  unit_price: number
+  discount_percent: number
+  gst_percent: number
+  amount: number
+}
+
+export type PharmacySale = {
+  id: number
+  bill_no: string
+  customer_name: string
+  customer_phone: string | null
+  referred_doctor: string | null
+  sold_at: string
+  subtotal: number
+  discount: number
+  tax: number
+  round_off: number
+  total: number
+  paid: number
+  due: number
+  payment_mode: string
+  reference: string | null
+  items_count?: number
+  items?: PharmacySaleItem[]
+  patient?: { id: number; uhid: string; name: string } | null
+  seller?: { id: number; name: string } | null
 }

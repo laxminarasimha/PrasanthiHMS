@@ -44,6 +44,7 @@ Sign in with the seeded admin account `admin@prasanthi.test` (a sample doctor, `
 - Services: the price list used for appointments and bills
 - Doctor: the day's patient queue, a visit pad (vitals, notes, medicines, tests, advice, follow-up), past visits and a printable prescription
 - Lab: test list with parameters and reference ranges, lab orders with billing, results entry with high/low flags, and a printable report
+- Pharmacy: medicine list, stockists, purchase invoices that add stock by batch and expiry, stock view with expiry and low-stock warnings, billing from stock, and a printable bill
 
 Run the backend tests with `php artisan test` from `backend/`.
 

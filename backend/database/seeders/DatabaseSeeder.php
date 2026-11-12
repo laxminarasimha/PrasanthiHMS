@@ -4,8 +4,11 @@ namespace Database\Seeders;
 
 use App\Models\Branch;
 use App\Models\LabTest;
+use App\Models\Medicine;
 use App\Models\Patient;
+use App\Models\PurchaseInvoice;
 use App\Models\Service;
+use App\Models\Stockist;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 
@@ -69,6 +72,35 @@ class DatabaseSeeder extends Seeder
                     $test->parameters()->create(['name' => $parameter, 'unit' => $unit, 'reference_range' => $range, 'position' => $position]);
                 }
             }
+        }
+
+        if (Medicine::count() === 0) {
+            $stockist = Stockist::create(['name' => 'Sample Medical Agencies', 'phone' => '9000000002']);
+            $invoice = PurchaseInvoice::create([
+                'branch_id' => $branch->id, 'stockist_id' => $stockist->id, 'invoice_no' => 'SAMPLE-001', 'invoice_date' => today(),
+            ]);
+            // name, type, manufacturer, units per pack, packs, pack price, pack MRP, GST %, months to expiry
+            $medicines = [
+                ['Paracetamol 650mg Tablet', 'Tablet', 'Sample Pharma', 10, 30, 15, 28, 12, 18],
+                ['Cetirizine 10mg Tablet', 'Tablet', 'Sample Pharma', 10, 20, 9, 18, 12, 24],
+                ['Pantoprazole 40mg Tablet', 'Tablet', 'Sample Labs', 15, 20, 62, 110, 12, 14],
+                ['Amoxicillin 500mg Capsule', 'Capsule', 'Sample Labs', 10, 15, 48, 85, 12, 3],
+                ['Cough Syrup 100ml', 'Syrup', 'Sample Remedies', 1, 24, 58, 95, 12, 20],
+                ['ORS Sachet', 'Sachet', 'Sample Remedies', 1, 50, 14, 22, 5, 30],
+            ];
+            $subtotal = $tax = 0;
+            foreach ($medicines as $i => [$name, $type, $maker, $perPack, $packs, $price, $mrp, $gst, $months]) {
+                $medicine = Medicine::create(['name' => $name, 'type' => $type, 'manufacturer' => $maker, 'gst_percent' => $gst, 'units_per_pack' => $perPack, 'reorder_level' => $perPack * 5]);
+                $invoice->batches()->create([
+                    'medicine_id' => $medicine->id, 'batch_no' => 'SMP'.str_pad((string) ($i + 1), 3, '0', STR_PAD_LEFT),
+                    'expiry' => today()->addMonths($months)->endOfMonth(), 'units_per_pack' => $perPack, 'packs' => $packs,
+                    'pack_price' => $price, 'pack_mrp' => $mrp, 'unit_mrp' => round($mrp / $perPack, 2), 'gst_percent' => $gst,
+                    'units_received' => $packs * $perPack, 'units_in_stock' => $packs * $perPack,
+                ]);
+                $subtotal += $packs * $price;
+                $tax += round($packs * $price * $gst / 100, 2);
+            }
+            $invoice->update(['subtotal' => $subtotal, 'tax' => $tax, 'total' => $subtotal + $tax]);
         }
 
         if (Patient::count() === 0) {
