@@ -12,6 +12,8 @@ import { FrontDesk } from './pages/FrontDesk'
 import { Ipd } from './pages/ipd/Ipd'
 import { IpdCase } from './pages/ipd/IpdCase'
 import { IpdPrint } from './pages/ipd/IpdPrint'
+import { IpdReports } from './pages/ipd/IpdReports'
+import { IpdSummaryPrint } from './pages/ipd/IpdSummaryPrint'
 import { IpdSetup } from './pages/ipd/IpdSetup'
 import { Lab } from './pages/Lab'
 import { LabReportPrint } from './pages/LabReportPrint'
@@ -77,6 +79,7 @@ export default function App() {
           <Route path="/visits/:id/print" element={<PrintOnly><PrescriptionPrint /></PrintOnly>} />
           <Route path="/lab/orders/:id/print" element={<PrintOnly><LabReportPrint /></PrintOnly>} />
           <Route path="/ipd/:id/print" element={<PrintOnly><IpdPrint /></PrintOnly>} />
+          <Route path="/ipd/:id/summary/print" element={<PrintOnly><IpdSummaryPrint /></PrintOnly>} />
           <Route path="/pharmacy/bills/:id/print" element={<PrintOnly><PharmacySalePrint /></PrintOnly>} />
           <Route element={<Protected />}>
             <Route path="/front-desk" element={<Only when="can_front_desk"><FrontDesk /></Only>} />
@@ -102,6 +105,7 @@ export default function App() {
             <Route path="/pharmacy/purchases" element={<Only when="can_run_pharmacy"><PharmacyPurchases /></Only>} />
             <Route path="/pharmacy/medicines" element={<Only when="can_run_pharmacy"><PharmacyMedicines /></Only>} />
             <Route path="/ipd" element={<Only when="can_ipd"><Ipd /></Only>} />
+            <Route path="/ipd/reports" element={<Only when="can_ipd"><IpdReports /></Only>} />
             <Route path="/ipd/setup" element={<Only when="can_manage_setup"><IpdSetup /></Only>} />
             <Route path="/ipd/:id" element={<Only when="can_ipd"><IpdCase /></Only>} />
             <Route path="/patients" element={<Patients />} />

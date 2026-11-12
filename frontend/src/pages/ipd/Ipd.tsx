@@ -79,9 +79,12 @@ export function Ipd() {
         <div className="toolbar">
           <h1>IPD cases</h1>
           <input className="search" type="search" placeholder="Find by patient name, mobile, ID or IPD no." value={query} onChange={(e) => setQuery(e.target.value)} />
+          <Link className="btn ghost" to="/ipd/reports">
+            Reports
+          </Link>
           {user?.can_manage_setup && (
             <Link className="btn ghost" to="/ipd/setup">
-              Beds &amp; services
+              Beds, services &amp; templates
             </Link>
           )}
           <button className="btn primary" onClick={startAdmitting}>

@@ -49,7 +49,7 @@ class ReportTest extends TestCase
         // IPD: 1000 charged, 5000 advance in cash less a 500 refund.
         $admission = $this->postJson('/api/ipd/admissions', [
             'patient_id' => $patient->id, 'doctor_id' => $doctor->id, 'bed_id' => Bed::create(['ward' => 'General', 'bed_no' => '1'])->id,
-            'admitted_at' => now()->subHour()->format('Y-m-d H:i'),
+            'admitted_at' => now()->format('Y-m-d H:i'), // not an hour ago: just after midnight that would be yesterday,
         ])->json('id');
         $this->postJson("/api/ipd/admissions/{$admission}/charges", ['description' => 'Nursing', 'charged_on' => now()->toDateString(), 'quantity' => 2, 'unit_price' => 500])->assertCreated();
         $this->postJson("/api/ipd/admissions/{$admission}/payments", ['type' => 'advance', 'amount' => 5000, 'mode' => 'cash'])->assertCreated();

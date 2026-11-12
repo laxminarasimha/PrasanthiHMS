@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\ConsultationController;
 use App\Http\Controllers\Api\DoctorLibraryController;
 use App\Http\Controllers\Api\FrontDeskController;
 use App\Http\Controllers\Api\IpdController;
+use App\Http\Controllers\Api\IpdRecordsController;
 use App\Http\Controllers\Api\LabController;
 use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\PharmacyController;
@@ -188,7 +189,10 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::put('/services/{service}', 'updateService');
         });
 
+        Route::post('/admissions/{admission}/approve-bill', 'approveBill');
+
         Route::middleware('ability:canWorkIpd')->group(function () {
+            Route::post('/admissions/{admission}/templates/{template}', 'applyTemplate');
             Route::post('/admissions', 'admit');
             Route::put('/admissions/{admission}', 'update');
             Route::post('/admissions/{admission}/charges', 'addCharge');
@@ -200,6 +204,26 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::get('/users/{user}/signature', [StaffController::class, 'signature']);
+    Route::prefix('ipd')->controller(IpdRecordsController::class)->group(function () {
+        Route::get('/admissions/{admission}/notes', 'notes');
+        Route::get('/admissions/{admission}/summary', 'summary');
+        Route::get('/templates', 'templates');
+        Route::get('/reports/{type}', 'report');
+        Route::post('/admissions/{admission}/summary/approve', 'approveSummary');
+
+        Route::middleware('ability:canWorkIpd')->group(function () {
+            Route::post('/admissions/{admission}/notes', 'storeNote');
+            Route::put('/admissions/{admission}/notes/{note}', 'updateNote');
+            Route::delete('/admissions/{admission}/notes/{note}', 'destroyNote');
+            Route::put('/admissions/{admission}/summary', 'saveSummary');
+        });
+        Route::middleware('ability:canManageSetup')->group(function () {
+            Route::post('/templates', 'storeTemplate');
+            Route::put('/templates/{template}', 'updateTemplate');
+            Route::delete('/templates/{template}', 'destroyTemplate');
+        });
+    });
+
     Route::get('/reports/summary', [ReportController::class, 'summary']);
 
     Route::middleware(EnsureCanManageStaff::class)->group(function () {

@@ -99,11 +99,10 @@ export function IpdPrint() {
         </p>
       )}
 
-      {a.discharge_summary && (
-        <section>
-          <h3>Discharge summary</h3>
-          <p>{a.discharge_summary}</p>
-        </section>
+      {a.bill_approved_at && (
+        <p className="receipt-payments">
+          Bill approved by {a.bill_approver?.name ?? 'the doctor'} on {longDate(a.bill_approved_at)} {clock(a.bill_approved_at)}
+        </p>
       )}
 
       <div className="signature">

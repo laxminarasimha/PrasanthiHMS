@@ -165,6 +165,9 @@ class IpdController extends Controller
             'discharge_summary' => ['sometimes', 'nullable', 'string', 'max:20000'],
         ]);
 
+        if (isset($data['discount'])) {
+            $this->refuseIfBillApproved($admission);
+        }
         if (isset($data['discount']) && $data['discount'] > $admission->total) {
             throw ValidationException::withMessages(['discount' => 'The discount cannot be more than the total charges.']);
         }
@@ -189,6 +192,7 @@ class IpdController extends Controller
             'quantity' => ['required', 'numeric', 'gt:0', 'max:9999'],
             'unit_price' => ['required', 'numeric', 'min:0'],
         ], ['description.required_without' => 'Choose a service or describe the charge.']);
+        $this->refuseIfBillApproved($admission);
 
         $service = IpdService::find($data['ipd_service_id'] ?? null);
 
@@ -210,6 +214,7 @@ class IpdController extends Controller
     public function removeCharge(Admission $admission, AdmissionCharge $charge): JsonResponse
     {
         abort_unless($charge->admission_id === $admission->id, 404);
+        $this->refuseIfBillApproved($admission);
 
         if ($admission->total - $charge->amount < $admission->discount) {
             throw ValidationException::withMessages(['charge' => 'Reduce the discount first; it would be more than the remaining charges.']);
@@ -249,6 +254,7 @@ class IpdController extends Controller
             'id' => ['required', 'integer'],
         ]);
 
+        $this->refuseIfBillApproved($admission);
         $entry = collect($this->outstandingFor($admission))->first(fn ($e) => $e['type'] === $data['type'] && $e['id'] === $data['id']);
         if (! $entry) {
             throw ValidationException::withMessages(['id' => 'That bill has nothing left to pay, or does not belong to this stay.']);
@@ -375,6 +381,51 @@ class IpdController extends Controller
         ];
     }
 
+    /** An approved bill is final: its charges and discount cannot change until the approval is withdrawn. */
+    private function refuseIfBillApproved(Admission $admission): void
+    {
+        if ($admission->bill_approved_at) {
+            throw ValidationException::withMessages(['bill' => 'This bill has been approved. Withdraw the approval to change it.']);
+        }
+    }
+
+    /** Approves the bill (locking it) or withdraws the approval. */
+    public function approveBill(Request $request, Admission $admission): JsonResponse
+    {
+        abort_unless($request->user()->allows('canApproveIpd'), 403, 'You are not allowed to approve IPD bills.');
+        $data = $request->validate(['approved' => ['required', 'boolean']]);
+        $admission->update($data['approved']
+            ? ['bill_approved_at' => now(), 'bill_approved_by' => $request->user()->id]
+            : ['bill_approved_at' => null, 'bill_approved_by' => null]);
+
+        return response()->json($this->present($admission));
+    }
+
+    /** Adds every service in a bill template as a charge dated today, at the current price list rates. */
+    public function applyTemplate(Request $request, Admission $admission, \App\Models\IpdBillTemplate $template): JsonResponse
+    {
+        $this->refuseIfBillApproved($admission);
+        $services = IpdService::whereIn('id', array_column($template->items, 'ipd_service_id'))->where('is_active', true)->get()->keyBy('id');
+        if ($services->isEmpty()) {
+            throw ValidationException::withMessages(['template' => 'None of the services in this template are on the price list any more.']);
+        }
+
+        DB::transaction(function () use ($template, $services, $admission, $request) {
+            foreach ($template->items as $item) {
+                if ($service = $services->get($item['ipd_service_id'])) {
+                    $quantity = (float) ($item['quantity'] ?? 1);
+                    $admission->charges()->create([
+                        'ipd_service_id' => $service->id, 'description' => $service->name, 'category' => $service->category, 'charged_on' => today(),
+                        'quantity' => $quantity, 'unit_price' => $service->price, 'amount' => round($quantity * $service->price, 2), 'created_by' => $request->user()->id,
+                    ]);
+                }
+            }
+            $admission->recalculate();
+        });
+
+        return response()->json($this->present($admission), 201);
+    }
+
     /** Fails if someone else is already in the bed; the row lock stops two admissions grabbing it at once. */
     private function claimBed(?int $bedId): void
     {
@@ -393,7 +444,7 @@ class IpdController extends Controller
     {
         return $admission->fresh()->load([
             'patient:id,uhid,name,gender,date_of_birth,mobile,address,city,blood_group', 'doctor:id,name,department,signature_text',
-            'bed:id,ward,bed_no,daily_charge', 'charges', 'payments.receiver:id,name',
+            'bed:id,ward,bed_no,daily_charge', 'charges', 'payments.receiver:id,name', 'billApprover:id,name',
         ]);
     }
 }
