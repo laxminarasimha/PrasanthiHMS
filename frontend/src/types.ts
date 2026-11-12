@@ -303,3 +303,48 @@ export type PharmacySale = {
   patient?: { id: number; uhid: string; name: string } | null
   seller?: { id: number; name: string } | null
 }
+
+export type Bed = {
+  id: number
+  ward: string
+  bed_no: string
+  daily_charge: number
+  is_active: boolean
+  current_admission?: { id: number; ipd_no: string; admitted_at: string; patient: { id: number; name: string; uhid: string } } | null
+}
+
+export type IpdService = { id: number; name: string; category: string | null; price: number; is_active: boolean }
+
+export type AdmissionStatus = 'admitted' | 'discharged' | 'lama' | 'dama' | 'absconded' | 'died'
+
+export type AdmissionCharge = {
+  id: number
+  description: string
+  category: string | null
+  charged_on: string
+  quantity: number
+  unit_price: number
+  amount: number
+}
+
+export type Admission = {
+  id: number
+  ipd_no: string
+  status: AdmissionStatus
+  admitted_at: string
+  discharged_at: string | null
+  reason: string | null
+  attendant_name: string | null
+  attendant_phone: string | null
+  discharge_summary: string | null
+  total: number
+  discount: number
+  net: number
+  paid: number
+  due: number
+  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile' | 'address' | 'city' | 'blood_group'>
+  doctor: { id: number; name: string; department?: string | null; signature_text?: string | null }
+  bed: { id: number; ward: string; bed_no: string; daily_charge?: number } | null
+  charges?: AdmissionCharge[]
+  payments?: (Omit<Payment, 'type'> & { type: 'advance' | 'payment' | 'refund' })[]
+}

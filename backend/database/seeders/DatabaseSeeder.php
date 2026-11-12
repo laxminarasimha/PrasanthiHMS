@@ -2,7 +2,9 @@
 
 namespace Database\Seeders;
 
+use App\Models\Bed;
 use App\Models\Branch;
+use App\Models\IpdService;
 use App\Models\LabTest;
 use App\Models\Medicine;
 use App\Models\Patient;
@@ -101,6 +103,24 @@ class DatabaseSeeder extends Seeder
                 $tax += round($packs * $price * $gst / 100, 2);
             }
             $invoice->update(['subtotal' => $subtotal, 'tax' => $tax, 'total' => $subtotal + $tax]);
+        }
+
+        if (Bed::count() === 0) {
+            foreach ([['General Ward', 3, 800], ['Special Room', 2, 2000], ['AC Room', 2, 3000], ['Post-op Room', 1, 2500]] as [$ward, $count, $charge]) {
+                for ($n = 1; $n <= $count; $n++) {
+                    Bed::create(['branch_id' => $branch->id, 'ward' => $ward, 'bed_no' => (string) $n, 'daily_charge' => $charge]);
+                }
+            }
+        }
+
+        if (IpdService::count() === 0) {
+            foreach ([
+                ['Nursing charges', 'Nursing', 500], ['Doctor visit', 'Doctor', 800], ['Service charge', 'General', 300],
+                ['Oxygen (per hour)', 'Consumables', 200], ['Surgeon charges', 'Surgery', 10000], ['Anaesthetist charges', 'Surgery', 5000],
+                ['OT charges', 'Surgery', 4000], ['Investigations', 'Lab', 0], ['Medicines', 'Pharmacy', 0],
+            ] as [$name, $category, $price]) {
+                IpdService::create(['name' => $name, 'category' => $category, 'price' => $price]);
+            }
         }
 
         if (Patient::count() === 0) {

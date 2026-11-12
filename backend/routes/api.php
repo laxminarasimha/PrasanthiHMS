@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AppointmentController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BillController;
 use App\Http\Controllers\Api\ConsultationController;
+use App\Http\Controllers\Api\IpdController;
 use App\Http\Controllers\Api\LabController;
 use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\PharmacyController;
@@ -74,6 +75,23 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/sales', 'sales');
         Route::post('/sales', 'storeSale');
         Route::get('/sales/{sale}', 'showSale');
+    });
+
+    Route::prefix('ipd')->controller(IpdController::class)->group(function () {
+        Route::get('/beds', 'beds');
+        Route::post('/beds', 'storeBed');
+        Route::put('/beds/{bed}', 'updateBed');
+        Route::get('/services', 'services');
+        Route::post('/services', 'storeService');
+        Route::put('/services/{service}', 'updateService');
+        Route::get('/admissions', 'admissions');
+        Route::post('/admissions', 'admit');
+        Route::get('/admissions/{admission}', 'show');
+        Route::put('/admissions/{admission}', 'update');
+        Route::post('/admissions/{admission}/charges', 'addCharge');
+        Route::delete('/admissions/{admission}/charges/{charge}', 'removeCharge');
+        Route::post('/admissions/{admission}/payments', 'addPayment');
+        Route::post('/admissions/{admission}/discharge', 'discharge');
     });
 
     Route::middleware(EnsureCanManageStaff::class)->group(function () {

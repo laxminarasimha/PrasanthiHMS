@@ -5,6 +5,10 @@ import { Layout } from './components/Layout'
 import { BillPrint } from './pages/BillPrint'
 import { DoctorQueue } from './pages/DoctorQueue'
 import { FrontDesk } from './pages/FrontDesk'
+import { Ipd } from './pages/ipd/Ipd'
+import { IpdCase } from './pages/ipd/IpdCase'
+import { IpdPrint } from './pages/ipd/IpdPrint'
+import { IpdSetup } from './pages/ipd/IpdSetup'
 import { Lab } from './pages/Lab'
 import { LabReportPrint } from './pages/LabReportPrint'
 import { LabTests } from './pages/LabTests'
@@ -47,6 +51,7 @@ export default function App() {
           <Route path="/bills/:id/print" element={<PrintOnly><BillPrint /></PrintOnly>} />
           <Route path="/visits/:id/print" element={<PrintOnly><PrescriptionPrint /></PrintOnly>} />
           <Route path="/lab/orders/:id/print" element={<PrintOnly><LabReportPrint /></PrintOnly>} />
+          <Route path="/ipd/:id/print" element={<PrintOnly><IpdPrint /></PrintOnly>} />
           <Route path="/pharmacy/bills/:id/print" element={<PrintOnly><PharmacySalePrint /></PrintOnly>} />
           <Route element={<Protected />}>
             <Route path="/front-desk" element={<FrontDesk />} />
@@ -59,6 +64,9 @@ export default function App() {
             <Route path="/pharmacy/stock" element={<PharmacyStock />} />
             <Route path="/pharmacy/purchases" element={<PharmacyPurchases />} />
             <Route path="/pharmacy/medicines" element={<PharmacyMedicines />} />
+            <Route path="/ipd" element={<Ipd />} />
+            <Route path="/ipd/setup" element={<IpdSetup />} />
+            <Route path="/ipd/:id" element={<IpdCase />} />
             <Route path="/patients" element={<Patients />} />
             <Route path="/services" element={<Services />} />
             <Route path="/staff" element={<StaffOnly />} />
