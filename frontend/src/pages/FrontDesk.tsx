@@ -116,7 +116,6 @@ export function FrontDesk() {
             </thead>
             <tbody>
               {list?.data.map((a) => {
-                const billed = a.bills.reduce((sum, b) => sum + b.total, 0)
                 const due = a.bills.reduce((sum, b) => sum + b.due, 0)
                 return (
                   <tr key={a.id} className={`static ${a.status === 'cancelled' ? 'faded' : ''}`}>
@@ -144,9 +143,17 @@ export function FrontDesk() {
                       </select>
                     </td>
                     <td className="num">
-                      <button className="link" onClick={() => openBill(a)}>
-                        {a.bills.length === 0 ? 'Create bill' : rupees(billed)}
-                      </button>
+                      {a.bills.length === 0 && (
+                        <button className="link" onClick={() => openBill(a)}>
+                          Create bill
+                        </button>
+                      )}
+                      {a.bills.map((b) => (
+                        <button key={b.id} className="link block-link" onClick={() => setPanel({ kind: 'bill', billId: b.id })}>
+                          {b.lab_order ? `Lab ${b.lab_order.order_no} · ` : ''}
+                          {rupees(b.total)}
+                        </button>
+                      ))}
                       {a.bills.length > 0 && (
                         <small className={`block ${due > 0 ? 'due' : 'settled'}`}>{due > 0 ? `${rupees(due)} due` : 'Paid'}</small>
                       )}

@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
-#[Fillable(['ipd_service_id', 'description', 'category', 'charged_on', 'quantity', 'unit_price', 'amount', 'created_by'])]
+#[Fillable(['ipd_service_id', 'description', 'category', 'charged_on', 'quantity', 'unit_price', 'amount', 'created_by', 'source_type', 'source_id'])]
 class AdmissionCharge extends Model
 {
     /**

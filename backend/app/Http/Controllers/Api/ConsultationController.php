@@ -6,6 +6,7 @@ use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
 use App\Models\Consultation;
+use App\Models\Medicine;
 use App\Models\Patient;
 use App\Models\PrescriptionItem;
 use Illuminate\Http\JsonResponse;
@@ -137,20 +138,24 @@ class ConsultationController extends Controller
         );
     }
 
-    /** Medicine names prescribed before, to speed up typing. */
+    /** Medicine names to offer while typing: the pharmacy's own list first, then names prescribed before. */
     public function suggestMedicines(Request $request): JsonResponse
     {
         $term = trim((string) $request->query('q'));
 
-        return response()->json(
-            PrescriptionItem::query()
-                ->when($term !== '', fn ($q) => $q->where('medicine', 'like', "%{$term}%"))
-                ->selectRaw('medicine, count(*) as uses')
-                ->groupBy('medicine')
-                ->orderByDesc('uses')
-                ->limit(15)
-                ->pluck('medicine')
-        );
+        $stocked = Medicine::where('is_active', true)
+            ->when($term !== '', fn ($q) => $q->where('name', 'like', "%{$term}%"))
+            ->orderBy('name')->limit(200)->pluck('name');
+
+        $prescribed = PrescriptionItem::query()
+            ->when($term !== '', fn ($q) => $q->where('medicine', 'like', "%{$term}%"))
+            ->selectRaw('medicine, count(*) as uses')
+            ->groupBy('medicine')
+            ->orderByDesc('uses')
+            ->limit(50)
+            ->pluck('medicine');
+
+        return response()->json($stocked->merge($prescribed)->unique(fn ($name) => mb_strtolower($name))->values());
     }
 
     /**

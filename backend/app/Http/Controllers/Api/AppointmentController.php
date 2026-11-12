@@ -14,7 +14,7 @@ use Illuminate\Validation\Rule;
 
 class AppointmentController extends Controller
 {
-    private const WITH = ['patient:id,uhid,name,gender,date_of_birth,mobile', 'doctor:id,name', 'service:id,name', 'bills:id,appointment_id,bill_no,total,paid'];
+    private const WITH = ['patient:id,uhid,name,gender,date_of_birth,mobile', 'doctor:id,name', 'service:id,name', 'bills:id,appointment_id,bill_no,total,paid', 'bills.labOrder:id,bill_id,order_no'];
 
     /** One day's appointments, oldest first, with counts per status for the filter tabs. */
     public function index(Request $request): JsonResponse

@@ -73,6 +73,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/purchases/{purchase}', 'showPurchase');
         Route::get('/stock', 'stock');
         Route::get('/sell-search', 'sellSearch');
+        Route::get('/prescriptions', 'prescriptions');
         Route::get('/sales', 'sales');
         Route::post('/sales', 'storeSale');
         Route::get('/sales/{sale}', 'showSale');
@@ -93,6 +94,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/admissions/{admission}/charges/{charge}', 'removeCharge');
         Route::post('/admissions/{admission}/payments', 'addPayment');
         Route::post('/admissions/{admission}/discharge', 'discharge');
+        Route::get('/admissions/{admission}/outstanding', 'outstanding');
+        Route::post('/admissions/{admission}/transfer', 'transfer');
     });
 
     Route::get('/reports/summary', [ReportController::class, 'summary']);

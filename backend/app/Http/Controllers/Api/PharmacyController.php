@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Consultation;
 use App\Models\Medicine;
 use App\Models\Payment;
 use App\Models\PharmacySale;
@@ -233,6 +234,40 @@ class PharmacyController extends Controller
                 ->limit(12)
                 ->get(['id', 'name', 'type'])
         );
+    }
+
+    /**
+     * A patient's recent prescriptions, each medicine paired with the pharmacy item of the
+     * same name and its sellable batches, so the bill can be started from the prescription.
+     */
+    public function prescriptions(Request $request): JsonResponse
+    {
+        $data = $request->validate(['patient_id' => ['required', 'exists:patients,id']]);
+
+        $consultations = Consultation::where('patient_id', $data['patient_id'])
+            ->whereNotNull('completed_at')
+            ->where('completed_at', '>=', now()->subDays(60))
+            ->whereHas('medicines')
+            ->with(['medicines', 'doctor:id,name'])
+            ->latest('completed_at')->limit(3)->get();
+
+        $names = $consultations->flatMap->medicines->pluck('medicine')->map(fn ($name) => mb_strtolower(trim($name)))->unique();
+        $stocked = Medicine::where('is_active', true)
+            ->whereIn(DB::raw('LOWER(name)'), $names)
+            ->with(['sellableBatches' => fn ($q) => $q->select('id', 'medicine_id', 'batch_no', 'expiry', 'unit_mrp', 'gst_percent', 'units_in_stock', 'rack_no')])
+            ->get(['id', 'name', 'type'])
+            ->keyBy(fn (Medicine $m) => mb_strtolower($m->name));
+
+        return response()->json($consultations->map(fn (Consultation $c) => [
+            'id' => $c->id,
+            'completed_at' => $c->completed_at->format('Y-m-d H:i'),
+            'doctor' => $c->doctor?->name,
+            'medicines' => $c->medicines->map(fn ($item) => [
+                'medicine' => $item->medicine,
+                'directions' => collect([$item->dose, $item->frequency, $item->timing, $item->duration])->filter()->implode(' · '),
+                'match' => $stocked->get(mb_strtolower(trim($item->medicine))),
+            ]),
+        ]));
     }
 
     // ---- Sales ----

@@ -75,7 +75,7 @@ export type Appointment = {
   patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile'>
   doctor: { id: number; name: string }
   service: { id: number; name: string } | null
-  bills: { id: number; bill_no: string; total: number; paid: number; due: number }[]
+  bills: { id: number; bill_no: string; total: number; paid: number; due: number; lab_order: { id: number; order_no: string } | null }[]
 }
 
 export type BillItem = {
@@ -348,3 +348,12 @@ export type Admission = {
   charges?: AdmissionCharge[]
   payments?: (Omit<Payment, 'type'> & { type: 'advance' | 'payment' | 'refund' })[]
 }
+
+export type PrescriptionForPharmacy = {
+  id: number
+  completed_at: string
+  doctor: string | null
+  medicines: { medicine: string; directions: string; match: SellableMedicine | null }[]
+}
+
+export type OutstandingBill = { type: 'bill' | 'pharmacy'; id: number; label: string; category: string; date: string; due: number }
