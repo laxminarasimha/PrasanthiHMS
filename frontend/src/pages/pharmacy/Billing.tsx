@@ -4,8 +4,8 @@ import { useAuth } from '../../auth'
 import { SelectField, TextField } from '../../components/Field'
 import { PatientPicker } from '../../components/PatientPicker'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
-import { PAYMENT_MODES, expiryLabel, rupees } from '../../format'
-import type { Patient, PharmacySale, SellableMedicine } from '../../types'
+import { PAYMENT_MODES, expiryLabel, longDate, rupees } from '../../format'
+import type { Patient, PharmacySale, PrescriptionForPharmacy, SellableMedicine } from '../../types'
 
 type Line = {
   batchId: number
@@ -39,6 +39,19 @@ export function PharmacyBilling() {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState<PharmacySale | null>(null)
+  const [prescriptions, setPrescriptions] = useState<PrescriptionForPharmacy[]>([])
+
+  // Choosing a registered patient brings up what the doctor prescribed recently.
+  const choosePatient = (next: Patient | null) => {
+    setPatient(next)
+    setPrescriptions([])
+    if (next) {
+      api.get<PrescriptionForPharmacy[]>('/pharmacy/prescriptions', { params: { patient_id: next.id } }).then((res) => {
+        setPrescriptions(res.data)
+        if (res.data[0]?.doctor) setDoctor((current) => current || res.data[0].doctor!)
+      })
+    }
+  }
 
   useEffect(() => {
     if (search.trim().length < 2) return
@@ -71,6 +84,7 @@ export function PharmacyBilling() {
   const reset = () => {
     setLines([])
     setPatient(null)
+    setPrescriptions([])
     setName('')
     setPhone('')
     setDoctor('')
@@ -147,11 +161,46 @@ export function PharmacyBilling() {
           ) : (
             <div className="grid">
               <div>
-                <PatientPicker patient={patient} onChange={setPatient} />
+                <PatientPicker patient={patient} onChange={choosePatient} />
               </div>
               <TextField label="Referred doctor" value={doctor} onChange={setDoctor} />
             </div>
           )}
+
+          {!walkIn &&
+            prescriptions.map((rx) => {
+              const available = rx.medicines.filter((m) => m.match?.sellable_batches.length)
+              return (
+                <div className="rx-card" key={rx.id}>
+                  <div className="row">
+                    <strong className="grow">
+                      Prescription · {longDate(rx.completed_at)}
+                      {rx.doctor ? ` · ${rx.doctor}` : ''}
+                    </strong>
+                    <button type="button" className="btn ghost" disabled={available.length === 0} onClick={() => available.forEach((m) => add(m.match!, m.match!.sellable_batches[0]))}>
+                      Add all in stock ({available.length})
+                    </button>
+                  </div>
+                  <ul>
+                    {rx.medicines.map((m, i) => (
+                      <li key={i}>
+                        <span className="grow">
+                          {m.medicine}
+                          {m.directions && <small className="muted"> · {m.directions}</small>}
+                        </span>
+                        {m.match?.sellable_batches.length ? (
+                          <button type="button" className="link" onClick={() => add(m.match!, m.match!.sellable_batches[0])}>
+                            Add
+                          </button>
+                        ) : (
+                          <small className="due">Not in stock under this name</small>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )
+            })}
 
           <h3>Medicines</h3>
           <div className="medicine-search">

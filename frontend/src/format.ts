@@ -35,7 +35,7 @@ export const PAYMENT_MODES = [
   { value: 'insurance', label: 'Insurance' },
 ]
 
-export const modeLabel = (mode: string) => PAYMENT_MODES.find((m) => m.value === mode)?.label ?? mode
+export const modeLabel = (mode: string) => (mode === 'ipd' ? 'Moved to IPD bill' : (PAYMENT_MODES.find((m) => m.value === mode)?.label ?? mode))
 
 /** "2027-05-31" -> "May 2027", the way expiry is printed on a strip. */
 export const expiryLabel = (date: string) =>

@@ -78,27 +78,31 @@ class LabController extends Controller
 
     // ---- Orders ----
 
-    /** One day's lab orders, or with `q` every matching order for finding old reports. */
+    /** One day's lab orders; with `q` every matching order; with `patient_id` that patient's recent orders and results. */
     public function orders(Request $request): JsonResponse
     {
         $filters = $request->validate([
             'date' => ['nullable', 'date'],
             'q' => ['nullable', 'string', 'max:100'],
             'status' => ['nullable', Rule::in(['pending', 'partial', 'completed'])],
+            'patient_id' => ['nullable', 'integer'],
         ]);
+        $patientId = $filters['patient_id'] ?? null;
         $term = trim((string) ($filters['q'] ?? ''));
 
         $orders = LabOrder::query()
-            ->when($term === '', fn ($q) => $q->whereDate('ordered_at', $filters['date'] ?? today()))
+            ->when($patientId, fn ($q) => $q->where('patient_id', $patientId))
+            ->when($term === '' && ! $patientId, fn ($q) => $q->whereDate('ordered_at', $filters['date'] ?? today()))
             ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w
                 ->where('order_no', 'like', "{$term}%")
                 ->orWhereHas('patient', fn ($p) => $p->where('name', 'like', "%{$term}%")
                     ->orWhere('mobile', 'like', "{$term}%")
                     ->orWhere('uhid', 'like', "{$term}%"))))
             ->when($filters['status'] ?? null, fn ($q, $s) => $q->where('status', $s))
-            ->with(self::ORDER_WITH)
+            // A patient's history is shown with the values, so the doctor can read them in the visit pad.
+            ->with($patientId ? ['items.results', 'bill:id,bill_no,total,paid'] : self::ORDER_WITH)
             ->latest('ordered_at')->latest('id')
-            ->limit(200)
+            ->limit($patientId ? 15 : 200)
             ->get();
 
         return response()->json($orders);

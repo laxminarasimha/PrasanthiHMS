@@ -262,3 +262,14 @@ tr.sub td:first-child { padding-left: 26px; }
   .content { padding: 0; }
   .card { border: 0; }
 }
+
+/* Links between modules */
+.block-link { display: block; margin-left: auto; }
+.checklist.short { max-height: 200px; }
+.lab-pick { border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+.lab-mini { margin: 8px 0; }
+.lab-mini table td { padding: 3px 6px; border-bottom: 0; }
+h2.gap-top { margin-top: 20px; }
+.rx-card { border: 1px solid var(--border); border-left: 4px solid var(--brand); border-radius: 8px; padding: 10px 12px; margin-top: 12px; background: #fbfdfd; }
+.rx-card ul { list-style: none; margin: 8px 0 0; padding: 0; }
+.rx-card li { display: flex; gap: 12px; align-items: center; padding: 5px 0; border-top: 1px solid var(--border); }

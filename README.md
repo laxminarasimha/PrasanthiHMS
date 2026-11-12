@@ -47,6 +47,7 @@ Sign in with the seeded admin account `admin@prasanthi.test` (a sample doctor, `
 - Pharmacy: medicine list, stockists, purchase invoices that add stock by batch and expiry, stock view with expiry and low-stock warnings, billing from stock, and a printable bill
 - IPD: beds by ward, IPD services, admissions, a running bill with charges, advances, payments and refunds, bed moves, discharge with summary, and a printable bill
 - Reports (Admin and Doctor): billed and collected amounts by department and payment mode for any date range, with activity counts
+- Linked modules: the doctor orders lab tests and reads results in the visit pad, the pharmacy starts a bill from the prescription, and unpaid lab, pharmacy and front desk bills can be moved onto an inpatient's bill
 
 Run the backend tests with `php artisan test` from `backend/`.
 

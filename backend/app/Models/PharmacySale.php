@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'branch_id', 'patient_id', 'customer_name', 'customer_phone', 'referred_doctor', 'sold_at', 'subtotal', 'discount',
-    'tax', 'round_off', 'total', 'paid', 'payment_mode', 'reference', 'created_by',
+    'tax', 'round_off', 'total', 'paid', 'ipd_transfer', 'payment_mode', 'reference', 'created_by',
 ])]
 class PharmacySale extends Model
 {
@@ -22,7 +22,7 @@ class PharmacySale extends Model
     {
         return [
             'sold_at' => 'datetime:Y-m-d H:i', 'subtotal' => 'float', 'discount' => 'float', 'tax' => 'float',
-            'round_off' => 'float', 'total' => 'float', 'paid' => 'float',
+            'round_off' => 'float', 'total' => 'float', 'paid' => 'float', 'ipd_transfer' => 'float',
         ];
     }
 
@@ -51,6 +51,6 @@ class PharmacySale extends Model
 
     public function getDueAttribute(): float
     {
-        return round($this->total - $this->paid, 2);
+        return round($this->total - $this->paid - $this->ipd_transfer, 2);
     }
 }

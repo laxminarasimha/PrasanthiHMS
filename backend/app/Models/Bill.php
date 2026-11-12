@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable(['branch_id', 'patient_id', 'appointment_id', 'discount', 'created_by'])]
 class Bill extends Model
@@ -36,6 +37,12 @@ class Bill extends Model
     public function appointment(): BelongsTo
     {
         return $this->belongsTo(Appointment::class);
+    }
+
+    /** Set when this bill was raised for a lab order. */
+    public function labOrder(): HasOne
+    {
+        return $this->hasOne(LabOrder::class);
     }
 
     public function items(): HasMany

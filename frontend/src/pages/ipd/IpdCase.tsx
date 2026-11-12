@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
 import { Field, SelectField, TextField } from '../../components/Field'
 import { ADMISSION_STATUS, PAYMENT_MODES, clock, longDate, modeLabel, nowLocal, rupees, today } from '../../format'
-import type { Admission, Bed, IpdService } from '../../types'
+import type { Admission, Bed, IpdService, OutstandingBill } from '../../types'
 
 const CLOSE_OPTIONS = ['discharged', 'lama', 'dama', 'absconded', 'died'].map((s) => ({
   value: s,
@@ -33,6 +33,7 @@ export function IpdCase() {
   const [discount, setDiscount] = useState('')
   const [closing, setClosing] = useState({ status: 'discharged', discharged_at: nowLocal(), discharge_summary: '' })
   const [bedId, setBedId] = useState('')
+  const [outstanding, setOutstanding] = useState<OutstandingBill[]>([])
 
   const apply = (next: Admission) => {
     setAdmission(next)
@@ -40,6 +41,7 @@ export function IpdCase() {
     setBedId(next.bed ? String(next.bed.id) : '')
     setClosing((c) => ({ ...c, discharge_summary: next.discharge_summary ?? '' }))
     setError('')
+    api.get<OutstandingBill[]>(`/ipd/admissions/${next.id}/outstanding`).then((res) => setOutstanding(res.data))
   }
 
   useEffect(() => {
@@ -181,6 +183,26 @@ export function IpdCase() {
           <button type="button" className="link add-medicine" onClick={addBedCharge}>
             Fill in bed charges for {stayDays(admission)} day(s) at {rupees(admission.bed.daily_charge!)} a day
           </button>
+        )}
+
+        {outstanding.length > 0 && (
+          <div className="rx-card gap-top">
+            <strong>Other unpaid bills for this patient during the stay</strong>
+            <ul>
+              {outstanding.map((o) => (
+                <li key={`${o.type}-${o.id}`}>
+                  <span className="grow">
+                    {o.label}
+                    <small className="muted"> · {longDate(o.date)}</small>
+                  </span>
+                  <span className="mono">{rupees(o.due)} due</span>
+                  <button type="button" className="link" onClick={() => run(api.post(`${url}/transfer`, { type: o.type, id: o.id }), `${o.label} was added to the IPD bill.`)}>
+                    Add to IPD bill
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         <h3>Advances, payments and refunds</h3>

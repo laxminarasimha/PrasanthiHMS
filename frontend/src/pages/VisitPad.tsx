@@ -3,8 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { useAuth } from '../auth'
 import { Field, TextField } from '../components/Field'
-import { clock, longDate } from '../format'
-import type { Consultation, PrescribedMedicine as Medicine, Visit } from '../types'
+import { clock, longDate, rupees } from '../format'
+import type { Consultation, LabCatalogueTest, LabOrder, PrescribedMedicine as Medicine, Visit } from '../types'
 
 const VITALS = [
   { key: 'weight_kg', label: 'Weight (kg)' },
@@ -49,6 +49,11 @@ export function VisitPad() {
   const [errors, setErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
+  const [labOrders, setLabOrders] = useState<LabOrder[]>([])
+  const [labTests, setLabTests] = useState<LabCatalogueTest[]>([])
+  const [picking, setPicking] = useState(false)
+  const [chosenTests, setChosenTests] = useState<number[]>([])
+  const [testFilter, setTestFilter] = useState('')
 
   const apply = (next: Visit) => {
     setVisit(next)
@@ -60,7 +65,9 @@ export function VisitPad() {
     api.get<Visit>(`/appointments/${id}/consultation`).then((res) => {
       apply(res.data)
       api.get<Consultation[]>(`/patients/${res.data.patient.id}/consultations`).then((h) => setHistory(h.data))
+      api.get<LabOrder[]>('/lab/orders', { params: { patient_id: res.data.patient.id } }).then((l) => setLabOrders(l.data))
     })
+    api.get<LabCatalogueTest[]>('/lab/tests').then((res) => setLabTests(res.data))
     api.get<string[]>('/medicines/suggest').then((res) => setSuggestions(res.data))
   }, [id])
 
@@ -94,6 +101,25 @@ export function VisitPad() {
     }
   }
 
+  const orderTests = async () => {
+    setErrors({})
+    try {
+      const res = await api.post<LabOrder>('/lab/orders', {
+        patient_id: visit.patient.id,
+        appointment_id: visit.appointment.id,
+        referred_by: visit.doctor.name,
+        test_ids: chosenTests,
+      })
+      setNotice(`Lab order ${res.data.order_no} sent to the lab. The patient pays at the lab or front desk.`)
+      setPicking(false)
+      setChosenTests([])
+      api.get<LabOrder[]>('/lab/orders', { params: { patient_id: visit.patient.id } }).then((l) => setLabOrders(l.data))
+    } catch (err) {
+      setErrors(fieldErrors(err))
+    }
+  }
+
+  const visibleTests = labTests.filter((t) => t.name.toLowerCase().includes(testFilter.trim().toLowerCase()))
   const errorList = Object.entries(errors)
   const pastVisits = history.filter((h) => h.id !== visit.consultation?.id)
 
@@ -187,8 +213,38 @@ export function VisitPad() {
             + Add medicine
           </button>
 
+          <h3>Lab tests</h3>
+          {picking ? (
+            <div className="lab-pick">
+              <input type="search" placeholder="Filter tests" value={testFilter} onChange={(e) => setTestFilter(e.target.value)} aria-label="Filter lab tests" />
+              <ul className="checklist short">
+                {visibleTests.map((t) => (
+                  <li key={t.id}>
+                    <label>
+                      <input type="checkbox" checked={chosenTests.includes(t.id)} onChange={() => setChosenTests((ids) => (ids.includes(t.id) ? ids.filter((i) => i !== t.id) : [...ids, t.id]))} />
+                      <span className="grow">{t.name}</span>
+                      <span className="mono">{rupees(t.price)}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              <div className="row gap-top">
+                <button type="button" className="btn primary" disabled={chosenTests.length === 0} onClick={orderTests}>
+                  Send {chosenTests.length || ''} test{chosenTests.length === 1 ? '' : 's'} to lab
+                </button>
+                <button type="button" className="btn ghost" onClick={() => setPicking(false)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="link" onClick={() => setPicking(true)}>
+              + Order lab tests
+            </button>
+          )}
+
           <div className="grid gap-top">
-            <Field label="Tests advised" error={errors.tests_advised}>
+            <Field label="Other tests advised (done outside)" error={errors.tests_advised}>
               <textarea rows={2} placeholder="One test per line" value={form.tests_advised} onChange={(e) => set('tests_advised')(e.target.value)} />
             </Field>
             <Field label="Advice" error={errors.advice}>
@@ -215,7 +271,43 @@ export function VisitPad() {
       </section>
 
       <aside className="card panel">
-        <h2>Past visits</h2>
+        <h2>Lab results</h2>
+        {labOrders.length === 0 && <p className="muted">No lab orders for this patient yet.</p>}
+        {labOrders.map((o) => (
+          <details key={o.id} className="past" open={o.status !== 'pending' && labOrders[0].id === o.id}>
+            <summary>
+              <strong>{longDate(o.ordered_at)}</strong>
+              <span className="muted"> · {o.order_no} · </span>
+              <span className={`pill ${o.status === 'completed' ? 'ok' : o.status === 'partial' ? 'status-ongoing' : 'status-arrived'}`}>
+                {o.status === 'completed' ? 'Ready' : o.status === 'partial' ? 'Partly ready' : 'Pending'}
+              </span>
+            </summary>
+            {o.items.map((item) => (
+              <div key={item.id} className="lab-mini">
+                <b>{item.test_name}</b>
+                {item.reported_at ? (
+                  <table className="compact">
+                    <tbody>
+                      {(item.results ?? []).map((r) => (
+                        <tr key={r.id} className="static">
+                          <td>{r.parameter}</td>
+                          <td className={r.flag ? 'due strong' : ''}>
+                            {r.value} {r.unit ?? ''} {r.flag === 'high' ? '↑' : r.flag === 'low' ? '↓' : ''}
+                          </td>
+                          <td className="muted">{r.reference_range ?? ''}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <span className="muted"> — awaiting result</span>
+                )}
+              </div>
+            ))}
+          </details>
+        ))}
+
+        <h2 className="gap-top">Past visits</h2>
         {pastVisits.length === 0 && <p className="muted">No earlier visits recorded here.</p>}
         {pastVisits.map((h) => (
           <details key={h.id} className="past">

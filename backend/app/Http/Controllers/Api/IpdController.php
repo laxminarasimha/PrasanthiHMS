@@ -7,8 +7,10 @@ use App\Http\Controllers\Controller;
 use App\Models\Admission;
 use App\Models\AdmissionCharge;
 use App\Models\Bed;
+use App\Models\Bill;
 use App\Models\IpdService;
 use App\Models\Payment;
+use App\Models\PharmacySale;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -213,10 +215,111 @@ class IpdController extends Controller
             throw ValidationException::withMessages(['charge' => 'Reduce the discount first; it would be more than the remaining charges.']);
         }
 
-        $charge->delete();
-        $admission->recalculate();
+        DB::transaction(function () use ($charge, $admission) {
+            // A charge that stood for another bill hands the amount back to that bill.
+            if ($charge->source_type === 'bill' && ($bill = Bill::find($charge->source_id))) {
+                $bill->payments()->where('mode', 'ipd')->where('reference', "IPD charge {$charge->id}")->delete();
+                $bill->recalculate();
+            }
+            if ($charge->source_type === 'pharmacy' && ($sale = PharmacySale::find($charge->source_id))) {
+                $sale->update(['ipd_transfer' => max(0, $sale->ipd_transfer - $charge->amount)]);
+            }
+
+            $charge->delete();
+            $admission->recalculate();
+        });
 
         return response()->json($this->present($admission));
+    }
+
+    /** The patient's unpaid front desk, lab and pharmacy bills raised since they were admitted. */
+    public function outstanding(Admission $admission): JsonResponse
+    {
+        return response()->json($this->outstandingFor($admission));
+    }
+
+    /**
+     * Moves the unpaid amount of another bill onto this IPD bill. The other bill is marked
+     * as settled through IPD so the money is not asked for twice.
+     */
+    public function transfer(Request $request, Admission $admission): JsonResponse
+    {
+        $data = $request->validate([
+            'type' => ['required', Rule::in(['bill', 'pharmacy'])],
+            'id' => ['required', 'integer'],
+        ]);
+
+        $entry = collect($this->outstandingFor($admission))->first(fn ($e) => $e['type'] === $data['type'] && $e['id'] === $data['id']);
+        if (! $entry) {
+            throw ValidationException::withMessages(['id' => 'That bill has nothing left to pay, or does not belong to this stay.']);
+        }
+
+        DB::transaction(function () use ($entry, $admission, $request) {
+            $charge = $admission->charges()->create([
+                'description' => $entry['label'],
+                'category' => $entry['category'],
+                'charged_on' => today(),
+                'quantity' => 1,
+                'unit_price' => $entry['due'],
+                'amount' => $entry['due'],
+                'created_by' => $request->user()->id,
+                'source_type' => $entry['type'],
+                'source_id' => $entry['id'],
+            ]);
+
+            if ($entry['type'] === 'bill') {
+                $bill = Bill::findOrFail($entry['id']);
+                $bill->payments()->create([
+                    'type' => 'payment', 'amount' => $entry['due'], 'mode' => 'ipd',
+                    'reference' => "IPD charge {$charge->id}", 'received_by' => $request->user()->id,
+                ]);
+                $bill->recalculate();
+            } else {
+                PharmacySale::whereKey($entry['id'])->increment('ipd_transfer', $entry['due']);
+            }
+
+            $admission->recalculate();
+        });
+
+        return response()->json($this->present($admission), 201);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function outstandingFor(Admission $admission): array
+    {
+        $since = $admission->admitted_at->copy()->startOfDay();
+        $until = ($admission->discharged_at ?? now())->copy()->endOfDay();
+
+        $bills = Bill::where('patient_id', $admission->patient_id)
+            ->whereBetween('created_at', [$since, $until])
+            ->whereColumn('paid', '<', 'total')
+            ->with('labOrder:id,bill_id,order_no')
+            ->get()
+            ->map(fn (Bill $bill) => [
+                'type' => 'bill',
+                'id' => $bill->id,
+                'label' => $bill->labOrder ? "Lab order {$bill->labOrder->order_no} (bill {$bill->bill_no})" : "Front desk bill {$bill->bill_no}",
+                'category' => $bill->labOrder ? 'Lab' : 'OPD',
+                'date' => $bill->created_at->format('Y-m-d'),
+                'due' => $bill->due,
+            ]);
+
+        $sales = PharmacySale::where('patient_id', $admission->patient_id)
+            ->whereBetween('sold_at', [$since, $until])
+            ->whereRaw('paid + ipd_transfer < total')
+            ->get()
+            ->map(fn (PharmacySale $sale) => [
+                'type' => 'pharmacy',
+                'id' => $sale->id,
+                'label' => "Pharmacy bill {$sale->bill_no}",
+                'category' => 'Pharmacy',
+                'date' => $sale->sold_at->format('Y-m-d'),
+                'due' => $sale->due,
+            ]);
+
+        return $bills->concat($sales)->sortBy('date')->values()->all();
     }
 
     /** Advances and payments both count towards the bill; refunds return money already taken. */
