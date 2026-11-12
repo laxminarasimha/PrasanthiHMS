@@ -97,6 +97,24 @@ class FrontDeskController extends Controller
         ])->values());
     }
 
+    /**
+     * Patients a doctor asked to come back on this day, and whether each already has an appointment for it.
+     */
+    public function followUps(Request $request): JsonResponse
+    {
+        $day = \Illuminate\Support\Carbon::parse($request->validate(['date' => ['nullable', 'date']])['date'] ?? today())->toDateString();
+
+        $due = \App\Models\Consultation::whereDate('follow_up_on', $day)->whereNotNull('completed_at')
+            ->with(['patient:id,uhid,name,gender,date_of_birth,mobile', 'doctor:id,name'])
+            ->latest('completed_at')->get(['id', 'appointment_id', 'patient_id', 'doctor_id', 'diagnosis', 'follow_up_on', 'completed_at']);
+
+        $booked = Appointment::whereDate('scheduled_at', $day)->where('status', '!=', 'cancelled')
+            ->whereIn('patient_id', $due->pluck('patient_id'))->pluck('patient_id')->flip();
+
+        // One line per patient, even if two doctors gave the same date.
+        return response()->json($due->unique('patient_id')->values()->map(fn ($c) => $c->toArray() + ['booked' => $booked->has($c->patient_id)]));
+    }
+
     /** Lets the front desk or a nurse record vitals before the doctor opens the visit. Nothing else on the visit changes. */
     public function saveVitals(Request $request, Appointment $appointment): JsonResponse
     {

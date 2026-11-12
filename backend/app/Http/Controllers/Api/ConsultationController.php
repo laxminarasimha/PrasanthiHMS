@@ -34,7 +34,7 @@ class ConsultationController extends Controller
             ->whereDate('scheduled_at', $filters['date'] ?? today())
             ->where('status', '!=', 'cancelled')
             ->when($doctorId, fn ($q, $id) => $q->where('doctor_id', $id))
-            ->with([self::PATIENT, 'doctor:id,name', 'service:id,name', 'consultation:id,appointment_id,completed_at'])
+            ->with([self::PATIENT, 'doctor:id,name', 'service:id,name', 'consultation:id,appointment_id,completed_at,weight_kg,bp_systolic,pulse,temperature_f,spo2'])
             ->orderBy('scheduled_at')->orderBy('id')
             ->get();
 
@@ -49,6 +49,8 @@ class ConsultationController extends Controller
         return response()->json($appointments->map(fn (Appointment $a) => $a->toArray() + [
             'visits' => (int) ($past[$a->patient_id]->visits ?? 0),
             'last_visit' => isset($past[$a->patient_id]) ? substr((string) $past[$a->patient_id]->last_visit, 0, 10) : null,
+            // True once the desk or a nurse has recorded any vital sign for this visit.
+            'vitals_ready' => (bool) collect($a->consultation?->only(['weight_kg', 'bp_systolic', 'pulse', 'temperature_f', 'spo2']))->filter()->count(),
         ]));
     }
 

@@ -21,13 +21,17 @@ class AppointmentController extends Controller
     private const WITH = ['patient:id,uhid,name,gender,date_of_birth,mobile', 'doctor:id,name', 'service:id,name', 'bills.labOrder:id,bill_id,order_no'];
 
     /**
-     * The bills on a visit, each with the amount moved to an IPD bill.
+     * What the desk needs beside each visit: its bills (with any amount moved to an IPD bill)
+     * and what the doctor decided, so the desk can print, book tests or book the next visit.
      *
      * @return array<string, \Closure>
      */
-    private static function bills(): array
+    private static function extras(): array
     {
-        return ['bills' => fn ($bills) => $bills->select('id', 'appointment_id', 'bill_no', 'kind', 'total', 'paid')->withIpdTransfers()];
+        return [
+            'bills' => fn ($bills) => $bills->select('id', 'appointment_id', 'bill_no', 'kind', 'total', 'paid')->withIpdTransfers(),
+            'consultation' => fn ($c) => $c->select('id', 'appointment_id', 'completed_at', 'tests_advised', 'follow_up_on', 'refer_to')->withCount('medicines'),
+        ];
     }
 
     /** One day's appointments, oldest first, with counts per status for the filter tabs. */
@@ -51,7 +55,7 @@ class AppointmentController extends Controller
         return response()->json([
             'counts' => (clone $day)->selectRaw('status, count(*) as total')->groupBy('status')->pluck('total', 'status'),
             'data' => $day->when($filters['status'] ?? null, fn ($q, $s) => $q->where('status', $s))
-                ->with(self::WITH)->with(self::bills())->orderBy('scheduled_at')->orderBy('id')->get(),
+                ->with(self::WITH)->with(self::extras())->orderBy('scheduled_at')->orderBy('id')->get(),
         ]);
     }
 
@@ -72,7 +76,7 @@ class AppointmentController extends Controller
                 ->whereDate('scheduled_at', '>=', $from)
                 ->whereDate('scheduled_at', '<=', $from->copy()->addDays((int) ($filters['days'] ?? 1) - 1))
                 ->when($filters['doctor_id'] ?? null, fn ($q, $id) => $q->where('doctor_id', $id))
-                ->with(self::WITH)->with(self::bills())->orderBy('scheduled_at')->orderBy('id')->get(),
+                ->with(self::WITH)->with(self::extras())->orderBy('scheduled_at')->orderBy('id')->get(),
         ]);
     }
 
@@ -152,7 +156,7 @@ class AppointmentController extends Controller
             return $appointment;
         });
 
-        return response()->json($appointment->fresh()->load(self::WITH)->load(self::bills()), 201);
+        return response()->json($appointment->fresh()->load(self::WITH)->load(self::extras()), 201);
     }
 
     public function update(Request $request, Appointment $appointment): JsonResponse
@@ -166,7 +170,7 @@ class AppointmentController extends Controller
 
         $appointment->update($data);
 
-        return response()->json($appointment->load(self::WITH)->load(self::bills()));
+        return response()->json($appointment->load(self::WITH)->load(self::extras()));
     }
 
     /**

@@ -11,6 +11,8 @@ type Props = {
   time?: string
   doctorId?: string
   status?: 'arrived' | 'booked'
+  /** Set when booking for someone already chosen, such as a follow-up. */
+  patient?: Appointment['patient']
   doctors: Doctor[]
   services: Service[]
   onClose: () => void
@@ -28,8 +30,8 @@ const STATUSES = [
 
 const nowTime = () => new Date().toTimeString().slice(0, 5)
 
-export function AppointmentForm({ date, time: startTime, doctorId: startDoctor, status: startStatus, doctors, services, onClose, onBooked }: Props) {
-  const [patient, setPatient] = useState<Patient | null>(null)
+export function AppointmentForm({ patient: startPatient, date, time: startTime, doctorId: startDoctor, status: startStatus, doctors, services, onClose, onBooked }: Props) {
+  const [patient, setPatient] = useState<Patient | null>((startPatient as Patient | undefined) ?? null)
   const [doctorId, setDoctorId] = useState(startDoctor || (doctors.length === 1 ? String(doctors[0].id) : ''))
   const [serviceId, setServiceId] = useState('')
   const [day, setDay] = useState(date)
