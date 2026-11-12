@@ -25,7 +25,7 @@ export function PharmacySalePrint() {
       <header>
         <h1>{user?.branch?.name ?? 'Prasanthi Hospitals'} Pharmacy</h1>
         {user?.branch?.city && <p>{user.branch.city}</p>}
-        <h2>Pharmacy bill</h2>
+        <h2>Pharmacy bill{sale.voided_at ? ' (deleted)' : ''}</h2>
       </header>
 
       <div className="receipt-meta">
@@ -78,7 +78,10 @@ export function PharmacySalePrint() {
               <td>{item.medicine_name}</td>
               <td>{item.batch_no}</td>
               <td>{expiryLabel(item.expiry)}</td>
-              <td className="num">{item.quantity}</td>
+              <td className="num">
+                {item.quantity}
+                {item.returned_quantity > 0 && <small className="block">{item.returned_quantity} returned</small>}
+              </td>
               <td className="num">{rupees(item.unit_price)}</td>
               <td className="num">{item.discount_percent || ''}</td>
               <td className="num">{item.gst_percent}</td>
@@ -105,6 +108,12 @@ export function PharmacySalePrint() {
         )}
         <dt className="strong">Bill amount</dt>
         <dd className="strong">{rupees(sale.total)}</dd>
+        {sale.returned > 0 && (
+          <>
+            <dt>Returned</dt>
+            <dd>−{rupees(sale.returned)}</dd>
+          </>
+        )}
         <dt>Paid ({modeLabel(sale.payment_mode)})</dt>
         <dd>{rupees(sale.paid)}</dd>
         {sale.due > 0 && (

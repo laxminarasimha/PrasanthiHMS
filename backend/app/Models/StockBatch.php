@@ -23,6 +23,12 @@ class StockBatch extends Model
         ];
     }
 
+    /** What one unit cost the pharmacy, after trade discount and before tax. */
+    public function unitCost(): float
+    {
+        return $this->units_per_pack > 0 ? round($this->pack_price * (1 - $this->discount_percent / 100) / $this->units_per_pack, 2) : 0.0;
+    }
+
     public function medicine(): BelongsTo
     {
         return $this->belongsTo(Medicine::class);

@@ -9,7 +9,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'branch_id', 'patient_id', 'customer_name', 'customer_phone', 'referred_doctor', 'sold_at', 'subtotal', 'discount',
-    'tax', 'round_off', 'total', 'paid', 'ipd_transfer', 'payment_mode', 'reference', 'created_by',
+    'tax', 'round_off', 'total', 'returned', 'paid', 'ipd_transfer', 'payment_mode', 'reference', 'created_by',
+    'voided_at', 'voided_by', 'void_reason',
 ])]
 class PharmacySale extends Model
 {
@@ -22,7 +23,8 @@ class PharmacySale extends Model
     {
         return [
             'sold_at' => 'datetime:Y-m-d H:i', 'subtotal' => 'float', 'discount' => 'float', 'tax' => 'float',
-            'round_off' => 'float', 'total' => 'float', 'paid' => 'float', 'ipd_transfer' => 'float',
+            'round_off' => 'float', 'total' => 'float', 'returned' => 'float', 'paid' => 'float', 'ipd_transfer' => 'float',
+            'voided_at' => 'datetime:Y-m-d H:i',
         ];
     }
 
@@ -39,6 +41,26 @@ class PharmacySale extends Model
         return $this->hasMany(PharmacySaleItem::class);
     }
 
+    public function payments(): HasMany
+    {
+        return $this->hasMany(PharmacyPayment::class)->orderBy('id');
+    }
+
+    public function returns(): HasMany
+    {
+        return $this->hasMany(PharmacySaleReturn::class)->orderBy('id');
+    }
+
+    /** Recomputes the money received from the payment rows. */
+    public function recalculatePaid(): void
+    {
+        $this->paid = round(
+            (float) $this->payments()->where('type', 'payment')->sum('amount') - (float) $this->payments()->where('type', 'refund')->sum('amount'),
+            2
+        );
+        $this->save();
+    }
+
     public function patient(): BelongsTo
     {
         return $this->belongsTo(Patient::class);
@@ -51,6 +73,6 @@ class PharmacySale extends Model
 
     public function getDueAttribute(): float
     {
-        return round($this->total - $this->paid - $this->ipd_transfer, 2);
+        return $this->voided_at ? 0.0 : round($this->total - $this->returned - $this->paid - $this->ipd_transfer, 2);
     }
 }

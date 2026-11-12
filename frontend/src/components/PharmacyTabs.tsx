@@ -1,16 +1,26 @@
 import { NavLink } from 'react-router-dom'
 
-/** Section links shown at the top of every pharmacy page. */
+const GROUPS: [string, [string, string][]][] = [
+  ['Billing', [['/pharmacy/dashboard', 'Dashboard'], ['/pharmacy', 'Billing'], ['/pharmacy/bills', 'All bills'], ['/pharmacy/orders', 'Prescriptions']]],
+  ['Inventory', [['/pharmacy/stock', 'Stock by batch'], ['/pharmacy/inventory', 'Inventory'], ['/pharmacy/opening-stock', 'Opening stock'], ['/pharmacy/medicines', 'Medicines']]],
+  ['Purchases', [['/pharmacy/purchases', 'Invoices'], ['/pharmacy/stock-returns', 'Stock returns'], ['/pharmacy/purchase-orders', 'Purchase orders']]],
+  ['Reports', [['/pharmacy/reports', 'Reports']]],
+]
+
+/** Section links shown at the top of every pharmacy page, grouped the way the work is done. */
 export function PharmacyTabs() {
   return (
-    <nav className="subnav">
-      <NavLink to="/pharmacy" end>
-        Billing
-      </NavLink>
-      <NavLink to="/pharmacy/bills">All bills</NavLink>
-      <NavLink to="/pharmacy/stock">Stock</NavLink>
-      <NavLink to="/pharmacy/purchases">Purchase invoices</NavLink>
-      <NavLink to="/pharmacy/medicines">Medicines &amp; stockists</NavLink>
+    <nav className="subnav grouped no-print">
+      {GROUPS.map(([group, links]) => (
+        <div key={group} className="subnav-group">
+          <span>{group}</span>
+          {links.map(([to, label]) => (
+            <NavLink key={to} to={to} end={to === '/pharmacy'}>
+              {label}
+            </NavLink>
+          ))}
+        </div>
+      ))}
     </nav>
   )
 }

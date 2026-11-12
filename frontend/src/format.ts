@@ -62,3 +62,18 @@ export const nowLocal = () => {
 /** How a bill's payment state reads in a list: an amount due, "On IPD bill" when it was moved there, or "Paid". */
 export const settlement = (due: number, movedToIpd: number | null | undefined) =>
   due > 0 ? `${rupees(due)} due` : Number(movedToIpd) > 0 ? 'On IPD bill' : 'Paid'
+
+/** Saves rows as a CSV file the pharmacist can open in Excel. */
+export function downloadCsv(filename: string, headers: string[], rows: (string | number | null | undefined)[][]) {
+  const cell = (value: string | number | null | undefined) => `"${String(value ?? '').replace(/"/g, '""')}"`
+  const text = [headers, ...rows].map((row) => row.map(cell).join(',')).join('\r\n')
+  const link = document.createElement('a')
+  // The BOM makes Excel read the rupee sign and other non-English characters correctly.
+  link.href = URL.createObjectURL(new Blob(['\ufeff' + text], { type: 'text/csv;charset=utf-8' }))
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(link.href)
+}
+
+/** First day of the current month, as YYYY-MM-DD. */
+export const monthStart = () => today().slice(0, 8) + '01'

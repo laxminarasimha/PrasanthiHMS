@@ -12,7 +12,9 @@ use App\Models\Consultation;
 use App\Models\LabOrder;
 use App\Models\Patient;
 use App\Models\Payment;
+use App\Models\PharmacyPayment;
 use App\Models\PharmacySale;
+use App\Models\PharmacySaleReturn;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -55,9 +57,12 @@ class ReportController extends Controller
             'lab' => ['label' => 'Lab', 'billed' => $billed(true), 'collected' => $billPayments(true)],
             'pharmacy' => [
                 'label' => 'Pharmacy',
-                'billed' => (float) PharmacySale::whereBetween('sold_at', [$from, $to])->sum('total'),
+                'billed' => (float) PharmacySale::whereBetween('sold_at', [$from, $to])->whereNull('voided_at')->sum('total')
+                    - (float) PharmacySaleReturn::whereBetween('created_at', [$from, $to])->sum('amount'),
                 'collected' => $this->byMode(
-                    PharmacySale::whereBetween('sold_at', [$from, $to])->selectRaw('payment_mode, sum(paid) as amount')->groupBy('payment_mode')->pluck('amount', 'payment_mode')
+                    PharmacyPayment::whereBetween('created_at', [$from, $to])
+                        ->selectRaw("mode, sum(case when type = 'refund' then -amount else amount end) as amount")
+                        ->groupBy('mode')->pluck('amount', 'mode')
                 ),
             ],
             'ipd' => [
@@ -86,7 +91,7 @@ class ReportController extends Controller
                 'appointments' => Appointment::whereBetween('scheduled_at', [$from, $to])->where('status', '!=', 'cancelled')->count(),
                 'consultations' => Consultation::whereBetween('completed_at', [$from, $to])->count(),
                 'lab_orders' => LabOrder::whereBetween('ordered_at', [$from, $to])->count(),
-                'pharmacy_bills' => PharmacySale::whereBetween('sold_at', [$from, $to])->count(),
+                'pharmacy_bills' => PharmacySale::whereBetween('sold_at', [$from, $to])->whereNull('voided_at')->count(),
                 'admissions' => Admission::whereBetween('admitted_at', [$from, $to])->count(),
                 'discharges' => Admission::whereBetween('discharged_at', [$from, $to])->count(),
                 'inpatients_now' => Admission::where('status', 'admitted')->count(),

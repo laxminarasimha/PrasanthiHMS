@@ -3,20 +3,22 @@ import { api, fieldErrors, type FieldErrors } from '../../api'
 import { useAuth } from '../../auth'
 import { SelectField, TextField } from '../../components/Field'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
-import type { Medicine, Stockist } from '../../types'
+import type { Manufacturer, Medicine, Stockist } from '../../types'
 
 const TYPES = ['Tablet', 'Capsule', 'Syrup', 'Injection', 'Ointment', 'Drops', 'Sachet', 'Inhaler', 'Surgical', 'Other'].map((t) => ({ value: t, label: t }))
 
-const blankMedicine = { name: '', type: 'Tablet', manufacturer: '', category: '', hsn_code: '', gst_percent: '12', units_per_pack: '10', reorder_level: '0', is_active: true }
+const blankMedicine = { name: '', type: 'Tablet', manufacturer: '', category: '', hsn_code: '', gst_percent: '12', units_per_pack: '10', reorder_level: '0', is_active: true, is_scheduled: false }
 const blankStockist = { name: '', phone: '', gstin: '', address: '' }
 
-type Editing = { kind: 'medicine'; id: number | null } | { kind: 'stockist'; id: number | null } | null
+type Editing = { kind: 'medicine' | 'stockist' | 'manufacturer'; id: number | null } | null
 
 export function PharmacyMedicines() {
   const { user } = useAuth()
   const canEdit = Boolean(user?.can_run_pharmacy)
   const [medicines, setMedicines] = useState<Medicine[]>([])
   const [stockists, setStockists] = useState<Stockist[]>([])
+  const [manufacturers, setManufacturers] = useState<Manufacturer[]>([])
+  const [manufacturerName, setManufacturerName] = useState('')
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<Editing>(null)
   const [medicine, setMedicine] = useState(blankMedicine)
@@ -36,6 +38,7 @@ export function PharmacyMedicines() {
 
   const loadStockists = useCallback(() => {
     api.get<Stockist[]>('/pharmacy/stockists').then((res) => setStockists(res.data))
+    api.get<Manufacturer[]>('/pharmacy/manufacturers').then((res) => setManufacturers(res.data))
   }, [])
   useEffect(loadStockists, [loadStockists])
 
@@ -48,6 +51,7 @@ export function PharmacyMedicines() {
         ? {
             name: m.name, type: m.type ?? '', manufacturer: m.manufacturer ?? '', category: m.category ?? '', hsn_code: m.hsn_code ?? '',
             gst_percent: String(m.gst_percent), units_per_pack: String(m.units_per_pack), reorder_level: String(m.reorder_level), is_active: m.is_active,
+            is_scheduled: m.is_scheduled,
           }
         : blankMedicine,
     )
@@ -60,13 +64,20 @@ export function PharmacyMedicines() {
     setStockist(s ? { name: s.name, phone: s.phone ?? '', gstin: s.gstin ?? '', address: s.address ?? '' } : blankStockist)
   }
 
+  const openManufacturer = (m: Manufacturer | null) => {
+    setEditing({ kind: 'manufacturer', id: m?.id ?? null })
+    setErrors({})
+    setNotice('')
+    setManufacturerName(m?.name ?? '')
+  }
+
   const save = async (e: FormEvent) => {
     e.preventDefault()
     if (!editing) return
     setSaving(true)
     setErrors({})
-    const base = editing.kind === 'medicine' ? '/pharmacy/medicines' : '/pharmacy/stockists'
-    const payload = editing.kind === 'medicine' ? medicine : stockist
+    const base = { medicine: '/pharmacy/medicines', stockist: '/pharmacy/stockists', manufacturer: '/pharmacy/manufacturers' }[editing.kind]
+    const payload = editing.kind === 'medicine' ? medicine : editing.kind === 'stockist' ? stockist : { name: manufacturerName }
     try {
       const res = editing.id ? await api.put<{ name: string }>(`${base}/${editing.id}`, payload) : await api.post<{ name: string }>(base, payload)
       setNotice(`${res.data.name} was ${editing.id ? 'updated' : 'added'}.`)
@@ -116,7 +127,7 @@ export function PharmacyMedicines() {
                   {medicines.map((m) => (
                     <tr key={m.id} onClick={() => openMedicine(m)} className={editing?.kind === 'medicine' && editing.id === m.id ? 'selected' : ''}>
                       <td>
-                        <strong>{m.name}</strong>
+                        <strong>{m.name}</strong> {m.is_scheduled && <span className="pill status-ongoing">Scheduled</span>}
                       </td>
                       <td>{m.type ?? '—'}</td>
                       <td>{m.manufacturer ?? '—'}</td>
@@ -180,6 +191,25 @@ export function PharmacyMedicines() {
               </table>
             </div>
           </section>
+
+          <section className="card">
+            <div className="toolbar">
+              <h1 className="grow">Manufacturers</h1>
+              {canEdit && (
+                <button className="btn ghost" onClick={() => openManufacturer(null)}>
+                  + New manufacturer
+                </button>
+              )}
+            </div>
+            <div className="chips">
+              {manufacturers.map((m) => (
+                <button key={m.id} className={`chip ${editing?.kind === 'manufacturer' && editing.id === m.id ? 'absent' : ''}`} onClick={() => openManufacturer(m)}>
+                  {m.name}
+                </button>
+              ))}
+              {manufacturers.length === 0 && <span className="muted">Manufacturers are added here, or automatically when you type one on a medicine.</span>}
+            </div>
+          </section>
         </div>
 
         {editing && (
@@ -199,12 +229,24 @@ export function PharmacyMedicines() {
                     <TextField label="Name and strength" required placeholder="Paracetamol 650mg Tablet" value={medicine.name} onChange={setM('name')} error={errors.name} autoFocus />
                   </div>
                   <SelectField label="Type" value={medicine.type} onChange={setM('type')} options={TYPES} placeholder="Select" error={errors.type} />
-                  <TextField label="Manufacturer" value={medicine.manufacturer} onChange={setM('manufacturer')} error={errors.manufacturer} />
+                  <label className="field">
+                    <span className="field-label">Manufacturer</span>
+                    <input list="manufacturer-names" value={medicine.manufacturer} onChange={(e) => setM('manufacturer')(e.target.value)} />
+                    <datalist id="manufacturer-names">
+                      {manufacturers.map((m) => (
+                        <option key={m.id} value={m.name} />
+                      ))}
+                    </datalist>
+                  </label>
                   <TextField label="Category" placeholder="Scheduled drug" value={medicine.category} onChange={setM('category')} error={errors.category} />
                   <TextField label="HSN code" value={medicine.hsn_code} onChange={setM('hsn_code')} error={errors.hsn_code} />
                   <TextField label="Units per pack" required type="number" min={1} value={medicine.units_per_pack} onChange={setM('units_per_pack')} error={errors.units_per_pack} />
                   <TextField label="GST %" required type="number" min={0} step="0.01" value={medicine.gst_percent} onChange={setM('gst_percent')} error={errors.gst_percent} />
                   <TextField label="Low-stock alert at (units)" type="number" min={0} value={medicine.reorder_level} onChange={setM('reorder_level')} error={errors.reorder_level} />
+                  <label className="check span-2">
+                    <input type="checkbox" checked={medicine.is_scheduled} onChange={(e) => setMedicine((f) => ({ ...f, is_scheduled: e.target.checked }))} />
+                    Scheduled drug (sold only on prescription; listed in the schedule drug report)
+                  </label>
                   {editing.id && (
                     <label className="check span-2">
                       <input type="checkbox" checked={medicine.is_active} onChange={(e) => setMedicine((f) => ({ ...f, is_active: e.target.checked }))} />
@@ -212,6 +254,11 @@ export function PharmacyMedicines() {
                     </label>
                   )}
                 </div>
+              ) : editing.kind === 'manufacturer' ? (
+                <>
+                  <TextField label="Manufacturer name" required value={manufacturerName} onChange={setManufacturerName} error={errors.name} autoFocus />
+                  {editing.id && <p className="muted small">Renaming also updates every medicine that carries the old name.</p>}
+                </>
               ) : (
                 <div className="grid">
                   <div className="span-2">

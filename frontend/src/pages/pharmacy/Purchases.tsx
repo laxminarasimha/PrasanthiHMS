@@ -42,6 +42,8 @@ export function PharmacyPurchases() {
   const [errors, setErrors] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
+  const [payAmount, setPayAmount] = useState('')
+  const [payError, setPayError] = useState('')
 
   const load = useCallback(() => {
     api.get<PurchaseInvoice[]>('/pharmacy/purchases').then((res) => setInvoices(res.data))
@@ -218,6 +220,8 @@ export function PharmacyPurchases() {
                     <th>Date</th>
                     <th className="num">Lines</th>
                     <th className="num">Total</th>
+                    <th className="num">Paid</th>
+                    <th className="num">Balance</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -230,11 +234,13 @@ export function PharmacyPurchases() {
                       <td>{longDate(inv.invoice_date)}</td>
                       <td className="num">{inv.batches_count}</td>
                       <td className="num">{rupees(inv.total)}</td>
+                      <td className="num">{rupees(inv.paid)}</td>
+                      <td className={`num ${inv.total - inv.paid > 0.004 ? 'due' : ''}`}>{rupees(Math.round((inv.total - inv.paid) * 100) / 100)}</td>
                     </tr>
                   ))}
                   {invoices.length === 0 && (
                     <tr className="empty">
-                      <td colSpan={5}>No purchase invoices yet.</td>
+                      <td colSpan={7}>No purchase invoices yet.</td>
                     </tr>
                   )}
                 </tbody>
@@ -289,7 +295,34 @@ export function PharmacyPurchases() {
                 <dd>{rupees(viewing.tax)}</dd>
                 <dt className="strong">Total</dt>
                 <dd className="strong">{rupees(viewing.total)}</dd>
+                <dt>Paid to stockist</dt>
+                <dd>{rupees(viewing.paid)}</dd>
+                <dt className="strong">Balance owed</dt>
+                <dd className={`strong ${viewing.total - viewing.paid > 0.004 ? 'due' : 'settled'}`}>{rupees(Math.round((viewing.total - viewing.paid) * 100) / 100)}</dd>
               </dl>
+              {canEdit && viewing.total - viewing.paid > 0.004 && (
+                <form
+                  className="row gap-top"
+                  onSubmit={async (e) => {
+                    e.preventDefault()
+                    try {
+                      const res = await api.post<PurchaseInvoice>(`/pharmacy/purchases/${viewing.id}/payments`, { amount: payAmount })
+                      setViewing(res.data)
+                      setPayAmount('')
+                      setPayError('')
+                      load()
+                    } catch (err) {
+                      setPayError(Object.values(fieldErrors(err))[0])
+                    }
+                  }}
+                >
+                  <input type="number" min={0} step="0.01" placeholder="Amount paid to stockist" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} aria-label="Amount paid to stockist" />
+                  <button className="btn primary" disabled={!payAmount || Number(payAmount) <= 0}>
+                    Record payment
+                  </button>
+                </form>
+              )}
+              {payError && <p className="form-error">{payError}</p>}
               {viewing.remarks && <p className="muted">{viewing.remarks}</p>}
             </aside>
           )}

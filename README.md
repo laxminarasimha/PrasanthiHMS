@@ -44,7 +44,7 @@ Sign in with the seeded admin account `admin@prasanthi.test` (a sample doctor, `
 - Services: the price list used for appointments and bills
 - Doctor: the day's patient queue, a visit pad (vitals, notes, medicines, tests, advice, follow-up), past visits and a printable prescription
 - Lab: test list with parameters and reference ranges, lab orders with billing, results entry with high/low flags, and a printable report
-- Pharmacy: medicine list, stockists, purchase invoices that add stock by batch and expiry, stock view with expiry and low-stock warnings, billing from stock, and a printable bill
+- Pharmacy: dashboard; billing from stock or from a prescription; collecting balances, medicine returns and deleting bills; prescriptions queue; stock by batch, inventory by medicine, opening stock and stock adjustment; medicines, manufacturers and stockists; purchase invoices with stockist payments, stock returns and purchase orders; twelve reports with export
 - IPD: beds by ward, IPD services, admissions, a running bill with charges, advances, payments and refunds, bed moves, discharge with summary, and a printable bill
 - Reports (Admin and Doctor): billed and collected amounts by department and payment mode for any date range, with activity counts
 - Linked modules: the doctor orders lab tests and reads results in the visit pad, the pharmacy starts a bill from the prescription, and unpaid lab, pharmacy and front desk bills can be moved onto an inpatient's bill

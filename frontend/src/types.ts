@@ -231,6 +231,7 @@ export type Medicine = {
   type: string | null
   manufacturer: string | null
   category: string | null
+  is_scheduled: boolean
   hsn_code: string | null
   gst_percent: number
   units_per_pack: number
@@ -268,6 +269,7 @@ export type PurchaseInvoice = {
   subtotal: number
   tax: number
   total: number
+  paid: number
   remarks: string | null
   stockist: { id: number; name: string }
   batches_count?: number
@@ -287,6 +289,7 @@ export type PharmacySaleItem = {
   batch_no: string
   expiry: string
   quantity: number
+  returned_quantity: number
   unit_price: number
   discount_percent: number
   gst_percent: number
@@ -305,9 +308,14 @@ export type PharmacySale = {
   tax: number
   round_off: number
   total: number
+  returned: number
   paid: number
   ipd_transfer: number
   due: number
+  voided_at: string | null
+  void_reason: string | null
+  payments?: Payment[]
+  returns?: { id: number; amount: number; refunded: number; created_at: string; lines: { medicine_name: string; quantity: number; amount: number }[] }[]
   payment_mode: string
   reference: string | null
   items_count?: number
@@ -369,3 +377,72 @@ export type PrescriptionForPharmacy = {
 }
 
 export type OutstandingBill = { type: 'bill' | 'pharmacy'; id: number; label: string; category: string; date: string; due: number }
+
+export type Manufacturer = { id: number; name: string }
+
+export type PharmacyDashboard = {
+  from: string
+  to: string
+  sales: number
+  billed: number
+  collected: number
+  collected_cash: number
+  collected_card: number
+  collected_other: number
+  statistics: { medicines: number; manufacturers: number; inventory_cost: number; inventory_mrp: number; units_in_stock: number; out_of_stock: number }
+  latest_sales: PharmacySale[]
+  fast_moving: { medicine_name: string; sold: number }[]
+}
+
+export type PrescriptionOrder = {
+  id: number
+  completed_at: string
+  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile'>
+  doctor: string | null
+  medicines: { id: number; medicine: string; dose: string | null; frequency: string | null; duration: string | null }[]
+  bill: { id: number; bill_no: string } | null
+}
+
+export type InventoryMedicine = {
+  id: number
+  name: string
+  type: string | null
+  manufacturer: string | null
+  reorder_level: number
+  units_in_stock: number
+  expiring_units: number
+  next_expiry: string | null
+}
+
+export type StockReturn = {
+  id: number
+  return_no: string
+  returned_on: string
+  total: number
+  remarks: string | null
+  stockist: { id: number; name: string }
+  items: { id: number; medicine_name: string; batch_no: string; quantity: number; unit_cost: number; amount: number }[]
+}
+
+export type PurchaseOrder = {
+  id: number
+  order_no: string
+  order_date: string
+  status: 'open' | 'received' | 'cancelled'
+  remarks: string | null
+  stockist: { id: number; name: string; phone?: string | null; address?: string | null }
+  items_count?: number
+  items?: { id: number; medicine_name: string; units_per_pack: number; packs: number }[]
+}
+
+export type ReportColumn = { key: string; label: string; type: 'text' | 'money' | 'number'; total: boolean }
+export type PharmacyReport = {
+  type: string
+  title: string
+  from: string
+  to: string
+  columns: ReportColumn[]
+  rows: Record<string, string | number | null>[]
+  totals: Record<string, number>
+  reports: Record<string, string>
+}

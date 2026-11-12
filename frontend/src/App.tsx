@@ -17,10 +17,17 @@ import { Login } from './pages/Login'
 import { Patients } from './pages/Patients'
 import { PharmacyBilling } from './pages/pharmacy/Billing'
 import { PharmacyBills } from './pages/pharmacy/Bills'
+import { PharmacyDashboard } from './pages/pharmacy/Dashboard'
+import { PharmacyInventory } from './pages/pharmacy/Inventory'
 import { PharmacyMedicines } from './pages/pharmacy/Medicines'
+import { PharmacyOpeningStock } from './pages/pharmacy/OpeningStock'
+import { PharmacyOrders } from './pages/pharmacy/Orders'
+import { PharmacyPurchaseOrders } from './pages/pharmacy/PurchaseOrders'
 import { PharmacyPurchases } from './pages/pharmacy/Purchases'
+import { PharmacyReports } from './pages/pharmacy/Reports'
 import { PharmacySalePrint } from './pages/pharmacy/SalePrint'
 import { PharmacyStock } from './pages/pharmacy/Stock'
+import { PharmacyStockReturns } from './pages/pharmacy/StockReturns'
 import { PrescriptionPrint } from './pages/PrescriptionPrint'
 import { Reports } from './pages/Reports'
 import { Services } from './pages/Services'
@@ -71,6 +78,13 @@ export default function App() {
             <Route path="/lab/tests" element={<LabTests />} />
             <Route path="/pharmacy" element={<Only when="can_run_pharmacy"><PharmacyBilling /></Only>} />
             <Route path="/pharmacy/bills" element={<Only when="can_run_pharmacy"><PharmacyBills /></Only>} />
+            <Route path="/pharmacy/dashboard" element={<Only when="can_run_pharmacy"><PharmacyDashboard /></Only>} />
+            <Route path="/pharmacy/orders" element={<Only when="can_run_pharmacy"><PharmacyOrders /></Only>} />
+            <Route path="/pharmacy/inventory" element={<Only when="can_run_pharmacy"><PharmacyInventory /></Only>} />
+            <Route path="/pharmacy/opening-stock" element={<Only when="can_run_pharmacy"><PharmacyOpeningStock /></Only>} />
+            <Route path="/pharmacy/stock-returns" element={<Only when="can_run_pharmacy"><PharmacyStockReturns /></Only>} />
+            <Route path="/pharmacy/purchase-orders" element={<Only when="can_run_pharmacy"><PharmacyPurchaseOrders /></Only>} />
+            <Route path="/pharmacy/reports" element={<Only when="can_run_pharmacy"><PharmacyReports /></Only>} />
             <Route path="/pharmacy/stock" element={<Only when="can_run_pharmacy"><PharmacyStock /></Only>} />
             <Route path="/pharmacy/purchases" element={<Only when="can_run_pharmacy"><PharmacyPurchases /></Only>} />
             <Route path="/pharmacy/medicines" element={<Only when="can_run_pharmacy"><PharmacyMedicines /></Only>} />
