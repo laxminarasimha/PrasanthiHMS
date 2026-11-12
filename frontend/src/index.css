@@ -249,3 +249,16 @@ input.result.low { border-color: #1d4f91; color: #1d4f91; font-weight: 700; }
 .stack.panel { width: 400px; flex-shrink: 0; }
 .stack.panel .card h2 { margin-bottom: 4px; }
 @media (max-width: 1000px) { .stack.panel { width: 100%; } .charge-row, .charge-row.pay { grid-template-columns: 1fr 1fr; } }
+
+/* Reports */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-bottom: 8px; }
+.tile { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+.tile span { color: var(--muted); font-size: 0.85rem; }
+.tile strong { font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+tr.sub td { color: var(--muted); padding-top: 6px; padding-bottom: 6px; }
+tr.sub td:first-child { padding-left: 26px; }
+@media print {
+  .topbar, .no-print { display: none; }
+  .content { padding: 0; }
+  .card { border: 0; }
+}

@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\IpdController;
 use App\Http\Controllers\Api\LabController;
 use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\PharmacyController;
+use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\StaffController;
 use App\Http\Middleware\EnsureCanManageStaff;
@@ -93,6 +94,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/admissions/{admission}/payments', 'addPayment');
         Route::post('/admissions/{admission}/discharge', 'discharge');
     });
+
+    Route::get('/reports/summary', [ReportController::class, 'summary']);
 
     Route::middleware(EnsureCanManageStaff::class)->group(function () {
         Route::get('/staff', [StaffController::class, 'index']);
