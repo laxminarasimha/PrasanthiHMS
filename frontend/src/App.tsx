@@ -1,12 +1,16 @@
+import type { ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth'
 import { Layout } from './components/Layout'
 import { BillPrint } from './pages/BillPrint'
+import { DoctorQueue } from './pages/DoctorQueue'
 import { FrontDesk } from './pages/FrontDesk'
 import { Login } from './pages/Login'
 import { Patients } from './pages/Patients'
+import { PrescriptionPrint } from './pages/PrescriptionPrint'
 import { Services } from './pages/Services'
 import { Staff } from './pages/Staff'
+import { VisitPad } from './pages/VisitPad'
 
 function Protected() {
   const { user, loading } = useAuth()
@@ -14,10 +18,10 @@ function Protected() {
   return user ? <Layout /> : <Navigate to="/login" replace />
 }
 
-function PrintOnly() {
+function PrintOnly({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
   if (loading) return <p className="loading">Loading…</p>
-  return user ? <BillPrint /> : <Navigate to="/login" replace />
+  return user ? children : <Navigate to="/login" replace />
 }
 
 function StaffOnly() {
@@ -31,9 +35,12 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/bills/:id/print" element={<PrintOnly />} />
+          <Route path="/bills/:id/print" element={<PrintOnly><BillPrint /></PrintOnly>} />
+          <Route path="/visits/:id/print" element={<PrintOnly><PrescriptionPrint /></PrintOnly>} />
           <Route element={<Protected />}>
             <Route path="/front-desk" element={<FrontDesk />} />
+            <Route path="/doctor" element={<DoctorQueue />} />
+            <Route path="/visits/:id" element={<VisitPad />} />
             <Route path="/patients" element={<Patients />} />
             <Route path="/services" element={<Services />} />
             <Route path="/staff" element={<StaffOnly />} />

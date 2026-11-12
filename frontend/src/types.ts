@@ -5,6 +5,7 @@ export type User = {
   role: string
   role_label: string
   can_manage_staff: boolean
+  can_consult: boolean
   branch: { id: number; name: string; city: string | null } | null
 }
 
@@ -109,4 +110,57 @@ export type Bill = {
   payments: Payment[]
   patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile' | 'address' | 'city'>
   appointment: { id: number; scheduled_at: string; doctor: { id: number; name: string } } | null
+}
+
+export type Medicine = {
+  id?: number
+  medicine: string
+  dose: string | null
+  frequency: string | null
+  timing: string | null
+  duration: string | null
+  instructions: string | null
+}
+
+export type Consultation = {
+  id: number
+  weight_kg: number | null
+  height_cm: number | null
+  bp_systolic: number | null
+  bp_diastolic: number | null
+  pulse: number | null
+  temperature_f: number | null
+  spo2: number | null
+  complaints: string | null
+  findings: string | null
+  diagnosis: string | null
+  tests_advised: string | null
+  advice: string | null
+  follow_up_on: string | null
+  completed_at: string | null
+  medicines: Medicine[]
+  doctor?: { id: number; name: string }
+}
+
+export type VisitPatient = Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile' | 'blood_group'>
+
+export type Visit = {
+  appointment: { id: number; scheduled_at: string; status: AppointmentStatus; notes: string | null }
+  patient: VisitPatient
+  doctor: { id: number; name: string; department: string | null; signature_text: string | null }
+  service: { id: number; name: string } | null
+  consultation: Consultation | null
+}
+
+export type QueueEntry = {
+  id: number
+  scheduled_at: string
+  arrived_at: string | null
+  status: AppointmentStatus
+  patient: VisitPatient
+  doctor: { id: number; name: string }
+  service: { id: number; name: string } | null
+  consultation: { id: number; completed_at: string | null } | null
+  visits: number
+  last_visit: string | null
 }
