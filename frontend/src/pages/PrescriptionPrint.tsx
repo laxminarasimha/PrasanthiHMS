@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
+import { useSignature } from '../components/useSignature'
 import { longDate } from '../format'
 import type { Visit } from '../types'
 
@@ -14,9 +15,11 @@ export function PrescriptionPrint() {
   useEffect(() => {
     api.get<Visit>(`/appointments/${id}/consultation`).then((res) => {
       setVisit(res.data)
-      setTimeout(() => window.print(), 300)
+      // A moment for the signature picture to arrive before the print dialog opens.
+      setTimeout(() => window.print(), 800)
     })
   }, [id])
+  const signature = useSignature(visit?.doctor.id)
 
   if (!visit) return <p className="loading">Loading prescription…</p>
   const c = visit.consultation
@@ -131,6 +134,7 @@ export function PrescriptionPrint() {
       {c.follow_up_on && <section><h3>Next visit</h3><p>{longDate(c.follow_up_on)}</p></section>}
 
       <div className="signature">
+        {signature && <img src={signature} alt="" />}
         <strong>{visit.doctor.signature_text || visit.doctor.name}</strong>
       </div>
     </div>

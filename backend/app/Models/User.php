@@ -12,8 +12,8 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'branch_id', 'role', 'gender', 'phone', 'department', 'signature_text', 'is_active', 'pad_hidden_sections', 'pad_section_order'])]
-#[Hidden(['password', 'remember_token'])]
+#[Fillable(['name', 'email', 'password', 'branch_id', 'role', 'gender', 'phone', 'department', 'signature_text', 'is_active', 'pad_hidden_sections', 'pad_section_order', 'permissions', 'signature_path', 'availability'])]
+#[Hidden(['password', 'remember_token', 'signature_path', 'permissions'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
@@ -31,7 +31,47 @@ class User extends Authenticatable
             'is_active' => 'boolean',
             'pad_hidden_sections' => 'array',
             'pad_section_order' => 'array',
+            'permissions' => 'array',
+            'availability' => 'array',
         ];
+    }
+
+    /** What a person may be allowed to do, with the wording shown on the staff screen. */
+    public const ABILITIES = [
+        'canWorkFrontDesk' => ['Front desk: appointments and billing', 'Book appointments, change their status, take vitals and make bills.'],
+        'canChangePrice' => ['Change the price while billing', 'Charge a price different from the price list for a service.'],
+        'canConsult' => ['Doctor: visit pad', 'Open the visit pad, write notes and prescriptions, and use the doctor library.'],
+        'canRunLab' => ['Lab', 'Enter and approve lab results, and edit lab tests, packages and preferences.'],
+        'canRunPharmacy' => ['Pharmacy', 'Sell medicines, receive stock, and edit medicines, bills and invoices.'],
+        'canDeleteBills' => ['Delete pharmacy bills', 'Delete a pharmacy bill, which restocks it and refunds the money.'],
+        'canWorkIpd' => ['IPD', 'Admit patients, add IPD charges, take IPD payments and discharge.'],
+        'canViewReports' => ['Reports', "See the hospital's billing, collection and activity reports."],
+        'canManageSetup' => ['Price lists and setup', 'Change services, OPD hours, beds and IPD services.'],
+        'canManageStaff' => ['Staff and permissions', 'Add staff, reset passwords and change what each person may do.'],
+    ];
+
+    /**
+     * Whether this person may do something: their own setting if one was made, otherwise what their role allows.
+     * Admins always keep everything, so the hospital cannot lock itself out.
+     */
+    public function allows(string $ability): bool
+    {
+        $default = method_exists($this->role, $ability) && $this->role->{$ability}();
+
+        return $this->role === Role::Admin ? $default : (bool) ($this->permissions[$ability] ?? $default);
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    public function getAbilitiesAttribute(): array
+    {
+        return collect(self::ABILITIES)->map(fn ($label, $ability) => $this->allows($ability))->all();
+    }
+
+    public function getHasSignatureAttribute(): bool
+    {
+        return filled($this->signature_path);
     }
 
     public function branch(): BelongsTo

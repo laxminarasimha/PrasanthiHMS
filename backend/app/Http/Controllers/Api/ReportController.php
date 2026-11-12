@@ -29,7 +29,7 @@ class ReportController extends Controller
      */
     public function summary(Request $request): JsonResponse
     {
-        abort_unless($request->user()->role->canManageStaff(), 403, 'You are not allowed to view reports.');
+        abort_unless($request->user()->allows('canViewReports'), 403, 'You are not allowed to view reports.');
 
         $range = $request->validate([
             'from' => ['nullable', 'date'],

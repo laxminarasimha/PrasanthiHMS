@@ -234,7 +234,7 @@ class DoctorLibraryController extends Controller
     private function owner(Request $request): int
     {
         $user = $request->user();
-        abort_unless($user->role->canConsult(), 403, 'You are not allowed to use the doctor library.');
+        abort_unless($user->allows('canConsult'), 403, 'You are not allowed to use the doctor library.');
 
         if ($user->role === Role::Doctor) {
             return $user->id;
@@ -249,6 +249,6 @@ class DoctorLibraryController extends Controller
     private function mine(Request $request, int $doctorId): void
     {
         $user = $request->user();
-        abort_unless($user->role->canConsult() && ($user->role !== Role::Doctor || $user->id === $doctorId), 403, 'This belongs to another doctor.');
+        abort_unless($user->allows('canConsult') && ($user->role !== Role::Doctor || $user->id === $doctorId), 403, 'This belongs to another doctor.');
     }
 }

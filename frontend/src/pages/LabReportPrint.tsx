@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
+import { useSignature } from '../components/useSignature'
 import { clock, longDate } from '../format'
 import type { LabOrder, LabSettings } from '../types'
 
@@ -32,10 +33,12 @@ export function LabReportPrint() {
   const printed = ready.filter((item) => !only || only.includes(item.id))
   const unpaid = Boolean(order && settings && !settings.allow_print_without_payment && order.bill && order.bill.due > 0)
   const canPrint = printed.length > 0 && !unpaid
+  const lastPrinted = printed[printed.length - 1]
+  const signerSignature = useSignature((lastPrinted?.approver ?? lastPrinted?.reporter)?.id)
 
   useEffect(() => {
     if (!canPrint) return
-    const timer = setTimeout(() => window.print(), 300)
+    const timer = setTimeout(() => window.print(), 800)
     return () => clearTimeout(timer)
   }, [canPrint])
 
@@ -207,6 +210,7 @@ export function LabReportPrint() {
           </div>
         ))}
         <div className="right">
+          {signerSignature && <img src={signerSignature} alt="" />}
           <strong>{signer?.signature_text || signer?.name}</strong>
           <br />
           <small>{last.approver ? 'Approved by' : 'Reported by'}</small>

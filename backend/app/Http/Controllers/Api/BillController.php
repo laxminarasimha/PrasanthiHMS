@@ -115,6 +115,9 @@ class BillController extends Controller
         $service = Service::find($data['service_id'] ?? null);
         $quantity = (int) ($data['quantity'] ?? 1);
         $price = (float) ($data['unit_price'] ?? $service?->price ?? 0);
+        if ($service && abs($price - (float) $service->price) > 0.004 && ! request()->user()->allows('canChangePrice')) {
+            throw ValidationException::withMessages(['unit_price' => 'You are not allowed to change the price. It is ₹'.(float) $service->price.' on the price list.']);
+        }
         $discount = (float) ($data['line_discount'] ?? 0);
 
         if ($discount > $price * $quantity) {

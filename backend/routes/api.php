@@ -199,11 +199,14 @@ Route::middleware('auth:sanctum')->group(function () {
         });
     });
 
+    Route::get('/users/{user}/signature', [StaffController::class, 'signature']);
     Route::get('/reports/summary', [ReportController::class, 'summary']);
 
     Route::middleware(EnsureCanManageStaff::class)->group(function () {
         Route::get('/staff', [StaffController::class, 'index']);
         Route::post('/staff', [StaffController::class, 'store']);
         Route::put('/staff/{staff}', [StaffController::class, 'update']);
+        Route::post('/staff/{staff}/signature', [StaffController::class, 'saveSignature']);
+        Route::delete('/staff/{staff}/signature', [StaffController::class, 'destroySignature']);
     });
 });

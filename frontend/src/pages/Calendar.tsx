@@ -256,6 +256,14 @@ export function Calendar() {
     const end = timeOf(minutes(slot) + settings.slot_minutes)
     return blocks.find((b) => String(b.doctor_id) === column.doctorId && b.from_date <= column.date && b.to_date >= column.date && (!b.start_time || !b.end_time || (b.start_time < end && b.end_time > slot)))
   }
+  // Outside the doctor's own usual hours, when they have set any. Booking is still allowed; it is only a hint.
+  const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const
+  const offHours = (column: Column, slot: string) => {
+    const availability = doctors.find((d) => String(d.id) === column.doctorId)?.availability
+    if (!availability || Object.keys(availability).length === 0) return false
+    const ranges = availability[WEEKDAYS[new Date(column.date + 'T00:00:00').getDay()]] ?? []
+    return !ranges.some((r) => r.from <= slot && slot < r.to)
+  }
   const awayAllDay = (column: Column) => blocks.find((b) => String(b.doctor_id) === column.doctorId && b.from_date <= column.date && b.to_date >= column.date && !b.start_time)
 
   const move = (days: number) => setDate(addDays(date, days * (view === 'week' ? 7 : 1)))
@@ -352,12 +360,13 @@ export function Calendar() {
                       <td className="cal-time">{label(row.slot!)}</td>
                       {columns.map((c) => {
                         const away = blockAt(c, row.slot!)
+                        const off = !away && offHours(c, row.slot!)
                         const full = !away && settings.slot_limit > 0 && c.doctorId !== '' && (cells.get(`${c.key}|${row.slot}`) ?? []).filter((a) => a.status !== 'cancelled').length >= settings.slot_limit
                         return (
                         <td
                           key={c.key}
-                          className={`slot ${c.date === today() && row.slot === nowSlot ? 'now' : ''} ${away ? 'away' : ''} ${full ? 'full' : ''}`}
-                          title={away ? `Away${away.reason ? `: ${away.reason}` : ''}` : full ? 'This slot is full' : undefined}
+                          className={`slot ${c.date === today() && row.slot === nowSlot ? 'now' : ''} ${away ? 'away' : ''} ${full ? 'full' : ''} ${off ? 'off-hours' : ''}`}
+                          title={away ? `Away${away.reason ? `: ${away.reason}` : ''}` : full ? 'This slot is full' : off ? "Outside this doctor's usual hours" : undefined}
                           onClick={() => (away ? setPanel({ kind: 'leave', date: c.date, doctorId: c.doctorId }) : full ? setNotice(`The ${label(row.slot!)} slot is full (${settings.slot_limit} per slot). Choose another time.`) : openSlot(c, row.slot!))}
                         >
                           {(cells.get(`${c.key}|${row.slot}`) ?? []).map((a) => (
@@ -387,7 +396,7 @@ export function Calendar() {
         )}
         <p className="muted small legend">
           <span className="cal-chip booked">Booked</span> <span className="cal-chip arrived">Arrived</span> <span className="cal-chip ongoing">Ongoing</span> <span className="cal-chip reviewed">Reviewed</span>{' '}
-          <span className="cal-chip cancelled">Cancelled</span> <span className="cal-key away">Doctor away</span>
+          <span className="cal-chip cancelled">Cancelled</span> <span className="cal-key away">Doctor away</span> <span className="cal-key off-hours">Outside doctor's hours</span>
           {settings && settings.slot_limit > 0 && <span className="cal-key full">Slot full</span>}
         </p>
       </section>

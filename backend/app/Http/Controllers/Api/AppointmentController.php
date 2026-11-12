@@ -201,6 +201,9 @@ class AppointmentController extends Controller
             if ($service && ! ($billing['skip_billing'] ?? false)) {
                 $quantity = (int) ($billing['quantity'] ?? 1);
                 $price = (float) ($billing['unit_price'] ?? $service->price);
+                if (abs($price - (float) $service->price) > 0.004 && ! $request->user()->allows('canChangePrice')) {
+                    throw ValidationException::withMessages(['unit_price' => 'You are not allowed to change the price. It is ₹'.(float) $service->price.' on the price list.']);
+                }
                 $discount = (float) ($billing['discount'] ?? 0);
                 if ($discount > $price * $quantity) {
                     throw ValidationException::withMessages(['discount' => 'The discount cannot be more than the charge.']);

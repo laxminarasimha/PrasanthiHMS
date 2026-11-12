@@ -470,7 +470,7 @@ class LabController extends Controller
 
     private function authorizeLab(Request $request): void
     {
-        abort_unless($request->user()->role->canRunLab(), 403, 'You are not allowed to do this in the lab.');
+        abort_unless($request->user()->allows('canRunLab'), 403, 'You are not allowed to do this in the lab.');
     }
 
     private function present(LabOrder $order): LabOrder
