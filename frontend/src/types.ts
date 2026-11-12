@@ -8,6 +8,9 @@ export type User = {
   can_consult: boolean
   can_run_lab: boolean
   can_run_pharmacy: boolean
+  can_manage_setup: boolean
+  can_front_desk: boolean
+  can_ipd: boolean
   branch: { id: number; name: string; city: string | null } | null
 }
 
@@ -75,7 +78,7 @@ export type Appointment = {
   patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile'>
   doctor: { id: number; name: string }
   service: { id: number; name: string } | null
-  bills: { id: number; bill_no: string; total: number; paid: number; due: number; lab_order: { id: number; order_no: string } | null }[]
+  bills: { id: number; bill_no: string; total: number; paid: number; due: number; moved_to_ipd: number | null; lab_order: { id: number; order_no: string } | null }[]
 }
 
 export type BillItem = {
@@ -211,7 +214,7 @@ export type LabOrder = {
   referred_by: string | null
   patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile'>
   items: LabOrderItem[]
-  bill: { id: number; bill_no: string; total: number; paid: number; due: number } | null
+  bill: { id: number; bill_no: string; total: number; paid: number; due: number; moved_to_ipd?: number | null } | null
 }
 
 export type Medicine = {
@@ -295,6 +298,7 @@ export type PharmacySale = {
   round_off: number
   total: number
   paid: number
+  ipd_transfer: number
   due: number
   payment_mode: string
   reference: string | null

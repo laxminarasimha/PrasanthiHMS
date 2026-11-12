@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import { AppointmentForm } from '../components/AppointmentForm'
 import { BillPanel } from '../components/BillPanel'
-import { STATUS_LABELS, clock, rupees, today } from '../format'
+import { STATUS_LABELS, clock, rupees, settlement, today } from '../format'
 import type { Appointment, AppointmentStatus, Bill, Doctor, Service } from '../types'
 
 type DayList = { data: Appointment[]; counts: Partial<Record<AppointmentStatus, number>> }
@@ -155,7 +155,7 @@ export function FrontDesk() {
                         </button>
                       ))}
                       {a.bills.length > 0 && (
-                        <small className={`block ${due > 0 ? 'due' : 'settled'}`}>{due > 0 ? `${rupees(due)} due` : 'Paid'}</small>
+                        <small className={`block ${due > 0 ? 'due' : 'settled'}`}>{settlement(due, a.bills.reduce((sum, b) => sum + Number(b.moved_to_ipd ?? 0), 0))}</small>
                       )}
                     </td>
                   </tr>

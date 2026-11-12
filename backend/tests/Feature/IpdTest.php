@@ -39,6 +39,7 @@ class IpdTest extends TestCase
 
     public function test_beds_and_services_can_be_set_up_and_duplicate_beds_are_refused(): void
     {
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
         $this->postJson('/api/ipd/beds', ['ward' => 'General Ward', 'bed_no' => '2', 'daily_charge' => 800])->assertCreated();
         $this->postJson('/api/ipd/beds', ['ward' => 'General Ward', 'bed_no' => '2'])->assertStatus(422)->assertJsonValidationErrors('bed_no');
         $this->postJson('/api/ipd/services', ['name' => 'Nursing charges', 'category' => 'Nursing', 'price' => 500])->assertCreated();
@@ -119,6 +120,7 @@ class IpdTest extends TestCase
 
         $third = Bed::create(['ward' => 'AC Room', 'bed_no' => '1']);
         $this->putJson("/api/ipd/admissions/{$first}", ['bed_id' => $third->id])->assertOk()->assertJsonPath('bed.ward', 'AC Room');
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
         $this->putJson("/api/ipd/beds/{$third->id}", ['ward' => 'AC Room', 'bed_no' => '1', 'is_active' => false])
             ->assertStatus(422)->assertJsonValidationErrors('is_active');
     }

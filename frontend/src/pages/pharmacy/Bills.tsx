@@ -66,6 +66,7 @@ export function PharmacyBills() {
                   <td className="num">
                     {rupees(s.paid)}
                     {s.due > 0 && <small className="block due">{rupees(s.due)} due</small>}
+                    {s.ipd_transfer > 0 && <small className="block muted">{rupees(s.ipd_transfer)} on IPD bill</small>}
                   </td>
                   <td>{modeLabel(s.payment_mode)}</td>
                   <td className="num">

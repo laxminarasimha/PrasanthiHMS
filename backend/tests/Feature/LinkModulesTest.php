@@ -112,6 +112,7 @@ class LinkModulesTest extends TestCase
         $this->assertEquals(0, Bill::find($labBill)->due);
         $this->assertEquals(0, PharmacySale::find($sale)->due);
         $this->getJson("{$url}/outstanding")->assertOk()->assertJsonCount(0);
+        $this->getJson('/api/lab/orders')->assertOk()->assertJsonPath('0.bill.due', 0)->assertJsonPath('0.bill.moved_to_ipd', 200);
         $this->postJson("{$url}/transfer", ['type' => 'bill', 'id' => $labBill])->assertStatus(422);
 
         // The transfer is not money received: lab collections stay at the 100 paid in cash.

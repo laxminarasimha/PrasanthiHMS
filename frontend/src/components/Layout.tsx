@@ -12,13 +12,13 @@ export function Layout() {
           Prasanthi <span>HMS</span>
         </div>
         <nav>
-          <NavLink to="/front-desk">Front Desk</NavLink>
-          <NavLink to="/doctor">Doctor</NavLink>
-          <NavLink to="/lab">Lab</NavLink>
-          <NavLink to="/pharmacy">Pharmacy</NavLink>
-          <NavLink to="/ipd">IPD</NavLink>
+          {user.can_front_desk && <NavLink to="/front-desk">Front Desk</NavLink>}
+          {user.can_consult && <NavLink to="/doctor">Doctor</NavLink>}
+          {(user.can_run_lab || user.can_front_desk) && <NavLink to="/lab">Lab</NavLink>}
+          {user.can_run_pharmacy && <NavLink to="/pharmacy">Pharmacy</NavLink>}
+          {user.can_ipd && <NavLink to="/ipd">IPD</NavLink>}
           <NavLink to="/patients">Patients</NavLink>
-          <NavLink to="/services">Services</NavLink>
+          {user.can_manage_setup && <NavLink to="/services">Services</NavLink>}
           {user.can_manage_staff && <NavLink to="/reports">Reports</NavLink>}
           {user.can_manage_staff && <NavLink to="/staff">Staff</NavLink>}
         </nav>

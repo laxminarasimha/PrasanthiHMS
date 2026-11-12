@@ -46,4 +46,22 @@ enum Role: string
     {
         return in_array($this, [self::Admin, self::Doctor, self::Pharmacist], true);
     }
+
+    /** Roles allowed to change price lists and hospital setup: OPD services, beds and IPD services. */
+    public function canManageSetup(): bool
+    {
+        return in_array($this, [self::Admin, self::Doctor], true);
+    }
+
+    /** Roles allowed to book appointments and change their status. */
+    public function canWorkFrontDesk(): bool
+    {
+        return in_array($this, [self::Admin, self::Doctor, self::Nurse, self::Frontdesk], true);
+    }
+
+    /** Roles allowed to admit patients, add IPD charges, take IPD money and discharge. */
+    public function canWorkIpd(): bool
+    {
+        return in_array($this, [self::Admin, self::Doctor, self::Nurse, self::Frontdesk], true);
+    }
 }

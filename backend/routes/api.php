@@ -39,8 +39,18 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('patients', PatientController::class)->except('destroy');
 
     Route::get('/doctors', [ServiceController::class, 'doctors']);
-    Route::apiResource('services', ServiceController::class)->only(['index', 'store', 'update']);
-    Route::apiResource('appointments', AppointmentController::class)->only(['index', 'store', 'update']);
+    Route::get('/services', [ServiceController::class, 'index']);
+    Route::get('/appointments', [AppointmentController::class, 'index']);
+
+    Route::middleware('ability:canManageSetup')->group(function () {
+        Route::post('/services', [ServiceController::class, 'store']);
+        Route::put('/services/{service}', [ServiceController::class, 'update']);
+    });
+
+    Route::middleware('ability:canWorkFrontDesk')->group(function () {
+        Route::post('/appointments', [AppointmentController::class, 'store']);
+        Route::put('/appointments/{appointment}', [AppointmentController::class, 'update']);
+    });
 
     Route::apiResource('bills', BillController::class)->only(['show', 'store', 'update']);
     Route::post('/bills/{bill}/items', [BillController::class, 'addItem']);
@@ -80,22 +90,29 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::prefix('ipd')->controller(IpdController::class)->group(function () {
+        // Anyone signed in can look; changing things needs the right role.
         Route::get('/beds', 'beds');
-        Route::post('/beds', 'storeBed');
-        Route::put('/beds/{bed}', 'updateBed');
         Route::get('/services', 'services');
-        Route::post('/services', 'storeService');
-        Route::put('/services/{service}', 'updateService');
         Route::get('/admissions', 'admissions');
-        Route::post('/admissions', 'admit');
         Route::get('/admissions/{admission}', 'show');
-        Route::put('/admissions/{admission}', 'update');
-        Route::post('/admissions/{admission}/charges', 'addCharge');
-        Route::delete('/admissions/{admission}/charges/{charge}', 'removeCharge');
-        Route::post('/admissions/{admission}/payments', 'addPayment');
-        Route::post('/admissions/{admission}/discharge', 'discharge');
         Route::get('/admissions/{admission}/outstanding', 'outstanding');
-        Route::post('/admissions/{admission}/transfer', 'transfer');
+
+        Route::middleware('ability:canManageSetup')->group(function () {
+            Route::post('/beds', 'storeBed');
+            Route::put('/beds/{bed}', 'updateBed');
+            Route::post('/services', 'storeService');
+            Route::put('/services/{service}', 'updateService');
+        });
+
+        Route::middleware('ability:canWorkIpd')->group(function () {
+            Route::post('/admissions', 'admit');
+            Route::put('/admissions/{admission}', 'update');
+            Route::post('/admissions/{admission}/charges', 'addCharge');
+            Route::delete('/admissions/{admission}/charges/{charge}', 'removeCharge');
+            Route::post('/admissions/{admission}/payments', 'addPayment');
+            Route::post('/admissions/{admission}/discharge', 'discharge');
+            Route::post('/admissions/{admission}/transfer', 'transfer');
+        });
     });
 
     Route::get('/reports/summary', [ReportController::class, 'summary']);

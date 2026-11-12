@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../../api'
+import { useAuth } from '../../auth'
 import { SelectField, TextField } from '../../components/Field'
 import { PatientPicker } from '../../components/PatientPicker'
 import { ADMISSION_STATUS, clock, longDate, nowLocal, rupees } from '../../format'
@@ -10,6 +11,7 @@ const FILTERS = ['admitted', 'discharged', 'lama', 'dama', 'absconded', 'died', 
 
 export function Ipd() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [status, setStatus] = useState('admitted')
   const [query, setQuery] = useState('')
   const [cases, setCases] = useState<Admission[] | null>(null)
@@ -77,9 +79,11 @@ export function Ipd() {
         <div className="toolbar">
           <h1>IPD cases</h1>
           <input className="search" type="search" placeholder="Find by patient name, mobile, ID or IPD no." value={query} onChange={(e) => setQuery(e.target.value)} />
-          <Link className="btn ghost" to="/ipd/setup">
-            Beds &amp; services
-          </Link>
+          {user?.can_manage_setup && (
+            <Link className="btn ghost" to="/ipd/setup">
+              Beds &amp; services
+            </Link>
+          )}
           <button className="btn primary" onClick={startAdmitting}>
             + Admit patient
           </button>
