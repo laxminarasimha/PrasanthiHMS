@@ -76,6 +76,35 @@ class ConsultationTest extends TestCase
             ->assertOk()->assertJsonCount(1, 'consultation.medicines');
     }
 
+    public function test_full_visit_pad_is_saved_and_allergies_stay_with_the_patient(): void
+    {
+        $this->putJson($this->url(), [
+            'allergies' => 'Penicillin',
+            'quick_notes' => 'Anxious; explain plan slowly',
+            'resp_rate' => 18,
+            'history' => 'Diabetic for 5 years',
+            'past_medication' => 'Metformin 500 twice daily',
+            'general_exam' => ['pallor' => 'present', 'icterus' => 'absent', 'edema' => null],
+            'general_exam_notes' => 'Mild pallor',
+            'assessment_plan' => 'Check HbA1c; review in 2 weeks',
+            'refer_to' => 'Dr Sample, Ophthalmology',
+            'complete' => true,
+        ])->assertOk()
+            ->assertJsonPath('patient.allergies', 'Penicillin')
+            ->assertJsonPath('consultation.resp_rate', 18)
+            ->assertJsonPath('consultation.history', 'Diabetic for 5 years')
+            ->assertJsonPath('consultation.general_exam', ['pallor' => 'present', 'icterus' => 'absent'])
+            ->assertJsonPath('consultation.assessment_plan', 'Check HbA1c; review in 2 weeks')
+            ->assertJsonPath('consultation.refer_to', 'Dr Sample, Ophthalmology');
+
+        // A later visit for the same patient starts with the allergy already shown.
+        $next = $this->appointmentFor($this->doctor, $this->appointment->patient);
+        $this->getJson($this->url($next))->assertOk()->assertJsonPath('patient.allergies', 'Penicillin')->assertJsonPath('consultation', null);
+
+        $this->putJson($this->url($next), ['general_exam' => ['pallor' => 'maybe', 'fever' => 'present']])
+            ->assertStatus(422)->assertJsonValidationErrors(['general_exam']);
+    }
+
     public function test_invalid_vitals_and_empty_medicine_rows_are_rejected(): void
     {
         $this->putJson($this->url(), ['bp_systolic' => 120, 'spo2' => 140, 'medicines' => [['medicine' => '']]])

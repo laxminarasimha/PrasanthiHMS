@@ -63,6 +63,7 @@ class PatientController extends Controller
             'mobile_alt' => ['nullable', 'string', 'regex:/^[0-9]{10}$/'],
             'email' => ['nullable', 'email', 'max:255'],
             'blood_group' => ['nullable', Rule::in(self::BLOOD_GROUPS)],
+            'allergies' => ['nullable', 'string', 'max:1000'],
             'preferred_language' => ['nullable', 'string', 'max:30'],
             'address' => ['nullable', 'string', 'max:255'],
             'city' => ['nullable', 'string', 'max:255'],

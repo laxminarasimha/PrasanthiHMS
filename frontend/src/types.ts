@@ -136,9 +136,17 @@ export type Consultation = {
   pulse: number | null
   temperature_f: number | null
   spo2: number | null
+  resp_rate: number | null
+  quick_notes: string | null
   complaints: string | null
+  history: string | null
+  past_medication: string | null
+  general_exam: Record<string, 'present' | 'absent'> | null
+  general_exam_notes: string | null
   findings: string | null
   diagnosis: string | null
+  assessment_plan: string | null
+  refer_to: string | null
   tests_advised: string | null
   advice: string | null
   follow_up_on: string | null
@@ -147,7 +155,7 @@ export type Consultation = {
   doctor?: { id: number; name: string }
 }
 
-export type VisitPatient = Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile' | 'blood_group'>
+export type VisitPatient = Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile' | 'blood_group'> & { allergies: string | null }
 
 export type Visit = {
   appointment: { id: number; scheduled_at: string; status: AppointmentStatus; notes: string | null }
