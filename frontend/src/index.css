@@ -507,3 +507,7 @@ td.advice { white-space: normal; min-width: 120px; }
 tbody tr.not-here td:nth-child(2) strong { font-weight: 500; }
 tbody tr.not-here { color: var(--muted); }
 .history li > span { min-width: 0; }
+.advised { margin-top: 12px; padding: 10px 12px; border: 1px solid #9bc0f5; border-left: 4px solid #1d4f91; border-radius: 8px; background: #f2f7ff; }
+.advised p { margin: 4px 0; white-space: pre-wrap; }
+.advised small { color: var(--muted); }
+.advice-chip.tests.done { color: var(--ok); background: var(--ok-soft); border-color: #9fd6b8; }
