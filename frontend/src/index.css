@@ -486,6 +486,17 @@ td.wrap.wide { max-width: 640px; }
 .cal-chip.ongoing { background: #dcebff; border-left-color: #1d4f91; }
 .cal-chip.reviewed { background: var(--ok-soft); border-left-color: var(--ok); }
 .cal-chip.cancelled { background: var(--danger-soft); border-left-color: var(--danger); text-decoration: line-through; opacity: 0.7; }
+.cal td.slot.away, .cal-key.away { background: repeating-linear-gradient(135deg, #f1edf4 0 6px, #e4dde9 6px 12px); }
+.cal td.slot.full, .cal-key.full { background: var(--accent-soft); }
+.cal th .away { color: var(--danger); font-weight: 700; }
+.cal-key { display: inline-block; font-size: 0.84rem; border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; margin: 8px 4px 0 0; }
+.leave-list { list-style: none; margin: 0; padding: 0; }
+.leave-list li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); }
+.link.danger { color: var(--danger); }
+.same-mobile { background: var(--accent-soft); border: 1px solid #f1cfa3; border-left: 4px solid var(--accent); border-radius: 8px; padding: 10px 12px; font-size: 0.9rem; }
+.same-mobile ul { list-style: none; margin: 6px 0; padding: 0; }
+.same-mobile li { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 2px 0; }
+.same-mobile small { color: var(--muted); }
 .legend .cal-chip { display: inline-block; width: auto; cursor: default; margin: 8px 4px 0 0; }
 @media (max-width: 700px) {
   .cal { max-height: none; }

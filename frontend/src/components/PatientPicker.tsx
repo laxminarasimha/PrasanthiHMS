@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import type { Patient } from '../types'
 import { Field } from './Field'
+import { SameMobile } from './SameMobile'
 
 type Props = {
   patient: Patient | null
@@ -72,6 +73,13 @@ export function PatientPicker({ patient, onChange, error }: Props) {
           <Field label="Mobile" required error={errors.mobile}>
             <input inputMode="numeric" maxLength={10} value={form.mobile} onChange={(e) => set('mobile')(e.target.value)} />
           </Field>
+          <SameMobile
+            mobile={form.mobile}
+            onUse={(p) => {
+              setAdding(false)
+              onChange(p)
+            }}
+          />
           <Field label="Gender" required error={errors.gender}>
             <select value={form.gender} onChange={(e) => set('gender')(e.target.value)}>
               <option value="">Select</option>
