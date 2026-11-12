@@ -3,16 +3,18 @@ import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { AppointmentForm } from '../components/AppointmentForm'
 import { BillPanel } from '../components/BillPanel'
+import { LabOrderForm } from '../components/LabOrderForm'
 import { AttachmentsPanel, EditAppointmentPanel, SummaryPanel, VitalsPanel } from '../components/FrontDeskPanels'
 import { PatientPicker } from '../components/PatientPicker'
 import { STATUS_LABELS, clock, longDate, rupees, stampTime, today } from '../format'
-import type { Appointment, AppointmentStatus, Bill, Doctor, FollowUp, Patient, Service, WalkInBill } from '../types'
+import type { Appointment, AppointmentStatus, Bill, Doctor, FollowUp, LabCatalogueTest, LabPackage, Patient, Service, WalkInBill } from '../types'
 
 type DayList = { data: Appointment[]; counts: Partial<Record<AppointmentStatus, number>> }
 type Department = 'all' | 'appointment' | 'lab' | 'other'
 type Panel =
   | { kind: 'new'; preset?: { patient: Appointment['patient']; doctorId: string; date: string } }
   | { kind: 'followups' }
+  | { kind: 'lab'; appointment: Appointment }
   | { kind: 'bill'; billId: number }
   | { kind: 'walkin' }
   | { kind: 'vitals' | 'attachments' | 'edit'; appointment: Appointment }
@@ -41,6 +43,8 @@ export function FrontDesk() {
   const [list, setList] = useState<DayList | null>(null)
   const [walkIns, setWalkIns] = useState<WalkInBill[]>([])
   const [followUps, setFollowUps] = useState<FollowUp[]>([])
+  const [labTests, setLabTests] = useState<LabCatalogueTest[]>([])
+  const [labPackages, setLabPackages] = useState<LabPackage[]>([])
   const [doctors, setDoctors] = useState<Doctor[]>([])
   const [services, setServices] = useState<Service[]>([])
   const [panel, setPanel] = useState<Panel>(null)
@@ -70,6 +74,8 @@ export function FrontDesk() {
   useEffect(() => {
     api.get<Doctor[]>('/doctors').then((res) => setDoctors(res.data))
     api.get<Service[]>('/services').then((res) => setServices(res.data))
+    api.get<LabCatalogueTest[]>('/lab/tests').then((res) => setLabTests(res.data))
+    api.get<LabPackage[]>('/lab/packages').then((res) => setLabPackages(res.data))
   }, [])
 
   // The menu floats over the page, clear of the table's scrolling edge. It opens upward when
@@ -250,9 +256,13 @@ export function FrontDesk() {
                         </a>
                       )}
                       {a.consultation?.tests_advised && (
-                        <Link className="advice-chip tests" to="/lab" title={`Tests advised: ${a.consultation.tests_advised}`}>
-                          Tests
-                        </Link>
+                        <button
+                          className={`advice-chip tests ${a.bills.some((b) => b.lab_order) ? 'done' : ''}`}
+                          title={`Tests advised: ${a.consultation.tests_advised}. ${a.bills.some((b) => b.lab_order) ? 'A lab order has already been made for this visit.' : 'Click to make the lab order.'}`}
+                          onClick={() => open({ kind: 'lab', appointment: a })}
+                        >
+                          Tests{a.bills.some((b) => b.lab_order) ? ' ✓' : ''}
+                        </button>
                       )}
                       {a.consultation?.follow_up_on && (
                         <button
@@ -363,6 +373,21 @@ export function FrontDesk() {
         />
       )}
       {panel?.kind === 'bill' && <BillPanel key={panel.billId} billId={panel.billId} services={services} onClose={() => setPanel(null)} onChange={load} onAnotherBill={(bill) => newBill(bill.patient.id, bill.appointment?.id)} />}
+      {panel?.kind === 'lab' && (
+        <LabOrderForm
+          key={panel.appointment.id}
+          tests={labTests.filter((t) => t.is_active !== false)}
+          packages={labPackages.filter((p) => p.is_active !== false)}
+          visit={{ patient: panel.appointment.patient, appointmentId: panel.appointment.id, doctor: panel.appointment.doctor.name, advised: panel.appointment.consultation?.tests_advised ?? '' }}
+          onClose={() => setPanel(null)}
+          onCreated={(order) => {
+            setNotice(`Lab order ${order.order_no} created for ${order.patient.name}.`)
+            // Go straight to the bill so payment can be collected before the sample is taken.
+            setPanel(order.bill ? { kind: 'bill', billId: order.bill.id } : null)
+            load()
+          }}
+        />
+      )}
       {panel?.kind === 'followups' && (
         <aside className="card panel">
           <div className="panel-head">
