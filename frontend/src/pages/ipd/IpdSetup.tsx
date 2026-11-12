@@ -4,6 +4,7 @@ import { api, fieldErrors, type FieldErrors } from '../../api'
 import { TextField } from '../../components/Field'
 import { rupees } from '../../format'
 import type { Bed, IpdService } from '../../types'
+import { IpdBillTemplates } from './IpdBillTemplates'
 
 const blankBed = { ward: '', bed_no: '', daily_charge: '', is_active: true }
 const blankService = { name: '', category: '', price: '', is_active: true }
@@ -145,6 +146,7 @@ export function IpdSetup() {
             </table>
           </div>
         </section>
+        <IpdBillTemplates services={services} />
       </div>
 
       {editing && (

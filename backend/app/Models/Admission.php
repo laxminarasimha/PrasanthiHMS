@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'branch_id', 'patient_id', 'doctor_id', 'bed_id', 'admitted_at', 'discharged_at', 'status', 'reason',
-    'attendant_name', 'attendant_phone', 'discharge_summary', 'discount', 'created_by',
+    'attendant_name', 'attendant_phone', 'discharge_summary', 'discount', 'created_by', 'bill_approved_at', 'bill_approved_by',
 ])]
 class Admission extends Model
 {
@@ -24,7 +24,7 @@ class Admission extends Model
     {
         return [
             'admitted_at' => 'datetime:Y-m-d H:i', 'discharged_at' => 'datetime:Y-m-d H:i',
-            'total' => 'float', 'discount' => 'float', 'paid' => 'float',
+            'total' => 'float', 'discount' => 'float', 'paid' => 'float', 'bill_approved_at' => 'datetime:Y-m-d H:i',
         ];
     }
 
@@ -59,6 +59,21 @@ class Admission extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(AdmissionPayment::class)->orderBy('id');
+    }
+
+    public function notes(): HasMany
+    {
+        return $this->hasMany(AdmissionNote::class)->orderByDesc('noted_at')->orderByDesc('id');
+    }
+
+    public function summary(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(DischargeSummary::class);
+    }
+
+    public function billApprover(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'bill_approved_by');
     }
 
     /** Charges less discount. */

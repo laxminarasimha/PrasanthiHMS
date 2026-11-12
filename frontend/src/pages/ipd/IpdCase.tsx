@@ -1,9 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
-import { Field, SelectField, TextField } from '../../components/Field'
+import { useAuth } from '../../auth'
+import { SelectField, TextField } from '../../components/Field'
 import { ADMISSION_STATUS, PAYMENT_MODES, clock, longDate, modeLabel, nowLocal, rupees, today } from '../../format'
-import type { Admission, Bed, IpdService, OutstandingBill } from '../../types'
+import type { Admission, Bed, IpdBillTemplate, IpdService, OutstandingBill } from '../../types'
+import { IpdNotes } from './IpdNotes'
+import { IpdSummary } from './IpdSummary'
 
 const CLOSE_OPTIONS = ['discharged', 'lama', 'dama', 'absconded', 'died'].map((s) => ({
   value: s,
@@ -31,7 +34,10 @@ export function IpdCase() {
   const [charge, setCharge] = useState({ ipd_service_id: '', description: '', charged_on: today(), quantity: '1', unit_price: '' })
   const [pay, setPay] = useState({ type: 'advance', amount: '', mode: 'cash', reference: '' })
   const [discount, setDiscount] = useState('')
-  const [closing, setClosing] = useState({ status: 'discharged', discharged_at: nowLocal(), discharge_summary: '' })
+  const [closing, setClosing] = useState({ status: 'discharged', discharged_at: nowLocal() })
+  const { user } = useAuth()
+  const [tab, setTab] = useState<'bill' | 'notes' | 'summary'>('bill')
+  const [templates, setTemplates] = useState<IpdBillTemplate[]>([])
   const [bedId, setBedId] = useState('')
   const [outstanding, setOutstanding] = useState<OutstandingBill[]>([])
 
@@ -39,7 +45,6 @@ export function IpdCase() {
     setAdmission(next)
     setDiscount(String(next.discount))
     setBedId(next.bed ? String(next.bed.id) : '')
-    setClosing((c) => ({ ...c, discharge_summary: next.discharge_summary ?? '' }))
     setError('')
     api.get<OutstandingBill[]>(`/ipd/admissions/${next.id}/outstanding`).then((res) => setOutstanding(res.data))
   }
@@ -48,12 +53,15 @@ export function IpdCase() {
     api.get<Admission>(`/ipd/admissions/${id}`).then((res) => apply(res.data))
     api.get<IpdService[]>('/ipd/services').then((res) => setServices(res.data))
     api.get<Bed[]>('/ipd/beds').then((res) => setBeds(res.data))
+    api.get<IpdBillTemplate[]>('/ipd/templates').then((res) => setTemplates(res.data))
   }, [id])
 
   if (!admission) return <p className="loading">Loading case…</p>
 
   const url = `/ipd/admissions/${admission.id}`
   const open = admission.status === 'admitted'
+  const billLocked = Boolean(admission.bill_approved_at)
+  const canEdit = Boolean(user?.can_ipd)
 
   // Sends one change, then shows the updated case or the reason it was refused.
   const run = async (request: Promise<{ data: Admission }>, done?: string) => {
@@ -119,8 +127,29 @@ export function IpdCase() {
           </a>
         </div>
 
+        <div className="tabs flush gap-bottom">
+          <button className={tab === 'bill' ? 'active' : ''} onClick={() => setTab('bill')}>
+            Bill
+          </button>
+          <button className={tab === 'notes' ? 'active' : ''} onClick={() => setTab('notes')}>
+            Notes
+          </button>
+          <button className={tab === 'summary' ? 'active' : ''} onClick={() => setTab('summary')}>
+            Discharge summary
+          </button>
+        </div>
+
+        {tab === 'notes' && <IpdNotes admissionId={admission.id} canEdit={canEdit} />}
+        {tab === 'summary' && <IpdSummary admissionId={admission.id} canEdit={canEdit} canApprove={Boolean(user?.can_approve_ipd)} />}
+        {tab === 'bill' && (
+        <>
         {notice && <p className="notice">{notice}</p>}
         {error && <p className="form-error gap-bottom">{error}</p>}
+        {billLocked && (
+          <p className="notice">
+            This bill was approved by {admission.bill_approver?.name ?? 'a doctor'} on {longDate(admission.bill_approved_at!)}. Charges and discount are locked; payments can still be taken.
+          </p>
+        )}
 
         <h3>Charges</h3>
         <div className="table-wrap">
@@ -146,9 +175,11 @@ export function IpdCase() {
                   <td className="num">{rupees(c.unit_price)}</td>
                   <td className="num">{rupees(c.amount)}</td>
                   <td className="num">
-                    <button className="link danger" onClick={() => run(api.delete(`${url}/charges/${c.id}`))}>
-                      Remove
-                    </button>
+                    {!billLocked && (
+                      <button className="link danger" onClick={() => run(api.delete(`${url}/charges/${c.id}`))}>
+                        Remove
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -161,6 +192,8 @@ export function IpdCase() {
           </table>
         </div>
 
+        {!billLocked && (
+        <>
         <form className="charge-row" onSubmit={addCharge}>
           <select value={charge.ipd_service_id} onChange={(e) => pickService(e.target.value)} aria-label="IPD service">
             <option value="">Choose a service…</option>
@@ -183,6 +216,28 @@ export function IpdCase() {
           <button type="button" className="link add-medicine" onClick={addBedCharge}>
             Fill in bed charges for {stayDays(admission)} day(s) at {rupees(admission.bed.daily_charge!)} a day
           </button>
+        )}
+        {templates.length > 0 && (
+          <div className="row gap-top">
+            <select
+              className="narrow"
+              value=""
+              onChange={(e) => {
+                const template = templates.find((t) => String(t.id) === e.target.value)
+                if (template && window.confirm(`Add the ${template.items.length} service(s) in "${template.name}" to this bill?`)) run(api.post(`${url}/templates/${template.id}`), `"${template.name}" added to the bill.`)
+              }}
+              aria-label="Add a bill template"
+            >
+              <option value="">Add a bill template…</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} ({t.items.length} services)
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        </>
         )}
 
         {outstanding.length > 0 && (
@@ -247,6 +302,8 @@ export function IpdCase() {
             Record
           </button>
         </form>
+        </>
+        )}
       </section>
 
       <aside className="stack panel">
@@ -264,8 +321,8 @@ export function IpdCase() {
                   run(api.put(url, { discount: discount || 0 }))
                 }}
               >
-                <input className="qty" type="number" min={0} step="0.01" value={discount} onChange={(e) => setDiscount(e.target.value)} aria-label="Discount" />
-                <button className="btn ghost" disabled={Number(discount || 0) === admission.discount}>
+                <input className="qty" type="number" min={0} step="0.01" value={discount} disabled={billLocked} onChange={(e) => setDiscount(e.target.value)} aria-label="Discount" />
+                <button className="btn ghost" disabled={billLocked || Number(discount || 0) === admission.discount}>
                   Apply
                 </button>
               </form>
@@ -277,6 +334,14 @@ export function IpdCase() {
             <dt className="strong">{admission.due < 0 ? 'Advance left' : 'Due'}</dt>
             <dd className={`strong ${admission.due > 0 ? 'due' : 'settled'}`}>{rupees(Math.abs(admission.due))}</dd>
           </dl>
+          <div className="row gap-top">
+            <span className="grow">{billLocked ? <span className="pill ok">Bill approved</span> : <span className="muted small">Bill not yet approved</span>}</span>
+            {user?.can_approve_ipd && (
+              <button className="btn ghost small-btn" onClick={() => run(api.post(`${url}/approve-bill`, { approved: !billLocked }), billLocked ? 'Approval withdrawn; the bill can be changed again.' : 'Bill approved and locked.')}>
+                {billLocked ? 'Withdraw approval' : 'Approve bill'}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="card">
@@ -307,7 +372,7 @@ export function IpdCase() {
         </div>
 
         <div className="card">
-          <h2>{open ? 'Discharge' : 'Discharge summary'}</h2>
+          <h2>{open ? 'Discharge' : 'Discharged'}</h2>
           {open ? (
             <form
               onSubmit={(e) => {
@@ -322,12 +387,14 @@ export function IpdCase() {
                 <div className="span-2">
                   <TextField label="Date and time" required type="datetime-local" value={closing.discharged_at} onChange={(v) => setClosing((c) => ({ ...c, discharged_at: v }))} />
                 </div>
-                <div className="span-2">
-                  <Field label="Discharge summary">
-                    <textarea rows={5} placeholder="Diagnosis, treatment given, condition at discharge, advice" value={closing.discharge_summary} onChange={(e) => setClosing((c) => ({ ...c, discharge_summary: e.target.value }))} />
-                  </Field>
-                </div>
               </div>
+              <p className="muted small">
+                Write the discharge summary on the{' '}
+                <button type="button" className="link" onClick={() => setTab('summary')}>
+                  Discharge summary
+                </button>{' '}
+                tab, before or after closing the case.
+              </p>
               {admission.due > 0 && <p className="muted small">{rupees(admission.due)} is still due. You can discharge now and collect it afterwards.</p>}
               <div className="panel-foot">
                 <button className="btn primary">Close case</button>
@@ -338,17 +405,9 @@ export function IpdCase() {
               <p className="muted">
                 {ADMISSION_STATUS[admission.status]} on {longDate(admission.discharged_at!)} {clock(admission.discharged_at!)}
               </p>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  run(api.put(url, { discharge_summary: closing.discharge_summary || null }), 'Summary saved.')
-                }}
-              >
-                <textarea rows={6} value={closing.discharge_summary} onChange={(e) => setClosing((c) => ({ ...c, discharge_summary: e.target.value }))} aria-label="Discharge summary" />
-                <div className="panel-foot">
-                  <button className="btn ghost">Save summary</button>
-                </div>
-              </form>
+              <button type="button" className="btn ghost" onClick={() => setTab('summary')}>
+                Open the discharge summary
+              </button>
             </>
           )}
         </div>

@@ -12,6 +12,7 @@ export type User = {
   can_front_desk: boolean
   can_ipd: boolean
   can_view_reports: boolean
+  can_approve_ipd: boolean
   can_delete_bills: boolean
   can_change_price: boolean
   pad_hidden_sections?: string[]
@@ -411,6 +412,32 @@ export type Bed = {
   current_admission?: { id: number; ipd_no: string; admitted_at: string; patient: { id: number; name: string; uhid: string } } | null
 }
 
+export type NoteKind = 'clinical' | 'nursing' | 'ot'
+
+/** A clinical, nursing or operation note written during a stay. */
+export type AdmissionNote = { id: number; kind: NoteKind; noted_at: string; body: string | null; details: Record<string, string> | null; author?: { id: number; name: string } | null }
+
+/** The discharge summary of a stay. `id` is null until it is first saved. */
+export type DischargeSummary = {
+  id: number | null
+  diagnosis: string | null
+  complaints?: string | null
+  history?: string | null
+  examination?: string | null
+  investigations?: string | null
+  procedures?: string | null
+  course: string | null
+  condition_at_discharge?: string | null
+  medicines: PrescribedMedicine[] | null
+  advice?: string | null
+  follow_up_on: string | null
+  approved_at: string | null
+  preparer?: { id: number; name: string } | null
+  approver?: { id: number; name: string; signature_text?: string | null } | null
+}
+
+export type IpdBillTemplate = { id: number; name: string; items: { ipd_service_id: number; quantity: number }[] }
+
 export type IpdService = { id: number; name: string; category: string | null; price: number; is_active: boolean }
 
 export type AdmissionStatus = 'admitted' | 'discharged' | 'lama' | 'dama' | 'absconded' | 'died'
@@ -435,6 +462,8 @@ export type Admission = {
   attendant_name: string | null
   attendant_phone: string | null
   discharge_summary: string | null
+  bill_approved_at: string | null
+  bill_approver?: { id: number; name: string } | null
   total: number
   discount: number
   net: number

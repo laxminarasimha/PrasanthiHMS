@@ -45,6 +45,7 @@ class User extends Authenticatable
         'canRunPharmacy' => ['Pharmacy', 'Sell medicines, receive stock, and edit medicines, bills and invoices.'],
         'canDeleteBills' => ['Delete pharmacy bills', 'Delete a pharmacy bill, which restocks it and refunds the money.'],
         'canWorkIpd' => ['IPD', 'Admit patients, add IPD charges, take IPD payments and discharge.'],
+        'canApproveIpd' => ['Approve IPD summaries and bills', 'Approve a discharge summary or an IPD bill, which locks it against changes.'],
         'canViewReports' => ['Reports', "See the hospital's billing, collection and activity reports."],
         'canManageSetup' => ['Price lists and setup', 'Change services, OPD hours, beds and IPD services.'],
         'canManageStaff' => ['Staff and permissions', 'Add staff, reset passwords and change what each person may do.'],

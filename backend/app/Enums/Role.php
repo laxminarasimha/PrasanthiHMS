@@ -59,6 +59,12 @@ enum Role: string
         return in_array($this, [self::Admin, self::Doctor, self::Nurse, self::Frontdesk], true);
     }
 
+    /** Roles allowed to approve a discharge summary or an IPD bill, which locks it. */
+    public function canApproveIpd(): bool
+    {
+        return in_array($this, [self::Admin, self::Doctor], true);
+    }
+
     /** Roles allowed to see the hospital's money and activity reports. */
     public function canViewReports(): bool
     {
