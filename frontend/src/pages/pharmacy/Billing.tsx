@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
 import { useAuth } from '../../auth'
 import { SelectField, TextField } from '../../components/Field'
@@ -60,6 +61,21 @@ export function PharmacyBilling() {
     }, 200)
     return () => clearTimeout(timer)
   }, [search])
+
+  const [params, setParams] = useSearchParams()
+  const presetPatient = params.get('patient')
+  useEffect(() => {
+    if (!presetPatient) return
+    api.get<Patient>(`/patients/${presetPatient}`).then((res) => {
+      setWalkIn(false)
+      setPatient(res.data)
+      api.get<PrescriptionForPharmacy[]>('/pharmacy/prescriptions', { params: { patient_id: res.data.id } }).then((rx) => {
+        setPrescriptions(rx.data)
+        if (rx.data[0]?.doctor) setDoctor(rx.data[0].doctor)
+      })
+      setParams({}, { replace: true })
+    })
+  }, [presetPatient, setParams])
 
   const shown = search.trim().length >= 2 ? matches : []
   const subtotal = lines.reduce((sum, l) => sum + lineAmount(l), 0)

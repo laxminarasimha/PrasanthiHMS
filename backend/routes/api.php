@@ -8,6 +8,9 @@ use App\Http\Controllers\Api\IpdController;
 use App\Http\Controllers\Api\LabController;
 use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\PharmacyController;
+use App\Http\Controllers\Api\PharmacyReportController;
+use App\Http\Controllers\Api\PharmacySalesController;
+use App\Http\Controllers\Api\PharmacyStockController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\StaffController;
@@ -88,6 +91,32 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/sales', 'storeSale');
         Route::get('/sales/{sale}', 'showSale');
     });
+
+    Route::prefix('pharmacy')->controller(PharmacySalesController::class)->group(function () {
+        Route::get('/dashboard', 'dashboard');
+        Route::get('/orders', 'orders');
+        Route::post('/sales/{sale}/payments', 'collect');
+        Route::post('/sales/{sale}/returns', 'returnMedicines');
+        Route::delete('/sales/{sale}', 'void');
+    });
+
+    Route::prefix('pharmacy')->controller(PharmacyStockController::class)->group(function () {
+        Route::get('/manufacturers', 'manufacturers');
+        Route::post('/manufacturers', 'storeManufacturer');
+        Route::put('/manufacturers/{manufacturer}', 'updateManufacturer');
+        Route::post('/opening-stock', 'openingStock');
+        Route::get('/inventory', 'inventory');
+        Route::post('/stock/{batch}/adjust', 'adjust');
+        Route::post('/purchases/{purchase}/payments', 'payInvoice');
+        Route::get('/stock-returns', 'stockReturns');
+        Route::post('/stock-returns', 'storeStockReturn');
+        Route::get('/purchase-orders', 'purchaseOrders');
+        Route::post('/purchase-orders', 'storePurchaseOrder');
+        Route::get('/purchase-orders/{order}', 'showPurchaseOrder');
+        Route::put('/purchase-orders/{order}', 'updatePurchaseOrder');
+    });
+
+    Route::get('/pharmacy/reports/{type}', [PharmacyReportController::class, 'show']);
 
     Route::prefix('ipd')->controller(IpdController::class)->group(function () {
         // Anyone signed in can look; changing things needs the right role.

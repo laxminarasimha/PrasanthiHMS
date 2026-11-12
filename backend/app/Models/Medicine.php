@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['name', 'type', 'manufacturer', 'category', 'hsn_code', 'gst_percent', 'units_per_pack', 'reorder_level', 'is_active'])]
+#[Fillable(['name', 'type', 'manufacturer', 'category', 'is_scheduled', 'hsn_code', 'gst_percent', 'units_per_pack', 'reorder_level', 'is_active'])]
 class Medicine extends Model
 {
     /**
@@ -14,7 +14,7 @@ class Medicine extends Model
      */
     protected function casts(): array
     {
-        return ['gst_percent' => 'float', 'is_active' => 'boolean'];
+        return ['gst_percent' => 'float', 'is_active' => 'boolean', 'is_scheduled' => 'boolean'];
     }
 
     public function batches(): HasMany

@@ -41,13 +41,18 @@ class PharmacyController extends Controller
     {
         $this->authorizePharmacy($request);
 
-        return response()->json(Medicine::create($this->medicineData($request)), 201);
+        $data = $this->medicineData($request);
+        $this->rememberManufacturer($data['manufacturer'] ?? null);
+
+        return response()->json(Medicine::create($data), 201);
     }
 
     public function updateMedicine(Request $request, Medicine $medicine): JsonResponse
     {
         $this->authorizePharmacy($request);
-        $medicine->update($this->medicineData($request, $medicine));
+        $data = $this->medicineData($request, $medicine);
+        $this->rememberManufacturer($data['manufacturer'] ?? null);
+        $medicine->update($data);
 
         return response()->json($medicine);
     }
@@ -62,12 +67,20 @@ class PharmacyController extends Controller
             'type' => ['nullable', 'string', 'max:30'],
             'manufacturer' => ['nullable', 'string', 'max:255'],
             'category' => ['nullable', 'string', 'max:255'],
+            'is_scheduled' => ['sometimes', 'boolean'],
             'hsn_code' => ['nullable', 'string', 'max:20'],
             'gst_percent' => ['required', 'numeric', 'min:0', 'max:40'],
             'units_per_pack' => ['required', 'integer', 'min:1', 'max:10000'],
             'reorder_level' => ['nullable', 'integer', 'min:0'],
             'is_active' => ['sometimes', 'boolean'],
         ], ['name.unique' => 'A medicine with this name is already in the list.']) + ['reorder_level' => 0];
+    }
+
+    private function rememberManufacturer(?string $name): void
+    {
+        if (filled($name)) {
+            \App\Models\Manufacturer::firstOrCreate(['name' => trim($name)]);
+        }
     }
 
     // ---- Stockists (suppliers) ----
@@ -274,12 +287,17 @@ class PharmacyController extends Controller
 
     public function sales(Request $request): JsonResponse
     {
-        $filters = $request->validate(['date' => ['nullable', 'date'], 'q' => ['nullable', 'string', 'max:100']]);
+        $filters = $request->validate([
+            'date' => ['nullable', 'date'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'],
+            'q' => ['nullable', 'string', 'max:100'],
+        ]);
         $term = trim((string) ($filters['q'] ?? ''));
+        $from = \Illuminate\Support\Carbon::parse($filters['from'] ?? $filters['date'] ?? today())->startOfDay();
+        $to = \Illuminate\Support\Carbon::parse($filters['to'] ?? $filters['from'] ?? $filters['date'] ?? today())->endOfDay();
 
         return response()->json(
             PharmacySale::query()
-                ->when($term === '', fn ($q) => $q->whereDate('sold_at', $filters['date'] ?? today()))
+                ->when($term === '', fn ($q) => $q->whereBetween('sold_at', [$from, $to]))
                 ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('bill_no', 'like', "{$term}%")
                     ->orWhere('customer_name', 'like', "%{$term}%")
                     ->orWhere('customer_phone', 'like', "{$term}%")))
@@ -292,7 +310,7 @@ class PharmacyController extends Controller
 
     public function showSale(PharmacySale $sale): JsonResponse
     {
-        return response()->json($sale->load(['items', 'patient:id,uhid,name', 'seller:id,name']));
+        return response()->json($sale->load(['items', 'patient:id,uhid,name', 'seller:id,name', 'payments.receiver:id,name', 'returns']));
     }
 
     /** Sells from specific batches, reducing their stock, and records the bill. */
@@ -346,7 +364,7 @@ class PharmacyController extends Controller
                 $lines[] = [
                     'medicine_id' => $batch->medicine_id, 'stock_batch_id' => $batch->id, 'medicine_name' => $name,
                     'batch_no' => $batch->batch_no, 'expiry' => $batch->expiry->toDateString(), 'quantity' => $item['quantity'],
-                    'unit_price' => $batch->unit_mrp, 'discount_percent' => $discount, 'gst_percent' => $batch->gst_percent, 'amount' => $amount,
+                    'unit_price' => $batch->unit_mrp, 'unit_cost' => $batch->unitCost(), 'discount_percent' => $discount, 'gst_percent' => $batch->gst_percent, 'amount' => $amount,
                 ];
                 $batch->decrement('units_in_stock', $item['quantity']);
             }
@@ -380,6 +398,12 @@ class PharmacyController extends Controller
                 'created_by' => $request->user()->id,
             ]);
             $sale->items()->createMany($lines);
+            if ($data['paid'] > 0) {
+                $sale->payments()->create([
+                    'type' => 'payment', 'amount' => $data['paid'], 'mode' => $data['payment_mode'],
+                    'reference' => $data['reference'] ?? null, 'received_by' => $request->user()->id,
+                ]);
+            }
 
             return $sale;
         });

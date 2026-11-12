@@ -286,3 +286,32 @@ h2.gap-top { margin-top: 20px; }
 .chip.absent { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); font-weight: 700; }
 .rx-allergy { color: var(--danger); font-weight: 700; margin-bottom: 6px; }
 .capitalise::first-letter { text-transform: uppercase; }
+
+/* Complete pharmacy */
+.subnav.grouped { gap: 6px 18px; align-items: center; }
+.subnav-group { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.subnav-group > span { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-right: 2px; }
+.subnav a { padding: 4px 11px; font-size: 0.92rem; }
+.tiles.small .tile strong { font-size: 1.1rem; }
+.three-up { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-top: 8px; }
+td.actions { white-space: nowrap; }
+td.actions > * + * { margin-left: 12px; }
+td.actions a.link { text-decoration: none; }
+.action-box { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-top: 14px; }
+.action-box h3 { margin-top: 0; }
+.action-box.danger { border-color: var(--danger); background: var(--danger-soft); }
+.btn.danger-btn { background: var(--danger); color: #fff; }
+.btn.danger-btn:disabled { opacity: 0.5; }
+.opening-row { display: grid; grid-template-columns: minmax(200px, 2.2fr) 1fr 1.2fr 0.8fr 1fr 0.9fr 0.9fr 0.7fr auto; gap: 6px; align-items: center; min-width: 980px; }
+.po-row { display: grid; grid-template-columns: minmax(240px, 3fr) 1fr 1fr auto; gap: 6px; align-items: center; min-width: 560px; }
+.opening-row input, .opening-row select, .po-row input, .po-row select { padding: 6px 8px; }
+.table-wrap.tall { max-height: 420px; overflow-y: auto; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.report-picker { font-weight: 600; }
+tfoot td { font-weight: 700; border-top: 2px solid var(--text); padding: 10px; white-space: nowrap; }
+.print-only { display: none; }
+@media print {
+  .print-only { display: block; }
+  .print-area { width: 100% !important; }
+  .split { display: block; }
+}

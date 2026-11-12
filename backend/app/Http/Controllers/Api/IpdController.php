@@ -308,7 +308,8 @@ class IpdController extends Controller
 
         $sales = PharmacySale::where('patient_id', $admission->patient_id)
             ->whereBetween('sold_at', [$since, $until])
-            ->whereRaw('paid + ipd_transfer < total')
+            ->whereNull('voided_at')
+            ->whereRaw('paid + ipd_transfer + returned < total')
             ->get()
             ->map(fn (PharmacySale $sale) => [
                 'type' => 'pharmacy',

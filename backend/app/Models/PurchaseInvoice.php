@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['branch_id', 'stockist_id', 'invoice_no', 'invoice_date', 'subtotal', 'tax', 'total', 'remarks', 'created_by'])]
+#[Fillable(['branch_id', 'stockist_id', 'invoice_no', 'invoice_date', 'subtotal', 'tax', 'total', 'paid', 'remarks', 'created_by'])]
 class PurchaseInvoice extends Model
 {
     /**
@@ -15,7 +15,7 @@ class PurchaseInvoice extends Model
      */
     protected function casts(): array
     {
-        return ['invoice_date' => 'date:Y-m-d', 'subtotal' => 'float', 'tax' => 'float', 'total' => 'float'];
+        return ['invoice_date' => 'date:Y-m-d', 'subtotal' => 'float', 'tax' => 'float', 'total' => 'float', 'paid' => 'float'];
     }
 
     public function stockist(): BelongsTo
