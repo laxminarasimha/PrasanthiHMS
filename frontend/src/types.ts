@@ -96,7 +96,10 @@ export type FollowUp = {
   doctor: { id: number; name: string }
 }
 
-export type CalendarSettings = { slot_minutes: number; morning_start: string; morning_end: string; evening_start: string; evening_end: string }
+export type CalendarSettings = { slot_minutes: number; slot_limit: number; morning_start: string; morning_end: string; evening_start: string; evening_end: string }
+
+/** Days, or the same hours on each of those days, when a doctor is not seeing patients. */
+export type DoctorBlock = { id: number; doctor_id: number; from_date: string; to_date: string; start_time: string | null; end_time: string | null; reason: string | null; doctor: { id: number; name: string } }
 
 export type BillKind = 'appointment' | 'lab' | 'other'
 

@@ -31,6 +31,7 @@ class Setting extends Model
     /** OPD hours and slot length for the appointment calendar. */
     public const CALENDAR_DEFAULTS = [
         'slot_minutes' => 15,
+        'slot_limit' => 0, // patients per doctor per slot; 0 means no limit
         'morning_start' => '10:30',
         'morning_end' => '14:00',
         'evening_start' => '18:00',

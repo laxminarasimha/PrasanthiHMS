@@ -7,7 +7,7 @@ import { BillPanel } from '../components/BillPanel'
 import { SelectField, TextField } from '../components/Field'
 import { EditAppointmentPanel } from '../components/FrontDeskPanels'
 import { STATUS_LABELS, clock, today } from '../format'
-import type { Appointment, CalendarSettings, Doctor, Service } from '../types'
+import type { Appointment, CalendarSettings, Doctor, DoctorBlock, Service } from '../types'
 
 type View = 'day' | 'week'
 type Column = { key: string; title: string; sub?: string; date: string; doctorId: string; today: boolean }
@@ -16,6 +16,7 @@ type Panel =
   | { kind: 'edit'; appointment: Appointment }
   | { kind: 'bill'; billId: number }
   | { kind: 'hours' }
+  | { kind: 'leave'; date: string; doctorId: string }
   | null
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -69,12 +70,99 @@ function HoursPanel({ settings, onClose, onSaved }: { settings: CalendarSettings
         <TextField label="Evening from" {...time('evening_start')} />
         <TextField label="Evening to" {...time('evening_end')} />
         <SelectField label="Slot length" value={String(form.slot_minutes)} onChange={(v) => setForm({ ...form, slot_minutes: Number(v) })} options={SLOT_LENGTHS} error={errors.slot_minutes} />
+        <TextField label="Patients per slot (0 = no limit)" type="number" min={0} max={50} value={String(form.slot_limit ?? 0)} onChange={(v) => setForm({ ...form, slot_limit: Number(v) })} error={errors.slot_limit} />
       </div>
+      <p className="muted small">The limit is for each doctor. When a slot is full the desk is asked to choose another time.</p>
       <p className="muted small">Appointments already booked are not moved. Any that fall outside these hours still show on the calendar.</p>
       {errors._ && <p className="form-error">{errors._}</p>}
       <div className="panel-foot">
         <button className="btn primary">Save hours</button>
       </div>
+    </form>
+  )
+}
+
+const blockWhen = (b: DoctorBlock) =>
+  `${dayTitle(b.from_date)}${b.to_date !== b.from_date ? ` – ${dayTitle(b.to_date)}` : ''} · ${b.start_time && b.end_time ? `${label(b.start_time)} – ${label(b.end_time)}` : 'all day'}`
+
+/** Marks a doctor as away, and lists the leave already marked for the days on screen. */
+function LeavePanel({ date, doctorId, doctors, blocks, onClose, onChange }: { date: string; doctorId: string; doctors: Doctor[]; blocks: DoctorBlock[]; onClose: () => void; onChange: (notice: string) => void }) {
+  const [form, setForm] = useState({ doctor_id: doctorId || (doctors.length === 1 ? String(doctors[0].id) : ''), from_date: date, to_date: date, start_time: '', end_time: '', reason: '' })
+  const [allDay, setAllDay] = useState(true)
+  const [errors, setErrors] = useState<FieldErrors>({})
+  const set = (key: keyof typeof form) => (value: string) => setForm((f) => ({ ...f, [key]: value, ...(key === 'from_date' && value > f.to_date ? { to_date: value } : {}) }))
+
+  const save = async (e: FormEvent) => {
+    e.preventDefault()
+    try {
+      const res = await api.post<DoctorBlock & { booked: number }>('/doctor-blocks', { ...form, start_time: allDay ? null : form.start_time || null, end_time: allDay ? null : form.end_time || null, reason: form.reason || null })
+      const booked = res.data.booked
+      onChange(`${res.data.doctor.name} marked as away, ${blockWhen(res.data)}.${booked ? ` ${booked} patient${booked === 1 ? ' is' : 's are'} already booked in that time and ${booked === 1 ? 'has' : 'have'} not been moved; please call them.` : ''}`)
+    } catch (err) {
+      setErrors(fieldErrors(err))
+    }
+  }
+  const remove = async (b: DoctorBlock) => {
+    await api.delete(`/doctor-blocks/${b.id}`)
+    onChange(`Leave removed for ${b.doctor.name}.`)
+  }
+
+  return (
+    <form className="card panel" onSubmit={save} noValidate>
+      <div className="panel-head">
+        <h2>Doctor leave</h2>
+        <button type="button" className="btn ghost" onClick={onClose}>
+          Close
+        </button>
+      </div>
+      <div className="grid">
+        <div className="span-2">
+          <SelectField label="Doctor" required value={form.doctor_id} onChange={set('doctor_id')} options={doctors.map((d) => ({ value: String(d.id), label: d.name }))} placeholder="Select doctor" error={errors.doctor_id} />
+        </div>
+        <TextField label="From" required type="date" value={form.from_date} onChange={set('from_date')} error={errors.from_date} />
+        <TextField label="To" required type="date" value={form.to_date} onChange={set('to_date')} error={errors.to_date} />
+      </div>
+      <label className="check">
+        <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
+        The whole day
+      </label>
+      <div className="grid gap-top">
+        {!allDay && (
+          <>
+            <TextField label="Away from" required type="time" value={form.start_time} onChange={set('start_time')} error={errors.start_time} />
+            <TextField label="Away until" required type="time" value={form.end_time} onChange={set('end_time')} error={errors.end_time} />
+          </>
+        )}
+        <div className="span-2">
+          <TextField label="Reason (optional)" placeholder="Leave, surgery, conference…" maxLength={100} value={form.reason} onChange={set('reason')} error={errors.reason} />
+        </div>
+      </div>
+      {errors._ && <p className="form-error">{errors._}</p>}
+      <div className="panel-foot">
+        <button className="btn primary">Mark as away</button>
+      </div>
+
+      <h3>Leave on the days shown</h3>
+      {blocks.length === 0 ? (
+        <p className="muted small">None marked.</p>
+      ) : (
+        <ul className="leave-list">
+          {blocks.map((b) => (
+            <li key={b.id}>
+              <span>
+                <strong>{b.doctor.name}</strong>
+                <small className="muted block">
+                  {blockWhen(b)}
+                  {b.reason ? ` · ${b.reason}` : ''}
+                </small>
+              </span>
+              <button type="button" className="link danger" onClick={() => remove(b)}>
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </form>
   )
 }
@@ -88,6 +176,7 @@ export function Calendar() {
   const [services, setServices] = useState<Service[]>([])
   const [settings, setSettings] = useState<CalendarSettings | null>(null)
   const [appointments, setAppointments] = useState<Appointment[]>([])
+  const [blocks, setBlocks] = useState<DoctorBlock[]>([])
   const [panel, setPanel] = useState<Panel>(null)
   const [notice, setNotice] = useState('')
 
@@ -95,10 +184,11 @@ export function Calendar() {
 
   const load = useCallback(() => {
     api
-      .get<{ settings: CalendarSettings; data: Appointment[] }>('/appointments/calendar', { params: { from, days: view === 'week' ? 7 : 1, doctor_id: doctorId || undefined } })
+      .get<{ settings: CalendarSettings; blocks: DoctorBlock[]; data: Appointment[] }>('/appointments/calendar', { params: { from, days: view === 'week' ? 7 : 1, doctor_id: doctorId || undefined } })
       .then((res) => {
         setSettings(res.data.settings)
         setAppointments(res.data.data)
+        setBlocks(res.data.blocks)
       })
   }, [from, view, doctorId])
 
@@ -160,6 +250,14 @@ export function Calendar() {
     return { cells, rows, counts }
   }, [appointments, settings, view])
 
+  // A slot is shaded when its doctor is away. A week showing every doctor has no single doctor to shade for.
+  const blockAt = (column: Column, slot: string) => {
+    if (!settings || !column.doctorId) return undefined
+    const end = timeOf(minutes(slot) + settings.slot_minutes)
+    return blocks.find((b) => String(b.doctor_id) === column.doctorId && b.from_date <= column.date && b.to_date >= column.date && (!b.start_time || !b.end_time || (b.start_time < end && b.end_time > slot)))
+  }
+  const awayAllDay = (column: Column) => blocks.find((b) => String(b.doctor_id) === column.doctorId && b.from_date <= column.date && b.to_date >= column.date && !b.start_time)
+
   const move = (days: number) => setDate(addDays(date, days * (view === 'week' ? 7 : 1)))
   const openSlot = (column: Column, slot: string) => {
     setNotice('')
@@ -202,6 +300,9 @@ export function Calendar() {
             ))}
           </select>
           <span className="grow" />
+          <button className="btn ghost" onClick={() => setPanel({ kind: 'leave', date, doctorId })}>
+            Doctor leave
+          </button>
           {user?.can_manage_setup && (
             <button className="btn ghost" onClick={() => setPanel({ kind: 'hours' })}>
               OPD hours
@@ -234,6 +335,7 @@ export function Calendar() {
                       <small>
                         {c.sub ? `${c.sub} · ` : ''}
                         {counts.get(c.key) ?? 0} booked
+                        {awayAllDay(c) && <b className="away"> · Away{awayAllDay(c)!.reason ? `: ${awayAllDay(c)!.reason}` : ''}</b>}
                       </small>
                     </th>
                   ))}
@@ -248,8 +350,16 @@ export function Calendar() {
                   ) : (
                     <tr key={row.slot}>
                       <td className="cal-time">{label(row.slot!)}</td>
-                      {columns.map((c) => (
-                        <td key={c.key} className={`slot ${c.date === today() && row.slot === nowSlot ? 'now' : ''}`} onClick={() => openSlot(c, row.slot!)}>
+                      {columns.map((c) => {
+                        const away = blockAt(c, row.slot!)
+                        const full = !away && settings.slot_limit > 0 && c.doctorId !== '' && (cells.get(`${c.key}|${row.slot}`) ?? []).filter((a) => a.status !== 'cancelled').length >= settings.slot_limit
+                        return (
+                        <td
+                          key={c.key}
+                          className={`slot ${c.date === today() && row.slot === nowSlot ? 'now' : ''} ${away ? 'away' : ''} ${full ? 'full' : ''}`}
+                          title={away ? `Away${away.reason ? `: ${away.reason}` : ''}` : full ? 'This slot is full' : undefined}
+                          onClick={() => (away ? setPanel({ kind: 'leave', date: c.date, doctorId: c.doctorId }) : full ? setNotice(`The ${label(row.slot!)} slot is full (${settings.slot_limit} per slot). Choose another time.`) : openSlot(c, row.slot!))}
+                        >
                           {(cells.get(`${c.key}|${row.slot}`) ?? []).map((a) => (
                             <button
                               key={a.id}
@@ -266,7 +376,8 @@ export function Calendar() {
                             </button>
                           ))}
                         </td>
-                      ))}
+                        )
+                      })}
                     </tr>
                   ),
                 )}
@@ -276,7 +387,8 @@ export function Calendar() {
         )}
         <p className="muted small legend">
           <span className="cal-chip booked">Booked</span> <span className="cal-chip arrived">Arrived</span> <span className="cal-chip ongoing">Ongoing</span> <span className="cal-chip reviewed">Reviewed</span>{' '}
-          <span className="cal-chip cancelled">Cancelled</span>
+          <span className="cal-chip cancelled">Cancelled</span> <span className="cal-key away">Doctor away</span>
+          {settings && settings.slot_limit > 0 && <span className="cal-key full">Slot full</span>}
         </p>
       </section>
 
@@ -314,6 +426,21 @@ export function Calendar() {
         />
       )}
       {panel?.kind === 'bill' && <BillPanel key={panel.billId} billId={panel.billId} services={services} onClose={() => setPanel(null)} onChange={load} onAnotherBill={() => setPanel(null)} />}
+      {panel?.kind === 'leave' && (
+        <LeavePanel
+          key={`${panel.date} ${panel.doctorId}`}
+          date={panel.date}
+          doctorId={panel.doctorId}
+          doctors={doctors}
+          blocks={blocks}
+          onClose={() => setPanel(null)}
+          onChange={(text) => {
+            setNotice(text)
+            setPanel(null)
+            load()
+          }}
+        />
+      )}
       {panel?.kind === 'hours' && settings && (
         <HoursPanel
           settings={settings}

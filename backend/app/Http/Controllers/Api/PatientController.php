@@ -20,6 +20,9 @@ class PatientController extends Controller
                     ->orWhere('mobile', 'like', "{$q}%")
                     ->orWhere('uhid', 'like', "{$q}%"));
             })
+            // Exact match, for the "this number is already registered" check.
+            ->when($request->string('mobile')->trim()->value(), fn ($query, $mobile) => $query
+                ->where(fn ($w) => $w->where('mobile', $mobile)->orWhere('mobile_alt', $mobile)))
             ->latest('id')
             ->paginate(20);
 

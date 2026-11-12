@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { SelectField, TextField } from '../components/Field'
+import { SameMobile } from '../components/SameMobile'
 import type { Patient } from '../types'
 
 type Page = { data: Patient[]; current_page: number; last_page: number; total: number }
@@ -181,6 +182,7 @@ export function Patients() {
             <TextField label="Age (years)" required type="number" min={0} max={130} value={form.age} onChange={set('age')} error={errors.age} />
             <TextField label="or Date of birth" type="date" value={form.date_of_birth} onChange={set('date_of_birth')} error={errors.date_of_birth} />
             <TextField label="Mobile" required inputMode="numeric" maxLength={10} value={form.mobile} onChange={set('mobile')} error={errors.mobile} />
+            <SameMobile mobile={form.mobile} exceptId={editing === 'new' ? undefined : editing.id} onUse={editing === 'new' ? open : undefined} />
             <TextField label="Alternate mobile" inputMode="numeric" maxLength={10} value={form.mobile_alt} onChange={set('mobile_alt')} error={errors.mobile_alt} />
             <TextField label="Email" type="email" value={form.email} onChange={set('email')} error={errors.email} />
             <SelectField label="Blood group" value={form.blood_group} onChange={set('blood_group')} options={BLOOD_GROUPS} placeholder="Not known" error={errors.blood_group} />

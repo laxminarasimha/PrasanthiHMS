@@ -57,6 +57,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('ability:canWorkFrontDesk')->group(function () {
         Route::post('/appointments', [AppointmentController::class, 'store']);
         Route::put('/appointments/{appointment}', [AppointmentController::class, 'update']);
+        Route::post('/doctor-blocks', [AppointmentController::class, 'storeBlock']);
+        Route::delete('/doctor-blocks/{block}', [AppointmentController::class, 'destroyBlock']);
     });
 
     Route::apiResource('bills', BillController::class)->only(['show', 'store', 'update']);
