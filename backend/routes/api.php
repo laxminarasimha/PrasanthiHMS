@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\BillController;
 use App\Http\Controllers\Api\ConsultationController;
 use App\Http\Controllers\Api\DoctorLibraryController;
 use App\Http\Controllers\Api\FrontDeskController;
+use App\Http\Controllers\Api\HospitalReportController;
 use App\Http\Controllers\Api\IpdController;
 use App\Http\Controllers\Api\IpdRecordsController;
 use App\Http\Controllers\Api\LabController;
@@ -225,6 +226,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::get('/reports/summary', [ReportController::class, 'summary']);
+    Route::get('/reports/list/{type}', [HospitalReportController::class, 'show']);
 
     Route::middleware(EnsureCanManageStaff::class)->group(function () {
         Route::get('/staff', [StaffController::class, 'index']);
