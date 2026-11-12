@@ -62,6 +62,7 @@ export type Service = {
   type: 'appointment' | 'other'
   price: number
   gst_percent: number
+  priority: number
   doctor_id: number | null
   doctor: { id: number; name: string } | null
   is_active: boolean
@@ -74,18 +75,22 @@ export type Appointment = {
   scheduled_at: string
   duration_minutes: number
   status: AppointmentStatus
+  token_no: number | null
   notes: string | null
   patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile'>
   doctor: { id: number; name: string }
   service: { id: number; name: string } | null
-  bills: { id: number; bill_no: string; total: number; paid: number; due: number; moved_to_ipd: number | null; lab_order: { id: number; order_no: string } | null }[]
+  bills: { id: number; bill_no: string; kind: BillKind; total: number; paid: number; due: number; moved_to_ipd: number | null; lab_order: { id: number; order_no: string } | null }[]
 }
+
+export type BillKind = 'appointment' | 'lab' | 'other'
 
 export type BillItem = {
   id: number
   description: string
   quantity: number
   unit_price: number
+  discount: number
   gst_percent: number
   amount: number
   tax: number
@@ -104,6 +109,8 @@ export type Payment = {
 export type Bill = {
   id: number
   bill_no: string
+  kind: BillKind
+  lab_order?: { id: number; order_no: string } | null
   subtotal: number
   tax: number
   discount: number
@@ -445,4 +452,48 @@ export type PharmacyReport = {
   rows: Record<string, string | number | null>[]
   totals: Record<string, number>
   reports: Record<string, string>
+}
+
+export type WalkInBill = {
+  id: number
+  bill_no: string
+  kind: BillKind
+  total: number
+  paid: number
+  due: number
+  moved_to_ipd: number | null
+  created_at: string
+  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile'>
+  lab_order: { id: number; order_no: string; items: { id: number }[] } | null
+  items: { id: number; description: string }[]
+}
+
+type DeptTotals = { billed: number; collected: number; refunded: number; orders: number; outstanding: number }
+export type DaySummary = {
+  date: string
+  bills: Record<'all' | 'appointment' | 'lab' | 'other', DeptTotals>
+  appointments: { doctor: string; total: number; booked: number; arrived: number; ongoing: number; reviewed: number }[]
+}
+
+export type Attachment = {
+  id: number
+  title: string
+  document_date: string
+  original_name: string
+  mime: string
+  size: number
+  uploader: { id: number; name: string } | null
+}
+
+export type QueueBoard = { doctor: string; department: string | null; now: { token: number; name: string }[]; waiting: { token: number; name: string }[] }[]
+
+export type PatientOverview = {
+  patient: Patient & { allergies: string | null }
+  outstanding: number
+  visits: { id: number; scheduled_at: string; status: AppointmentStatus; doctor: { name: string }; service: { name: string } | null; consultation: { id: number; diagnosis: string | null; completed_at: string | null } | null }[]
+  bills: { id: number; bill_no: string; kind: BillKind; total: number; paid: number; due: number; moved_to_ipd: number | null; created_at: string; lab_order: { order_no: string } | null }[]
+  lab_orders: { id: number; order_no: string; status: string; ordered_at: string; items: { id: number; test_name: string }[] }[]
+  pharmacy_bills: { id: number; bill_no: string; sold_at: string; total: number; due: number }[]
+  admissions: { id: number; ipd_no: string; status: string; admitted_at: string; discharged_at: string | null; due: number; doctor: { name: string }; bed: { ward: string; bed_no: string } | null }[]
+  attachments: Attachment[]
 }

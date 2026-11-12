@@ -315,3 +315,48 @@ tfoot td { font-weight: 700; border-top: 2px solid var(--text); padding: 10px; w
   .print-area { width: 100% !important; }
   .split { display: block; }
 }
+
+/* Complete front desk */
+.tabs button.square { border-radius: 6px; }
+.tab-gap { width: 12px; }
+td.bills { white-space: normal; }
+.bill-chip { font: inherit; font-weight: 700; font-variant-numeric: tabular-nums; border: 1px solid transparent; border-radius: 6px; padding: 2px 8px; margin: 2px 4px 2px 0; cursor: pointer; display: inline-flex; gap: 6px; align-items: baseline; }
+.bill-chip span { font-weight: 400; font-size: 0.8rem; }
+.bill-chip.paid { color: var(--ok); background: var(--ok-soft); border-color: #9fd6b8; }
+.bill-chip.unpaid { color: var(--danger); background: var(--danger-soft); border-color: #f0b4ae; }
+.legend .bill-chip { cursor: default; padding: 0 6px; }
+tr.walkin td { background: #fafbfc; }
+.small-btn { padding: 4px 10px; font-size: 0.85rem; }
+.menu-cell { position: relative; }
+.menu { position: fixed; z-index: 30; width: 220px; background: #fff; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); min-width: 200px; padding: 4px; text-align: left; }
+.menu > * { display: block; width: 100%; text-align: left; font: inherit; color: var(--text); background: none; border: 0; padding: 8px 10px; border-radius: 6px; cursor: pointer; text-decoration: none; }
+.menu > *:hover { background: var(--brand-soft); }
+.quick-patient, .bill-box { border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: #fbfdfd; }
+.bill-box { margin-top: 14px; }
+.net { text-align: right; margin: 8px 0; font-size: 1.05rem; }
+.line-row { display: grid; grid-template-columns: 1.5fr 1.3fr 0.8fr 0.55fr 0.75fr auto; gap: 6px; margin-top: 10px; align-items: center; }
+.line-row input, .line-row select { padding: 6px 8px; }
+.refund-by { justify-content: flex-end; margin-top: 6px; }
+.refund-by select { width: auto; padding: 4px 8px; }
+.two-up { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 20px; }
+.tile.inline { flex-direction: row; align-items: baseline; gap: 10px; padding: 8px 14px; }
+.tile.inline strong { font-size: 1.15rem; }
+input[type='file'] { padding: 6px; }
+
+/* Waiting-room screen */
+.queue-board { min-height: 100vh; background: #0f2d2b; color: #fff; padding: 28px 36px; }
+.queue-board header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid rgba(255, 255, 255, 0.25); padding-bottom: 14px; margin-bottom: 24px; }
+.queue-board header h1 { font-size: 2rem; }
+.queue-board header span { font-size: 1.2rem; opacity: 0.85; }
+.queue-doctors { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 24px; }
+.queue-doctors section { background: rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 20px 24px; }
+.queue-doctors h2 { font-size: 1.5rem; }
+.queue-doctors h2 small { display: block; font-size: 0.95rem; font-weight: 400; opacity: 0.75; }
+.queue-now { margin: 16px 0; padding: 14px 16px; border-radius: 10px; background: #1f7a4d; }
+.queue-now span { display: block; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.85; }
+.queue-now strong { display: block; font-size: 1.7rem; }
+.queue-doctors ol { list-style: none; margin: 0; padding: 0; font-size: 1.3rem; }
+.queue-doctors li { padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.14); }
+.queue-doctors li b { display: inline-block; min-width: 2.2em; padding: 2px 8px; margin-right: 10px; border-radius: 6px; background: rgba(255, 255, 255, 0.16); text-align: center; }
+.queue-board .idle { opacity: 0.55; font-weight: 400; }
+.queue-board .idle.big { font-size: 1.5rem; }

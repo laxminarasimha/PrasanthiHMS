@@ -77,3 +77,7 @@ export function downloadCsv(filename: string, headers: string[], rows: (string |
 
 /** First day of the current month, as YYYY-MM-DD. */
 export const monthStart = () => today().slice(0, 8) + '01'
+
+/** For timestamps the server sends in universal time (bill and payment creation): shown in the viewer's own time. */
+export const stampTime = (iso: string) => new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }).toUpperCase()
+export const stampDate = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
