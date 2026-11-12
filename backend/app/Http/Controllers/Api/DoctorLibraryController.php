@@ -23,7 +23,31 @@ class DoctorLibraryController extends Controller
 {
     public const PHRASE_KINDS = ['complaint', 'diagnosis', 'advice'];
 
-    public const PAD_SECTIONS = ['quick_notes', 'history', 'past_medication', 'general_exam', 'systemic_exam', 'assessment_plan', 'tests', 'refer_to'];
+    /** The parts of the visit pad a doctor may switch off. */
+    public const PAD_SECTIONS = ['quick_notes', 'history', 'past_medication', 'general_exam', 'systemic_exam', 'assessment_plan', 'tests', 'results', 'refer_to'];
+
+    /** Every part of the visit pad that can be moved, in the standard order. */
+    public const PAD_ORDER = ['quick_notes', 'vitals', 'complaints', 'history', 'past_medication', 'general_exam', 'systemic_exam', 'diagnosis', 'assessment_plan', 'tests', 'results', 'prescription', 'advice', 'follow_up'];
+
+    /**
+     * A doctor's saved order, with any part it does not mention put back where it normally sits.
+     *
+     * @param  array<int, string>|null  $saved
+     * @return array<int, string>
+     */
+    public static function padOrder(?array $saved): array
+    {
+        $order = array_values(array_intersect($saved ?? [], self::PAD_ORDER));
+        foreach (self::PAD_ORDER as $index => $key) {
+            if (! in_array($key, $order, true)) {
+                // After the nearest earlier part that is present, or first.
+                $before = collect(array_slice(self::PAD_ORDER, 0, $index))->reverse()->first(fn ($k) => in_array($k, $order, true));
+                array_splice($order, $before === null ? 0 : array_search($before, $order, true) + 1, 0, [$key]);
+            }
+        }
+
+        return $order;
+    }
 
     /** Completed consultations in a date range: the doctor's own, or everyone's for other roles. */
     public function consults(Request $request): JsonResponse
@@ -57,6 +81,7 @@ class DoctorLibraryController extends Controller
             'medicine_defaults' => MedicineDefault::where('doctor_id', $doctorId)->get(['medicine', 'dose', 'frequency', 'timing', 'duration', 'instructions']),
             'pad_hidden_sections' => User::find($doctorId)?->pad_hidden_sections ?? [],
             'pad_sections' => self::PAD_SECTIONS,
+            'pad_section_order' => self::padOrder(User::find($doctorId)?->pad_section_order),
         ]);
     }
 
@@ -148,13 +173,17 @@ class DoctorLibraryController extends Controller
 
     public function savePadSections(Request $request): JsonResponse
     {
-        $data = $request->validate(['hidden' => ['present', 'array'], 'hidden.*' => [Rule::in(self::PAD_SECTIONS)]]);
+        $data = $request->validate([
+            'hidden' => ['present', 'array'], 'hidden.*' => [Rule::in(self::PAD_SECTIONS)],
+            'order' => ['sometimes', 'array'], 'order.*' => ['distinct', Rule::in(self::PAD_ORDER)],
+        ]);
         $hidden = array_values(array_unique($data['hidden']));
         $ownerId = $this->owner($request);
         // Update the signed-in user's own record in place so the rest of this request sees the change.
-        ($ownerId === $request->user()->id ? $request->user() : User::findOrFail($ownerId))->update(['pad_hidden_sections' => $hidden]);
+        $owner = $ownerId === $request->user()->id ? $request->user() : User::findOrFail($ownerId);
+        $owner->update(['pad_hidden_sections' => $hidden] + (isset($data['order']) ? ['pad_section_order' => self::padOrder($data['order'])] : []));
 
-        return response()->json(['pad_hidden_sections' => $hidden]);
+        return response()->json(['pad_hidden_sections' => $hidden, 'pad_section_order' => self::padOrder($owner->pad_section_order)]);
     }
 
     /**

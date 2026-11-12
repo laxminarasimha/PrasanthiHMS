@@ -384,6 +384,11 @@ tr.lab-heading td { font-weight: 700; background: var(--bg); text-transform: upp
 .lab-signatures img { display: block; max-height: 48px; max-width: 160px; margin-bottom: 4px; }
 .lab-tabular tr.lab-test-row td { font-weight: 700; border-top: 2px solid var(--text); padding-top: 8px; }
 .lab-tabular tr.lab-test-row small { font-weight: 400; color: var(--muted); margin-left: 8px; }
+.inv-row { display: grid; grid-template-columns: 2fr 1.4fr 150px auto; gap: 8px; align-items: center; margin-bottom: 6px; }
+.pad-order { list-style: none; margin: 8px 0; padding: 0; max-width: 460px; }
+.pad-order li { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 4px; background: var(--surface); }
+.pad-order li.off { opacity: 0.6; }
+@media (max-width: 700px) { .inv-row { grid-template-columns: 1fr 1fr; } }
 .signature-box { display: flex; flex-direction: column; gap: 6px; border: 1px dashed var(--border); border-radius: 8px; padding: 10px 12px; }
 .signature-box img { max-height: 60px; max-width: 200px; object-fit: contain; align-self: flex-start; background: #fff; }
 .file-add { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }

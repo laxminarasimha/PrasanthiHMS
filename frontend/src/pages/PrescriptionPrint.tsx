@@ -74,6 +74,21 @@ export function PrescriptionPrint() {
       {c.past_medication && <section><h3>Past medication</h3><p>{c.past_medication}</p></section>}
       {generalExam && <section><h3>General examination</h3><p className="capitalise">{generalExam}</p></section>}
       {c.findings && <section><h3>Systemic examination</h3><p>{c.findings}</p></section>}
+      {c.investigations?.length ? (
+        <section>
+          <h3>Test results</h3>
+          <p>
+            {c.investigations.map((r, i) => (
+              <span key={i}>
+                {i > 0 && '; '}
+                {r.name}
+                {r.result ? `: ${r.result}` : ''}
+                {r.date ? ` (${longDate(r.date)})` : ''}
+              </span>
+            ))}
+          </p>
+        </section>
+      ) : null}
       {c.diagnosis && <section><h3>Diagnosis</h3><p>{c.diagnosis}</p></section>}
       {c.assessment_plan && <section><h3>Assessment / plan</h3><p>{c.assessment_plan}</p></section>}
 

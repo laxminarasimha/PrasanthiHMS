@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'appointment_id', 'patient_id', 'doctor_id', 'branch_id',
     'weight_kg', 'height_cm', 'bp_systolic', 'bp_diastolic', 'pulse', 'temperature_f', 'spo2',
-    'complaints', 'findings', 'diagnosis', 'tests_advised', 'advice', 'follow_up_on', 'completed_at',
+    'complaints', 'findings', 'diagnosis', 'tests_advised', 'investigations', 'advice', 'follow_up_on', 'completed_at',
     'quick_notes', 'resp_rate', 'history', 'past_medication', 'general_exam', 'general_exam_notes', 'assessment_plan', 'refer_to',
 ])]
 class Consultation extends Model
@@ -22,6 +22,7 @@ class Consultation extends Model
     {
         return [
             'general_exam' => 'array',
+            'investigations' => 'array',
             'weight_kg' => 'float', 'height_cm' => 'float', 'temperature_f' => 'float',
             'follow_up_on' => 'date:Y-m-d', 'completed_at' => 'datetime:Y-m-d H:i',
         ];
