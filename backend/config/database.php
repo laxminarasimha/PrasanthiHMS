@@ -59,9 +59,12 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+            // Setting MYSQL_ATTR_SSL_CA encrypts the connection. Hosts whose certificate cannot be
+            // verified (common on shared hosting) also need MYSQL_ATTR_SSL_VERIFY_SERVER_CERT=false.
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
-            ]) : [],
+                Mysql::ATTR_SSL_VERIFY_SERVER_CERT => env('MYSQL_ATTR_SSL_VERIFY_SERVER_CERT'),
+            ], fn ($value) => $value !== null) : [],
         ],
 
         'mariadb' => [
