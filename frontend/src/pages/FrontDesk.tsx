@@ -148,6 +148,9 @@ export function FrontDesk() {
           <button className="btn ghost" onClick={() => { setWalkInPatient(null); open({ kind: 'walkin' }) }}>
             + Other bill
           </button>
+          <Link className="btn ghost" to="/front-desk/calendar">
+            Calendar
+          </Link>
           <button className="btn primary" onClick={() => open({ kind: 'new' })}>
             + New appointment
           </button>

@@ -84,6 +84,8 @@ export type Appointment = {
   bills: { id: number; bill_no: string; kind: BillKind; total: number; paid: number; due: number; moved_to_ipd: number | null; lab_order: { id: number; order_no: string } | null }[]
 }
 
+export type CalendarSettings = { slot_minutes: number; morning_start: string; morning_end: string; evening_start: string; evening_end: string }
+
 export type BillKind = 'appointment' | 'lab' | 'other'
 
 export type BillItem = {

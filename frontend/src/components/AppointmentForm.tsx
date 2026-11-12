@@ -7,6 +7,10 @@ import { PatientPicker } from './PatientPicker'
 
 type Props = {
   date: string
+  /** Set when the form is opened from a calendar slot. */
+  time?: string
+  doctorId?: string
+  status?: 'arrived' | 'booked'
   doctors: Doctor[]
   services: Service[]
   onClose: () => void
@@ -24,14 +28,14 @@ const STATUSES = [
 
 const nowTime = () => new Date().toTimeString().slice(0, 5)
 
-export function AppointmentForm({ date, doctors, services, onClose, onBooked }: Props) {
+export function AppointmentForm({ date, time: startTime, doctorId: startDoctor, status: startStatus, doctors, services, onClose, onBooked }: Props) {
   const [patient, setPatient] = useState<Patient | null>(null)
-  const [doctorId, setDoctorId] = useState(doctors.length === 1 ? String(doctors[0].id) : '')
+  const [doctorId, setDoctorId] = useState(startDoctor || (doctors.length === 1 ? String(doctors[0].id) : ''))
   const [serviceId, setServiceId] = useState('')
   const [day, setDay] = useState(date)
-  const [time, setTime] = useState(nowTime())
+  const [time, setTime] = useState(startTime ?? nowTime())
   const [duration, setDuration] = useState('15')
-  const [status, setStatus] = useState('arrived')
+  const [status, setStatus] = useState<string>(startStatus ?? 'arrived')
   const [notes, setNotes] = useState('')
   const [skipBilling, setSkipBilling] = useState(false)
   const [price, setPrice] = useState('')

@@ -6,11 +6,15 @@ use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
 use App\Models\Bill;
+use App\Models\Payment;
 use App\Models\Service;
+use App\Models\Setting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class AppointmentController extends Controller
 {
@@ -36,7 +40,6 @@ class AppointmentController extends Controller
             'q' => ['nullable', 'string', 'max:100'],
         ]);
 
-
         $day = Appointment::query()
             ->whereDate('scheduled_at', $filters['date'] ?? today())
             ->when($filters['doctor_id'] ?? null, fn ($q, $id) => $q->where('doctor_id', $id))
@@ -52,6 +55,43 @@ class AppointmentController extends Controller
         ]);
     }
 
+    /** Every appointment in a run of days (one day or a week), with the OPD hours the calendar is drawn from. */
+    public function calendar(Request $request): JsonResponse
+    {
+        $filters = $request->validate([
+            'from' => ['required', 'date_format:Y-m-d'],
+            'days' => ['nullable', 'integer', 'between:1,31'],
+            'doctor_id' => ['nullable', 'integer'],
+        ]);
+
+        $from = Carbon::parse($filters['from'])->startOfDay();
+
+        return response()->json([
+            'settings' => Setting::group('calendar', Setting::CALENDAR_DEFAULTS),
+            'data' => Appointment::query()
+                ->whereDate('scheduled_at', '>=', $from)
+                ->whereDate('scheduled_at', '<=', $from->copy()->addDays((int) ($filters['days'] ?? 1) - 1))
+                ->when($filters['doctor_id'] ?? null, fn ($q, $id) => $q->where('doctor_id', $id))
+                ->with(self::WITH)->with(self::bills())->orderBy('scheduled_at')->orderBy('id')->get(),
+        ]);
+    }
+
+    public function saveCalendarSettings(Request $request): JsonResponse
+    {
+        $time = ['required', 'date_format:H:i'];
+        $data = $request->validate([
+            'slot_minutes' => ['required', 'integer', Rule::in([5, 10, 15, 20, 30, 60])],
+            'morning_start' => $time,
+            'morning_end' => [...$time, 'after:morning_start'],
+            'evening_start' => [...$time, 'after_or_equal:morning_end'],
+            'evening_end' => [...$time, 'after:evening_start'],
+        ]);
+
+        Setting::updateOrCreate(['key' => 'calendar'], ['value' => $data]);
+
+        return response()->json(Setting::group('calendar', Setting::CALENDAR_DEFAULTS));
+    }
+
     /**
      * Books the visit and, unless billing is skipped, opens a bill for the chosen service.
      * The front desk may change the price, quantity and discount, and take payment at once.
@@ -65,14 +105,14 @@ class AppointmentController extends Controller
             'quantity' => ['nullable', 'integer', 'min:1', 'max:99'],
             'discount' => ['nullable', 'numeric', 'min:0'],
             'paid' => ['nullable', 'numeric', 'min:0'],
-            'payment_mode' => ['nullable', 'required_with:paid', Rule::in(\App\Models\Payment::MODES)],
+            'payment_mode' => ['nullable', 'required_with:paid', Rule::in(Payment::MODES)],
         ]);
 
         $billing = array_intersect_key($data, array_flip(['skip_billing', 'unit_price', 'quantity', 'discount', 'paid', 'payment_mode']));
         $data = array_diff_key($data, $billing);
 
         $appointment = DB::transaction(function () use ($data, $billing, $request) {
-            $day = \Illuminate\Support\Carbon::parse($data['scheduled_at'])->toDateString();
+            $day = Carbon::parse($data['scheduled_at'])->toDateString();
             $appointment = Appointment::create($data + [
                 'branch_id' => $request->user()->branch_id,
                 'created_by' => $request->user()->id,
@@ -87,7 +127,7 @@ class AppointmentController extends Controller
                 $price = (float) ($billing['unit_price'] ?? $service->price);
                 $discount = (float) ($billing['discount'] ?? 0);
                 if ($discount > $price * $quantity) {
-                    throw \Illuminate\Validation\ValidationException::withMessages(['discount' => 'The discount cannot be more than the charge.']);
+                    throw ValidationException::withMessages(['discount' => 'The discount cannot be more than the charge.']);
                 }
 
                 $bill = Bill::create([
@@ -101,7 +141,7 @@ class AppointmentController extends Controller
 
                 $paid = (float) ($billing['paid'] ?? 0);
                 if ($paid > $bill->fresh()->total) {
-                    throw \Illuminate\Validation\ValidationException::withMessages(['paid' => 'That is more than the bill amount.']);
+                    throw ValidationException::withMessages(['paid' => 'That is more than the bill amount.']);
                 }
                 if ($paid > 0) {
                     $bill->payments()->create(['type' => 'payment', 'amount' => $paid, 'mode' => $billing['payment_mode'], 'received_by' => $request->user()->id]);
