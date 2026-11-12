@@ -10,10 +10,22 @@ class ExampleTest extends TestCase
     /**
      * A basic test example.
      */
-    public function test_the_application_returns_a_successful_response(): void
+    public function test_page_addresses_are_handed_to_the_web_app_and_api_misses_stay_json(): void
     {
-        $response = $this->get('/');
+        $spa = public_path('spa.html');
+        $existed = is_file($spa);
+        if (! $existed) {
+            file_put_contents($spa, '<!doctype html><div id="root"></div>');
+        }
 
-        $response->assertStatus(200);
+        try {
+            $this->get('/')->assertOk();
+            $this->get('/front-desk')->assertOk();
+            $this->getJson('/api/no-such-endpoint')->assertNotFound()->assertJsonStructure(['message']);
+        } finally {
+            if (! $existed) {
+                unlink($spa);
+            }
+        }
     }
 }

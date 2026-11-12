@@ -1,7 +1,10 @@
 <?php
 
 use Illuminate\Support\Str;
-use Pdo\Mysql;
+
+// PHP 8.4 moved the MySQL driver constants to Pdo\Mysql; older versions only have the PDO ones.
+$mysqlSslCa = PHP_VERSION_ID >= 80400 ? \Pdo\Mysql::ATTR_SSL_CA : \PDO::MYSQL_ATTR_SSL_CA;
+$mysqlSslVerify = PHP_VERSION_ID >= 80400 ? \Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT : \PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT;
 
 return [
 
@@ -62,8 +65,8 @@ return [
             // Setting MYSQL_ATTR_SSL_CA encrypts the connection. Hosts whose certificate cannot be
             // verified (common on shared hosting) also need MYSQL_ATTR_SSL_VERIFY_SERVER_CERT=false.
             'options' => extension_loaded('pdo_mysql') ? array_filter([
-                Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
-                Mysql::ATTR_SSL_VERIFY_SERVER_CERT => env('MYSQL_ATTR_SSL_VERIFY_SERVER_CERT'),
+                $mysqlSslCa => env('MYSQL_ATTR_SSL_CA'),
+                $mysqlSslVerify => env('MYSQL_ATTR_SSL_VERIFY_SERVER_CERT'),
             ], fn ($value) => $value !== null) : [],
         ],
 
@@ -84,8 +87,8 @@ return [
             'engine' => null,
             // Always encrypted; the host's certificate cannot be verified.
             'options' => extension_loaded('pdo_mysql') ? [
-                Mysql::ATTR_SSL_CA => env('REMOTE_DB_SSL_CA', '/etc/ssl/cert.pem'),
-                Mysql::ATTR_SSL_VERIFY_SERVER_CERT => false,
+                $mysqlSslCa => env('REMOTE_DB_SSL_CA', '/etc/ssl/cert.pem'),
+                $mysqlSslVerify => false,
             ] : [],
         ],
 
@@ -105,7 +108,7 @@ return [
             'strict' => true,
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
-                Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                $mysqlSslCa => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
         ],
 
