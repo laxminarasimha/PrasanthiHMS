@@ -55,16 +55,22 @@ class Bill extends Model
 
     public function addService(Service $service, int $quantity = 1): BillItem
     {
-        $amount = round($service->price * $quantity, 2);
+        return $this->addLine($service->name, $service->price, $quantity, $service->gst_percent, $service->id);
+    }
+
+    /** Adds a charge that is not in the services list, such as a lab test. */
+    public function addLine(string $description, float $unitPrice, int $quantity = 1, float $gstPercent = 0, ?int $serviceId = null): BillItem
+    {
+        $amount = round($unitPrice * $quantity, 2);
 
         $item = $this->items()->create([
-            'service_id' => $service->id,
-            'description' => $service->name,
+            'service_id' => $serviceId,
+            'description' => $description,
             'quantity' => $quantity,
-            'unit_price' => $service->price,
-            'gst_percent' => $service->gst_percent,
+            'unit_price' => $unitPrice,
+            'gst_percent' => $gstPercent,
             'amount' => $amount,
-            'tax' => round($amount * $service->gst_percent / 100, 2),
+            'tax' => round($amount * $gstPercent / 100, 2),
         ]);
 
         $this->recalculate();

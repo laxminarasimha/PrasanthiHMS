@@ -11,7 +11,7 @@ export function Login() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  if (user) return <Navigate to={user.role === 'doctor' ? '/doctor' : '/front-desk'} replace />
+  if (user) return <Navigate to={user.role === 'doctor' ? '/doctor' : user.role === 'lab_tech' ? '/lab' : '/front-desk'} replace />
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
