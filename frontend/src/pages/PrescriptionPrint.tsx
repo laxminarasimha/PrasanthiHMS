@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { api } from '../api'
 import { ClinicFooter, ClinicHeader } from '../components/ClinicHeader'
 import { useSignature } from '../components/useSignature'
-import { longDate } from '../format'
+import { longDate, fullName } from '../format'
 import type { Visit } from '../types'
 
 /** The prescription as it is handed to the patient; opens the print dialog once loaded. */
@@ -47,9 +47,9 @@ export function PrescriptionPrint() {
 
       <div className="receipt-meta">
         <div>
-          <strong>{visit.patient.name}</strong>
+          <strong>{fullName(visit.patient)}</strong>
           <br />
-          {visit.patient.age}y / {visit.patient.gender.charAt(0).toUpperCase()} · Patient ID: {visit.patient.uhid}
+          {visit.patient.age_label} / {visit.patient.gender.charAt(0).toUpperCase()} · Patient ID: {visit.patient.uhid}
           <br />
           Mobile: {visit.patient.mobile}
         </div>

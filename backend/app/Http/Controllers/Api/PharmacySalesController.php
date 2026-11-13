@@ -22,7 +22,7 @@ use Illuminate\Validation\ValidationException;
 /** What happens to a pharmacy bill after it is made, plus the dashboard and the prescription queue. */
 class PharmacySalesController extends Controller
 {
-    private const SALE_WITH = ['items', 'patient:id,uhid,name', 'seller:id,name', 'payments.receiver:id,name', 'returns'];
+    private const SALE_WITH = ['items', 'patient:id,uhid,title,name', 'seller:id,name', 'payments.receiver:id,name', 'returns'];
 
     public function dashboard(Request $request): JsonResponse
     {
@@ -69,7 +69,7 @@ class PharmacySalesController extends Controller
 
         $consultations = Consultation::whereDate('completed_at', $day)
             ->whereHas('medicines')
-            ->with(['patient:id,uhid,name,gender,date_of_birth,mobile', 'doctor:id,name', 'medicines:id,consultation_id,medicine,dose,frequency,duration'])
+            ->with(['patient:id,uhid,title,name,gender,date_of_birth,mobile', 'doctor:id,name', 'medicines:id,consultation_id,medicine,dose,frequency,duration'])
             ->latest('completed_at')->get();
 
         $billed = PharmacySale::whereIn('patient_id', $consultations->pluck('patient_id'))

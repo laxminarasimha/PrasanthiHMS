@@ -3,7 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import { ClinicFooter, ClinicHeader } from '../components/ClinicHeader'
 import { useSignature } from '../components/useSignature'
-import { clock, longDate } from '../format'
+import { clock, longDate, fullName } from '../format'
 import type { LabOrder, LabSettings } from '../types'
 
 const stamp = (at: string) => `${longDate(at)} ${clock(at)}`
@@ -54,9 +54,9 @@ export function LabReportPrint() {
   const patientBlock = (
     <div className="receipt-meta">
       <div>
-        <strong>{order.patient.name}</strong>
+        <strong>{fullName(order.patient)}</strong>
         <br />
-        {order.patient.age}y / {order.patient.gender.charAt(0).toUpperCase()} · Patient ID: {order.patient.uhid}
+        {order.patient.age_label} / {order.patient.gender.charAt(0).toUpperCase()} · Patient ID: {order.patient.uhid}
         {order.referred_by && (
           <>
             <br />

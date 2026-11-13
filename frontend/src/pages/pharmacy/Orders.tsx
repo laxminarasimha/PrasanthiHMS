@@ -49,7 +49,7 @@ export function PharmacyOrders() {
                   <td>
                     <strong>{o.patient.name}</strong>
                     <small className="muted block">
-                      {o.patient.uhid} · {o.patient.age}y / {o.patient.gender.charAt(0).toUpperCase()}
+                      {o.patient.uhid} · {o.patient.age_label} / {o.patient.gender.charAt(0).toUpperCase()}
                     </small>
                   </td>
                   <td>{o.doctor}</td>

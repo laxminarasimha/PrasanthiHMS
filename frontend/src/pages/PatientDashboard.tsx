@@ -29,7 +29,7 @@ export function PatientDashboard() {
           <div className="grow">
             <h1>{p.name}</h1>
             <span className="muted">
-              {p.uhid} · {p.age}y / {p.gender.charAt(0).toUpperCase()} · {p.mobile}
+              {p.uhid} · {p.age_label} / {p.gender.charAt(0).toUpperCase()} · {p.mobile}
               {p.blood_group ? ` · ${p.blood_group}` : ''}
               {p.city ? ` · ${p.city}` : ''}
             </span>

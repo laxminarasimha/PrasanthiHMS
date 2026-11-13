@@ -16,7 +16,7 @@ use Illuminate\Validation\Rule;
 
 class ConsultationController extends Controller
 {
-    private const PATIENT = 'patient:id,uhid,name,gender,date_of_birth,mobile,blood_group,allergies';
+    private const PATIENT = 'patient:id,uhid,title,name,gender,date_of_birth,mobile,blood_group,allergies';
 
     public const GENERAL_EXAM_SIGNS = ['pallor', 'icterus', 'cyanosis', 'clubbing', 'lymphadenopathy', 'edema'];
 

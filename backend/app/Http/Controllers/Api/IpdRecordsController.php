@@ -208,7 +208,7 @@ class IpdRecordsController extends Controller
     /** Stays that began in the period. */
     private function cases(Carbon $from, Carbon $to): array
     {
-        $rows = Admission::whereBetween('admitted_at', [$from, $to])->with(['patient:id,name,uhid', 'doctor:id,name', 'bed:id,ward,bed_no'])->orderBy('admitted_at')->get()
+        $rows = Admission::whereBetween('admitted_at', [$from, $to])->with(['patient:id,title,name,uhid', 'doctor:id,name', 'bed:id,ward,bed_no'])->orderBy('admitted_at')->get()
             ->map(fn (Admission $a) => [
                 'ipd_no' => $a->ipd_no, 'patient' => $a->patient->name, 'uhid' => $a->patient->uhid, 'doctor' => $a->doctor?->name,
                 'admitted' => $a->admitted_at->format('Y-m-d H:i'), 'discharged' => $a->discharged_at?->format('Y-m-d H:i'),
@@ -234,7 +234,7 @@ class IpdRecordsController extends Controller
         $days = max(1, (int) ceil($from->diffInHours($end) / 24));
         $stays = Admission::whereNotNull('bed_id')->where('admitted_at', '<=', $end)
             ->where(fn ($q) => $q->whereNull('discharged_at')->orWhere('discharged_at', '>=', $from))
-            ->with('patient:id,name')->get()->groupBy('bed_id');
+            ->with('patient:id,title,name')->get()->groupBy('bed_id');
 
         $rows = Bed::orderBy('ward')->orderBy('bed_no')->get()->map(function (Bed $bed) use ($stays, $from, $end, $days) {
             $mine = $stays->get($bed->id, collect());
@@ -261,7 +261,7 @@ class IpdRecordsController extends Controller
     {
         $rows = AdmissionPayment::whereBetween('created_at', [$from, $to])->with(['receiver:id,name'])->orderBy('created_at')->get()
             ->map(function (AdmissionPayment $p) {
-                $admission = Admission::with('patient:id,name')->find($p->admission_id);
+                $admission = Admission::with('patient:id,title,name')->find($p->admission_id);
 
                 return [
                     'date' => $p->created_at->format('Y-m-d H:i'), 'ipd_no' => $admission?->ipd_no, 'patient' => $admission?->patient->name,

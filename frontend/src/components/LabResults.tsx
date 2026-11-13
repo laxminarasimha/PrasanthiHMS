@@ -127,7 +127,7 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
         <div>
           <h2>Results · {order.order_no}</h2>
           <span className="muted">
-            {order.patient.name} · {order.patient.uhid} · {order.patient.age}y / {order.patient.gender.charAt(0).toUpperCase()}
+            {order.patient.name} · {order.patient.uhid} · {order.patient.age_label} / {order.patient.gender.charAt(0).toUpperCase()}
           </span>
         </div>
         <button type="button" className="btn ghost" onClick={onClose}>

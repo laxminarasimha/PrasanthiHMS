@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
+import { AGE_UNITS, TITLES } from '../format'
 import type { Patient } from '../types'
 import { Field } from './Field'
 import { SameMobile } from './SameMobile'
@@ -10,14 +11,14 @@ type Props = {
   error?: string
 }
 
-const summary = (p: Patient) => `${p.uhid} · ${p.age}y / ${p.gender.charAt(0).toUpperCase()} · ${p.mobile}`
+const summary = (p: Patient) => `${p.uhid} · ${p.age_label} / ${p.gender.charAt(0).toUpperCase()} · ${p.mobile}`
 
 /** Finds a registered patient by name, mobile or patient ID, or registers a new one on the spot. */
 export function PatientPicker({ patient, onChange, error }: Props) {
   const [search, setSearch] = useState('')
   const [matches, setMatches] = useState<Patient[]>([])
   const [adding, setAdding] = useState(false)
-  const [form, setForm] = useState({ name: '', gender: '', age: '', mobile: '' })
+  const [form, setForm] = useState({ title: '', name: '', gender: '', age: '', age_unit: 'years', mobile: '' })
   const [errors, setErrors] = useState<FieldErrors>({})
 
   useEffect(() => {
@@ -47,9 +48,9 @@ export function PatientPicker({ patient, onChange, error }: Props) {
     e.stopPropagation()
     setErrors({})
     try {
-      const res = await api.post<Patient>('/patients', form)
+      const res = await api.post<Patient>('/patients', { ...form, title: form.title || null })
       setAdding(false)
-      setForm({ name: '', gender: '', age: '', mobile: '' })
+      setForm({ title: '', name: '', gender: '', age: '', age_unit: 'years', mobile: '' })
       onChange(res.data)
     } catch (err) {
       setErrors(fieldErrors(err))
@@ -88,8 +89,27 @@ export function PatientPicker({ patient, onChange, error }: Props) {
               <option value="other">Other</option>
             </select>
           </Field>
-          <Field label="Age (years)" required error={errors.age}>
-            <input type="number" min={0} max={130} value={form.age} onChange={(e) => set('age')(e.target.value)} />
+          <Field label="Age" required error={errors.age}>
+            <div className="row">
+              <input type="number" min={0} max={130} value={form.age} onChange={(e) => set('age')(e.target.value)} />
+              <select value={form.age_unit} onChange={(e) => set('age_unit')(e.target.value)} aria-label="Age in">
+                {AGE_UNITS.map((u) => (
+                  <option key={u.value} value={u.value}>
+                    {u.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </Field>
+          <Field label="Title" error={errors.title}>
+            <select value={form.title} onChange={(e) => set('title')(e.target.value)}>
+              <option value="">None</option>
+              {TITLES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
           </Field>
         </div>
         <div className="row gap-top">

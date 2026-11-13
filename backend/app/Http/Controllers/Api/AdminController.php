@@ -100,6 +100,27 @@ class AdminController extends Controller
         ]);
     }
 
+    // ---- Billing preferences ----
+
+    public const BILLING_DEFAULTS = ['default_payment_mode' => 'cash', 'pay_timing' => 'before'];
+
+    public function billingPreferences(): JsonResponse
+    {
+        return response()->json(Setting::group('billing', self::BILLING_DEFAULTS));
+    }
+
+    public function saveBillingPreferences(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'default_payment_mode' => ['required', Rule::in(\App\Models\Payment::MODES)],
+            // before: the consultation is paid for when the visit is booked; after: it is billed then and paid later.
+            'pay_timing' => ['required', Rule::in(['before', 'after'])],
+        ]);
+        Setting::updateOrCreate(['key' => 'billing'], ['value' => $data]);
+
+        return response()->json(Setting::group('billing', self::BILLING_DEFAULTS));
+    }
+
     // ---- Referral doctors ----
 
     public function referralDoctors(): JsonResponse

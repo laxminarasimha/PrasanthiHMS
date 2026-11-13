@@ -19,7 +19,7 @@ use Illuminate\Validation\ValidationException;
 
 class AppointmentController extends Controller
 {
-    private const WITH = ['patient:id,uhid,name,gender,date_of_birth,mobile', 'doctor:id,name', 'service:id,name', 'bills.labOrder:id,bill_id,order_no'];
+    private const WITH = ['patient:id,uhid,title,name,gender,date_of_birth,mobile', 'doctor:id,name', 'service:id,name', 'bills.labOrder:id,bill_id,order_no'];
 
     /**
      * What the desk needs beside each visit: its bills (with any amount moved to an IPD bill)

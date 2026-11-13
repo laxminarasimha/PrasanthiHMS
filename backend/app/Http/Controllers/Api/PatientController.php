@@ -60,10 +60,13 @@ class PatientController extends Controller
     private function validated(Request $request): array
     {
         $data = $request->validate([
+            'title' => ['nullable', Rule::in(Patient::TITLES)],
             'name' => ['required', 'string', 'max:255'],
             'gender' => ['required', Rule::in(['male', 'female', 'other'])],
             'date_of_birth' => ['nullable', 'required_without:age', 'date', 'before_or_equal:today'],
             'age' => ['nullable', 'required_without:date_of_birth', 'integer', 'min:0', 'max:130'],
+            // For babies the age is given in days, weeks or months.
+            'age_unit' => ['nullable', Rule::in(['years', 'months', 'weeks', 'days'])],
             'mobile' => ['required', 'string', 'regex:/^[0-9]{10}$/'],
             'mobile_alt' => ['nullable', 'string', 'regex:/^[0-9]{10}$/'],
             'email' => ['nullable', 'email', 'max:255'],
@@ -88,12 +91,19 @@ class PatientController extends Controller
         ]);
 
         if (empty($data['date_of_birth'])) {
-            $data['date_of_birth'] = now()->subYears((int) $data['age'])->toDateString();
+            $age = (int) $data['age'];
+            $born = match ($data['age_unit'] ?? 'years') {
+                'days' => now()->subDays($age),
+                'weeks' => now()->subWeeks($age),
+                'months' => now()->subMonthsNoOverflow($age),
+                default => now()->subYears($age),
+            };
+            $data['date_of_birth'] = $born->toDateString();
             $data['dob_estimated'] = true;
         } else {
             $data['dob_estimated'] = false;
         }
-        unset($data['age']);
+        unset($data['age'], $data['age_unit']);
 
         return $data;
     }

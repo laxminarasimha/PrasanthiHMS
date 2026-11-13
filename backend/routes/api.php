@@ -229,9 +229,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::controller(AdminController::class)->group(function () {
         Route::get('/clinic', 'clinic');
         Route::get('/referral-doctors', 'referralDoctors');
+        Route::get('/billing-preferences', 'billingPreferences');
 
         Route::middleware('ability:canManageSetup')->group(function () {
             Route::put('/clinic', 'saveClinic');
+            Route::put('/billing-preferences', 'saveBillingPreferences');
             Route::post('/clinic/logo', 'saveLogo');
             Route::delete('/clinic/logo', 'destroyLogo');
             Route::post('/referral-doctors', 'storeReferralDoctor');

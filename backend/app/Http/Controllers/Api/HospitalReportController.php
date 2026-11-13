@@ -75,7 +75,7 @@ class HospitalReportController extends Controller
 
     private function bills(Carbon $from, Carbon $to): array
     {
-        $rows = Bill::whereBetween('created_at', [$from, $to])->with(['patient:id,name,uhid', 'appointment.doctor:id,name'])->orderBy('created_at')->get()
+        $rows = Bill::whereBetween('created_at', [$from, $to])->with(['patient:id,title,name,uhid', 'appointment.doctor:id,name'])->orderBy('created_at')->get()
             ->map(fn (Bill $b) => [
                 'bill_no' => $b->bill_no, 'date' => $b->created_at->format('Y-m-d H:i'), 'patient' => $b->patient?->name, 'uhid' => $b->patient?->uhid,
                 'doctor' => $b->appointment?->doctor?->name, 'kind' => self::KIND[$b->kind] ?? $b->kind,
@@ -91,7 +91,7 @@ class HospitalReportController extends Controller
 
     private function billLines(Carbon $from, Carbon $to): array
     {
-        $bills = Bill::whereBetween('created_at', [$from, $to])->with(['patient:id,name', 'items'])->orderBy('created_at')->get();
+        $bills = Bill::whereBetween('created_at', [$from, $to])->with(['patient:id,title,name', 'items'])->orderBy('created_at')->get();
         $rows = $bills->flatMap(fn (Bill $b) => $b->items->map(fn (BillItem $i) => [
             'date' => $b->created_at->format('Y-m-d H:i'), 'bill_no' => $b->bill_no, 'patient' => $b->patient?->name, 'service' => $i->description,
             'quantity' => (float) $i->quantity, 'price' => $i->unit_price, 'discount' => $i->discount, 'tax' => $i->tax, 'amount' => round($i->amount + $i->tax, 2),
@@ -109,7 +109,7 @@ class HospitalReportController extends Controller
     {
         $rows = Payment::whereBetween('created_at', [$from, $to])->where('mode', '!=', 'ipd')->with('receiver:id,name')->orderBy('created_at')->get()
             ->map(function (Payment $p) {
-                $bill = Bill::with('patient:id,name')->find($p->bill_id);
+                $bill = Bill::with('patient:id,title,name')->find($p->bill_id);
 
                 return [
                     'date' => $p->created_at->format('Y-m-d H:i'), 'bill_no' => $bill?->bill_no, 'patient' => $bill?->patient?->name,
@@ -175,14 +175,14 @@ class HospitalReportController extends Controller
     private function visits(Carbon $from, Carbon $to)
     {
         return Appointment::where('scheduled_at', '>=', $from->format('Y-m-d H:i'))->where('scheduled_at', '<=', $to->format('Y-m-d H:i:s'))
-            ->with(['patient:id,name,uhid,mobile', 'doctor:id,name', 'service:id,name'])->orderBy('scheduled_at');
+            ->with(['patient:id,title,name,uhid,mobile', 'doctor:id,name', 'service:id,name'])->orderBy('scheduled_at');
     }
 
     /** Patients a doctor asked to come back in the period, and whether that visit has been booked. */
     private function advisedVisits(Carbon $from, Carbon $to): array
     {
         $rows = Consultation::whereNotNull('completed_at')->whereDate('follow_up_on', '>=', $from)->whereDate('follow_up_on', '<=', $to)
-            ->with(['patient:id,name,uhid,mobile', 'doctor:id,name'])->orderBy('follow_up_on')->get()
+            ->with(['patient:id,title,name,uhid,mobile', 'doctor:id,name'])->orderBy('follow_up_on')->get()
             ->map(fn (Consultation $c) => [
                 'advised' => $c->follow_up_on->format('Y-m-d'), 'patient' => $c->patient?->name, 'uhid' => $c->patient?->uhid, 'mobile' => $c->patient?->mobile,
                 'doctor' => $c->doctor?->name, 'seen_on' => $c->completed_at->format('Y-m-d'), 'diagnosis' => str($c->diagnosis)->before("\n")->limit(60)->value() ?: null,

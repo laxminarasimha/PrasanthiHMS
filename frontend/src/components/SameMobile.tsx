@@ -36,7 +36,7 @@ export function SameMobile({ mobile, exceptId, onUse }: Props) {
         {matches.slice(0, 5).map((p) => (
           <li key={p.id}>
             <span>
-              {p.name} · {p.uhid} · {p.age}y / {p.gender.charAt(0).toUpperCase()}
+              {p.name} · {p.uhid} · {p.age_label} / {p.gender.charAt(0).toUpperCase()}
             </span>
             {onUse && (
               <button type="button" className="link" onClick={() => onUse(p)}>
