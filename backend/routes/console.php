@@ -74,3 +74,104 @@ Artisan::command('hms:admin {email} {--name=Administrator} {--remote : Act on th
 
     return 0;
 })->purpose('Create or reset an admin login');
+
+/*
+ * Loads lab tests (with their report templates) and medicines from a JSON file of master lists,
+ * such as the hospital's lists from its previous system. Names already present are left alone,
+ * so it is safe to run twice. With --remote it loads into the hosting database.
+ *
+ * The file: {"tests": [{name, department, sample_type, price, print_order, kind, default_comment, is_active,
+ * parameters: [{name, unit, reference_range, method, is_heading}]}], "medicines": [{name, type,
+ * manufacturer, category, is_scheduled, gst_percent, units_per_pack, reorder_level}]}
+ */
+Artisan::command('hms:import-lists {file} {--remote : Load into the remote database} {--dry-run : Only count what would be added}', function () {
+    $connection = $this->option('remote') ? 'remote' : config('database.default');
+    $path = $this->argument('file');
+    $lists = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+    if (! is_array($lists)) {
+        $this->error('Could not read a list file at '.$path);
+
+        return 1;
+    }
+
+    $db = DB::connection($connection);
+    $clip = fn ($value, int $length) => ($value = trim((string) ($value ?? ''))) === '' ? null : mb_substr($value, 0, $length);
+    $key = fn (string $name) => mb_strtolower(preg_replace('/\s+/', ' ', trim($name)));
+    $now = now();
+    $added = ['tests' => 0, 'parameters' => 0, 'medicines' => 0];
+    $skipped = ['tests' => 0, 'medicines' => 0];
+
+    $db->transaction(function () use ($lists, $db, $clip, $key, $now, &$added, &$skipped) {
+        $have = $db->table('lab_tests')->pluck('name')->map($key)->flip();
+        foreach ($lists['tests'] ?? [] as $test) {
+            $name = $clip($test['name'] ?? '', 255);
+            if (! $name || $have->has($key($name))) {
+                $skipped['tests']++;
+
+                continue;
+            }
+            $have[$key($name)] = true;
+            $added['tests']++;
+            $parameters = array_values(array_filter($test['parameters'] ?? [], fn ($p) => filled($p['name'] ?? null)));
+            if ($this->option('dry-run')) {
+                $added['parameters'] += count($parameters);
+
+                continue;
+            }
+
+            $id = $db->table('lab_tests')->insertGetId([
+                'name' => $name, 'kind' => ($test['kind'] ?? 'values') === 'text' ? 'text' : 'values',
+                'department' => $clip($test['department'] ?? null, 255), 'sample_type' => $clip($test['sample_type'] ?? null, 50),
+                'price' => round((float) ($test['price'] ?? 0), 2), 'print_order' => min(65000, max(0, (int) ($test['print_order'] ?? 0))),
+                'default_comment' => $clip($test['default_comment'] ?? null, 5000), 'is_active' => (bool) ($test['is_active'] ?? true), 'created_at' => $now, 'updated_at' => $now,
+            ]);
+            foreach ($parameters as $position => $parameter) {
+                $db->table('lab_test_parameters')->insert([
+                    'lab_test_id' => $id, 'name' => $clip($parameter['name'], 255), 'is_heading' => (bool) ($parameter['is_heading'] ?? false),
+                    'unit' => $clip($parameter['unit'] ?? null, 30), 'reference_range' => $clip($parameter['reference_range'] ?? null, 255),
+                    'method' => $clip($parameter['method'] ?? null, 255), 'position' => $position, 'created_at' => $now, 'updated_at' => $now,
+                ]);
+                $added['parameters']++;
+            }
+        }
+
+        $have = $db->table('medicines')->pluck('name')->map($key)->flip();
+        foreach ($lists['medicines'] ?? [] as $medicine) {
+            $name = $clip($medicine['name'] ?? '', 255);
+            if (! $name || $have->has($key($name))) {
+                $skipped['medicines']++;
+
+                continue;
+            }
+            $have[$key($name)] = true;
+            $added['medicines']++;
+            if ($this->option('dry-run')) {
+                continue;
+            }
+
+            $db->table('medicines')->insert([
+                'name' => $name, 'type' => $clip($medicine['type'] ?? null, 30), 'manufacturer' => $clip($medicine['manufacturer'] ?? null, 255),
+                'category' => $clip($medicine['category'] ?? null, 255), 'is_scheduled' => (bool) ($medicine['is_scheduled'] ?? false),
+                'gst_percent' => (float) ($medicine['gst_percent'] ?? 0), 'units_per_pack' => max(1, (int) ($medicine['units_per_pack'] ?? 1)),
+                'reorder_level' => max(0, (int) ($medicine['reorder_level'] ?? 0)), 'is_active' => true, 'created_at' => $now, 'updated_at' => $now,
+            ]);
+        }
+
+        // Keep the manufacturer pick list in step with the medicines just loaded.
+        if (! $this->option('dry-run')) {
+            $known = $db->table('manufacturers')->pluck('name')->map($key)->flip();
+            foreach ($db->table('medicines')->whereNotNull('manufacturer')->distinct()->pluck('manufacturer') as $manufacturer) {
+                if (! $known->has($key($manufacturer))) {
+                    $known[$key($manufacturer)] = true;
+                    $db->table('manufacturers')->insert(['name' => trim($manufacturer), 'created_at' => $now, 'updated_at' => $now]);
+                }
+            }
+        }
+    });
+
+    $verb = $this->option('dry-run') ? 'Would add' : 'Added';
+    $this->info("{$verb} on the {$connection} database: {$added['tests']} lab tests with {$added['parameters']} template rows, and {$added['medicines']} medicines.");
+    $this->line("Left alone because the name is already there or blank: {$skipped['tests']} tests, {$skipped['medicines']} medicines.");
+
+    return 0;
+})->purpose('Load lab tests and medicines from a JSON file of master lists');
