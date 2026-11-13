@@ -10,9 +10,18 @@ export const SUMMARY_PARTS: { key: keyof DischargeSummary & string; label: strin
   { key: 'history', label: 'History', rows: 2 },
   { key: 'examination', label: 'Examination findings', rows: 3 },
   { key: 'investigations', label: 'Investigations', hint: 'Important results during the stay', rows: 3 },
-  { key: 'procedures', label: 'Procedures and operations', rows: 2 },
+  { key: 'treatment_given', label: 'Treatment given', rows: 3 },
+  { key: 'procedures', label: 'Surgery or procedure', rows: 2 },
+  { key: 'operative_findings', label: 'Operative findings', rows: 2 },
   { key: 'course', label: 'Course in hospital', hint: 'Treatment given and how the patient responded', rows: 5 },
   { key: 'condition_at_discharge', label: 'Condition at discharge', rows: 2 },
+]
+
+/** The parts that come after the medicines and advice. */
+export const AFTER_PARTS: { key: keyof DischargeSummary & string; label: string; hint?: string }[] = [
+  { key: 'tests_requested', label: 'Tests requested', hint: 'Tests to be done before the review' },
+  { key: 'other_instructions', label: 'Other instructions', hint: 'Nutrition, physiotherapy and the like' },
+  { key: 'acknowledgement', label: 'Acknowledgement', hint: 'For example: explained to the patient and attendant in their own language' },
 ]
 
 type Texts = Record<string, string>
@@ -29,7 +38,7 @@ export function IpdSummary({ admissionId, canEdit, canApprove }: { admissionId: 
 
   const apply = (next: DischargeSummary) => {
     setSummary(next)
-    setTexts(Object.fromEntries([...SUMMARY_PARTS.map((p) => p.key), 'advice'].map((key) => [key, (next[key as keyof DischargeSummary] as string | null) ?? ''])))
+    setTexts(Object.fromEntries([...SUMMARY_PARTS.map((p) => p.key), 'advice', ...AFTER_PARTS.map((p) => p.key)].map((key) => [key, (next[key as keyof DischargeSummary] as string | null) ?? ''])))
     setMedicines(next.medicines?.length ? next.medicines : [emptyMedicine()])
     setFollowUp(next.follow_up_on ?? '')
     setError('')
@@ -108,6 +117,12 @@ export function IpdSummary({ admissionId, canEdit, canApprove }: { admissionId: 
           <span className="field-label">Advice on discharge</span>
           <textarea rows={3} placeholder="Diet, activity, wound care, when to come back urgently" value={texts.advice ?? ''} onChange={(e) => setTexts((t) => ({ ...t, advice: e.target.value }))} />
         </label>
+        {AFTER_PARTS.map((part) => (
+          <label className="field" key={part.key}>
+            <span className="field-label">{part.label}</span>
+            <textarea rows={2} placeholder={part.hint ?? ''} value={texts[part.key] ?? ''} onChange={(e) => setTexts((t) => ({ ...t, [part.key]: e.target.value }))} />
+          </label>
+        ))}
         <div className="grid gap-top">
           <label className="field">
             <span className="field-label">Review date</span>

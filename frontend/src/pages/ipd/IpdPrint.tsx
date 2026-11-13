@@ -34,6 +34,12 @@ export function IpdPrint() {
           Mobile: {a.patient.mobile}
           <br />
           Doctor: {a.doctor.name}
+          {a.gst_no && (
+            <>
+              <br />
+              GSTIN: {a.gst_no}
+            </>
+          )}
           {a.payer && (
             <>
               <br />
@@ -72,7 +78,10 @@ export function IpdPrint() {
               <td>{longDate(c.charged_on)}</td>
               <td>{c.description}</td>
               <td className="num">{c.quantity}</td>
-              <td className="num">{rupees(c.unit_price)}</td>
+              <td className="num">
+                {rupees(c.unit_price)}
+                {c.discount > 0 && <small className="block">less {rupees(c.discount)}</small>}
+              </td>
               <td className="num">{rupees(c.amount)}</td>
             </tr>
           ))}

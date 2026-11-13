@@ -14,6 +14,7 @@ import { AllBills } from './pages/AllBills'
 import { Ipd } from './pages/ipd/Ipd'
 import { IpdCase } from './pages/ipd/IpdCase'
 import { IpdPrint } from './pages/ipd/IpdPrint'
+import { IpdReceiptPrint } from './pages/ipd/IpdReceiptPrint'
 import { IpdReports } from './pages/ipd/IpdReports'
 import { IpdSummaryPrint } from './pages/ipd/IpdSummaryPrint'
 import { IpdSetup } from './pages/ipd/IpdSetup'
@@ -81,6 +82,7 @@ export default function App() {
           <Route path="/visits/:id/print" element={<PrintOnly><PrescriptionPrint /></PrintOnly>} />
           <Route path="/lab/orders/:id/print" element={<PrintOnly><LabReportPrint /></PrintOnly>} />
           <Route path="/ipd/:id/print" element={<PrintOnly><IpdPrint /></PrintOnly>} />
+          <Route path="/ipd/:id/receipt/:paymentId" element={<PrintOnly><IpdReceiptPrint /></PrintOnly>} />
           <Route path="/ipd/:id/summary/print" element={<PrintOnly><IpdSummaryPrint /></PrintOnly>} />
           <Route path="/pharmacy/bills/:id/print" element={<PrintOnly><PharmacySalePrint /></PrintOnly>} />
           <Route element={<Protected />}>

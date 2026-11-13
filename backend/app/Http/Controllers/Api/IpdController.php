@@ -163,7 +163,9 @@ class IpdController extends Controller
         $data = $request->validate(array_map(fn ($rules) => array_merge(['sometimes'], $rules), $this->detailRules()) + [
             'discount' => ['sometimes', 'numeric', 'min:0'],
             'discharge_summary' => ['sometimes', 'nullable', 'string', 'max:20000'],
-        ]);
+            'aadhaar_no' => ['sometimes', 'nullable', 'regex:/^[0-9]{12}$/'],
+            'gst_no' => ['sometimes', 'nullable', 'string', 'max:20'],
+        ], ['aadhaar_no.regex' => 'An Aadhaar number has 12 digits.']);
 
         if (isset($data['discount'])) {
             $this->refuseIfBillApproved($admission);
@@ -191,8 +193,14 @@ class IpdController extends Controller
             'charged_on' => ['required', 'date', 'before_or_equal:today'],
             'quantity' => ['required', 'numeric', 'gt:0', 'max:9999'],
             'unit_price' => ['required', 'numeric', 'min:0'],
+            'discount' => ['nullable', 'numeric', 'min:0'],
+            'remarks' => ['nullable', 'string', 'max:255'],
         ], ['description.required_without' => 'Choose a service or describe the charge.']);
         $this->refuseIfBillApproved($admission);
+        $discount = round((float) ($data['discount'] ?? 0), 2);
+        if ($discount > $data['quantity'] * $data['unit_price']) {
+            throw ValidationException::withMessages(['discount' => 'The discount cannot be more than the charge.']);
+        }
 
         $service = IpdService::find($data['ipd_service_id'] ?? null);
 
@@ -203,7 +211,9 @@ class IpdController extends Controller
             'charged_on' => $data['charged_on'],
             'quantity' => $data['quantity'],
             'unit_price' => $data['unit_price'],
-            'amount' => round($data['quantity'] * $data['unit_price'], 2),
+            'discount' => $discount,
+            'amount' => round($data['quantity'] * $data['unit_price'] - $discount, 2),
+            'remarks' => $data['remarks'] ?? null,
             'created_by' => $request->user()->id,
         ]);
         $admission->recalculate();
@@ -211,7 +221,38 @@ class IpdController extends Controller
         return response()->json($this->present($admission), 201);
     }
 
-    public function removeCharge(Admission $admission, AdmissionCharge $charge): JsonResponse
+    /** Corrects a charge already on the bill: its date, quantity, rate, discount or remarks. */
+    public function updateCharge(Request $request, Admission $admission, AdmissionCharge $charge): JsonResponse
+    {
+        abort_unless($charge->admission_id === $admission->id, 404);
+        $this->refuseIfBillApproved($admission);
+        if ($charge->source_type) {
+            throw ValidationException::withMessages(['charge' => 'This line stands for another bill. Remove it here and change that bill instead.']);
+        }
+
+        $data = $request->validate([
+            'charged_on' => ['required', 'date', 'before_or_equal:today'],
+            'quantity' => ['required', 'numeric', 'gt:0', 'max:9999'],
+            'unit_price' => ['required', 'numeric', 'min:0'],
+            'discount' => ['nullable', 'numeric', 'min:0'],
+            'remarks' => ['nullable', 'string', 'max:255'],
+        ]);
+        $discount = round((float) ($data['discount'] ?? 0), 2);
+        $amount = round($data['quantity'] * $data['unit_price'] - $discount, 2);
+        if ($amount < 0) {
+            throw ValidationException::withMessages(['discount' => 'The discount cannot be more than the charge.']);
+        }
+        if ($admission->total - $charge->amount + $amount < $admission->discount) {
+            throw ValidationException::withMessages(['charge' => 'Reduce the bill discount first; it would be more than the charges.']);
+        }
+
+        $charge->update(['charged_on' => $data['charged_on'], 'quantity' => $data['quantity'], 'unit_price' => $data['unit_price'], 'discount' => $discount, 'amount' => $amount, 'remarks' => $data['remarks'] ?? null]);
+        $admission->recalculate();
+
+        return response()->json($this->present($admission));
+    }
+
+    public function removeCharge(Request $request, Admission $admission, AdmissionCharge $charge): JsonResponse
     {
         abort_unless($charge->admission_id === $admission->id, 404);
         $this->refuseIfBillApproved($admission);
@@ -220,7 +261,7 @@ class IpdController extends Controller
             throw ValidationException::withMessages(['charge' => 'Reduce the discount first; it would be more than the remaining charges.']);
         }
 
-        DB::transaction(function () use ($charge, $admission) {
+        DB::transaction(function () use ($charge, $admission, $request) {
             // A charge that stood for another bill hands the amount back to that bill.
             if ($charge->source_type === 'bill' && ($bill = Bill::find($charge->source_id))) {
                 $bill->payments()->where('mode', 'ipd')->where('reference', "IPD charge {$charge->id}")->delete();
@@ -230,6 +271,8 @@ class IpdController extends Controller
                 $sale->update(['ipd_transfer' => max(0, $sale->ipd_transfer - $charge->amount)]);
             }
 
+            // Kept on record as a deleted line, with who removed it.
+            $charge->update(['deleted_by' => $request->user()->id]);
             $charge->delete();
             $admission->recalculate();
         });
@@ -337,16 +380,73 @@ class IpdController extends Controller
             'amount' => ['required', 'numeric', 'gt:0'],
             'mode' => ['required', Rule::in(Payment::MODES)],
             'reference' => ['nullable', 'string', 'max:255'],
-        ]);
+            'remarks' => ['nullable', 'string', 'max:255'],
+            // The day the money actually changed hands, when it is entered later.
+            'paid_on' => ['nullable', 'date', 'before_or_equal:today', 'after_or_equal:'.$admission->admitted_at->toDateString()],
+        ], ['paid_on.after_or_equal' => 'The payment date cannot be before the admission.']);
 
         if ($data['type'] === 'refund' && $data['amount'] > $admission->paid) {
             throw ValidationException::withMessages(['amount' => "Only ₹{$admission->paid} has been received on this case."]);
         }
 
-        $admission->payments()->create($data + ['received_by' => $request->user()->id]);
+        $paidOn = $data['paid_on'] ?? null;
+        unset($data['paid_on']);
+        $payment = $admission->payments()->create($data + ['received_by' => $request->user()->id]);
+        if ($paidOn && $paidOn !== today()->toDateString()) {
+            // Reports count money on the day it was received, so a back-dated entry carries that day.
+            $payment->created_at = \Illuminate\Support\Carbon::parse($paidOn)->setTimeFrom(now());
+            $payment->save();
+        }
         $admission->recalculate();
 
         return response()->json($this->present($admission), 201);
+    }
+
+    /** Removes a payment entered by mistake. Money actually handed back is a refund, not a deletion. */
+    public function removePayment(Request $request, Admission $admission, \App\Models\AdmissionPayment $payment): JsonResponse
+    {
+        abort_unless($payment->admission_id === $admission->id, 404);
+        abort_unless($request->user()->allows('canApproveIpd'), 403, 'You are not allowed to delete IPD payments.');
+
+        $after = $admission->paid - ($payment->type === 'refund' ? -1 : 1) * $payment->amount;
+        if ($after < 0) {
+            throw ValidationException::withMessages(['payment' => 'Delete the refund first; more would have been refunded than was received.']);
+        }
+        $payment->delete();
+        $admission->recalculate();
+
+        return response()->json($this->present($admission));
+    }
+
+    /**
+     * Lab results during the stay, laid out as one row per test parameter and one column per day,
+     * so a value can be followed across the admission.
+     */
+    public function investigations(Admission $admission): JsonResponse
+    {
+        $from = $admission->admitted_at->copy()->startOfDay();
+        $to = ($admission->discharged_at ?? now())->copy()->endOfDay();
+        $items = \App\Models\LabOrderItem::whereIn('lab_order_id', \App\Models\LabOrder::where('patient_id', $admission->patient_id)->whereBetween('ordered_at', [$from, $to])->select('id'))
+            ->whereNotNull('reported_at')->with('results')->orderBy('reported_at')->get();
+
+        $dates = [];
+        $rows = [];
+        foreach ($items as $item) {
+            $day = $item->reported_at->format('Y-m-d');
+            $dates[$day] = true;
+            foreach ($item->results as $result) {
+                if ($result->is_heading || blank($result->value)) {
+                    continue;
+                }
+                $key = $item->test_name.'|'.$result->parameter;
+                $rows[$key] ??= ['test' => $item->test_name, 'parameter' => $result->parameter, 'unit' => $result->unit, 'reference_range' => $result->reference_range, 'values' => []];
+                // The latest result of the day stands for that day.
+                $rows[$key]['values'][$day] = ['value' => $result->value, 'flag' => $result->flag];
+            }
+        }
+        ksort($dates);
+
+        return response()->json(['dates' => array_keys($dates), 'rows' => array_values($rows)]);
     }
 
     /** Closes the case and frees the bed. Money can still be collected afterwards. */
@@ -443,9 +543,13 @@ class IpdController extends Controller
 
     private function present(Admission $admission): Admission
     {
-        return $admission->fresh()->load([
+        $admission = $admission->fresh()->load([
             'patient:id,uhid,title,name,gender,date_of_birth,mobile,address,city,blood_group', 'doctor:id,name,department,signature_text',
-            'bed:id,ward,bed_no,daily_charge', 'charges', 'payments.receiver:id,name', 'billApprover:id,name', 'payer:id,name,details',
+            'bed:id,ward,bed_no,daily_charge', 'charges.creator:id,name', 'payments.receiver:id,name', 'billApprover:id,name', 'payer:id,name,details',
         ]);
+        // Lines taken off the bill, kept so there is a record of what was removed and by whom.
+        $admission->setRelation('deleted_charges', AdmissionCharge::onlyTrashed()->where('admission_id', $admission->id)->with('deleter:id,name')->orderByDesc('deleted_at')->get());
+
+        return $admission;
     }
 }

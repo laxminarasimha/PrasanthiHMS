@@ -141,4 +141,68 @@ class IpdRecordsTest extends TestCase
 
         $this->getJson('/api/ipd/reports/nothing')->assertNotFound();
     }
+
+    public function test_charges_take_a_discount_and_remarks_can_be_corrected_and_deleted_ones_are_kept(): void
+    {
+        $case = "/api/ipd/admissions/{$this->case}";
+        $line = ['description' => 'Nursing charges', 'charged_on' => now()->toDateString(), 'quantity' => 2, 'unit_price' => 500];
+        $this->postJson("{$case}/charges", $line + ['discount' => 1500])->assertStatus(422)->assertJsonValidationErrors('discount');
+        $charge = $this->postJson("{$case}/charges", $line + ['discount' => 100, 'remarks' => 'Senior citizen'])->assertCreated()
+            ->assertJsonPath('total', 900)->assertJsonPath('charges.0.discount', 100)->assertJsonPath('charges.0.remarks', 'Senior citizen')
+            ->assertJsonPath('charges.0.creator.name', $this->nurse->name)->json('charges.0.id');
+
+        $this->putJson("{$case}/charges/{$charge}", ['charged_on' => now()->toDateString(), 'quantity' => 3, 'unit_price' => 500, 'discount' => 0])->assertOk()->assertJsonPath('total', 1500)->assertJsonPath('charges.0.remarks', null);
+        $this->putJson("{$case}/charges/{$charge}", ['charged_on' => now()->toDateString(), 'quantity' => 1, 'unit_price' => 100, 'discount' => 500])->assertStatus(422);
+
+        $this->deleteJson("{$case}/charges/{$charge}")->assertOk()->assertJsonPath('total', 0)->assertJsonCount(0, 'charges')
+            ->assertJsonCount(1, 'deleted_charges')->assertJsonPath('deleted_charges.0.deleter.name', $this->nurse->name)->assertJsonPath('deleted_charges.0.amount', 1500);
+        $this->getJson("/api/ipd/reports/cases?from=".now()->subDays(3)->toDateString().'&to='.now()->toDateString())->assertJsonPath('rows.0.total', 0);
+    }
+
+    public function test_payments_can_be_back_dated_with_remarks_and_a_mistaken_one_deleted(): void
+    {
+        $case = "/api/ipd/admissions/{$this->case}";
+        $yesterday = now()->subDay()->toDateString();
+        $this->postJson("{$case}/payments", ['type' => 'advance', 'amount' => 5000, 'mode' => 'cash', 'paid_on' => now()->subDays(10)->toDateString()])->assertStatus(422)->assertJsonValidationErrors('paid_on');
+        $payment = $this->postJson("{$case}/payments", ['type' => 'advance', 'amount' => 5000, 'mode' => 'cash', 'paid_on' => $yesterday, 'remarks' => 'Hospital advance'])
+            ->assertCreated()->assertJsonPath('paid', 5000)->assertJsonPath('payments.0.remarks', 'Hospital advance')->json('payments.0');
+        $this->assertStringStartsWith($yesterday, \App\Models\AdmissionPayment::find($payment['id'])->created_at->toDateString());
+        // It is counted on the day it was received.
+        $this->getJson("/api/ipd/reports/payments?from={$yesterday}&to={$yesterday}")->assertJsonCount(1, 'rows');
+
+        $this->postJson("{$case}/payments", ['type' => 'refund', 'amount' => 4000, 'mode' => 'cash'])->assertCreated()->assertJsonPath('paid', 1000);
+        $this->deleteJson("{$case}/payments/{$payment['id']}")->assertForbidden(); // a nurse may not delete money entries
+
+        Sanctum::actingAs($this->doctor);
+        $this->deleteJson("{$case}/payments/{$payment['id']}")->assertStatus(422); // would leave more refunded than received
+        $refund = \App\Models\AdmissionPayment::where('type', 'refund')->value('id');
+        $this->deleteJson("{$case}/payments/{$refund}")->assertOk()->assertJsonPath('paid', 5000);
+        $this->deleteJson("{$case}/payments/{$payment['id']}")->assertOk()->assertJsonPath('paid', 0)->assertJsonCount(0, 'payments');
+    }
+
+    public function test_case_details_longer_summary_and_investigations_by_day(): void
+    {
+        $case = "/api/ipd/admissions/{$this->case}";
+        $this->putJson($case, ['aadhaar_no' => '1234'])->assertStatus(422);
+        $this->putJson($case, ['aadhaar_no' => '123412341234', 'gst_no' => '37ABCDE1234F1Z5'])->assertOk()->assertJsonPath('aadhaar_no', '123412341234')->assertJsonPath('gst_no', '37ABCDE1234F1Z5');
+
+        $this->putJson("{$case}/summary", ['diagnosis' => 'Enteric fever', 'treatment_given' => 'IV antibiotics', 'operative_findings' => 'None', 'tests_requested' => 'Repeat CBP in a week', 'other_instructions' => 'Soft diet', 'acknowledgement' => 'Explained to the attendant'])
+            ->assertOk()->assertJsonPath('treatment_given', 'IV antibiotics')->assertJsonPath('acknowledgement', 'Explained to the attendant');
+
+        // Two results for the same test on two days make one row with two dated values.
+        Sanctum::actingAs(User::factory()->create(['role' => 'lab_tech']));
+        $test = \App\Models\LabTest::create(['name' => 'Random Blood Sugar', 'price' => 100]);
+        $test->parameters()->create(['name' => 'RBS', 'unit' => 'mg/dL', 'reference_range' => '70 - 140']);
+        $patient = \App\Models\Admission::find($this->case)->patient_id;
+        foreach ([['182', 'high', now()->subDay()], ['128', null, now()]] as [$value, $flag, $when]) {
+            $order = $this->postJson('/api/lab/orders', ['patient_id' => $patient, 'test_ids' => [$test->id]])->assertCreated()->json();
+            $item = $order['items'][0];
+            $this->putJson("/api/lab/orders/{$order['id']}/items/{$item['id']}", ['complete' => true, 'results' => [['id' => $item['results'][0]['id'], 'value' => $value, 'flag' => $flag]]])->assertOk();
+            \App\Models\LabOrderItem::whereKey($item['id'])->update(['reported_at' => $when]);
+        }
+        $chart = $this->getJson("{$case}/investigations")->assertOk()->assertJsonCount(2, 'dates')->assertJsonCount(1, 'rows')->json();
+        $this->assertSame('RBS', $chart['rows'][0]['parameter']);
+        $this->assertSame(['182', '128'], array_column(array_values($chart['rows'][0]['values']), 'value'));
+        $this->assertSame('high', $chart['rows'][0]['values'][now()->subDay()->toDateString()]['flag']);
+    }
 }

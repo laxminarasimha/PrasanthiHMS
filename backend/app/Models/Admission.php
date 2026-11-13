@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'branch_id', 'patient_id', 'doctor_id', 'payer_id', 'bed_id', 'admitted_at', 'discharged_at', 'status', 'reason',
-    'attendant_name', 'attendant_phone', 'discharge_summary', 'discount', 'created_by', 'bill_approved_at', 'bill_approved_by',
+    'attendant_name', 'attendant_phone', 'aadhaar_no', 'gst_no', 'discharge_summary', 'discount', 'created_by', 'bill_approved_at', 'bill_approved_by',
 ])]
 class Admission extends Model
 {
