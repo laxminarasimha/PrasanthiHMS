@@ -2,12 +2,13 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { SetupTabs } from '../components/SetupTabs'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { TextField } from '../components/Field'
-import { PAYMENT_MODES, longDate } from '../format'
+import { useAuth } from '../auth'
+import { PAYMENT_MODES, clock, longDate } from '../format'
 import { AdminList } from './AdminLists'
 import { FormDesigner } from './FormDesigner'
 import type { BillingPreferences, Clinic, PatientMerge, ReferralDoctor } from '../types'
 
-type Tab = 'clinic' | 'billing' | 'forms' | 'department' | 'payer' | 'vendor' | 'by' | 'to' | 'merge'
+type Tab = 'clinic' | 'billing' | 'forms' | 'department' | 'payer' | 'vendor' | 'by' | 'to' | 'merge' | 'backups'
 const TABS: [Tab, string][] = [
   ['clinic', 'Clinic details'],
   ['billing', 'Billing preferences'],
@@ -18,6 +19,7 @@ const TABS: [Tab, string][] = [
   ['by', 'Doctors who refer to us'],
   ['to', 'Doctors we refer to'],
   ['merge', 'Merge patients'],
+  ['backups', 'Backups'],
 ]
 
 /** The hospital's name, address, logo and the lines printed on every document. */
@@ -386,8 +388,112 @@ function MergePatients() {
   )
 }
 
+type BackupList = { backups: { name: string; size: number; made_at: string }[]; keep: number; automatic: boolean }
+
+/** Copies of the whole database: made once a day by the app, and on demand here. */
+function Backups() {
+  const [data, setData] = useState<BackupList | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    api.get<BackupList>('/backups').then((res) => setData(res.data)).catch(() => setError('Could not load the backups.'))
+  }, [])
+
+  const make = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      setData((await api.post<BackupList>('/backups')).data)
+    } catch {
+      setError('The backup could not be made. Try again in a minute.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const download = async (name: string) => {
+    setError('')
+    try {
+      const res = await api.get<Blob>(`/backups/${name}/download`, { responseType: 'blob' })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(res.data)
+      link.download = name
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000)
+    } catch {
+      setError('Could not download that backup.')
+    }
+  }
+
+  const size = (bytes: number) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`)
+  const newest = data?.backups[0]
+
+  return (
+    <div>
+      <div className="toolbar">
+        <span className="grow">
+          {newest ? (
+            <>
+              Last backup: <strong>{longDate(newest.made_at)} {clock(newest.made_at)}</strong>
+            </>
+          ) : (
+            'No backup has been made yet.'
+          )}
+          <small className="muted block">
+            {data?.automatic ? 'The app makes one by itself every day, when the first person opens it.' : 'Automatic daily backups are switched off on this server.'} The newest {data?.keep ?? 30} are kept.
+          </small>
+        </span>
+        <button className="btn primary" onClick={make} disabled={busy}>
+          {busy ? 'Making backup…' : 'Back up now'}
+        </button>
+      </div>
+      <p className="notice">
+        These backups sit on the same server as the hospital's data. Download one to your own computer every week, so there is a copy if the server itself is lost. A backup holds every patient's records: keep the file somewhere safe and do not send it by email or WhatsApp.
+      </p>
+      {error && <p className="form-error">{error}</p>}
+      <div className="table-wrap">
+        <table className="compact">
+          <thead>
+            <tr>
+              <th>Made</th>
+              <th>File</th>
+              <th className="num">Size</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {data?.backups.map((b) => (
+              <tr key={b.name} className="static">
+                <td>
+                  {longDate(b.made_at)} <small className="muted">{clock(b.made_at)}</small>
+                </td>
+                <td className="mono">{b.name}</td>
+                <td className="num">{size(b.size)}</td>
+                <td className="num">
+                  <button className="link" onClick={() => download(b.name)}>
+                    Download
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {data && data.backups.length === 0 && (
+              <tr className="empty">
+                <td colSpan={4}>No backups yet. Press “Back up now” to make the first one.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <p className="muted small">Uploaded files (attachments, lab report files, signatures and the logo) are not inside these backups; they hold the database only. To put a backup back, the file is loaded through the hosting panel's phpMyAdmin.</p>
+    </div>
+  )
+}
+
 export function Admin() {
+  const { user } = useAuth()
   const [tab, setTab] = useState<Tab>('clinic')
+  const tabs = TABS.filter(([key]) => key !== 'backups' || user?.role === 'admin')
 
   return (
     <>
@@ -397,7 +503,7 @@ export function Admin() {
         <h1>Hospital setup</h1>
       </div>
       <div className="tabs flush gap-bottom">
-        {TABS.map(([key, label]) => (
+        {tabs.map(([key, label]) => (
           <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>
             {label}
           </button>
@@ -409,6 +515,7 @@ export function Admin() {
       {(tab === 'department' || tab === 'payer' || tab === 'vendor') && <AdminList key={tab} kind={tab} />}
       {(tab === 'by' || tab === 'to') && <ReferralDoctors key={tab} direction={tab} />}
       {tab === 'merge' && <MergePatients />}
+      {tab === 'backups' && <Backups />}
     </section>
     </>
   )
