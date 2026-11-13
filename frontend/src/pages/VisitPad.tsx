@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { useAuth } from '../auth'
 import { Field, TextField } from '../components/Field'
+import { FormsPanel } from '../components/FormsPanel'
 import { MedicineRows, emptyMedicine, filledMedicines } from '../components/MedicineRows'
 import { PhraseChips } from '../components/PhraseChips'
 import { ReferralList } from '../components/ReferralList'
@@ -516,6 +517,10 @@ export function VisitPad() {
         ) : (
           <p className="muted gap-top">You can view this visit but not change it.</p>
         )}
+
+        <h3>Forms</h3>
+        <p className="muted small">Assessment sheets, consents and other forms designed under Admin → Forms. They are saved on their own, apart from the visit notes above.</p>
+        <FormsPanel url={`/appointments/${visit.appointment.id}/forms`} use="doctor" canEdit={canEdit} />
       </section>
 
       <aside className="card panel">

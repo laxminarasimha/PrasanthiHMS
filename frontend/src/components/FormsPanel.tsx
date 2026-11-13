@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { api, fieldErrors } from '../../api'
-import { longDate } from '../../format'
-import type { FormRecord, FormTemplate } from '../../types'
+import { api, fieldErrors } from '../api'
+import { longDate } from '../format'
+import type { FormRecord, FormTemplate } from '../types'
 
 type Values = Record<string, string | boolean>
 
-/** Forms filled in for one IPD case: start one from a template, fill it, print it. */
-export function IpdForms({ admissionId, canEdit }: { admissionId: number; canEdit: boolean }) {
+type Props = {
+  /** Where this stay's or visit's forms are listed and added, e.g. `/ipd/admissions/4/forms`. */
+  url: string
+  /** Which forms are offered: those designed for IPD cases or for the doctor's room. */
+  use: 'ipd' | 'doctor'
+  canEdit: boolean
+}
+
+/** Forms filled in for one IPD case or one visit: start one from a template, fill it, print it. */
+export function FormsPanel({ url, use, canEdit }: Props) {
   const [templates, setTemplates] = useState<FormTemplate[]>([])
   const [records, setRecords] = useState<FormRecord[] | null>(null)
   const [templateId, setTemplateId] = useState('')
@@ -15,12 +23,12 @@ export function IpdForms({ admissionId, canEdit }: { admissionId: number; canEdi
   const [error, setError] = useState('')
 
   const load = useCallback(() => {
-    api.get<FormRecord[]>(`/ipd/admissions/${admissionId}/forms`).then((res) => setRecords(res.data))
-  }, [admissionId])
+    api.get<FormRecord[]>(url).then((res) => setRecords(res.data))
+  }, [url])
   useEffect(load, [load])
   useEffect(() => {
-    api.get<FormTemplate[]>('/form-templates').then((res) => setTemplates(res.data.filter((t) => t.access !== 'doctor')))
-  }, [])
+    api.get<FormTemplate[]>('/form-templates').then((res) => setTemplates(res.data.filter((t) => t.access === 'both' || t.access === use)))
+  }, [use])
 
   const start = () => {
     const template = templates.find((t) => String(t.id) === templateId)
@@ -38,7 +46,7 @@ export function IpdForms({ admissionId, canEdit }: { admissionId: number; canEdi
     e.preventDefault()
     if (!open) return
     try {
-      await (open.id ? api.put(`/forms/${open.id}`, { values }) : api.post(`/ipd/admissions/${admissionId}/forms`, { form_template_id: open.templateId, values }))
+      await (open.id ? api.put(`/forms/${open.id}`, { values }) : api.post(url, { form_template_id: open.templateId, values }))
       setOpen(null)
       load()
     } catch (err) {
@@ -156,7 +164,7 @@ export function IpdForms({ admissionId, canEdit }: { admissionId: number; canEdi
               ))}
               {records.length === 0 && (
                 <tr className="empty">
-                  <td colSpan={4}>No forms have been filled in for this case.</td>
+                  <td colSpan={4}>No forms have been filled in {use === 'ipd' ? 'for this case' : 'for this visit'}.</td>
                 </tr>
               )}
             </tbody>

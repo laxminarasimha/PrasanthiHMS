@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Admission;
+use App\Models\Appointment;
 use App\Models\FormRecord;
 use App\Models\FormTemplate;
 use Illuminate\Http\JsonResponse;
@@ -14,7 +15,7 @@ use Illuminate\Validation\ValidationException;
 /** Forms the hospital designs itself, and the copies filled in for patients. */
 class FormController extends Controller
 {
-    private const RECORD_WITH = ['author:id,name', 'patient:id,uhid,title,name,gender,date_of_birth,mobile', 'admission:id,ipd_no,admitted_at,doctor_id', 'admission.doctor:id,name'];
+    private const RECORD_WITH = ['author:id,name', 'patient:id,uhid,title,name,gender,date_of_birth,mobile', 'admission:id,ipd_no,admitted_at,doctor_id', 'admission.doctor:id,name', 'appointment:id,scheduled_at,doctor_id', 'appointment.doctor:id,name'];
 
     // ---- Templates ----
 
@@ -78,33 +79,60 @@ class FormController extends Controller
         return response()->json($record->load(self::RECORD_WITH));
     }
 
+    public function forAppointment(Appointment $appointment): JsonResponse
+    {
+        return response()->json(FormRecord::where('appointment_id', $appointment->id)->with('author:id,name')->latest('id')->get());
+    }
+
     public function store(Request $request, Admission $admission): JsonResponse
+    {
+        return $this->start($request, 'doctor', 'This form is for the doctor\'s room, not for IPD cases.', ['patient_id' => $admission->patient_id, 'admission_id' => $admission->id]);
+    }
+
+    public function storeForAppointment(Request $request, Appointment $appointment): JsonResponse
+    {
+        return $this->start($request, 'ipd', 'This form is for IPD cases, not for the doctor\'s room.', ['patient_id' => $appointment->patient_id, 'appointment_id' => $appointment->id]);
+    }
+
+    /**
+     * Starts a filled-in copy of a form for a stay or a visit.
+     *
+     * @param  array<string, int>  $owner
+     */
+    private function start(Request $request, string $wrongAccess, string $refusal, array $owner): JsonResponse
     {
         $data = $request->validate(['form_template_id' => ['required', Rule::exists('form_templates', 'id')->where('is_active', true)], 'values' => ['nullable', 'array']]);
         $template = FormTemplate::findOrFail($data['form_template_id']);
-        if ($template->access === 'doctor') {
-            throw ValidationException::withMessages(['form_template_id' => 'This form is for the doctor\'s room, not for IPD cases.']);
+        if ($template->access === $wrongAccess) {
+            throw ValidationException::withMessages(['form_template_id' => $refusal]);
         }
 
-        $record = FormRecord::create([
-            'form_template_id' => $template->id, 'patient_id' => $admission->patient_id, 'admission_id' => $admission->id,
-            'name' => $template->name, 'fields' => $template->fields, 'values' => $this->values($template->fields, $data['values'] ?? []),
-            'created_by' => $request->user()->id,
+        $record = FormRecord::create($owner + [
+            'form_template_id' => $template->id, 'name' => $template->name, 'fields' => $template->fields,
+            'values' => $this->values($template->fields, $data['values'] ?? []), 'created_by' => $request->user()->id,
         ]);
 
         return response()->json($record->load(self::RECORD_WITH), 201);
     }
 
+    /** A form on an IPD case belongs to IPD staff; one on a visit belongs to those who write visit notes. */
+    private function authorizeChange(Request $request, FormRecord $record): void
+    {
+        abort_unless($request->user()->allows($record->appointment_id ? 'canConsult' : 'canWorkIpd'), 403, 'You are not allowed to change this form.');
+    }
+
     public function update(Request $request, FormRecord $record): JsonResponse
     {
+        $this->authorizeChange($request, $record);
         $data = $request->validate(['values' => ['present', 'array']]);
         $record->update(['values' => $this->values($record->fields, $data['values']), 'updated_by' => $request->user()->id]);
 
         return response()->json($record->load(self::RECORD_WITH));
     }
 
-    public function destroy(FormRecord $record): JsonResponse
+    public function destroy(Request $request, FormRecord $record): JsonResponse
     {
+        $this->authorizeChange($request, $record);
         $record->delete();
 
         return response()->json(null, 204);

@@ -270,11 +270,12 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/form-templates', 'storeTemplate');
             Route::put('/form-templates/{template}', 'updateTemplate');
         });
-        Route::middleware('ability:canWorkIpd')->group(function () {
-            Route::post('/ipd/admissions/{admission}/forms', 'store');
-            Route::put('/forms/{record}', 'update');
-            Route::delete('/forms/{record}', 'destroy');
-        });
+        Route::get('/appointments/{appointment}/forms', 'forAppointment');
+        Route::post('/ipd/admissions/{admission}/forms', 'store')->middleware('ability:canWorkIpd');
+        Route::post('/appointments/{appointment}/forms', 'storeForAppointment')->middleware('ability:canConsult');
+        // Who may change a filled-in form depends on where it was filled in; the controller checks.
+        Route::put('/forms/{record}', 'update');
+        Route::delete('/forms/{record}', 'destroy');
     });
 
     Route::get('/reports/summary', [ReportController::class, 'summary']);

@@ -60,4 +60,31 @@ class FormsTest extends TestCase
         Sanctum::actingAs(User::factory()->create(['role' => 'nurse']));
         $this->deleteJson("/api/forms/{$record}")->assertNoContent();
     }
+
+    public function test_forms_can_be_filled_in_on_a_visit_by_those_who_write_visit_notes(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $forDoctor = $this->postJson('/api/form-templates', ['name' => 'Clinic consent', 'access' => 'doctor', 'fields' => [['id' => 'agreed', 'label' => 'Agreed', 'type' => 'checkbox'], ['id' => 'note', 'label' => 'Note', 'type' => 'text']]])->assertCreated()->json('id');
+        $forIpd = $this->postJson('/api/form-templates', ['name' => 'Ward round', 'access' => 'ipd', 'fields' => [['id' => 'note', 'label' => 'Note', 'type' => 'text']]])->assertCreated()->json('id');
+
+        $doctor = User::factory()->create(['role' => 'doctor']);
+        Sanctum::actingAs($doctor);
+        $visit = \App\Models\Appointment::create(['patient_id' => Patient::factory()->create()->id, 'doctor_id' => $doctor->id, 'scheduled_at' => now(), 'status' => 'arrived']);
+        $forms = "/api/appointments/{$visit->id}/forms";
+
+        $this->postJson($forms, ['form_template_id' => $forIpd])->assertStatus(422);
+        $record = $this->postJson($forms, ['form_template_id' => $forDoctor, 'values' => ['agreed' => true]])->assertCreated()->assertJsonPath('appointment.doctor.name', $doctor->name)->assertJsonPath('admission', null)->json('id');
+        $this->getJson($forms)->assertOk()->assertJsonCount(1);
+        $this->putJson("/api/forms/{$record}", ['values' => ['agreed' => true, 'note' => 'Explained in Telugu']])->assertOk()->assertJsonPath('values.note', 'Explained in Telugu');
+
+        // The front desk can read it but not start, change or remove one.
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->getJson("/api/forms/{$record}")->assertOk();
+        $this->postJson($forms, ['form_template_id' => $forDoctor])->assertForbidden();
+        $this->putJson("/api/forms/{$record}", ['values' => []])->assertForbidden();
+        $this->deleteJson("/api/forms/{$record}")->assertForbidden();
+
+        Sanctum::actingAs($doctor);
+        $this->deleteJson("/api/forms/{$record}")->assertNoContent();
+    }
 }

@@ -5,8 +5,8 @@ import { useAuth } from '../../auth'
 import { SelectField, TextField } from '../../components/Field'
 import { ADMISSION_STATUS, PAYMENT_MODES, clock, longDate, modeLabel, nowLocal, rupees, today } from '../../format'
 import type { Admission, Bed, IpdBillTemplate, IpdService, OutstandingBill } from '../../types'
+import { FormsPanel } from '../../components/FormsPanel'
 import { AttachmentsPanel } from '../../components/FrontDeskPanels'
-import { IpdForms } from './IpdForms'
 import { IpdInvestigations } from './IpdInvestigations'
 import { IpdNotes } from './IpdNotes'
 import { IpdSummary } from './IpdSummary'
@@ -164,7 +164,7 @@ export function IpdCase() {
         </div>
 
         {tab === 'results' && <IpdInvestigations admissionId={admission.id} />}
-        {tab === 'forms' && <IpdForms admissionId={admission.id} canEdit={canEdit} />}
+        {tab === 'forms' && <FormsPanel url={`/ipd/admissions/${admission.id}/forms`} use="ipd" canEdit={canEdit} />}
         {tab === 'files' && <AttachmentsPanel patient={{ id: admission.patient.id, name: admission.patient.name, uhid: admission.patient.uhid }} />}
 
         {tab === 'notes' && <IpdNotes admissionId={admission.id} canEdit={canEdit} />}
