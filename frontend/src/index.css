@@ -30,7 +30,7 @@ h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color
 
 /* Top bar */
 .topbar { display: flex; align-items: center; gap: 14px; padding: 0 20px; height: 56px; background: var(--brand); color: #fff; border-bottom: 3px solid var(--accent); position: sticky; top: 0; z-index: 40; }
-.brand { font-weight: 700; font-size: 1.1rem; letter-spacing: 0.01em; }
+.brand { font-weight: 700; font-size: 1.1rem; letter-spacing: 0.01em; white-space: nowrap; }
 .brand span { font-weight: 400; opacity: 0.8; }
 .brand.large { font-size: 1.6rem; color: var(--brand-dark); }
 .topbar nav { display: flex; gap: 2px; flex: 1; }
@@ -49,7 +49,11 @@ a.link-tile { text-decoration: none; color: inherit; transition: border-color 0.
 a.link-tile:hover { border-color: var(--brand); box-shadow: 0 2px 8px rgba(107, 44, 145, 0.12); }
 a.link-tile.alert { border-left: 4px solid var(--accent); }
 a.link-tile small { font-size: 0.78rem; }
-@media (max-width: 1340px) { .patient-search { flex: 1; width: auto; min-width: 0; max-width: 420px; margin: 0 4px 0 auto; } }
+.patient-search.on-page { width: 250px; margin: 0; flex: none; max-width: 100%; }
+.patient-search.on-page input { background: var(--surface); color: var(--text); border: 1px dashed var(--brand); border-radius: 6px; padding: 7px 10px; }
+.patient-search.on-page input::placeholder { color: var(--brand); font-weight: 600; }
+.patient-search.on-page .picker { left: 0; right: auto; }
+@media (max-width: 1340px) { .patient-search:not(.on-page) { flex: 1; width: auto; min-width: 0; max-width: 420px; margin: 0 4px 0 auto; } }
 .whoami { display: flex; align-items: center; gap: 12px; text-align: right; white-space: nowrap; }
 .whoami small { display: block; opacity: 0.8; font-size: 0.8rem; }
 .topbar .btn.ghost { color: #fff; border-color: rgba(255, 255, 255, 0.5); }
@@ -580,3 +584,30 @@ tbody tr.not-here { color: var(--muted); }
 .advised p { margin: 4px 0; white-space: pre-wrap; }
 .advised small { color: var(--muted); }
 .advice-chip.tests.done { color: var(--ok); background: var(--ok-soft); border-color: #9fd6b8; }
+
+/* Case history: one patient's visits, admissions and lab results down a line */
+.timeline { list-style: none; margin: 0; padding: 0; }
+.timeline > li { display: grid; grid-template-columns: 120px 1fr; gap: 16px; }
+.timeline .when { padding: 12px 0; text-align: right; display: flex; flex-direction: column; }
+.timeline .what { border-left: 3px solid var(--border); padding: 10px 0 12px 16px; min-width: 0; }
+.timeline .kind-visit .what { border-left-color: var(--brand); }
+.timeline .kind-admission .what { border-left-color: var(--danger); }
+.timeline .kind-lab .what { border-left-color: var(--ok); }
+.timeline .head { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.timeline .head .push { margin-left: auto; }
+.value.high { color: var(--danger); font-weight: 700; }
+.value.low { color: #1d4f91; font-weight: 700; }
+.spark { width: 100px; height: 26px; vertical-align: middle; }
+.spark polyline { fill: none; stroke: var(--brand); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.spark circle { fill: var(--accent); }
+.points { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.point { display: flex; flex-direction: column; align-items: center; min-width: 62px; padding: 3px 8px; border: 1px solid var(--border); border-radius: 6px; text-decoration: none; color: var(--text); }
+.point small { color: var(--muted); font-size: 0.72rem; white-space: nowrap; }
+.point.high { border-color: var(--danger); color: var(--danger); background: var(--danger-soft); }
+.point.low { border-color: #1d4f91; color: #1d4f91; }
+.point:hover { border-color: var(--brand); }
+@media (max-width: 700px) {
+  .timeline > li { grid-template-columns: 1fr; gap: 0; }
+  .timeline .when { text-align: left; flex-direction: row; gap: 8px; align-items: baseline; padding: 12px 0 4px; }
+  .patient-search.on-page { width: 100%; }
+}

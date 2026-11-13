@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
 import { DoctorTabs } from '../components/DoctorTabs'
+import { PatientSearch } from '../components/PatientSearch'
 import { STATUS_LABELS, clock, longDate, today } from '../format'
-import type { Doctor, QueueEntry } from '../types'
+import type { Doctor, Patient, QueueEntry } from '../types'
 
 /** Minutes since the patient arrived, shown only while they are still waiting. */
 function waiting(entry: QueueEntry, now: number) {
@@ -22,6 +23,8 @@ export function DoctorQueue() {
   const [queue, setQueue] = useState<QueueEntry[] | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [search, setSearch] = useState('')
+  const [notice, setNotice] = useState('')
+  const navigate = useNavigate()
 
   const load = useCallback(() => {
     api.get<QueueEntry[]>('/doctor/queue', { params: { date, doctor_id: doctorId || undefined } }).then((res) => {
@@ -40,6 +43,20 @@ export function DoctorQueue() {
   useEffect(() => {
     if (!isDoctor) api.get<Doctor[]>('/doctors').then((res) => setDoctors(res.data))
   }, [isDoctor])
+
+  // A patient who walks straight in: open a pad without waiting for the front desk to book them.
+  const startVisit = async (p: Patient) => {
+    const doctor = isDoctor ? undefined : doctorId || (doctors.length === 1 ? String(doctors[0].id) : '')
+    if (!isDoctor && !doctor) return setNotice('Choose the doctor first, then pick the patient again.')
+    setNotice('')
+    try {
+      const res = await api.post<{ id: number }>('/doctor/visits', { patient_id: p.id, doctor_id: doctor })
+      navigate(`/visits/${res.data.id}`)
+    } catch (e) {
+      const response = (e as { response?: { data?: { message?: string } } }).response
+      setNotice(response?.data?.message ?? 'Could not start the visit.')
+    }
+  }
 
   const pending = queue?.filter((q) => q.status !== 'reviewed').length ?? 0
   const done = queue?.filter((q) => q.status === 'reviewed').length ?? 0
@@ -73,12 +90,14 @@ export function DoctorQueue() {
           </select>
         )}
         <input className="search" type="search" placeholder="Search by name, mobile or ID" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <PatientSearch className="patient-search on-page" placeholder="+ New visit: find a patient" onPick={startVisit} />
         <span className="muted">
           Pending: <strong>{pending}</strong> · Completed: <strong>{done}</strong>
           {purposes.length > 0 && <small className="block">{purposes.map(([name, count]) => `${name} ${count}`).join(' · ')}</small>}
         </span>
       </div>
 
+      {notice && <p className="form-error">{notice}</p>}
       <div className="table-wrap">
         <table>
           <thead>
@@ -133,7 +152,7 @@ export function DoctorQueue() {
             )}
             {queue && queue.length === 0 && (
               <tr className="empty">
-                <td colSpan={isDoctor ? 8 : 9}>No patients for this day yet. Appointments booked at the front desk appear here.</td>
+                <td colSpan={isDoctor ? 8 : 9}>No patients for this day yet. Appointments booked at the front desk appear here, or start one with “New visit”.</td>
               </tr>
             )}
           </tbody>

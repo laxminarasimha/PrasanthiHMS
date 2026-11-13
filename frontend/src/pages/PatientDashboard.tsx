@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api'
+import { useAuth } from '../auth'
 import { DepositBox } from '../components/DepositBox'
 import { AttachmentsPanel } from '../components/FrontDeskPanels'
 import { ADMISSION_STATUS, STATUS_LABELS, clock, longDate, rupees, settlement, stampDate } from '../format'
@@ -11,6 +12,7 @@ const KIND = { appointment: 'Appointment', lab: 'Lab', other: 'Other services' }
 /** Everything the hospital holds on one patient, on one page. */
 export function PatientDashboard() {
   const { id } = useParams()
+  const { user } = useAuth()
   const [data, setData] = useState<PatientOverview | null>(null)
 
   useEffect(() => {
@@ -36,6 +38,11 @@ export function PatientDashboard() {
             </span>
           </div>
           {p.allergies && <span className="pill off">Allergic to {p.allergies}</span>}
+          {(user?.can_consult || user?.can_run_lab) && (
+            <Link className="btn" to={`/patients/${p.id}/history`}>
+              Case history and test trends
+            </Link>
+          )}
           <div className="tile inline">
             <span>Outstanding</span>
             <strong className={data.outstanding > 0 ? 'due' : ''}>{rupees(data.outstanding)}</strong>

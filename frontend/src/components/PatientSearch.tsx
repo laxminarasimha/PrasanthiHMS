@@ -4,8 +4,11 @@ import { api } from '../api'
 import { fullName } from '../format'
 import type { Patient } from '../types'
 
-/** Finds any patient from the top bar, on every screen, and opens their page. */
-export function PatientSearch() {
+/**
+ * Finds any patient by name, mobile or patient ID. In the top bar it opens the patient's page;
+ * a screen can pass onPick to do something else with the chosen patient.
+ */
+export function PatientSearch({ onPick, placeholder = 'Find a patient', className = 'patient-search' }: { onPick?: (p: Patient) => void; placeholder?: string; className?: string }) {
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [found, setFound] = useState<{ query: string; patients: Patient[] } | null>(null)
@@ -38,14 +41,15 @@ export function PatientSearch() {
   const go = (p: Patient) => {
     setQuery('')
     setOpen(false)
-    navigate(`/patients/${p.id}`)
+    if (onPick) onPick(p)
+    else navigate(`/patients/${p.id}`)
   }
 
   return (
-    <div className="patient-search" ref={box}>
+    <div className={className} ref={box}>
       <input
         type="search"
-        placeholder="Find a patient"
+        placeholder={placeholder}
         value={query}
         onFocus={() => setOpen(true)}
         onChange={(e) => {
