@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { SetupTabs } from '../components/SetupTabs'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { TextField } from '../components/Field'
 import { PAYMENT_MODES, longDate } from '../format'
@@ -389,9 +390,11 @@ export function Admin() {
   const [tab, setTab] = useState<Tab>('clinic')
 
   return (
+    <>
+    <SetupTabs />
     <section className="card">
       <div className="toolbar">
-        <h1>Admin</h1>
+        <h1>Hospital setup</h1>
       </div>
       <div className="tabs flush gap-bottom">
         {TABS.map(([key, label]) => (
@@ -407,5 +410,6 @@ export function Admin() {
       {(tab === 'by' || tab === 'to') && <ReferralDoctors key={tab} direction={tab} />}
       {tab === 'merge' && <MergePatients />}
     </section>
+    </>
   )
 }

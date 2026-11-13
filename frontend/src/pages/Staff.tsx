@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { SetupTabs } from '../components/SetupTabs'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { useAuth } from '../auth'
 import { SelectField, TextField } from '../components/Field'
@@ -138,6 +139,8 @@ export function Staff() {
   const availabilityError = Object.entries(errors).find(([key]) => key.startsWith('availability'))?.[1]
 
   return (
+    <>
+    <SetupTabs />
     <div className="split">
       <section className="card">
         <div className="toolbar">
@@ -343,5 +346,6 @@ export function Staff() {
         </form>
       )}
     </div>
+    </>
   )
 }

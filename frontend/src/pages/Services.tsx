@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { SetupTabs } from '../components/SetupTabs'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { SelectField, TextField } from '../components/Field'
 import { rupees } from '../format'
@@ -70,6 +71,8 @@ export function Services() {
   }
 
   return (
+    <>
+    <SetupTabs />
     <div className="split">
       <section className="card">
         <div className="toolbar">
@@ -171,5 +174,6 @@ export function Services() {
         </form>
       )}
     </div>
+    </>
   )
 }

@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { PatientSearch } from './PatientSearch'
 import { useAuth } from '../auth'
+import { menuTabs, onTab } from '../nav'
 
 export function Layout() {
   const { user, signOut } = useAuth()
   const [open, setOpen] = useState(false)
+  const { pathname } = useLocation()
 
   if (!user) return null
 
@@ -22,16 +24,11 @@ export function Layout() {
         </div>
         {/* On phones the menu covers the screen, so close it once a page is chosen. */}
         <nav onClick={() => setOpen(false)}>
-          {user.can_front_desk && <NavLink to="/front-desk">Front Desk</NavLink>}
-          {user.can_consult && <NavLink to="/doctor">Doctor</NavLink>}
-          {(user.can_run_lab || user.can_front_desk) && <NavLink to="/lab">Lab</NavLink>}
-          {user.can_run_pharmacy && <NavLink to="/pharmacy">Pharmacy</NavLink>}
-          {user.can_ipd && <NavLink to="/ipd">IPD</NavLink>}
-          <NavLink to="/patients">Patients</NavLink>
-          {user.can_manage_setup && <NavLink to="/services">Services</NavLink>}
-          {user.can_view_reports && <NavLink to="/reports">Reports</NavLink>}
-          {user.can_manage_staff && <NavLink to="/staff">Staff</NavLink>}
-          {user.can_manage_setup && <NavLink to="/admin">Admin</NavLink>}
+          {menuTabs(user).map((t) => (
+            <NavLink key={t.key} to={t.to} className={onTab(t, pathname) ? 'active' : ''}>
+              {t.label}
+            </NavLink>
+          ))}
           <div className="nav-foot">
             <div>
               <NavLink to="/account">

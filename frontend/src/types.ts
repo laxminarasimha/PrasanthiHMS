@@ -16,6 +16,8 @@ export type User = {
   can_delete_bills: boolean
   can_change_price: boolean
   pad_hidden_sections?: string[]
+  /** Menu tabs this person chose not to see. */
+  hidden_tabs?: string[]
   branch: { id: number; name: string; city: string | null } | null
 }
 
