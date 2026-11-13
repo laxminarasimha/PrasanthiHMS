@@ -88,4 +88,32 @@ class DoctorPadExtrasTest extends TestCase
         Sanctum::actingAs($doctor);
         $this->deleteJson("/api/doctor/medicine-defaults/{$id}")->assertNoContent();
     }
+
+    public function test_print_layout_and_seal_travel_with_the_visit(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $doctor = User::factory()->create(['role' => 'doctor']);
+        Sanctum::actingAs($doctor);
+        $library = $this->getJson('/api/doctor/library')->assertOk()->assertJsonPath('rx_settings.print.font_size_pt', 11)->assertJsonPath('rx_settings.print.columns.dose', true)->assertJsonPath('has_seal', false)->json('rx_settings');
+
+        $this->putJson('/api/doctor/rx-settings', ['print' => ['font_size_pt' => 40]] + $library)->assertStatus(422);
+        $this->putJson('/api/doctor/rx-settings', ['print' => ['sections' => ['nonsense' => true]]] + $library)->assertStatus(422);
+        // Only some choices are sent; the others keep their usual values.
+        $this->putJson('/api/doctor/rx-settings', ['print' => ['letterhead' => true, 'margin_top_mm' => 45, 'font_size_pt' => 12, 'columns' => ['dose' => false], 'sections' => ['history' => false]]] + $library)
+            ->assertOk()->assertJsonPath('print.letterhead', true)->assertJsonPath('print.margin_top_mm', 45)->assertJsonPath('print.margin_side_mm', 12)
+            ->assertJsonPath('print.columns.dose', false)->assertJsonPath('print.columns.frequency', true)->assertJsonPath('print.sections.history', false)->assertJsonPath('print.sections.advice', true);
+
+        $this->post('/api/doctor/seal', ['file' => \Illuminate\Http\UploadedFile::fake()->create('seal.pdf', 10, 'application/pdf')], ['Accept' => 'application/json'])->assertStatus(422);
+        $this->post('/api/doctor/seal', ['file' => \Illuminate\Http\UploadedFile::fake()->image('seal.png', 300, 120)], ['Accept' => 'application/json'])->assertOk()->assertJsonPath('has_seal', true);
+
+        $visit = Appointment::create(['patient_id' => Patient::factory()->create()->id, 'doctor_id' => $doctor->id, 'scheduled_at' => now(), 'status' => 'arrived']);
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->getJson("/api/appointments/{$visit->id}/consultation")->assertOk()->assertJsonPath('rx_print.print.letterhead', true)->assertJsonPath('rx_print.print.margin_top_mm', 45);
+        $this->get("/api/users/{$doctor->id}/seal")->assertOk()->assertHeader('Content-Type', 'image/png');
+        $this->post('/api/doctor/seal', ['file' => \Illuminate\Http\UploadedFile::fake()->image('seal.png')], ['Accept' => 'application/json'])->assertForbidden();
+
+        Sanctum::actingAs($doctor);
+        $this->post('/api/doctor/seal', [], ['Accept' => 'application/json'])->assertOk()->assertJsonPath('has_seal', false);
+        $this->assertSame([], \Illuminate\Support\Facades\Storage::disk('local')->allFiles('staff-seals'));
+    }
 }

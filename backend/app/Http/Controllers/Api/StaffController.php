@@ -75,6 +75,14 @@ class StaffController extends Controller
         return Storage::disk('local')->response($user->signature_path);
     }
 
+    /** The doctor's seal picture, for anyone signed in to show on a prescription. */
+    public function seal(User $user): StreamedResponse
+    {
+        abort_unless($user->seal_path && Storage::disk('local')->exists($user->seal_path), 404, 'No seal picture.');
+
+        return Storage::disk('local')->response($user->seal_path);
+    }
+
     /**
      * Keeps only the permissions that differ from what the role gives, so a later change of role still makes sense.
      *

@@ -214,11 +214,25 @@ export type RxSettings = {
   print_language: 'en' | 'both' | 'local'
   translations: { phrase: string; translation: string }[]
   capitalize_name: boolean
+  print: RxPrint
+}
+
+/** How a doctor's prescription is laid out on paper. */
+export type RxPrint = {
+  letterhead: boolean
+  margin_top_mm: number
+  margin_bottom_mm: number
+  margin_side_mm: number
+  font_size_pt: number
+  show_mobile: boolean
+  show_patient_id: boolean
+  sections: Record<string, boolean>
+  columns: Record<string, boolean>
 }
 
 export type Visit = {
   /** How the visit's doctor wants prescriptions printed. */
-  rx_print?: Pick<RxSettings, 'print_language' | 'translations' | 'capitalize_name'>
+  rx_print?: Pick<RxSettings, 'print_language' | 'translations' | 'capitalize_name' | 'print'>
   appointment: { id: number; scheduled_at: string; status: AppointmentStatus; notes: string | null }
   patient: VisitPatient
   doctor: { id: number; name: string; department: string | null; signature_text: string | null }
@@ -653,6 +667,7 @@ export type DoctorLibrary = {
   templates: PrescriptionTemplate[]
   medicine_defaults: PrescribedMedicine[]
   rx_settings: RxSettings
+  has_seal: boolean
   pad_hidden_sections: string[]
   pad_sections: string[]
   /** Every movable part of the pad, in this doctor's order. */
