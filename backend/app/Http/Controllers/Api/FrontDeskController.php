@@ -12,6 +12,10 @@ use App\Models\LabOrder;
 use App\Models\Patient;
 use App\Models\Payment;
 use App\Models\PharmacySale;
+use App\Models\PatientDeposit;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -46,7 +50,8 @@ class FrontDeskController extends Controller
 
         $bills = Bill::whereBetween('created_at', [$from, $to])->get(['id', 'kind', 'total', 'paid']);
         // Money moved to an IPD bill is not money received here.
-        $money = Payment::whereBetween('payments.created_at', [$from, $to])->where('payments.mode', '!=', 'ipd')
+        // Nor is a payment made from a deposit: that money was counted when the deposit was taken.
+        $money = Payment::whereBetween('payments.created_at', [$from, $to])->whereNotIn('payments.mode', ['ipd', 'deposit'])
             ->join('bills', 'bills.id', '=', 'payments.bill_id')
             ->selectRaw('bills.kind, payments.type, sum(payments.amount) as amount')
             ->groupBy('bills.kind', 'payments.type')->get();
@@ -72,6 +77,11 @@ class FrontDeskController extends Controller
 
         return response()->json([
             'date' => $day->toDateString(),
+            'deposits' => [
+                'received' => round((float) PatientDeposit::whereBetween('created_at', [$from, $to])->where('type', 'deposit')->sum('amount'), 2),
+                'refunded' => round((float) PatientDeposit::whereBetween('created_at', [$from, $to])->where('type', 'refund')->sum('amount'), 2),
+                'used' => round((float) PatientDeposit::whereBetween('created_at', [$from, $to])->where('type', 'used')->sum('amount'), 2),
+            ],
             'bills' => ['all' => $row(null), 'appointment' => $row('appointment'), 'lab' => $row('lab'), 'other' => $row('other')],
             'appointments' => $appointments,
         ]);
@@ -140,6 +150,31 @@ class FrontDeskController extends Controller
     }
 
     /** Everything the hospital holds on one patient, newest first. */
+    /** Takes a deposit from a patient, or hands some of it back. */
+    public function storeDeposit(Request $request, Patient $patient): JsonResponse
+    {
+        $data = $request->validate([
+            'type' => ['required', Rule::in(['deposit', 'refund'])],
+            'amount' => ['required', 'numeric', 'gt:0', 'max:9999999'],
+            'mode' => ['required', Rule::in(Payment::MODES)],
+            'reference' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        DB::transaction(function () use ($data, $patient, $request) {
+            Patient::whereKey($patient->id)->lockForUpdate()->first();
+            $balance = PatientDeposit::balance($patient->id);
+            if ($data['type'] === 'refund' && $data['amount'] > $balance) {
+                throw ValidationException::withMessages(['amount' => "Only ₹{$balance} is on deposit."]);
+            }
+            PatientDeposit::create($data + ['patient_id' => $patient->id, 'received_by' => $request->user()->id]);
+        });
+
+        return response()->json([
+            'deposit_balance' => PatientDeposit::balance($patient->id),
+            'deposits' => PatientDeposit::where('patient_id', $patient->id)->with('receiver:id,name')->latest('id')->limit(50)->get(),
+        ], 201);
+    }
+
     public function overview(Patient $patient): JsonResponse
     {
         $bills = Bill::where('patient_id', $patient->id)->with('labOrder:id,bill_id,order_no')->withIpdTransfers()->latest()->limit(50)->get();
@@ -154,6 +189,8 @@ class FrontDeskController extends Controller
             'admissions' => Admission::where('patient_id', $patient->id)->with(['doctor:id,name', 'bed:id,ward,bed_no'])->latest('admitted_at')->limit(20)->get(),
             'attachments' => Attachment::where('patient_id', $patient->id)->with('uploader:id,name')->latest('document_date')->get(),
             'outstanding' => round($bills->sum('due'), 2),
+            'deposit_balance' => PatientDeposit::balance($patient->id),
+            'deposits' => PatientDeposit::where('patient_id', $patient->id)->with('receiver:id,name')->latest('id')->limit(50)->get(),
         ]);
     }
 

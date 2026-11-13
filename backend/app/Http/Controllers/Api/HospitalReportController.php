@@ -107,7 +107,7 @@ class HospitalReportController extends Controller
     /** Money taken or refunded at the front desk in the period, whenever the bill was made. Refunds are negative. */
     private function collections(Carbon $from, Carbon $to): array
     {
-        $rows = Payment::whereBetween('created_at', [$from, $to])->where('mode', '!=', 'ipd')->with('receiver:id,name')->orderBy('created_at')->get()
+        $rows = Payment::whereBetween('created_at', [$from, $to])->whereNotIn('mode', ['ipd', 'deposit'])->with('receiver:id,name')->orderBy('created_at')->get()
             ->map(function (Payment $p) {
                 $bill = Bill::with('patient:id,title,name')->find($p->bill_id);
 
@@ -117,6 +117,15 @@ class HospitalReportController extends Controller
                     'amount' => $p->type === 'refund' ? -1 * $p->amount : $p->amount, 'mode' => $p->mode, 'reference' => $p->reference, 'person' => $p->receiver?->name,
                 ];
             });
+
+        // Deposits taken or handed back are money at the desk too.
+        $deposits = \App\Models\PatientDeposit::whereBetween('created_at', [$from, $to])->whereIn('type', ['deposit', 'refund'])->with(['receiver:id,name', 'patient:id,name'])->get()
+            ->map(fn ($d) => [
+                'date' => $d->created_at->format('Y-m-d H:i'), 'bill_no' => null, 'patient' => $d->patient?->name, 'counter' => 'Deposit',
+                'type' => $d->type === 'refund' ? 'Deposit refund' : 'Deposit', 'amount' => $d->type === 'refund' ? -1 * $d->amount : $d->amount,
+                'mode' => $d->mode, 'reference' => $d->reference, 'person' => $d->receiver?->name,
+            ]);
+        $rows = collect($rows)->concat($deposits)->sortBy('date')->values();
 
         return [[
             self::col('date', 'Date'), self::col('bill_no', 'Bill'), self::col('patient', 'Patient'), self::col('counter', 'Counter'), self::col('type', 'Type'),

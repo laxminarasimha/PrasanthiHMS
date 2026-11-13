@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Bill;
 use App\Models\BillItem;
+use App\Models\PatientDeposit;
 use App\Models\Payment;
 use App\Models\Service;
 use Illuminate\Http\JsonResponse;
@@ -15,6 +16,56 @@ use Illuminate\Validation\ValidationException;
 
 class BillController extends Controller
 {
+    /** Front desk and lab bills in a date range, or matching a search across all dates, newest first. */
+    public function index(Request $request): JsonResponse
+    {
+        $filters = $request->validate([
+            'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'],
+            'q' => ['nullable', 'string', 'max:100'],
+            'kind' => ['nullable', Rule::in(['appointment', 'lab', 'other'])],
+            'due' => ['sometimes', 'boolean'],
+        ]);
+        $term = trim((string) ($filters['q'] ?? ''));
+        $from = \Illuminate\Support\Carbon::parse($filters['from'] ?? today())->startOfDay();
+        $to = \Illuminate\Support\Carbon::parse($filters['to'] ?? $filters['from'] ?? today())->endOfDay();
+
+        return response()->json(
+            Bill::query()
+                ->when($term === '', fn ($q) => $q->whereBetween('created_at', [$from, $to]))
+                ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('bill_no', 'like', "{$term}%")
+                    ->orWhereHas('patient', fn ($p) => $p->where('name', 'like', "%{$term}%")->orWhere('mobile', 'like', "{$term}%")->orWhere('uhid', 'like', "{$term}%"))))
+                ->when($filters['kind'] ?? null, fn ($q, $kind) => $q->where('kind', $kind))
+                ->when($request->boolean('due'), fn ($q) => $q->whereColumn('paid', '<', 'total'))
+                ->with(['patient:id,uhid,title,name,mobile', 'appointment:id,doctor_id', 'appointment.doctor:id,name', 'labOrder:id,bill_id,order_no'])
+                ->withIpdTransfers()->latest()->latest('id')->limit(500)->get()
+        );
+    }
+
+    /** Pays some or all of a bill from the money the patient has on deposit. */
+    public function useDeposit(Request $request, Bill $bill): JsonResponse
+    {
+        $data = $request->validate(['amount' => ['required', 'numeric', 'gt:0']]);
+
+        DB::transaction(function () use ($bill, $data, $request) {
+            // Lock the patient so two desks cannot spend the same deposit.
+            \App\Models\Patient::whereKey($bill->patient_id)->lockForUpdate()->first();
+            $balance = PatientDeposit::balance($bill->patient_id);
+            if ($data['amount'] > $balance) {
+                throw ValidationException::withMessages(['amount' => "Only ₹{$balance} is on deposit."]);
+            }
+            if ($data['amount'] > $bill->due) {
+                throw ValidationException::withMessages(['amount' => "Only ₹{$bill->due} is due on this bill."]);
+            }
+
+            PatientDeposit::create(['patient_id' => $bill->patient_id, 'type' => 'used', 'amount' => $data['amount'], 'bill_id' => $bill->id, 'reference' => "Bill {$bill->bill_no}", 'received_by' => $request->user()->id]);
+            // Recorded on the bill as paid by deposit; the money itself was counted when the deposit was taken.
+            $bill->payments()->create(['type' => 'payment', 'amount' => $data['amount'], 'mode' => 'deposit', 'received_by' => $request->user()->id]);
+            $bill->recalculate();
+        });
+
+        return response()->json($this->present($bill), 201);
+    }
+
     public function show(Bill $bill): JsonResponse
     {
         return response()->json($this->present($bill));
@@ -173,9 +224,13 @@ class BillController extends Controller
 
     private function present(Bill $bill): Bill
     {
-        return $bill->fresh()->load([
+        $bill = $bill->fresh()->load([
             'items', 'payments.receiver:id,name', 'labOrder:id,bill_id,order_no', 'patient:id,uhid,title,name,gender,date_of_birth,mobile,address,city',
             'appointment:id,doctor_id,scheduled_at', 'appointment.doctor:id,name',
         ]);
+        // What the patient has on deposit, so the desk can offer to use it.
+        $bill->setAttribute('deposit_balance', PatientDeposit::balance($bill->patient_id));
+
+        return $bill;
     }
 }

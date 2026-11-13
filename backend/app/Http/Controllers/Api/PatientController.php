@@ -31,6 +31,25 @@ class PatientController extends Controller
         return response()->json($patients);
     }
 
+    /**
+     * Books in someone with only a name and mobile number, for a phone booking or a rush at the desk.
+     * The rest of the registration is filled in when they arrive.
+     */
+    public function storeTemporary(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'mobile' => ['required', 'string', 'regex:/^[0-9]{10}$/'],
+        ], ['mobile.regex' => 'Enter a 10-digit mobile number.']);
+
+        $patient = Patient::create($data + [
+            'gender' => 'other', 'is_temporary' => true, 'dob_estimated' => false,
+            'branch_id' => $request->user()->branch_id, 'created_by' => $request->user()->id,
+        ]);
+
+        return response()->json($patient->refresh(), 201);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $data = $this->validated($request);
@@ -47,7 +66,8 @@ class PatientController extends Controller
 
     public function update(Request $request, Patient $patient): JsonResponse
     {
-        $patient->update($this->validated($request));
+        // Completing the registration makes a temporary patient a full one.
+        $patient->update($this->validated($request) + ['is_temporary' => false]);
 
         return response()->json($patient);
     }

@@ -54,6 +54,8 @@ export type Patient = {
   /** The age as read out: "12d", "8m" or "34y". */
   age_label: string
   title?: string | null
+  /** Booked with only a name and number; the registration is still to be completed. */
+  is_temporary?: boolean
   mobile: string
   mobile_alt: string | null
   email: string | null
@@ -155,6 +157,8 @@ export type Bill = {
   created_at: string
   items: BillItem[]
   payments: Payment[]
+  /** What the patient has on deposit and could use against this bill. */
+  deposit_balance?: number
   patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'age_label' | 'title' | 'mobile' | 'address' | 'city'>
   appointment: { id: number; scheduled_at: string; doctor: { id: number; name: string } } | null
 }
@@ -612,9 +616,14 @@ export type Attachment = {
 
 export type QueueBoard = { doctor: string; department: string | null; now: { token: number; name: string }[]; waiting: { token: number; name: string }[] }[]
 
+/** One movement of a patient's deposit. */
+export type PatientDeposit = { id: number; type: 'deposit' | 'used' | 'refund'; amount: number; mode: string | null; reference: string | null; created_at: string; receiver?: { id: number; name: string } | null }
+
 export type PatientOverview = {
   patient: Patient & { allergies: string | null }
   outstanding: number
+  deposit_balance: number
+  deposits: PatientDeposit[]
   visits: { id: number; scheduled_at: string; status: AppointmentStatus; doctor: { name: string }; service: { name: string } | null; consultation: { id: number; diagnosis: string | null; completed_at: string | null } | null }[]
   bills: { id: number; bill_no: string; kind: BillKind; total: number; paid: number; due: number; moved_to_ipd: number | null; created_at: string; lab_order: { order_no: string } | null }[]
   lab_orders: { id: number; order_no: string; status: string; ordered_at: string; items: { id: number; test_name: string }[] }[]
