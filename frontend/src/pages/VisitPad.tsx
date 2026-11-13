@@ -5,6 +5,7 @@ import { useAuth } from '../auth'
 import { Field, TextField } from '../components/Field'
 import { MedicineRows, emptyMedicine, filledMedicines } from '../components/MedicineRows'
 import { PhraseChips } from '../components/PhraseChips'
+import { ReferralList } from '../components/ReferralList'
 import { clock, longDate, rupees, today } from '../format'
 import type { Consultation, DoctorLibrary, LabCatalogueTest, LabOrder, PhraseKind, PrescribedMedicine as Medicine, PrescriptionTemplate, RxGroup, Visit } from '../types'
 
@@ -415,8 +416,9 @@ export function VisitPad() {
     ),
     follow_up: (
           <>
+          <ReferralList id="refer-to-doctors" direction="to" />
           <div className="grid gap-top">
-            {!hidden('refer_to', 'refer_to') && <TextField label="Refer to" placeholder="Doctor or hospital, and why" value={form.refer_to} onChange={set('refer_to')} error={errors.refer_to} />}
+            {!hidden('refer_to', 'refer_to') && <TextField label="Refer to" placeholder="Doctor or hospital, and why" list="refer-to-doctors" value={form.refer_to} onChange={set('refer_to')} error={errors.refer_to} />}
             <TextField label="Next visit date" type="date" value={form.follow_up_on} onChange={set('follow_up_on')} error={errors.follow_up_on} />
           </div>
           </>

@@ -165,6 +165,8 @@ table.compact th, table.compact td { padding: 6px 6px; white-space: normal; }
 .receipt { max-width: 720px; margin: 0 auto; padding: 32px; background: #fff; min-height: 100vh; }
 .receipt header { text-align: center; border-bottom: 2px solid var(--text); padding-bottom: 12px; margin-bottom: 16px; }
 .receipt header h1 { font-size: 1.5rem; }
+.receipt header .clinic-logo { display: block; max-height: 70px; max-width: 220px; margin: 0 auto 6px; }
+.clinic-footer { margin-top: 24px; padding-top: 8px; border-top: 1px solid var(--border); text-align: center; font-size: 0.85rem; color: var(--muted); }
 .receipt header p { margin: 2px 0; }
 .receipt header h2 { margin-top: 10px; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.08em; }
 .receipt-meta { display: flex; justify-content: space-between; gap: 24px; margin-bottom: 16px; line-height: 1.6; }

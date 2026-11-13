@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../api'
-import { useAuth } from '../auth'
+import { ClinicFooter, ClinicHeader } from '../components/ClinicHeader'
 import { useSignature } from '../components/useSignature'
 import { longDate } from '../format'
 import type { Visit } from '../types'
@@ -9,7 +9,6 @@ import type { Visit } from '../types'
 /** The prescription as it is handed to the patient; opens the print dialog once loaded. */
 export function PrescriptionPrint() {
   const { id } = useParams()
-  const { user } = useAuth()
   const [visit, setVisit] = useState<Visit | null>(null)
 
   useEffect(() => {
@@ -44,10 +43,7 @@ export function PrescriptionPrint() {
 
   return (
     <div className="receipt prescription">
-      <header>
-        <h1>{user?.branch?.name ?? 'Prasanthi Hospitals'}</h1>
-        {user?.branch?.city && <p>{user.branch.city}</p>}
-      </header>
+      <ClinicHeader />
 
       <div className="receipt-meta">
         <div>
@@ -137,6 +133,7 @@ export function PrescriptionPrint() {
         {signature && <img src={signature} alt="" />}
         <strong>{visit.doctor.signature_text || visit.doctor.name}</strong>
       </div>
+      <ClinicFooter />
     </div>
   )
 }

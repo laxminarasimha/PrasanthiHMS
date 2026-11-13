@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../../api'
-import { useAuth } from '../../auth'
+import { ClinicFooter, ClinicHeader } from '../../components/ClinicHeader'
 import { clock, expiryLabel, longDate, modeLabel, rupees } from '../../format'
 import type { PharmacySale } from '../../types'
 
 /** The pharmacy bill handed to the customer; opens the print dialog once loaded. */
 export function PharmacySalePrint() {
   const { id } = useParams()
-  const { user } = useAuth()
   const [sale, setSale] = useState<PharmacySale | null>(null)
 
   useEffect(() => {
@@ -22,11 +21,9 @@ export function PharmacySalePrint() {
 
   return (
     <div className="receipt">
-      <header>
-        <h1>{user?.branch?.name ?? 'Prasanthi Hospitals'} Pharmacy</h1>
-        {user?.branch?.city && <p>{user.branch.city}</p>}
+      <ClinicHeader suffix="Pharmacy">
         <h2>Pharmacy bill{sale.voided_at ? ' (deleted)' : ''}</h2>
-      </header>
+      </ClinicHeader>
 
       <div className="receipt-meta">
         <div>
@@ -128,6 +125,7 @@ export function PharmacySalePrint() {
       </p>
 
       <footer>Billed by {sale.seller?.name}. Medicines once sold are taken back only as per pharmacy policy.</footer>
+      <ClinicFooter />
     </div>
   )
 }

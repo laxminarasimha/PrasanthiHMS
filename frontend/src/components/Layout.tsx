@@ -30,6 +30,7 @@ export function Layout() {
           {user.can_manage_setup && <NavLink to="/services">Services</NavLink>}
           {user.can_view_reports && <NavLink to="/reports">Reports</NavLink>}
           {user.can_manage_staff && <NavLink to="/staff">Staff</NavLink>}
+          {user.can_manage_setup && <NavLink to="/admin">Admin</NavLink>}
           <div className="nav-foot">
             <div>
               <strong>{user.name}</strong>

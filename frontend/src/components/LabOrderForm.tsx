@@ -4,6 +4,7 @@ import { rupees } from '../format'
 import type { LabCatalogueTest, LabOrder, LabPackage, Patient } from '../types'
 import { TextField } from './Field'
 import { PatientPicker } from './PatientPicker'
+import { ReferralList } from './ReferralList'
 
 type Props = {
   tests: LabCatalogueTest[]
@@ -105,7 +106,8 @@ export function LabOrderForm({ tests, packages = [], visit, onClose, onCreated }
       <PatientPicker patient={patient} onChange={setPatient} error={errors.patient_id} />
 
       <div className="gap-top">
-        <TextField label="Referred by (optional)" placeholder="Doctor's name" value={referredBy} onChange={setReferredBy} error={errors.referred_by} />
+        <ReferralList id="lab-referred-by" direction="by" />
+        <TextField label="Referred by (optional)" placeholder="Doctor's name" list="lab-referred-by" value={referredBy} onChange={setReferredBy} error={errors.referred_by} />
       </div>
 
       {visit && advised && (

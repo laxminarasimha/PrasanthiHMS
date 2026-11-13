@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../../api'
-import { useAuth } from '../../auth'
+import { ClinicFooter, ClinicHeader } from '../../components/ClinicHeader'
 import { ADMISSION_STATUS, clock, longDate, modeLabel, rupees } from '../../format'
 import type { Admission } from '../../types'
 
 /** Inpatient bill with the discharge summary; opens the print dialog once loaded. */
 export function IpdPrint() {
   const { id } = useParams()
-  const { user } = useAuth()
   const [a, setA] = useState<Admission | null>(null)
 
   useEffect(() => {
@@ -22,11 +21,9 @@ export function IpdPrint() {
 
   return (
     <div className="receipt prescription">
-      <header>
-        <h1>{user?.branch?.name ?? 'Prasanthi Hospitals'}</h1>
-        {user?.branch?.city && <p>{user.branch.city}</p>}
+      <ClinicHeader>
         <h2>Inpatient {a.status === 'admitted' ? 'interim bill' : 'final bill'}</h2>
-      </header>
+      </ClinicHeader>
 
       <div className="receipt-meta">
         <div>
@@ -108,6 +105,7 @@ export function IpdPrint() {
       <div className="signature">
         <strong>{a.doctor.signature_text || a.doctor.name}</strong>
       </div>
+      <ClinicFooter />
     </div>
   )
 }

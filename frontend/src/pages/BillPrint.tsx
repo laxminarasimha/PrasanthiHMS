@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../api'
+import { ClinicFooter, ClinicHeader } from '../components/ClinicHeader'
 import { useAuth } from '../auth'
 import { longDate, modeLabel, rupees } from '../format'
 import type { Bill } from '../types'
@@ -22,11 +23,9 @@ export function BillPrint() {
 
   return (
     <div className="receipt">
-      <header>
-        <h1>{user?.branch?.name ?? 'Prasanthi Hospitals'}</h1>
-        {user?.branch?.city && <p>{user.branch.city}</p>}
+      <ClinicHeader>
         <h2>Bill / Receipt</h2>
-      </header>
+      </ClinicHeader>
 
       <div className="receipt-meta">
         <div>
@@ -106,6 +105,7 @@ export function BillPrint() {
       )}
 
       <footer>Billed by {user?.name}. This is a computer-generated receipt.</footer>
+      <ClinicFooter />
     </div>
   )
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../../api'
-import { useAuth } from '../../auth'
+import { ClinicFooter, ClinicHeader } from '../../components/ClinicHeader'
 import { useSignature } from '../../components/useSignature'
 import { ADMISSION_STATUS, clock, longDate } from '../../format'
 import type { Admission, DischargeSummary } from '../../types'
@@ -10,7 +10,6 @@ import { SUMMARY_PARTS } from './IpdSummary'
 /** The discharge summary as handed to the patient; opens the print dialog once loaded. */
 export function IpdSummaryPrint() {
   const { id } = useParams()
-  const { user } = useAuth()
   const [a, setA] = useState<Admission | null>(null)
   const [s, setS] = useState<DischargeSummary | null>(null)
 
@@ -30,11 +29,9 @@ export function IpdSummaryPrint() {
 
   return (
     <div className="receipt prescription">
-      <header>
-        <h1>{user?.branch?.name ?? 'Prasanthi Hospitals'}</h1>
-        {user?.branch?.city && <p>{user.branch.city}</p>}
+      <ClinicHeader>
         <h2>Discharge summary{s.approved_at ? '' : ' (draft, not yet approved)'}</h2>
-      </header>
+      </ClinicHeader>
 
       <div className="receipt-meta">
         <div>
@@ -119,6 +116,7 @@ export function IpdSummaryPrint() {
         {signature && <img src={signature} alt="" />}
         <strong>{signer?.signature_text || signer?.name}</strong>
       </div>
+      <ClinicFooter />
     </div>
   )
 }

@@ -412,6 +412,13 @@ export type Bed = {
   current_admission?: { id: number; ipd_no: string; admitted_at: string; patient: { id: number; name: string; uhid: string } } | null
 }
 
+/** The hospital's own details, printed at the top of every document. */
+export type Clinic = { name: string; tagline: string | null; address: string | null; phone: string | null; phone_alt: string | null; email: string | null; footer: string | null; logo: string | null }
+
+export type ReferralDoctor = { id: number; direction: 'by' | 'to'; name: string; specialization: string | null; phone: string | null; place: string | null }
+
+export type PatientMerge = { id: number; from_uhid: string; from_name: string; to_uhid: string; to_name: string; moved: Record<string, number> | null; created_at: string; staff?: { id: number; name: string } | null }
+
 export type NoteKind = 'clinical' | 'nursing' | 'ot'
 
 /** A clinical, nursing or operation note written during a stay. */
