@@ -84,3 +84,14 @@ export const stampDate = (iso: string) => new Date(iso).toLocaleDateString('en-I
 
 export const STAGE_LABEL = { booked: 'Booked', collected: 'Sample collected', reported: 'Reported', approved: 'Approved' } as const
 export const STAGE_CLASS = { booked: 'status-booked', collected: 'status-arrived', reported: 'status-ongoing', approved: 'ok' } as const
+
+export const TITLES = ['Mr', 'Mrs', 'Ms', 'Dr', 'Md', 'Smt', 'Sri', 'Kumari', 'Master', 'Baby']
+export const AGE_UNITS = [
+  { value: 'years', label: 'Years' },
+  { value: 'months', label: 'Months' },
+  { value: 'weeks', label: 'Weeks' },
+  { value: 'days', label: 'Days' },
+]
+
+/** A patient's name with their title, as it is printed: "Smt Lakshmi Devi". */
+export const fullName = (p: { name: string; title?: string | null }) => (p.title ? `${p.title} ${p.name}` : p.name)

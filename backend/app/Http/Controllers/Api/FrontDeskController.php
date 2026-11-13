@@ -32,7 +32,7 @@ class FrontDeskController extends Controller
                 ->whereDate('created_at', $filters['date'] ?? today())
                 ->when($term !== '', fn ($q) => $q->whereHas('patient', fn ($p) => $p->where('name', 'like', "%{$term}%")
                     ->orWhere('mobile', 'like', "{$term}%")->orWhere('uhid', 'like', "{$term}%")))
-                ->with(['patient:id,uhid,name,gender,date_of_birth,mobile', 'labOrder:id,bill_id,order_no', 'labOrder.items:id,lab_order_id', 'items:id,bill_id,description'])
+                ->with(['patient:id,uhid,title,name,gender,date_of_birth,mobile', 'labOrder:id,bill_id,order_no', 'labOrder.items:id,lab_order_id', 'items:id,bill_id,description'])
                 ->withIpdTransfers()
                 ->orderBy('created_at')->get()
         );
@@ -83,7 +83,7 @@ class FrontDeskController extends Controller
         $day = $request->validate(['date' => ['nullable', 'date']])['date'] ?? today();
 
         $visits = Appointment::whereDate('scheduled_at', $day)->whereIn('status', ['arrived', 'ongoing'])
-            ->with(['patient:id,name', 'doctor:id,name,department'])
+            ->with(['patient:id,title,name', 'doctor:id,name,department'])
             ->orderBy('arrived_at')->orderBy('token_no')->get(['id', 'patient_id', 'doctor_id', 'status', 'token_no', 'arrived_at']);
 
         // Only the token and a short name go on a public screen.
@@ -105,7 +105,7 @@ class FrontDeskController extends Controller
         $day = \Illuminate\Support\Carbon::parse($request->validate(['date' => ['nullable', 'date']])['date'] ?? today())->toDateString();
 
         $due = \App\Models\Consultation::whereDate('follow_up_on', $day)->whereNotNull('completed_at')
-            ->with(['patient:id,uhid,name,gender,date_of_birth,mobile', 'doctor:id,name'])
+            ->with(['patient:id,uhid,title,name,gender,date_of_birth,mobile', 'doctor:id,name'])
             ->latest('completed_at')->get(['id', 'appointment_id', 'patient_id', 'doctor_id', 'diagnosis', 'follow_up_on', 'completed_at']);
 
         $booked = Appointment::whereDate('scheduled_at', $day)->where('status', '!=', 'cancelled')

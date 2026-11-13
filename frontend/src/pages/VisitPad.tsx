@@ -435,7 +435,7 @@ export function VisitPad() {
           <div className="grow">
             <h1>{visit.patient.name}</h1>
             <span className="muted">
-              {visit.patient.uhid} · {visit.patient.age}y / {visit.patient.gender.charAt(0).toUpperCase()} · {visit.patient.mobile}
+              {visit.patient.uhid} · {visit.patient.age_label} / {visit.patient.gender.charAt(0).toUpperCase()} · {visit.patient.mobile}
               {visit.patient.blood_group ? ` · ${visit.patient.blood_group}` : ''}
               {visit.patient.allergies ? <strong className="due"> · Allergic to {visit.patient.allergies}</strong> : null} · {visit.service?.name ?? 'Visit'} with {visit.doctor.name},{' '}
               {longDate(visit.appointment.scheduled_at)} {clock(visit.appointment.scheduled_at)}

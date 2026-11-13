@@ -4,6 +4,7 @@ import { api, fieldErrors, type FieldErrors } from '../api'
 import { SelectField, TextField } from '../components/Field'
 import { ReferralList } from '../components/ReferralList'
 import { SameMobile } from '../components/SameMobile'
+import { AGE_UNITS, TITLES, fullName } from '../format'
 import type { Patient } from '../types'
 
 type Page = { data: Patient[]; current_page: number; last_page: number; total: number }
@@ -18,7 +19,7 @@ const LANGUAGES = ['Telugu', 'English', 'Hindi', 'Urdu', 'Tamil'].map((l) => ({ 
 const CHANNELS = ['Walk-in', 'Referral', 'Friend or family', 'Online search', 'Camp'].map((c) => ({ value: c, label: c }))
 
 const blank = {
-  name: '', gender: '', age: '', date_of_birth: '', mobile: '', mobile_alt: '', email: '', blood_group: '',
+  title: '', age_unit: 'years', name: '', gender: '', age: '', date_of_birth: '', mobile: '', mobile_alt: '', email: '', blood_group: '',
   preferred_language: '', address: '', city: '', pincode: '', care_of: '', occupation: '', referred_by: '',
   channel: '', tag: '', existing_id: '',
 }
@@ -27,12 +28,15 @@ type Form = typeof blank
 function toForm(p: Patient): Form {
   const form = { ...blank }
   for (const key of Object.keys(blank) as (keyof Form)[]) {
-    if (key === 'age') continue
+    if (key === 'age' || key === 'age_unit') continue
     form[key] = (p[key as keyof Patient] as string | null) ?? ''
   }
   // Show the age, not the made-up birth date, when the date was estimated from an age.
   if (p.dob_estimated) {
-    form.age = String(p.age)
+    // Babies are shown the way they were entered: in days or months.
+    const [, count, unit] = p.age_label.match(/^(\d+)([dmy])$/) ?? []
+    form.age = count ?? String(p.age)
+    form.age_unit = unit === 'd' ? 'days' : unit === 'm' ? 'months' : 'years'
     form.date_of_birth = ''
   }
   return form
@@ -134,10 +138,10 @@ export function Patients() {
                     </Link>
                   </td>
                   <td>
-                    <strong>{p.name}</strong>
+                    <strong>{fullName(p)}</strong>
                   </td>
                   <td>
-                    {p.age}y / {p.gender.charAt(0).toUpperCase()}
+                    {p.age_label} / {p.gender.charAt(0).toUpperCase()}
                   </td>
                   <td className="mono">{p.mobile}</td>
                   <td>{p.city ?? '—'}</td>
@@ -178,9 +182,11 @@ export function Patients() {
           </div>
 
           <div className="grid">
+            <SelectField label="Title" value={form.title} onChange={set('title')} options={TITLES.map((t) => ({ value: t, label: t }))} placeholder="None" error={errors.title} />
             <TextField label="Name" required value={form.name} onChange={set('name')} error={errors.name} autoFocus />
             <SelectField label="Gender" required value={form.gender} onChange={set('gender')} options={GENDERS} placeholder="Select" error={errors.gender} />
-            <TextField label="Age (years)" required type="number" min={0} max={130} value={form.age} onChange={set('age')} error={errors.age} />
+            <TextField label="Age" required type="number" min={0} max={130} value={form.age} onChange={set('age')} error={errors.age} />
+            <SelectField label="Age in" value={form.age_unit} onChange={set('age_unit')} options={AGE_UNITS} error={errors.age_unit} />
             <TextField label="or Date of birth" type="date" value={form.date_of_birth} onChange={set('date_of_birth')} error={errors.date_of_birth} />
             <TextField label="Mobile" required inputMode="numeric" maxLength={10} value={form.mobile} onChange={set('mobile')} error={errors.mobile} />
             <SameMobile mobile={form.mobile} exceptId={editing === 'new' ? undefined : editing.id} onUse={editing === 'new' ? open : undefined} />

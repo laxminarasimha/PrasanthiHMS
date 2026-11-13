@@ -4,6 +4,7 @@ import { useAuth } from '../auth'
 import { PAYMENT_MODES, rupees } from '../format'
 import type { Appointment, Doctor, Patient, Service } from '../types'
 import { SelectField, TextField } from './Field'
+import { useBillingPreferences } from './useBillingPreferences'
 import { PatientPicker } from './PatientPicker'
 
 type Props = {
@@ -46,7 +47,11 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
   const [quantity, setQuantity] = useState('1')
   const [discount, setDiscount] = useState('')
   const [paid, setPaid] = useState('')
-  const [mode, setMode] = useState('cash')
+  const prefs = useBillingPreferences()
+  // The hospital's usual mode until the desk picks another.
+  const [chosenMode, setMode] = useState<string | null>(null)
+  const mode = chosenMode ?? prefs.default_payment_mode
+  const payLater = prefs.pay_timing === 'after'
   const [errors, setErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
 
@@ -152,13 +157,16 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
                 {service.gst_percent > 0 && <span className="muted">Tax {service.gst_percent}% · </span>}
                 Net price <strong>{rupees(netWithTax)}</strong>
               </p>
+              {payLater && <p className="muted small">The bill is made now and paid after the consultation. Enter an amount only if the patient pays now.</p>}
               <div className="grid">
                 <TextField label="Paid now (₹)" type="number" min={0} step="0.01" placeholder="0" value={paid} onChange={setPaid} error={errors.paid} />
                 <SelectField label="Payment mode" value={mode} onChange={setMode} options={PAYMENT_MODES} error={errors.payment_mode} />
               </div>
-              <button type="button" className="link add-medicine" onClick={() => setPaid(String(netWithTax))}>
-                Paid in full ({rupees(netWithTax)})
-              </button>
+              {!payLater && (
+                <button type="button" className="link add-medicine" onClick={() => setPaid(String(netWithTax))}>
+                  Paid in full ({rupees(netWithTax)})
+                </button>
+              )}
             </>
           )}
         </div>

@@ -116,7 +116,7 @@ export function IpdCase() {
               {admission.patient.name} · {admission.ipd_no}
             </h1>
             <span className="muted">
-              {admission.patient.uhid} · {admission.patient.age}y / {admission.patient.gender.charAt(0).toUpperCase()} · {admission.patient.mobile} · {admission.doctor.name} ·
+              {admission.patient.uhid} · {admission.patient.age_label} / {admission.patient.gender.charAt(0).toUpperCase()} · {admission.patient.mobile} · {admission.doctor.name} ·
               admitted {longDate(admission.admitted_at)} {clock(admission.admitted_at)} ({stayDays(admission)} day{stayDays(admission) === 1 ? '' : 's'})
               {admission.reason ? ` · ${admission.reason}` : ''}
             </span>

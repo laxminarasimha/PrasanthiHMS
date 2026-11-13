@@ -142,7 +142,7 @@ class PharmacyEditController extends Controller
             $this->log('sale', $sale->id, $sale->bill_no, $changes, $data['reason'], $request);
         });
 
-        return response()->json($sale->fresh()->load(['items', 'patient:id,uhid,name', 'seller:id,name', 'payments.receiver:id,name', 'returns']));
+        return response()->json($sale->fresh()->load(['items', 'patient:id,uhid,title,name', 'seller:id,name', 'payments.receiver:id,name', 'returns']));
     }
 
     /**

@@ -63,7 +63,7 @@ class DoctorLibraryController extends Controller
                 ->when($user->role === Role::Doctor, fn ($q) => $q->where('doctor_id', $user->id))
                 ->when($term !== '', fn ($q) => $q->whereHas('patient', fn ($p) => $p->where('name', 'like', "%{$term}%")
                     ->orWhere('mobile', 'like', "{$term}%")->orWhere('uhid', 'like', "{$term}%")))
-                ->with(['patient:id,uhid,name,gender,date_of_birth,mobile', 'doctor:id,name'])
+                ->with(['patient:id,uhid,title,name,gender,date_of_birth,mobile', 'doctor:id,name'])
                 ->latest('completed_at')->limit(500)
                 ->get(['id', 'appointment_id', 'patient_id', 'doctor_id', 'diagnosis', 'follow_up_on', 'completed_at'])
         );

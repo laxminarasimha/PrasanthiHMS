@@ -319,7 +319,7 @@ class PharmacyController extends Controller
 
     public function showSale(PharmacySale $sale): JsonResponse
     {
-        return response()->json($sale->load(['items', 'patient:id,uhid,name', 'seller:id,name', 'payments.receiver:id,name', 'returns']));
+        return response()->json($sale->load(['items', 'patient:id,uhid,title,name', 'seller:id,name', 'payments.receiver:id,name', 'returns']));
     }
 
     /** Sells from specific batches, reducing their stock, and records the bill. */
@@ -417,7 +417,7 @@ class PharmacyController extends Controller
             return $sale;
         });
 
-        return response()->json($sale->fresh()->load(['items', 'patient:id,uhid,name', 'seller:id,name']), 201);
+        return response()->json($sale->fresh()->load(['items', 'patient:id,uhid,title,name', 'seller:id,name']), 201);
     }
 
     private function authorizePharmacy(Request $request): void

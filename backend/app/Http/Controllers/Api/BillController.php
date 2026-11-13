@@ -174,7 +174,7 @@ class BillController extends Controller
     private function present(Bill $bill): Bill
     {
         return $bill->fresh()->load([
-            'items', 'payments.receiver:id,name', 'labOrder:id,bill_id,order_no', 'patient:id,uhid,name,gender,date_of_birth,mobile,address,city',
+            'items', 'payments.receiver:id,name', 'labOrder:id,bill_id,order_no', 'patient:id,uhid,title,name,gender,date_of_birth,mobile,address,city',
             'appointment:id,doctor_id,scheduled_at', 'appointment.doctor:id,name',
         ]);
     }

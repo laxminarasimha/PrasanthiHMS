@@ -66,7 +66,7 @@ export function DoctorConsults() {
                       <strong>{c.patient.name}</strong>
                     </Link>
                     <small className="muted block">
-                      {c.patient.uhid} · {c.patient.age}y / {c.patient.gender.charAt(0).toUpperCase()} · {c.patient.mobile}
+                      {c.patient.uhid} · {c.patient.age_label} / {c.patient.gender.charAt(0).toUpperCase()} · {c.patient.mobile}
                     </small>
                   </td>
                   {!isDoctor && <td>{c.doctor.name}</td>}

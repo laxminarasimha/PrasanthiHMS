@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { api } from '../api'
 import { ClinicFooter, ClinicHeader } from '../components/ClinicHeader'
 import { useAuth } from '../auth'
-import { longDate, modeLabel, rupees } from '../format'
+import { longDate, modeLabel, rupees, fullName } from '../format'
 import type { Bill } from '../types'
 
 /** A plain receipt page meant for the printer; opens the print dialog once loaded. */
@@ -29,9 +29,9 @@ export function BillPrint() {
 
       <div className="receipt-meta">
         <div>
-          <strong>{bill.patient.name}</strong>
+          <strong>{fullName(bill.patient)}</strong>
           <br />
-          Patient ID: {bill.patient.uhid} · {bill.patient.age}y / {bill.patient.gender.charAt(0).toUpperCase()}
+          Patient ID: {bill.patient.uhid} · {bill.patient.age_label} / {bill.patient.gender.charAt(0).toUpperCase()}
           <br />
           Mobile: {bill.patient.mobile}
         </div>

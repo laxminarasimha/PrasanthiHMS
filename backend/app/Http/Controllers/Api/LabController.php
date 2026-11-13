@@ -20,7 +20,7 @@ use Illuminate\Validation\ValidationException;
 
 class LabController extends Controller
 {
-    private const ORDER_WITH = ['patient:id,uhid,name,gender,date_of_birth,mobile', 'items:id,lab_order_id,test_name,package_name,collected_at,reported_at,approved_at'];
+    private const ORDER_WITH = ['patient:id,uhid,title,name,gender,date_of_birth,mobile', 'items:id,lab_order_id,test_name,package_name,collected_at,reported_at,approved_at'];
 
     // ---- Test catalogue ----
 
@@ -476,7 +476,7 @@ class LabController extends Controller
     private function present(LabOrder $order): LabOrder
     {
         return $order->fresh()->load([
-            'patient:id,uhid,name,gender,date_of_birth,mobile', 'items.results', 'items.reporter:id,name,signature_text', 'items.approver:id,name,signature_text',
+            'patient:id,uhid,title,name,gender,date_of_birth,mobile', 'items.results', 'items.reporter:id,name,signature_text', 'items.approver:id,name,signature_text',
             'bill:id,bill_no,total,paid', 'files.uploader:id,name',
         ]);
     }

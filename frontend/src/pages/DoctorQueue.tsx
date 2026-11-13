@@ -107,7 +107,7 @@ export function DoctorQueue() {
                     {q.patient.name}
                   </Link>
                   <small className="muted block">
-                    {q.patient.uhid} · {q.patient.age}y / {q.patient.gender.charAt(0).toUpperCase()}
+                    {q.patient.uhid} · {q.patient.age_label} / {q.patient.gender.charAt(0).toUpperCase()}
                   </small>
                 </td>
                 {!isDoctor && <td>{q.doctor.name}</td>}

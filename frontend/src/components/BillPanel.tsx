@@ -4,6 +4,7 @@ import { api, fieldErrors } from '../api'
 import { PAYMENT_MODES, modeLabel, rupees } from '../format'
 import type { Bill, Service } from '../types'
 import { SelectField, TextField } from './Field'
+import { useBillingPreferences } from './useBillingPreferences'
 
 type Props = {
   billId: number
@@ -26,7 +27,9 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
   const [refundMode, setRefundMode] = useState('cash')
   const [payType, setPayType] = useState<'payment' | 'refund'>('payment')
   const [amount, setAmount] = useState('')
-  const [mode, setMode] = useState('cash')
+  const prefs = useBillingPreferences()
+  const [chosenMode, setMode] = useState<string | null>(null)
+  const mode = chosenMode ?? prefs.default_payment_mode
   const [reference, setReference] = useState('')
 
   const apply = (next: Bill) => {

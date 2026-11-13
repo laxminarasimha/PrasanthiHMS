@@ -51,6 +51,9 @@ export type Patient = {
   date_of_birth: string
   dob_estimated: boolean
   age: number
+  /** The age as read out: "12d", "8m" or "34y". */
+  age_label: string
+  title?: string | null
   mobile: string
   mobile_alt: string | null
   email: string | null
@@ -92,7 +95,7 @@ export type Appointment = {
   status: AppointmentStatus
   token_no: number | null
   notes: string | null
-  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile'>
+  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'age_label' | 'title' | 'mobile'>
   doctor: { id: number; name: string }
   service: { id: number; name: string } | null
   /** What the doctor decided, once the visit pad has been saved. */
@@ -106,7 +109,7 @@ export type FollowUp = {
   completed_at: string
   diagnosis: string | null
   booked: boolean
-  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile'>
+  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'age_label' | 'title' | 'mobile'>
   doctor: { id: number; name: string }
 }
 
@@ -152,7 +155,7 @@ export type Bill = {
   created_at: string
   items: BillItem[]
   payments: Payment[]
-  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile' | 'address' | 'city'>
+  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'age_label' | 'title' | 'mobile' | 'address' | 'city'>
   appointment: { id: number; scheduled_at: string; doctor: { id: number; name: string } } | null
 }
 
@@ -196,7 +199,7 @@ export type Consultation = {
   doctor?: { id: number; name: string }
 }
 
-export type VisitPatient = Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile' | 'blood_group'> & { allergies: string | null }
+export type VisitPatient = Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'age_label' | 'title' | 'mobile' | 'blood_group'> & { allergies: string | null }
 
 export type Visit = {
   appointment: { id: number; scheduled_at: string; status: AppointmentStatus; notes: string | null }
@@ -298,7 +301,7 @@ export type LabOrder = {
   status: 'pending' | 'partial' | 'completed'
   ordered_at: string
   referred_by: string | null
-  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile'>
+  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'age_label' | 'title' | 'mobile'>
   items: LabOrderItem[]
   files?: LabOrderFile[]
   bill: { id: number; bill_no: string; total: number; paid: number; due: number; moved_to_ipd?: number | null } | null
@@ -419,6 +422,8 @@ export type ReferralDoctor = { id: number; direction: 'by' | 'to'; name: string;
 
 export type PatientMerge = { id: number; from_uhid: string; from_name: string; to_uhid: string; to_name: string; moved: Record<string, number> | null; created_at: string; staff?: { id: number; name: string } | null }
 
+export type BillingPreferences = { default_payment_mode: string; pay_timing: 'before' | 'after' }
+
 export type NoteKind = 'clinical' | 'nursing' | 'ot'
 
 /** A clinical, nursing or operation note written during a stay. */
@@ -476,7 +481,7 @@ export type Admission = {
   net: number
   paid: number
   due: number
-  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile' | 'address' | 'city' | 'blood_group'>
+  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'age_label' | 'title' | 'mobile' | 'address' | 'city' | 'blood_group'>
   doctor: { id: number; name: string; department?: string | null; signature_text?: string | null }
   bed: { id: number; ward: string; bed_no: string; daily_charge?: number } | null
   charges?: AdmissionCharge[]
@@ -511,7 +516,7 @@ export type PharmacyDashboard = {
 export type PrescriptionOrder = {
   id: number
   completed_at: string
-  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile'>
+  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'age_label' | 'title' | 'mobile'>
   doctor: string | null
   medicines: { id: number; medicine: string; dose: string | null; frequency: string | null; duration: string | null }[]
   bill: { id: number; bill_no: string } | null
@@ -570,7 +575,7 @@ export type WalkInBill = {
   due: number
   moved_to_ipd: number | null
   created_at: string
-  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile'>
+  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'age_label' | 'title' | 'mobile'>
   lab_order: { id: number; order_no: string; items: { id: number }[] } | null
   items: { id: number; description: string }[]
 }
@@ -636,6 +641,6 @@ export type ConsultRow = {
   diagnosis: string | null
   follow_up_on: string | null
   completed_at: string
-  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile'>
+  patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'age_label' | 'title' | 'mobile'>
   doctor: { id: number; name: string }
 }

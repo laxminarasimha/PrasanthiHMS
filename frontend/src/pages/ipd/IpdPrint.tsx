@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../../api'
 import { ClinicFooter, ClinicHeader } from '../../components/ClinicHeader'
-import { ADMISSION_STATUS, clock, longDate, modeLabel, rupees } from '../../format'
+import { ADMISSION_STATUS, clock, longDate, modeLabel, rupees, fullName } from '../../format'
 import type { Admission } from '../../types'
 
 /** Inpatient bill with the discharge summary; opens the print dialog once loaded. */
@@ -27,9 +27,9 @@ export function IpdPrint() {
 
       <div className="receipt-meta">
         <div>
-          <strong>{a.patient.name}</strong>
+          <strong>{fullName(a.patient)}</strong>
           <br />
-          {a.patient.age}y / {a.patient.gender.charAt(0).toUpperCase()} · Patient ID: {a.patient.uhid}
+          {a.patient.age_label} / {a.patient.gender.charAt(0).toUpperCase()} · Patient ID: {a.patient.uhid}
           <br />
           Mobile: {a.patient.mobile}
           <br />

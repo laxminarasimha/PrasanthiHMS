@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { api } from '../../api'
 import { ClinicFooter, ClinicHeader } from '../../components/ClinicHeader'
 import { useSignature } from '../../components/useSignature'
-import { ADMISSION_STATUS, clock, longDate } from '../../format'
+import { ADMISSION_STATUS, clock, longDate, fullName } from '../../format'
 import type { Admission, DischargeSummary } from '../../types'
 import { SUMMARY_PARTS } from './IpdSummary'
 
@@ -35,9 +35,9 @@ export function IpdSummaryPrint() {
 
       <div className="receipt-meta">
         <div>
-          <strong>{a.patient.name}</strong>
+          <strong>{fullName(a.patient)}</strong>
           <br />
-          {a.patient.age}y / {a.patient.gender.charAt(0).toUpperCase()} · Patient ID: {a.patient.uhid}
+          {a.patient.age_label} / {a.patient.gender.charAt(0).toUpperCase()} · Patient ID: {a.patient.uhid}
           <br />
           Mobile: {a.patient.mobile}
           {a.patient.address && (

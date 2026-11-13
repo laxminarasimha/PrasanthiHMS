@@ -219,7 +219,7 @@ export function FrontDesk() {
                     <td>
                       <strong>{a.patient.name}</strong>
                       <small className="muted block">
-                        {a.patient.age}y / {a.patient.gender.charAt(0).toUpperCase()} · {a.patient.mobile}
+                        {a.patient.age_label} / {a.patient.gender.charAt(0).toUpperCase()} · {a.patient.mobile}
                       </small>
                     </td>
                     <td className="bills">
@@ -324,7 +324,7 @@ export function FrontDesk() {
                   <td>
                     <strong>{b.patient.name}</strong>
                     <small className="muted block">
-                      {b.patient.age}y / {b.patient.gender.charAt(0).toUpperCase()} · {b.patient.mobile}
+                      {b.patient.age_label} / {b.patient.gender.charAt(0).toUpperCase()} · {b.patient.mobile}
                     </small>
                   </td>
                   <td className="bills">

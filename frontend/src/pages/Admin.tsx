@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { TextField } from '../components/Field'
-import { longDate } from '../format'
-import type { Clinic, PatientMerge, ReferralDoctor } from '../types'
+import { PAYMENT_MODES, longDate } from '../format'
+import type { BillingPreferences, Clinic, PatientMerge, ReferralDoctor } from '../types'
 
-type Tab = 'clinic' | 'by' | 'to' | 'merge'
+type Tab = 'clinic' | 'billing' | 'by' | 'to' | 'merge'
 const TABS: [Tab, string][] = [
   ['clinic', 'Clinic details'],
+  ['billing', 'Billing preferences'],
   ['by', 'Doctors who refer to us'],
   ['to', 'Doctors we refer to'],
   ['merge', 'Merge patients'],
@@ -101,6 +102,71 @@ function ClinicDetails() {
       {errors._ && <p className="form-error">{errors._}</p>}
       <div className="panel-foot">
         <button className="btn primary">Save details</button>
+      </div>
+    </form>
+  )
+}
+
+/** How the front desk bills a visit. */
+function BillingPrefs() {
+  const [form, setForm] = useState<BillingPreferences | null>(null)
+  const [notice, setNotice] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    api.get<BillingPreferences>('/billing-preferences').then((res) => setForm(res.data))
+  }, [])
+  if (!form) return <p className="loading">Loading…</p>
+
+  const save = async (e: FormEvent) => {
+    e.preventDefault()
+    try {
+      const res = await api.put<BillingPreferences>('/billing-preferences', form)
+      setForm(res.data)
+      setNotice('Billing preferences saved.')
+      setError('')
+      try {
+        localStorage.setItem('hms_billing', JSON.stringify(res.data))
+      } catch {
+        // The booking form fetches it again if it cannot be stored.
+      }
+    } catch (err) {
+      setError(Object.values(fieldErrors(err))[0])
+    }
+  }
+
+  return (
+    <form className="narrow" onSubmit={save}>
+      {notice && <p className="notice">{notice}</p>}
+      <h3>Consultation billing</h3>
+      {(
+        [
+          ['before', 'Pay before', 'The consultation is paid for when the visit is booked. The booking form offers "Paid in full".'],
+          ['after', 'Pay after', 'The bill is made at booking and left unpaid; the patient pays after seeing the doctor.'],
+        ] as const
+      ).map(([value, label, hint]) => (
+        <label className="check top" key={value}>
+          <input type="radio" name="pay_timing" checked={form.pay_timing === value} onChange={() => setForm({ ...form, pay_timing: value })} />
+          <span>
+            {label}
+            <small className="muted block">{hint}</small>
+          </span>
+        </label>
+      ))}
+
+      <h3>Usual payment mode</h3>
+      <p className="muted small">Chosen to begin with when taking money at the front desk. It can be changed for each payment.</p>
+      <select className="narrow" value={form.default_payment_mode} onChange={(e) => setForm({ ...form, default_payment_mode: e.target.value })} aria-label="Usual payment mode">
+        {PAYMENT_MODES.map((m) => (
+          <option key={m.value} value={m.value}>
+            {m.label}
+          </option>
+        ))}
+      </select>
+
+      {error && <p className="form-error">{error}</p>}
+      <div className="panel-foot">
+        <button className="btn primary">Save preferences</button>
       </div>
     </form>
   )
@@ -321,6 +387,7 @@ export function Admin() {
         ))}
       </div>
       {tab === 'clinic' && <ClinicDetails />}
+      {tab === 'billing' && <BillingPrefs />}
       {(tab === 'by' || tab === 'to') && <ReferralDoctors key={tab} direction={tab} />}
       {tab === 'merge' && <MergePatients />}
     </section>

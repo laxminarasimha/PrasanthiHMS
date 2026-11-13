@@ -19,14 +19,14 @@ use Illuminate\Validation\ValidationException;
 
 class IpdController extends Controller
 {
-    private const LIST_WITH = ['patient:id,uhid,name,gender,date_of_birth,mobile', 'doctor:id,name', 'bed:id,ward,bed_no'];
+    private const LIST_WITH = ['patient:id,uhid,title,name,gender,date_of_birth,mobile', 'doctor:id,name', 'bed:id,ward,bed_no'];
 
     // ---- Beds ----
 
     public function beds(): JsonResponse
     {
         return response()->json(
-            Bed::with(['currentAdmission:id,bed_id,ipd_no,patient_id,admitted_at', 'currentAdmission.patient:id,name,uhid'])
+            Bed::with(['currentAdmission:id,bed_id,ipd_no,patient_id,admitted_at', 'currentAdmission.patient:id,title,name,uhid'])
                 ->orderBy('ward')->orderByRaw('LENGTH(bed_no)')->orderBy('bed_no')
                 ->get()
         );
@@ -443,7 +443,7 @@ class IpdController extends Controller
     private function present(Admission $admission): Admission
     {
         return $admission->fresh()->load([
-            'patient:id,uhid,name,gender,date_of_birth,mobile,address,city,blood_group', 'doctor:id,name,department,signature_text',
+            'patient:id,uhid,title,name,gender,date_of_birth,mobile,address,city,blood_group', 'doctor:id,name,department,signature_text',
             'bed:id,ward,bed_no,daily_charge', 'charges', 'payments.receiver:id,name', 'billApprover:id,name',
         ]);
     }

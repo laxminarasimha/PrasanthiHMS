@@ -128,7 +128,7 @@ export function Ipd() {
                   <td>
                     <strong>{c.patient.name}</strong>
                     <small className="muted block">
-                      {c.patient.uhid} · {c.patient.age}y / {c.patient.gender.charAt(0).toUpperCase()}
+                      {c.patient.uhid} · {c.patient.age_label} / {c.patient.gender.charAt(0).toUpperCase()}
                     </small>
                   </td>
                   <td>{c.bed ? `${c.bed.ward} · ${c.bed.bed_no}` : '—'}</td>
