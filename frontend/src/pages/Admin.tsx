@@ -2,12 +2,16 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { TextField } from '../components/Field'
 import { PAYMENT_MODES, longDate } from '../format'
+import { AdminList } from './AdminLists'
 import type { BillingPreferences, Clinic, PatientMerge, ReferralDoctor } from '../types'
 
-type Tab = 'clinic' | 'billing' | 'by' | 'to' | 'merge'
+type Tab = 'clinic' | 'billing' | 'department' | 'payer' | 'vendor' | 'by' | 'to' | 'merge'
 const TABS: [Tab, string][] = [
   ['clinic', 'Clinic details'],
   ['billing', 'Billing preferences'],
+  ['department', 'Departments'],
+  ['payer', 'Insurers and payers'],
+  ['vendor', 'Vendors'],
   ['by', 'Doctors who refer to us'],
   ['to', 'Doctors we refer to'],
   ['merge', 'Merge patients'],
@@ -163,6 +167,10 @@ function BillingPrefs() {
           </option>
         ))}
       </select>
+
+      <h3>IPD case numbers</h3>
+      <p className="muted small">The letters placed before the running number of each new IPD case, for example {form.ipd_prefix || 'IP'}00012. Cases already made keep their numbers.</p>
+      <input className="narrow" maxLength={8} value={form.ipd_prefix ?? 'IP'} onChange={(e) => setForm({ ...form, ipd_prefix: e.target.value })} aria-label="IPD case number prefix" />
 
       {error && <p className="form-error">{error}</p>}
       <div className="panel-foot">
@@ -388,6 +396,7 @@ export function Admin() {
       </div>
       {tab === 'clinic' && <ClinicDetails />}
       {tab === 'billing' && <BillingPrefs />}
+      {(tab === 'department' || tab === 'payer' || tab === 'vendor') && <AdminList key={tab} kind={tab} />}
       {(tab === 'by' || tab === 'to') && <ReferralDoctors key={tab} direction={tab} />}
       {tab === 'merge' && <MergePatients />}
     </section>

@@ -35,6 +35,10 @@ export function Staff() {
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
   const [abilities, setAbilities] = useState<Ability[]>([])
+  const [departments, setDepartments] = useState<string[]>([])
+  useEffect(() => {
+    api.get<{ name: string }[]>('/admin-lists/department').then((res) => setDepartments(res.data.map((d) => d.name)))
+  }, [])
   const [tab, setTab] = useState<Tab>('details')
   const [perms, setPerms] = useState<Record<string, boolean>>({})
   const [hours, setHours] = useState<Hours>(toHours(null))
@@ -283,7 +287,12 @@ export function Staff() {
               error={errors.password}
               autoComplete="new-password"
             />
-            <TextField label="Department" value={form.department} onChange={set('department')} error={errors.department} />
+            <TextField label="Department" list="staff-departments" value={form.department} onChange={set('department')} error={errors.department} />
+            <datalist id="staff-departments">
+              {departments.map((d) => (
+                <option key={d} value={d} />
+              ))}
+            </datalist>
             <TextField label="Signature text" value={form.signature_text} onChange={set('signature_text')} error={errors.signature_text} />
           </div>
 

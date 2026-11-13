@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AdminEntry;
 use App\Models\Admission;
 use App\Models\Patient;
 use App\Models\PatientMerge;
@@ -102,7 +103,7 @@ class AdminController extends Controller
 
     // ---- Billing preferences ----
 
-    public const BILLING_DEFAULTS = ['default_payment_mode' => 'cash', 'pay_timing' => 'before'];
+    public const BILLING_DEFAULTS = ['default_payment_mode' => 'cash', 'pay_timing' => 'before', 'ipd_prefix' => 'IP'];
 
     public function billingPreferences(): JsonResponse
     {
@@ -115,10 +116,53 @@ class AdminController extends Controller
             'default_payment_mode' => ['required', Rule::in(\App\Models\Payment::MODES)],
             // before: the consultation is paid for when the visit is booked; after: it is billed then and paid later.
             'pay_timing' => ['required', Rule::in(['before', 'after'])],
-        ]);
-        Setting::updateOrCreate(['key' => 'billing'], ['value' => $data]);
+            // Put before the running number of each new IPD case, e.g. IP00012.
+            'ipd_prefix' => ['sometimes', 'string', 'regex:/^[A-Za-z0-9\/-]{1,8}$/'],
+        ], ['ipd_prefix.regex' => 'Use up to 8 letters, numbers, dashes or slashes.']);
+        Setting::updateOrCreate(['key' => 'billing'], ['value' => array_merge(Setting::group('billing', self::BILLING_DEFAULTS), $data)]);
 
         return response()->json(Setting::group('billing', self::BILLING_DEFAULTS));
+    }
+
+    // ---- Departments, vendors and payers ----
+
+    public function entries(Request $request, string $kind): JsonResponse
+    {
+        abort_unless(isset(AdminEntry::KINDS[$kind]), 404);
+
+        return response()->json(AdminEntry::where('kind', $kind)->when(! $request->boolean('all'), fn ($q) => $q->where('is_active', true))->orderBy('name')->get());
+    }
+
+    public function storeEntry(Request $request, string $kind): JsonResponse
+    {
+        abort_unless(isset(AdminEntry::KINDS[$kind]), 404);
+
+        return response()->json(AdminEntry::create($this->entryData($request, $kind) + ['kind' => $kind]), 201);
+    }
+
+    public function updateEntry(Request $request, string $kind, AdminEntry $entry): JsonResponse
+    {
+        abort_unless($entry->kind === $kind, 404);
+        $entry->update($this->entryData($request, $kind, $entry));
+
+        return response()->json($entry);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function entryData(Request $request, string $kind, ?AdminEntry $entry = null): array
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255', Rule::unique('admin_entries')->where('kind', $kind)->ignore($entry)],
+            'details' => ['nullable', 'array'],
+            'details.*' => ['nullable', 'string', 'max:500'],
+            'is_active' => ['sometimes', 'boolean'],
+        ], ['name.unique' => 'This name is already in the list.']);
+        // Only the boxes this kind of entry has are kept.
+        $data['details'] = array_filter(array_intersect_key($data['details'] ?? [], array_flip(AdminEntry::KINDS[$kind])), 'filled') ?: null;
+
+        return $data;
     }
 
     // ---- Referral doctors ----

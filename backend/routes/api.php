@@ -240,10 +240,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/clinic', 'clinic');
         Route::get('/referral-doctors', 'referralDoctors');
         Route::get('/billing-preferences', 'billingPreferences');
+        Route::get('/admin-lists/{kind}', 'entries');
 
         Route::middleware('ability:canManageSetup')->group(function () {
             Route::put('/clinic', 'saveClinic');
             Route::put('/billing-preferences', 'saveBillingPreferences');
+            Route::post('/admin-lists/{kind}', 'storeEntry');
+            Route::put('/admin-lists/{kind}/{entry}', 'updateEntry');
             Route::post('/clinic/logo', 'saveLogo');
             Route::delete('/clinic/logo', 'destroyLogo');
             Route::post('/referral-doctors', 'storeReferralDoctor');

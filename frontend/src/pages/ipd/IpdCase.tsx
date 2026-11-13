@@ -119,6 +119,7 @@ export function IpdCase() {
               {admission.patient.uhid} · {admission.patient.age_label} / {admission.patient.gender.charAt(0).toUpperCase()} · {admission.patient.mobile} · {admission.doctor.name} ·
               admitted {longDate(admission.admitted_at)} {clock(admission.admitted_at)} ({stayDays(admission)} day{stayDays(admission) === 1 ? '' : 's'})
               {admission.reason ? ` · ${admission.reason}` : ''}
+              {admission.payer ? ` · Bill to: ${admission.payer.name}` : ''}
             </span>
           </div>
           <span className={`pill ${open ? 'status-ongoing' : admission.status === 'discharged' ? 'ok' : 'off'}`}>{ADMISSION_STATUS[admission.status]}</span>

@@ -19,7 +19,7 @@ use Illuminate\Validation\ValidationException;
 
 class IpdController extends Controller
 {
-    private const LIST_WITH = ['patient:id,uhid,title,name,gender,date_of_birth,mobile', 'doctor:id,name', 'bed:id,ward,bed_no'];
+    private const LIST_WITH = ['patient:id,uhid,title,name,gender,date_of_birth,mobile', 'doctor:id,name', 'bed:id,ward,bed_no', 'payer:id,name'];
 
     // ---- Beds ----
 
@@ -375,6 +375,7 @@ class IpdController extends Controller
         return [
             'doctor_id' => ['required', Rule::exists('users', 'id')->where('role', Role::Doctor->value)],
             'bed_id' => ['nullable', Rule::exists('beds', 'id')->where('is_active', true)],
+            'payer_id' => ['nullable', Rule::exists('admin_entries', 'id')->where('kind', 'payer')],
             'reason' => ['nullable', 'string', 'max:500'],
             'attendant_name' => ['nullable', 'string', 'max:255'],
             'attendant_phone' => ['nullable', 'string', 'max:20'],
@@ -444,7 +445,7 @@ class IpdController extends Controller
     {
         return $admission->fresh()->load([
             'patient:id,uhid,title,name,gender,date_of_birth,mobile,address,city,blood_group', 'doctor:id,name,department,signature_text',
-            'bed:id,ward,bed_no,daily_charge', 'charges', 'payments.receiver:id,name', 'billApprover:id,name',
+            'bed:id,ward,bed_no,daily_charge', 'charges', 'payments.receiver:id,name', 'billApprover:id,name', 'payer:id,name,details',
         ]);
     }
 }

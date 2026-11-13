@@ -5,7 +5,7 @@ import { useAuth } from '../../auth'
 import { SelectField, TextField } from '../../components/Field'
 import { PatientPicker } from '../../components/PatientPicker'
 import { ADMISSION_STATUS, clock, longDate, nowLocal, rupees } from '../../format'
-import type { Admission, Bed, Doctor, Patient } from '../../types'
+import type { AdminEntry, Admission, Bed, Doctor, Patient } from '../../types'
 
 const FILTERS = ['admitted', 'discharged', 'lama', 'dama', 'absconded', 'died', 'all']
 
@@ -34,6 +34,7 @@ export function Ipd() {
 
   const startAdmitting = () => {
     api.get<Bed[]>('/ipd/beds').then((res) => setBeds(res.data))
+    api.get<AdminEntry[]>('/admin-lists/payer').then((res) => setPayers(res.data))
     api.get<Doctor[]>('/doctors').then((res) => {
       setDoctors(res.data)
       if (res.data.length === 1) setForm((f) => ({ ...f, doctor_id: String(res.data[0].id) }))
@@ -44,6 +45,8 @@ export function Ipd() {
     setAdmitting(true)
   }
 
+  const [payers, setPayers] = useState<AdminEntry[]>([])
+  const [payerId, setPayerId] = useState('')
   const set = (key: keyof typeof form) => (value: string) => setForm((f) => ({ ...f, [key]: value }))
   const freeBeds = beds.filter((b) => b.is_active && !b.current_admission)
 
@@ -61,6 +64,7 @@ export function Ipd() {
         patient_id: patient.id,
         bed_id: form.bed_id || null,
         doctor_id: form.doctor_id || null,
+        payer_id: payerId || null,
         admitted_at: form.admitted_at.replace('T', ' '),
       })
       navigate(`/ipd/${res.data.id}`)
@@ -132,7 +136,10 @@ export function Ipd() {
                     </small>
                   </td>
                   <td>{c.bed ? `${c.bed.ward} · ${c.bed.bed_no}` : '—'}</td>
-                  <td>{c.doctor.name}</td>
+                  <td>
+                    {c.doctor.name}
+                    {c.payer && <small className="muted block">{c.payer.name}</small>}
+                  </td>
                   <td>
                     {longDate(c.admitted_at)}
                     <small className="muted block">{clock(c.admitted_at)}</small>
@@ -181,6 +188,11 @@ export function Ipd() {
             <div className="span-2">
               <TextField label="Reason for admission" value={form.reason} onChange={set('reason')} error={errors.reason} />
             </div>
+            {payers.length > 0 && (
+              <div className="span-2">
+                <SelectField label="Bill to be settled by" value={payerId} onChange={setPayerId} options={payers.map((p) => ({ value: String(p.id), label: p.name }))} placeholder="The patient" error={errors.payer_id} />
+              </div>
+            )}
             <TextField label="Attendant name" value={form.attendant_name} onChange={set('attendant_name')} error={errors.attendant_name} />
             <TextField label="Attendant phone" inputMode="tel" value={form.attendant_phone} onChange={set('attendant_phone')} error={errors.attendant_phone} />
           </div>

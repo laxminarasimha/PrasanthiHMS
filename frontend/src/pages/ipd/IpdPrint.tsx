@@ -34,6 +34,12 @@ export function IpdPrint() {
           Mobile: {a.patient.mobile}
           <br />
           Doctor: {a.doctor.name}
+          {a.payer && (
+            <>
+              <br />
+              Bill to: {a.payer.name}
+            </>
+          )}
         </div>
         <div className="right">
           IPD no: <strong>{a.ipd_no}</strong>

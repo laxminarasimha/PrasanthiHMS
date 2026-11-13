@@ -453,7 +453,10 @@ export type ReferralDoctor = { id: number; direction: 'by' | 'to'; name: string;
 
 export type PatientMerge = { id: number; from_uhid: string; from_name: string; to_uhid: string; to_name: string; moved: Record<string, number> | null; created_at: string; staff?: { id: number; name: string } | null }
 
-export type BillingPreferences = { default_payment_mode: string; pay_timing: 'before' | 'after' }
+export type BillingPreferences = { default_payment_mode: string; pay_timing: 'before' | 'after'; ipd_prefix: string }
+
+/** A row of a hospital-wide list: a department, a vendor, or a payer. */
+export type AdminEntry = { id: number; kind: 'department' | 'vendor' | 'payer'; name: string; details: Record<string, string> | null; is_active: boolean }
 
 export type NoteKind = 'clinical' | 'nursing' | 'ot'
 
@@ -507,6 +510,8 @@ export type Admission = {
   discharge_summary: string | null
   bill_approved_at: string | null
   bill_approver?: { id: number; name: string } | null
+  /** Who settles the bill when it is not the patient. */
+  payer?: { id: number; name: string } | null
   total: number
   discount: number
   net: number
