@@ -5,6 +5,8 @@ import { useAuth } from '../../auth'
 import { SelectField, TextField } from '../../components/Field'
 import { ADMISSION_STATUS, PAYMENT_MODES, clock, longDate, modeLabel, nowLocal, rupees, today } from '../../format'
 import type { Admission, Bed, IpdBillTemplate, IpdService, OutstandingBill } from '../../types'
+import { AttachmentsPanel } from '../../components/FrontDeskPanels'
+import { IpdInvestigations } from './IpdInvestigations'
 import { IpdNotes } from './IpdNotes'
 import { IpdSummary } from './IpdSummary'
 
@@ -31,12 +33,16 @@ export function IpdCase() {
   const [beds, setBeds] = useState<Bed[]>([])
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [charge, setCharge] = useState({ ipd_service_id: '', description: '', charged_on: today(), quantity: '1', unit_price: '' })
-  const [pay, setPay] = useState({ type: 'advance', amount: '', mode: 'cash', reference: '' })
+  const [charge, setCharge] = useState({ ipd_service_id: '', description: '', charged_on: today(), quantity: '1', unit_price: '', discount: '', remarks: '' })
+  /** The charge being corrected, when the form is editing one instead of adding. */
+  const [editingCharge, setEditingCharge] = useState<number | null>(null)
+  const [showDeleted, setShowDeleted] = useState(false)
+  const [ids, setIds] = useState({ aadhaar_no: '', gst_no: '' })
+  const [pay, setPay] = useState({ type: 'advance', amount: '', mode: 'cash', reference: '', remarks: '', paid_on: today() })
   const [discount, setDiscount] = useState('')
   const [closing, setClosing] = useState({ status: 'discharged', discharged_at: nowLocal() })
   const { user } = useAuth()
-  const [tab, setTab] = useState<'bill' | 'notes' | 'summary'>('bill')
+  const [tab, setTab] = useState<'bill' | 'notes' | 'summary' | 'results' | 'files'>('bill')
   const [templates, setTemplates] = useState<IpdBillTemplate[]>([])
   const [bedId, setBedId] = useState('')
   const [outstanding, setOutstanding] = useState<OutstandingBill[]>([])
@@ -45,6 +51,7 @@ export function IpdCase() {
     setAdmission(next)
     setDiscount(String(next.discount))
     setBedId(next.bed ? String(next.bed.id) : '')
+    setIds({ aadhaar_no: next.aadhaar_no ?? '', gst_no: next.gst_no ?? '' })
     setError('')
     api.get<OutstandingBill[]>(`/ipd/admissions/${next.id}/outstanding`).then((res) => setOutstanding(res.data))
   }
@@ -83,8 +90,12 @@ export function IpdCase() {
 
   const addCharge = async (e: FormEvent) => {
     e.preventDefault()
-    const ok = await run(api.post(`${url}/charges`, { ...charge, ipd_service_id: charge.ipd_service_id || null }))
-    if (ok) setCharge((c) => ({ ...c, ipd_service_id: '', description: '', quantity: '1', unit_price: '' }))
+    const body = { ...charge, ipd_service_id: charge.ipd_service_id || null, discount: charge.discount || 0, remarks: charge.remarks || null }
+    const ok = await run(editingCharge ? api.put(`${url}/charges/${editingCharge}`, body) : api.post(`${url}/charges`, body), editingCharge ? 'Charge corrected.' : undefined)
+    if (ok) {
+      setCharge((c) => ({ ...c, ipd_service_id: '', description: '', quantity: '1', unit_price: '', discount: '', remarks: '' }))
+      setEditingCharge(null)
+    }
   }
 
   const addBedCharge = () =>
@@ -94,12 +105,14 @@ export function IpdCase() {
       charged_on: today(),
       quantity: String(stayDays(admission)),
       unit_price: String(admission.bed!.daily_charge ?? 0),
+      discount: '',
+      remarks: '',
     })
 
   const addPayment = async (e: FormEvent) => {
     e.preventDefault()
-    const ok = await run(api.post(`${url}/payments`, { ...pay, reference: pay.reference || null }))
-    if (ok) setPay((p) => ({ ...p, amount: '', reference: '' }))
+    const ok = await run(api.post(`${url}/payments`, { ...pay, reference: pay.reference || null, remarks: pay.remarks || null }))
+    if (ok) setPay((p) => ({ ...p, amount: '', reference: '', remarks: '', paid_on: today() }))
   }
 
   const freeBeds = beds.filter((b) => b.is_active && (!b.current_admission || b.id === admission.bed?.id))
@@ -138,7 +151,16 @@ export function IpdCase() {
           <button className={tab === 'summary' ? 'active' : ''} onClick={() => setTab('summary')}>
             Discharge summary
           </button>
+          <button className={tab === 'results' ? 'active' : ''} onClick={() => setTab('results')}>
+            Investigations
+          </button>
+          <button className={tab === 'files' ? 'active' : ''} onClick={() => setTab('files')}>
+            Attachments
+          </button>
         </div>
+
+        {tab === 'results' && <IpdInvestigations admissionId={admission.id} />}
+        {tab === 'files' && <AttachmentsPanel patient={{ id: admission.patient.id, name: admission.patient.name, uhid: admission.patient.uhid }} />}
 
         {tab === 'notes' && <IpdNotes admissionId={admission.id} canEdit={canEdit} />}
         {tab === 'summary' && <IpdSummary admissionId={admission.id} canEdit={canEdit} canApprove={Boolean(user?.can_approve_ipd)} />}
@@ -162,22 +184,40 @@ export function IpdCase() {
                 <th>Category</th>
                 <th className="num">Qty</th>
                 <th className="num">Rate</th>
+                <th className="num">Discount</th>
                 <th className="num">Amount</th>
+                <th>Added by</th>
                 <th />
               </tr>
             </thead>
             <tbody>
               {admission.charges?.map((c) => (
-                <tr key={c.id} className="static">
+                <tr key={c.id} className={`static ${editingCharge === c.id ? 'selected' : ''}`}>
                   <td>{longDate(c.charged_on)}</td>
-                  <td>{c.description}</td>
+                  <td>
+                    {c.description}
+                    {c.remarks && <small className="muted block">{c.remarks}</small>}
+                  </td>
                   <td>{c.category ?? '—'}</td>
                   <td className="num">{c.quantity}</td>
                   <td className="num">{rupees(c.unit_price)}</td>
+                  <td className="num">{c.discount > 0 ? rupees(c.discount) : '—'}</td>
                   <td className="num">{rupees(c.amount)}</td>
-                  <td className="num">
+                  <td>{c.creator?.name ?? '—'}</td>
+                  <td className="num actions">
+                    {!billLocked && !c.source_type && (
+                      <button
+                        className="link"
+                        onClick={() => {
+                          setEditingCharge(c.id)
+                          setCharge({ ipd_service_id: '', description: c.description, charged_on: c.charged_on, quantity: String(c.quantity), unit_price: String(c.unit_price), discount: c.discount ? String(c.discount) : '', remarks: c.remarks ?? '' })
+                        }}
+                      >
+                        Edit
+                      </button>
+                    )}
                     {!billLocked && (
-                      <button className="link danger" onClick={() => run(api.delete(`${url}/charges/${c.id}`))}>
+                      <button className="link danger" onClick={() => window.confirm(`Remove "${c.description}" from the bill?`) && run(api.delete(`${url}/charges/${c.id}`))}>
                         Remove
                       </button>
                     )}
@@ -186,7 +226,7 @@ export function IpdCase() {
               ))}
               {admission.charges?.length === 0 && (
                 <tr className="empty">
-                  <td colSpan={7}>No charges added yet.</td>
+                  <td colSpan={9}>No charges added yet.</td>
                 </tr>
               )}
             </tbody>
@@ -196,7 +236,7 @@ export function IpdCase() {
         {!billLocked && (
         <>
         <form className="charge-row" onSubmit={addCharge}>
-          <select value={charge.ipd_service_id} onChange={(e) => pickService(e.target.value)} aria-label="IPD service">
+          <select value={charge.ipd_service_id} disabled={Boolean(editingCharge)} onChange={(e) => pickService(e.target.value)} aria-label="IPD service">
             <option value="">Choose a service…</option>
             {services.map((s) => (
               <option key={s.id} value={s.id}>
@@ -205,13 +245,27 @@ export function IpdCase() {
               </option>
             ))}
           </select>
-          <input placeholder="or describe the charge" value={charge.description} onChange={(e) => setCharge((c) => ({ ...c, description: e.target.value }))} aria-label="Charge description" />
+          <input placeholder="or describe the charge" value={charge.description} disabled={Boolean(editingCharge)} onChange={(e) => setCharge((c) => ({ ...c, description: e.target.value }))} aria-label="Charge description" />
           <input type="date" value={charge.charged_on} max={today()} onChange={(e) => setCharge((c) => ({ ...c, charged_on: e.target.value }))} aria-label="Charge date" />
           <input type="number" min={0} step="0.5" placeholder="Qty" value={charge.quantity} onChange={(e) => setCharge((c) => ({ ...c, quantity: e.target.value }))} aria-label="Quantity" />
           <input type="number" min={0} step="0.01" placeholder="Rate ₹" value={charge.unit_price} onChange={(e) => setCharge((c) => ({ ...c, unit_price: e.target.value }))} aria-label="Rate" />
+          <input type="number" min={0} step="0.01" placeholder="Disc. ₹" value={charge.discount} onChange={(e) => setCharge((c) => ({ ...c, discount: e.target.value }))} aria-label="Discount on this charge" />
+          <input placeholder="Remarks (optional)" value={charge.remarks} onChange={(e) => setCharge((c) => ({ ...c, remarks: e.target.value }))} aria-label="Remarks" />
           <button className="btn primary" disabled={!charge.description || charge.unit_price === ''}>
-            Add charge
+            {editingCharge ? 'Save charge' : 'Add charge'}
           </button>
+          {editingCharge && (
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() => {
+                setEditingCharge(null)
+                setCharge((c) => ({ ...c, ipd_service_id: '', description: '', quantity: '1', unit_price: '', discount: '', remarks: '' }))
+              }}
+            >
+              Cancel
+            </button>
+          )}
         </form>
         {admission.bed && (admission.bed.daily_charge ?? 0) > 0 && (
           <button type="button" className="link add-medicine" onClick={addBedCharge}>
@@ -261,6 +315,31 @@ export function IpdCase() {
           </div>
         )}
 
+        {(admission.deleted_charges?.length ?? 0) > 0 && (
+          <div className="gap-top">
+            <button type="button" className="link" onClick={() => setShowDeleted((v) => !v)}>
+              {showDeleted ? 'Hide' : 'Show'} {admission.deleted_charges!.length} removed charge{admission.deleted_charges!.length === 1 ? '' : 's'}
+            </button>
+            {showDeleted && (
+              <ul className="history">
+                {admission.deleted_charges!.map((c) => (
+                  <li key={c.id}>
+                    <span>
+                      {c.description} · {c.quantity} × {rupees(c.unit_price)}
+                      <small className="muted">
+                        {' '}
+                        billed {longDate(c.charged_on)}, removed {c.deleted_at ? longDate(c.deleted_at) : ''}
+                        {c.deleter ? ` by ${c.deleter.name}` : ''}
+                      </small>
+                    </span>
+                    <strong className="muted">{rupees(c.amount)}</strong>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
         <h3>Advances, payments and refunds</h3>
         <ul className="history">
           {admission.payments?.map((p) => (
@@ -268,12 +347,21 @@ export function IpdCase() {
               <span>
                 {PAYMENT_TYPES.find((t) => t.value === p.type)?.label} · {modeLabel(p.mode)}
                 {p.reference ? ` · ${p.reference}` : ''}
+                {p.remarks ? ` · ${p.remarks}` : ''}
                 <small className="muted">
                   {' '}
                   {new Date(p.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' })}
                   {p.receiver ? ` by ${p.receiver.name}` : ''}
                 </small>
               </span>
+              <a className="link" href={`/ipd/${admission.id}/receipt/${p.id}`} target="_blank" rel="noreferrer">
+                Receipt
+              </a>
+              {user?.can_approve_ipd && (
+                <button type="button" className="link danger" title="Remove an entry made by mistake" onClick={() => window.confirm('Delete this entry? Use this only for a mistake; money handed back should be entered as a refund.') && run(api.delete(`${url}/payments/${p.id}`), 'Entry deleted.')}>
+                  Delete
+                </button>
+              )}
               <strong className={p.type === 'refund' ? 'due' : ''}>
                 {p.type === 'refund' ? '−' : ''}
                 {rupees(p.amount)}
@@ -299,6 +387,8 @@ export function IpdCase() {
             ))}
           </select>
           <input placeholder="Reference (optional)" value={pay.reference} onChange={(e) => setPay((p) => ({ ...p, reference: e.target.value }))} aria-label="Reference" />
+          <input type="date" value={pay.paid_on} max={today()} min={admission.admitted_at.slice(0, 10)} onChange={(e) => setPay((p) => ({ ...p, paid_on: e.target.value || today() }))} aria-label="Date received" title="Date the money was received" />
+          <input placeholder="Remarks (optional)" value={pay.remarks} onChange={(e) => setPay((p) => ({ ...p, remarks: e.target.value }))} aria-label="Payment remarks" />
           <button className="btn primary" disabled={!pay.amount || Number(pay.amount) <= 0}>
             Record
           </button>
@@ -343,6 +433,25 @@ export function IpdCase() {
               </button>
             )}
           </div>
+        </div>
+
+        <div className="card">
+          <h2>Case details</h2>
+          <form
+            className="grid gap-top"
+            onSubmit={(e) => {
+              e.preventDefault()
+              run(api.put(url, { aadhaar_no: ids.aadhaar_no || null, gst_no: ids.gst_no || null }), 'Case details saved.')
+            }}
+          >
+            <TextField label="Aadhaar number" inputMode="numeric" maxLength={12} value={ids.aadhaar_no} onChange={(v) => setIds((i) => ({ ...i, aadhaar_no: v }))} />
+            <TextField label="GST number" maxLength={20} value={ids.gst_no} onChange={(v) => setIds((i) => ({ ...i, gst_no: v }))} />
+            <div className="span-2">
+              <button className="btn ghost" disabled={ids.aadhaar_no === (admission.aadhaar_no ?? '') && ids.gst_no === (admission.gst_no ?? '')}>
+                Save details
+              </button>
+            </div>
+          </form>
         </div>
 
         <div className="card">

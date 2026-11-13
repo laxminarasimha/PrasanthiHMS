@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['type', 'amount', 'mode', 'reference', 'received_by'])]
+#[Fillable(['type', 'amount', 'mode', 'reference', 'remarks', 'received_by'])]
 class AdmissionPayment extends Model
 {
     /**

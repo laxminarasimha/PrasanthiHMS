@@ -192,6 +192,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/admissions', 'admissions');
         Route::get('/admissions/{admission}', 'show');
         Route::get('/admissions/{admission}/outstanding', 'outstanding');
+        Route::get('/admissions/{admission}/investigations', 'investigations');
 
         Route::middleware('ability:canManageSetup')->group(function () {
             Route::post('/beds', 'storeBed');
@@ -207,7 +208,9 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/admissions', 'admit');
             Route::put('/admissions/{admission}', 'update');
             Route::post('/admissions/{admission}/charges', 'addCharge');
+            Route::put('/admissions/{admission}/charges/{charge}', 'updateCharge');
             Route::delete('/admissions/{admission}/charges/{charge}', 'removeCharge');
+            Route::delete('/admissions/{admission}/payments/{payment}', 'removePayment');
             Route::post('/admissions/{admission}/payments', 'addPayment');
             Route::post('/admissions/{admission}/discharge', 'discharge');
             Route::post('/admissions/{admission}/transfer', 'transfer');

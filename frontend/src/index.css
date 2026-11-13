@@ -256,8 +256,7 @@ input.result.low { border-color: #1d4f91; color: #1d4f91; font-weight: 700; }
 /* IPD */
 .tabs .push { margin-left: auto; align-self: center; }
 .gap-bottom { margin-bottom: 12px; }
-.charge-row { display: grid; grid-template-columns: 1.4fr 1.6fr 1fr 0.6fr 0.8fr auto; gap: 6px; margin-top: 10px; align-items: center; }
-.charge-row.pay { grid-template-columns: 0.9fr 0.9fr 1fr 1.6fr auto; }
+.charge-row, .charge-row.pay { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px; margin-top: 10px; align-items: center; }
 .stack.panel { width: 400px; flex-shrink: 0; }
 .stack.panel .card h2 { margin-bottom: 4px; }
 @media (max-width: 1000px) { .stack.panel { width: 100%; } .charge-row, .charge-row.pay { grid-template-columns: 1fr 1fr; } }
@@ -406,6 +405,7 @@ tr.lab-heading td { font-weight: 700; background: var(--bg); text-transform: upp
 .translation-row { grid-template-columns: 1fr 1fr auto; }
 .template-row { grid-template-columns: 2fr 90px 110px auto; }
 .report-text { white-space: pre-wrap; }
+.trend { width: 60px; height: 20px; color: var(--brand); display: block; }
 .deposit-box { border: 1px dashed var(--border); border-radius: 8px; padding: 8px 12px; margin-top: 12px; }
 .deposit-box .row { flex-wrap: wrap; }
 .signature-box { display: flex; flex-direction: column; gap: 6px; border: 1px dashed var(--border); border-radius: 8px; padding: 10px 12px; }

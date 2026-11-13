@@ -471,7 +471,12 @@ export type DischargeSummary = {
   history?: string | null
   examination?: string | null
   investigations?: string | null
+  treatment_given?: string | null
   procedures?: string | null
+  operative_findings?: string | null
+  tests_requested?: string | null
+  other_instructions?: string | null
+  acknowledgement?: string | null
   course: string | null
   condition_at_discharge?: string | null
   medicines: PrescribedMedicine[] | null
@@ -495,7 +500,14 @@ export type AdmissionCharge = {
   charged_on: string
   quantity: number
   unit_price: number
+  discount: number
   amount: number
+  remarks: string | null
+  /** Set when the line stands for another bill moved onto this one. */
+  source_type?: string | null
+  creator?: { id: number; name: string } | null
+  deleted_at?: string | null
+  deleter?: { id: number; name: string } | null
 }
 
 export type Admission = {
@@ -521,7 +533,11 @@ export type Admission = {
   doctor: { id: number; name: string; department?: string | null; signature_text?: string | null }
   bed: { id: number; ward: string; bed_no: string; daily_charge?: number } | null
   charges?: AdmissionCharge[]
-  payments?: (Omit<Payment, 'type'> & { type: 'advance' | 'payment' | 'refund' })[]
+  /** Lines taken off the bill, kept for the record. */
+  deleted_charges?: AdmissionCharge[]
+  aadhaar_no?: string | null
+  gst_no?: string | null
+  payments?: (Omit<Payment, 'type'> & { type: 'advance' | 'payment' | 'refund'; remarks?: string | null })[]
 }
 
 export type PrescriptionForPharmacy = {

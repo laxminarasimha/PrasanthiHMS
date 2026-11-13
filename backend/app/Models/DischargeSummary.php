@@ -7,12 +7,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
-    'admission_id', 'diagnosis', 'complaints', 'history', 'examination', 'investigations', 'procedures', 'course',
-    'condition_at_discharge', 'medicines', 'advice', 'follow_up_on', 'prepared_by', 'approved_at', 'approved_by',
+    'admission_id', 'diagnosis', 'complaints', 'history', 'examination', 'investigations', 'treatment_given', 'procedures', 'operative_findings', 'course',
+    'condition_at_discharge', 'medicines', 'advice', 'tests_requested', 'other_instructions', 'acknowledgement', 'follow_up_on', 'prepared_by', 'approved_at', 'approved_by',
 ])]
 class DischargeSummary extends Model
 {
-    public const TEXTS = ['diagnosis', 'complaints', 'history', 'examination', 'investigations', 'procedures', 'course', 'condition_at_discharge', 'advice'];
+    public const TEXTS = ['diagnosis', 'complaints', 'history', 'examination', 'investigations', 'treatment_given', 'procedures', 'operative_findings', 'course', 'condition_at_discharge', 'advice', 'tests_requested', 'other_instructions', 'acknowledgement'];
 
     /**
      * @return array<string, string>

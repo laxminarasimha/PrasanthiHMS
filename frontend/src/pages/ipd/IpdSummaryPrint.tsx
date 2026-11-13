@@ -5,7 +5,7 @@ import { ClinicFooter, ClinicHeader } from '../../components/ClinicHeader'
 import { useSignature } from '../../components/useSignature'
 import { ADMISSION_STATUS, clock, longDate, fullName } from '../../format'
 import type { Admission, DischargeSummary } from '../../types'
-import { SUMMARY_PARTS } from './IpdSummary'
+import { AFTER_PARTS, SUMMARY_PARTS } from './IpdSummary'
 
 /** The discharge summary as handed to the patient; opens the print dialog once loaded. */
 export function IpdSummaryPrint() {
@@ -105,6 +105,12 @@ export function IpdSummaryPrint() {
           <p className="report-text">{s.advice}</p>
         </section>
       )}
+      {AFTER_PARTS.filter((part) => s[part.key]).map((part) => (
+        <section key={part.key}>
+          <h3>{part.label}</h3>
+          <p className="report-text">{s[part.key] as string}</p>
+        </section>
+      ))}
       {s.follow_up_on && (
         <section>
           <h3>Review on</h3>
