@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
+import { PatientSearch } from './PatientSearch'
 import { useAuth } from '../auth'
 
 export function Layout() {
@@ -21,6 +22,7 @@ export function Layout() {
         </div>
         {/* On phones the menu covers the screen, so close it once a page is chosen. */}
         <nav onClick={() => setOpen(false)}>
+          <NavLink to="/home">Home</NavLink>
           {user.can_front_desk && <NavLink to="/front-desk">Front Desk</NavLink>}
           {user.can_consult && <NavLink to="/doctor">Doctor</NavLink>}
           {(user.can_run_lab || user.can_front_desk) && <NavLink to="/lab">Lab</NavLink>}
@@ -33,7 +35,9 @@ export function Layout() {
           {user.can_manage_setup && <NavLink to="/admin">Admin</NavLink>}
           <div className="nav-foot">
             <div>
-              <strong>{user.name}</strong>
+              <NavLink to="/account">
+                <strong>{user.name}</strong>
+              </NavLink>
               <small>
                 {user.role_label}
                 {user.branch ? ` · ${user.branch.name}` : ''}
@@ -44,9 +48,12 @@ export function Layout() {
             </button>
           </div>
         </nav>
+        <PatientSearch />
         <div className="whoami">
           <div>
-            <strong>{user.name}</strong>
+            <NavLink className="who-link" to="/account" title="My account: change password">
+              <strong>{user.name}</strong>
+            </NavLink>
             <small>
               {user.role_label}
               {user.branch ? ` · ${user.branch.name}` : ''}
