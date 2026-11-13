@@ -206,6 +206,8 @@ class ConsultationController extends Controller
             'doctor' => $appointment->doctor,
             'service' => $appointment->service,
             'consultation' => $appointment->consultation,
+            // How this doctor wants prescriptions printed, for whoever prints it.
+            'rx_print' => array_intersect_key(\App\Models\User::find($appointment->doctor_id)?->rxSettings() ?? [], array_flip(['print_language', 'translations', 'capitalize_name'])),
         ];
     }
 }

@@ -99,6 +99,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/rx-groups/{group}', 'destroyRxGroup');
         Route::post('/templates', 'storeTemplate');
         Route::delete('/templates/{template}', 'destroyTemplate');
+        Route::post('/medicine-defaults', 'storeMedicineDefault');
+        Route::put('/medicine-defaults/{default}', 'updateMedicineDefault');
+        Route::delete('/medicine-defaults/{default}', 'destroyMedicineDefault');
+        Route::put('/rx-settings', 'saveRxSettings');
         Route::put('/pad-sections', 'savePadSections');
     });
     Route::get('/appointments/{appointment}/consultation', [ConsultationController::class, 'show']);

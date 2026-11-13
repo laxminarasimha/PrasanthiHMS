@@ -5,9 +5,10 @@ import { DoctorTabs } from '../components/DoctorTabs'
 import { MedicineRows, emptyMedicine, filledMedicines } from '../components/MedicineRows'
 import { longDate } from '../format'
 import type { Doctor, DoctorLibrary as Library, PhraseKind, PrescribedMedicine, RememberedPhrase, RxGroup } from '../types'
+import { MedicineLibrary, RxSettingsForm } from './DoctorRxSettings'
 
 const PHRASE_TABS: [PhraseKind, string][] = [['complaint', 'Complaints'], ['diagnosis', 'Diagnoses'], ['advice', 'Advice']]
-type Tab = PhraseKind | 'rx' | 'templates' | 'pad'
+type Tab = PhraseKind | 'rx' | 'templates' | 'pad' | 'medicines' | 'settings'
 
 const SECTION_LABELS: Record<string, string> = {
   quick_notes: 'Quick notes', history: 'History', past_medication: 'Past medication', general_exam: 'General examination',
@@ -89,8 +90,14 @@ export function DoctorLibrary() {
           <button className={tab === 'templates' ? 'active' : ''} onClick={() => setTab('templates')}>
             Templates <span>{library?.templates.length ?? 0}</span>
           </button>
+          <button className={tab === 'medicines' ? 'active' : ''} onClick={() => setTab('medicines')}>
+            Medicines <span>{library?.medicine_defaults.length ?? 0}</span>
+          </button>
           <button className={tab === 'pad' ? 'active' : ''} onClick={() => setTab('pad')}>
             Visit pad sections
+          </button>
+          <button className={tab === 'settings' ? 'active' : ''} onClick={() => setTab('settings')}>
+            Prescription settings
           </button>
         </div>
 
@@ -133,6 +140,10 @@ export function DoctorLibrary() {
               )}
             </tbody>
           </table>
+        ) : tab === 'medicines' ? (
+          <MedicineLibrary rows={library.medicine_defaults} doctorId={doctorId} run={run} />
+        ) : tab === 'settings' ? (
+          <RxSettingsForm key={doctorId} settings={library.rx_settings} doctorId={doctorId} run={run} />
         ) : tab === 'pad' ? (
           <div>
             <p className="muted">Untick the parts of the visit pad this doctor does not use. A hidden part still appears on a visit where it already has something written.</p>

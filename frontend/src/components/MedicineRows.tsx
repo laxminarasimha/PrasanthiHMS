@@ -17,10 +17,13 @@ type Props = {
   /** How this doctor usually gives each medicine; fills the rest of a row when its name is chosen. */
   defaults?: Medicine[]
   invalid?: (index: number) => boolean
+  /** The doctor's own lists for the Frequency and When suggestions. */
+  frequencies?: string[]
+  timings?: string[]
 }
 
 /** The medicine grid used on the visit pad and in Rx groups. */
-export function MedicineRows({ rows, onChange, names = [], defaults = [], invalid }: Props) {
+export function MedicineRows({ rows, onChange, names = [], defaults = [], invalid, frequencies = FREQUENCIES, timings = TIMINGS }: Props) {
   const set = (index: number, key: keyof Medicine, value: string) =>
     onChange(
       rows.map((row, i) => {
@@ -40,12 +43,12 @@ export function MedicineRows({ rows, onChange, names = [], defaults = [], invali
         ))}
       </datalist>
       <datalist id="frequencies">
-        {FREQUENCIES.map((f) => (
+        {frequencies.map((f) => (
           <option key={f} value={f} />
         ))}
       </datalist>
       <datalist id="timings">
-        {TIMINGS.map((t) => (
+        {timings.map((t) => (
           <option key={t} value={t} />
         ))}
       </datalist>
