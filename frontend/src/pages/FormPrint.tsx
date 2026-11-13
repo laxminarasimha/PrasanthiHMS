@@ -42,6 +42,12 @@ export function FormPrint() {
               <br />
             </>
           )}
+          {record.appointment?.doctor && (
+            <>
+              Doctor: {record.appointment.doctor.name}
+              <br />
+            </>
+          )}
           Date: {longDate(record.created_at)}
         </div>
       </div>

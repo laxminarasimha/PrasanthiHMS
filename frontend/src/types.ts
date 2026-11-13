@@ -473,6 +473,8 @@ export type FormRecord = {
   author?: { id: number; name: string } | null
   patient?: Pick<Patient, 'id' | 'uhid' | 'name' | 'title' | 'gender' | 'age_label'>
   admission?: { id: number; ipd_no: string; doctor?: { id: number; name: string } | null } | null
+  /** Set when the form was filled in during an OPD visit. */
+  appointment?: { id: number; scheduled_at: string; doctor?: { id: number; name: string } | null } | null
 }
 
 export type NoteKind = 'clinical' | 'nursing' | 'ot'

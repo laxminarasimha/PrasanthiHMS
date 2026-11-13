@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /** One filled-in form for a patient, usually during an IPD stay. */
-#[Fillable(['form_template_id', 'patient_id', 'admission_id', 'name', 'fields', 'values', 'created_by', 'updated_by'])]
+#[Fillable(['form_template_id', 'patient_id', 'admission_id', 'appointment_id', 'name', 'fields', 'values', 'created_by', 'updated_by'])]
 class FormRecord extends Model
 {
     /**
@@ -26,6 +26,11 @@ class FormRecord extends Model
     public function admission(): BelongsTo
     {
         return $this->belongsTo(Admission::class);
+    }
+
+    public function appointment(): BelongsTo
+    {
+        return $this->belongsTo(Appointment::class);
     }
 
     public function author(): BelongsTo
