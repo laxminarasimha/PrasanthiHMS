@@ -174,6 +174,10 @@ function BillingPrefs() {
       <p className="muted small">The letters placed before the running number of each new IPD case, for example {form.ipd_prefix || 'IP'}00012. Cases already made keep their numbers.</p>
       <input className="narrow" maxLength={8} value={form.ipd_prefix ?? 'IP'} onChange={(e) => setForm({ ...form, ipd_prefix: e.target.value })} aria-label="IPD case number prefix" />
 
+      <h3>IPD bill numbers</h3>
+      <p className="muted small">The letters placed before the running number of each numbered IPD bill, for example {form.ipd_bill_prefix || 'IPB'}00012.</p>
+      <input className="narrow" maxLength={8} value={form.ipd_bill_prefix ?? 'IPB'} onChange={(e) => setForm({ ...form, ipd_bill_prefix: e.target.value })} aria-label="IPD bill number prefix" />
+
       {error && <p className="form-error">{error}</p>}
       <div className="panel-foot">
         <button className="btn primary">Save preferences</button>

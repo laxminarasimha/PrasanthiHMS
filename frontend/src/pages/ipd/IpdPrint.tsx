@@ -7,7 +7,7 @@ import type { Admission } from '../../types'
 
 /** Inpatient bill with the discharge summary; opens the print dialog once loaded. */
 export function IpdPrint() {
-  const { id } = useParams()
+  const { id, billId } = useParams()
   const [a, setA] = useState<Admission | null>(null)
 
   useEffect(() => {
@@ -19,10 +19,15 @@ export function IpdPrint() {
 
   if (!a) return <p className="loading">Loading bill…</p>
 
+  // One numbered bill lists only its own charges; the whole-case bill lists everything.
+  const bill = billId ? a.bills?.find((b) => String(b.id) === billId) : undefined
+  if (billId && !bill) return <p className="form-error">This bill was cancelled or does not belong to this case.</p>
+  const charges = bill ? a.charges?.filter((c) => c.admission_bill_id === bill.id) : a.charges
+
   return (
     <div className="receipt prescription">
       <ClinicHeader>
-        <h2>Inpatient {a.status === 'admitted' ? 'interim bill' : 'final bill'}</h2>
+        <h2>{bill ? 'Inpatient bill' : `Inpatient ${a.status === 'admitted' ? 'interim bill' : 'final bill'}`}</h2>
       </ClinicHeader>
 
       <div className="receipt-meta">
@@ -48,6 +53,14 @@ export function IpdPrint() {
           )}
         </div>
         <div className="right">
+          {bill && (
+            <>
+              Bill no: <strong>{bill.bill_no}</strong>
+              <br />
+              Bill date: {longDate(bill.billed_on)}
+              <br />
+            </>
+          )}
           IPD no: <strong>{a.ipd_no}</strong>
           <br />
           Admitted: {longDate(a.admitted_at)} {clock(a.admitted_at)}
@@ -73,7 +86,7 @@ export function IpdPrint() {
           </tr>
         </thead>
         <tbody>
-          {a.charges?.map((c) => (
+          {charges?.map((c) => (
             <tr key={c.id}>
               <td>{longDate(c.charged_on)}</td>
               <td>{c.description}</td>
@@ -87,6 +100,20 @@ export function IpdPrint() {
           ))}
         </tbody>
       </table>
+
+      {bill && (
+        <>
+          <dl className="totals">
+            <dt className="strong">This bill</dt>
+            <dd className="strong">{rupees(bill.total)}</dd>
+          </dl>
+          {bill.notes && <p className="receipt-payments">{bill.notes}</p>}
+          <p className="receipt-payments">
+            <strong>Whole stay so far</strong>
+            {(a.bills?.length ?? 0) > 1 && `: bills ${a.bills!.map((b) => `${b.bill_no} ${rupees(b.total)}`).join(', ')}`}
+          </p>
+        </>
+      )}
 
       <dl className="totals">
         <dt>Total charges</dt>

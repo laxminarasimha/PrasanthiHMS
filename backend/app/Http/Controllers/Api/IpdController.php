@@ -226,6 +226,7 @@ class IpdController extends Controller
     {
         abort_unless($charge->admission_id === $admission->id, 404);
         $this->refuseIfBillApproved($admission);
+        $this->refuseIfBilled($charge);
         if ($charge->source_type) {
             throw ValidationException::withMessages(['charge' => 'This line stands for another bill. Remove it here and change that bill instead.']);
         }
@@ -256,6 +257,7 @@ class IpdController extends Controller
     {
         abort_unless($charge->admission_id === $admission->id, 404);
         $this->refuseIfBillApproved($admission);
+        $this->refuseIfBilled($charge);
 
         if ($admission->total - $charge->amount < $admission->discount) {
             throw ValidationException::withMessages(['charge' => 'Reduce the discount first; it would be more than the remaining charges.']);
@@ -490,6 +492,55 @@ class IpdController extends Controller
         }
     }
 
+    /** A charge printed on a numbered bill stays as printed until that bill is cancelled. */
+    private function refuseIfBilled(AdmissionCharge $charge): void
+    {
+        if ($charge->admission_bill_id && ($bill = $charge->bill)) {
+            throw ValidationException::withMessages(['charge' => "This charge is on bill {$bill->bill_no}. Cancel that bill to change it."]);
+        }
+    }
+
+    /**
+     * Makes a numbered bill from the charges not yet on one, e.g. an interim bill every few days.
+     * With up_to, only charges dated on or before that day are taken.
+     */
+    public function makeBill(Request $request, Admission $admission): JsonResponse
+    {
+        $data = $request->validate([
+            'up_to' => ['nullable', 'date', 'before_or_equal:today'],
+            'notes' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        DB::transaction(function () use ($data, $admission, $request) {
+            $charges = AdmissionCharge::where('admission_id', $admission->id)->whereNull('admission_bill_id')
+                ->when($data['up_to'] ?? null, fn ($q, $day) => $q->whereDate('charged_on', '<=', $day))
+                ->lockForUpdate()->pluck('id');
+            if ($charges->isEmpty()) {
+                throw ValidationException::withMessages(['up_to' => isset($data['up_to']) ? 'There are no unbilled charges up to that date.' : 'Every charge is already on a bill.']);
+            }
+
+            $bill = $admission->bills()->create(['billed_on' => today(), 'notes' => $data['notes'] ?? null, 'created_by' => $request->user()->id]);
+            AdmissionCharge::whereIn('id', $charges)->update(['admission_bill_id' => $bill->id]);
+        });
+
+        return response()->json($this->present($admission), 201);
+    }
+
+    /** Cancels a numbered bill: its charges become unbilled again and its number is not reused. */
+    public function cancelBill(Request $request, Admission $admission, \App\Models\AdmissionBill $bill): JsonResponse
+    {
+        abort_unless($bill->admission_id === $admission->id, 404);
+        $this->refuseIfBillApproved($admission);
+
+        DB::transaction(function () use ($bill, $request) {
+            AdmissionCharge::withTrashed()->where('admission_bill_id', $bill->id)->update(['admission_bill_id' => null]);
+            $bill->update(['deleted_by' => $request->user()->id]);
+            $bill->delete();
+        });
+
+        return response()->json($this->present($admission));
+    }
+
     /** Approves the bill (locking it) or withdraws the approval. */
     public function approveBill(Request $request, Admission $admission): JsonResponse
     {
@@ -545,8 +596,9 @@ class IpdController extends Controller
     {
         $admission = $admission->fresh()->load([
             'patient:id,uhid,title,name,gender,date_of_birth,mobile,address,city,blood_group', 'doctor:id,name,department,signature_text',
-            'bed:id,ward,bed_no,daily_charge', 'charges.creator:id,name', 'payments.receiver:id,name', 'billApprover:id,name', 'payer:id,name,details',
+            'bed:id,ward,bed_no,daily_charge', 'charges.creator:id,name', 'payments.receiver:id,name', 'billApprover:id,name', 'payer:id,name,details', 'bills.creator:id,name', 'bills.charges:id,admission_bill_id,amount',
         ]);
+        $admission->bills->each->makeHidden('charges');
         // Lines taken off the bill, kept so there is a record of what was removed and by whom.
         $admission->setRelation('deleted_charges', AdmissionCharge::onlyTrashed()->where('admission_id', $admission->id)->with('deleter:id,name')->orderByDesc('deleted_at')->get());
 
