@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BillController;
 use App\Http\Controllers\Api\ConsultationController;
 use App\Http\Controllers\Api\DoctorLibraryController;
+use App\Http\Controllers\Api\FormController;
 use App\Http\Controllers\Api\FrontDeskController;
 use App\Http\Controllers\Api\HospitalReportController;
 use App\Http\Controllers\Api\IpdController;
@@ -257,6 +258,22 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::delete('/referral-doctors/{doctor}', 'destroyReferralDoctor');
             Route::get('/patient-merges', 'merges');
             Route::post('/patient-merges', 'merge');
+        });
+    });
+
+    Route::controller(FormController::class)->group(function () {
+        Route::get('/form-templates', 'templates');
+        Route::get('/ipd/admissions/{admission}/forms', 'forAdmission');
+        Route::get('/forms/{record}', 'show');
+
+        Route::middleware('ability:canManageSetup')->group(function () {
+            Route::post('/form-templates', 'storeTemplate');
+            Route::put('/form-templates/{template}', 'updateTemplate');
+        });
+        Route::middleware('ability:canWorkIpd')->group(function () {
+            Route::post('/ipd/admissions/{admission}/forms', 'store');
+            Route::put('/forms/{record}', 'update');
+            Route::delete('/forms/{record}', 'destroy');
         });
     });
 

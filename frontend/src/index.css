@@ -405,6 +405,13 @@ tr.lab-heading td { font-weight: 700; background: var(--bg); text-transform: upp
 .translation-row { grid-template-columns: 1fr 1fr auto; }
 .template-row { grid-template-columns: 2fr 90px 110px auto; }
 .report-text { white-space: pre-wrap; }
+.form-line { display: grid; grid-template-columns: 2fr 1.1fr 1.6fr auto; gap: 6px; align-items: center; margin-top: 6px; }
+@media (max-width: 700px) { .form-line { grid-template-columns: 1fr 1fr; } }
+.filled-form h4 { margin: 14px 0 4px; color: var(--brand-dark); }
+.form-heading { margin: 14px 0 4px; border-bottom: 1px solid var(--border); }
+.form-answer { margin: 4px 0; white-space: pre-wrap; }
+.sign-line { display: block; width: 180px; border-bottom: 1px solid var(--text); margin-bottom: 4px; height: 36px; }
+h3.flush { margin-top: 0; }
 .trend { width: 60px; height: 20px; color: var(--brand); display: block; }
 .deposit-box { border: 1px dashed var(--border); border-radius: 8px; padding: 8px 12px; margin-top: 12px; }
 .deposit-box .row { flex-wrap: wrap; }

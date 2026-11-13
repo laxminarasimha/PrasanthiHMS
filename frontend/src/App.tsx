@@ -11,6 +11,7 @@ import { Calendar } from './pages/Calendar'
 import { FrontDesk } from './pages/FrontDesk'
 import { Admin } from './pages/Admin'
 import { AllBills } from './pages/AllBills'
+import { FormPrint } from './pages/FormPrint'
 import { Ipd } from './pages/ipd/Ipd'
 import { IpdCase } from './pages/ipd/IpdCase'
 import { IpdPrint } from './pages/ipd/IpdPrint'
@@ -81,6 +82,7 @@ export default function App() {
           <Route path="/bills/:id/print" element={<PrintOnly><BillPrint /></PrintOnly>} />
           <Route path="/visits/:id/print" element={<PrintOnly><PrescriptionPrint /></PrintOnly>} />
           <Route path="/lab/orders/:id/print" element={<PrintOnly><LabReportPrint /></PrintOnly>} />
+          <Route path="/forms/:id/print" element={<PrintOnly><FormPrint /></PrintOnly>} />
           <Route path="/ipd/:id/print" element={<PrintOnly><IpdPrint /></PrintOnly>} />
           <Route path="/ipd/:id/receipt/:paymentId" element={<PrintOnly><IpdReceiptPrint /></PrintOnly>} />
           <Route path="/ipd/:id/summary/print" element={<PrintOnly><IpdSummaryPrint /></PrintOnly>} />
