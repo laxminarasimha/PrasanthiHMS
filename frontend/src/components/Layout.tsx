@@ -22,7 +22,6 @@ export function Layout() {
         </div>
         {/* On phones the menu covers the screen, so close it once a page is chosen. */}
         <nav onClick={() => setOpen(false)}>
-          <NavLink to="/home">Home</NavLink>
           {user.can_front_desk && <NavLink to="/front-desk">Front Desk</NavLink>}
           {user.can_consult && <NavLink to="/doctor">Doctor</NavLink>}
           {(user.can_run_lab || user.can_front_desk) && <NavLink to="/lab">Lab</NavLink>}
