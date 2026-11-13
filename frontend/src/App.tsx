@@ -27,6 +27,7 @@ import { LabPackages } from './pages/LabPackages'
 import { LabSettings } from './pages/LabSettings'
 import { LabTests } from './pages/LabTests'
 import { Login } from './pages/Login'
+import { CaseHistory } from './pages/CaseHistory'
 import { PatientDashboard } from './pages/PatientDashboard'
 import { Patients } from './pages/Patients'
 import { PharmacyBilling } from './pages/pharmacy/Billing'
@@ -121,6 +122,7 @@ export default function App() {
             <Route path="/ipd/:id" element={<Only when="can_ipd"><IpdCase /></Only>} />
             <Route path="/patients" element={<Patients />} />
             <Route path="/patients/:id" element={<PatientDashboard />} />
+            <Route path="/patients/:id/history" element={<CaseHistory />} />
             <Route path="/admin" element={<Only when="can_manage_setup"><Admin /></Only>} />
             <Route path="/services" element={<Only when="can_manage_setup"><Services /></Only>} />
             <Route path="/staff" element={<Only when="can_manage_staff"><Staff /></Only>} />

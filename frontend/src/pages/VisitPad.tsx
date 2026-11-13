@@ -561,6 +561,9 @@ export function VisitPad() {
         ))}
 
         <h2 className="gap-top">Past visits</h2>
+        <a className="link" href={`/patients/${visit.patient.id}/history`} target="_blank" rel="noreferrer">
+          Full case history and test trends ↗
+        </a>
         {pastVisits.length === 0 && <p className="muted">No earlier visits recorded here.</p>}
         {pastVisits.map((h) => (
           <details key={h.id} className="past">

@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AppointmentController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BillController;
+use App\Http\Controllers\Api\CaseHistoryController;
 use App\Http\Controllers\Api\ConsultationController;
 use App\Http\Controllers\Api\DoctorLibraryController;
 use App\Http\Controllers\Api\FormController;
@@ -93,6 +94,9 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::get('/doctor/queue', [ConsultationController::class, 'queue']);
+    Route::post('/doctor/visits', [CaseHistoryController::class, 'startVisit'])->middleware('ability:canConsult');
+    Route::get('/patients/{patient}/case-history', [CaseHistoryController::class, 'show']);
+    Route::get('/patients/{patient}/trends', [CaseHistoryController::class, 'trends']);
 
     Route::prefix('doctor')->controller(DoctorLibraryController::class)->group(function () {
         Route::get('/consults', 'consults');
