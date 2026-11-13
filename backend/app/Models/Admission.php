@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
-    'branch_id', 'patient_id', 'doctor_id', 'bed_id', 'admitted_at', 'discharged_at', 'status', 'reason',
+    'branch_id', 'patient_id', 'doctor_id', 'payer_id', 'bed_id', 'admitted_at', 'discharged_at', 'status', 'reason',
     'attendant_name', 'attendant_phone', 'discharge_summary', 'discount', 'created_by', 'bill_approved_at', 'bill_approved_by',
 ])]
 class Admission extends Model
@@ -31,7 +31,9 @@ class Admission extends Model
     protected static function booted(): void
     {
         static::created(function (Admission $admission) {
-            $admission->ipd_no = 'IP'.str_pad((string) $admission->id, 5, '0', STR_PAD_LEFT);
+            // The hospital can choose the letters before the number; cases already made keep theirs.
+            $prefix = Setting::group('billing', ['ipd_prefix' => 'IP'])['ipd_prefix'] ?: 'IP';
+            $admission->ipd_no = $prefix.str_pad((string) $admission->id, 5, '0', STR_PAD_LEFT);
             $admission->saveQuietly();
         });
     }
@@ -69,6 +71,12 @@ class Admission extends Model
     public function summary(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
         return $this->hasOne(DischargeSummary::class);
+    }
+
+    /** Who settles the bill when it is not the patient. */
+    public function payer(): BelongsTo
+    {
+        return $this->belongsTo(AdminEntry::class, 'payer_id');
     }
 
     public function billApprover(): BelongsTo

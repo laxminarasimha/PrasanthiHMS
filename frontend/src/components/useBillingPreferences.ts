@@ -3,7 +3,7 @@ import { api } from '../api'
 import type { BillingPreferences } from '../types'
 
 const CACHE_KEY = 'hms_billing'
-const DEFAULTS: BillingPreferences = { default_payment_mode: 'cash', pay_timing: 'before' }
+const DEFAULTS: BillingPreferences = { default_payment_mode: 'cash', pay_timing: 'before', ipd_prefix: 'IP' }
 
 /** How the front desk bills: the usual payment mode, and whether a visit is paid for at booking. The last copy seen is used at once. */
 export function useBillingPreferences(): BillingPreferences {

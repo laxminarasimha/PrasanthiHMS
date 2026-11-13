@@ -84,4 +84,47 @@ class AdminExtrasTest extends TestCase
         Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
         $this->postJson('/api/patient-merges', ['from' => 'a', 'to' => 'b'])->assertForbidden();
     }
+
+    public function test_departments_vendors_and_payers_are_kept_as_lists(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $this->postJson('/api/admin-lists/planets', ['name' => 'Mars'])->assertNotFound();
+
+        $dept = $this->postJson('/api/admin-lists/department', ['name' => 'General Medicine', 'details' => ['head' => 'Dr Sample', 'phone' => 'not a department box']])
+            ->assertCreated()->assertJsonPath('details.head', 'Dr Sample')->assertJsonMissingPath('details.phone')->json('id');
+        $this->postJson('/api/admin-lists/department', ['name' => 'General Medicine'])->assertStatus(422);
+        // The same name can be used in another list.
+        $this->postJson('/api/admin-lists/vendor', ['name' => 'General Medicine', 'details' => ['phone' => '9000000000']])->assertCreated();
+        $payer = $this->postJson('/api/admin-lists/payer', ['name' => 'Sample Insurance', 'details' => ['billing_mode' => 'credit']])->assertCreated()->json('id');
+
+        $this->putJson("/api/admin-lists/department/{$dept}", ['name' => 'General Medicine', 'is_active' => false])->assertOk();
+        $this->putJson("/api/admin-lists/vendor/{$dept}", ['name' => 'X'])->assertNotFound();
+        $this->getJson('/api/admin-lists/department')->assertOk()->assertJsonCount(0);
+        $this->getJson('/api/admin-lists/department?all=1')->assertJsonCount(1);
+
+        // A payer can be named on an IPD case; a department cannot stand in for one.
+        $doctor = User::factory()->create(['role' => 'doctor']);
+        $admit = fn ($payerId) => $this->postJson('/api/ipd/admissions', ['patient_id' => Patient::factory()->create()->id, 'doctor_id' => $doctor->id, 'payer_id' => $payerId, 'admitted_at' => now()->format('Y-m-d H:i')]);
+        $admit($dept)->assertStatus(422)->assertJsonValidationErrors('payer_id');
+        $admit($payer)->assertCreated()->assertJsonPath('payer.name', 'Sample Insurance');
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->getJson('/api/admin-lists/payer')->assertOk()->assertJsonCount(1);
+        $this->postJson('/api/admin-lists/payer', ['name' => 'Another'])->assertForbidden();
+    }
+
+    public function test_new_ipd_cases_take_the_chosen_prefix(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $doctor = User::factory()->create(['role' => 'doctor']);
+        $admit = fn () => $this->postJson('/api/ipd/admissions', ['patient_id' => Patient::factory()->create()->id, 'doctor_id' => $doctor->id, 'admitted_at' => now()->format('Y-m-d H:i')])->assertCreated()->json('ipd_no');
+
+        $this->assertStringStartsWith('IP0', $admit());
+        $prefs = ['default_payment_mode' => 'cash', 'pay_timing' => 'before'];
+        $this->putJson('/api/billing-preferences', $prefs + ['ipd_prefix' => 'not valid!'])->assertStatus(422);
+        $this->putJson('/api/billing-preferences', $prefs + ['ipd_prefix' => 'PH/26-'])->assertOk()->assertJsonPath('ipd_prefix', 'PH/26-');
+        $this->assertStringStartsWith('PH/26-0', $admit());
+        // Saving the other preferences without the prefix keeps it.
+        $this->putJson('/api/billing-preferences', $prefs)->assertOk()->assertJsonPath('ipd_prefix', 'PH/26-');
+    }
 }
