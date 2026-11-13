@@ -103,7 +103,7 @@ class AdminController extends Controller
 
     // ---- Billing preferences ----
 
-    public const BILLING_DEFAULTS = ['default_payment_mode' => 'cash', 'pay_timing' => 'before', 'ipd_prefix' => 'IP'];
+    public const BILLING_DEFAULTS = ['default_payment_mode' => 'cash', 'pay_timing' => 'before', 'ipd_prefix' => 'IP', 'ipd_bill_prefix' => 'IPB'];
 
     public function billingPreferences(): JsonResponse
     {
@@ -118,7 +118,8 @@ class AdminController extends Controller
             'pay_timing' => ['required', Rule::in(['before', 'after'])],
             // Put before the running number of each new IPD case, e.g. IP00012.
             'ipd_prefix' => ['sometimes', 'string', 'regex:/^[A-Za-z0-9\/-]{1,8}$/'],
-        ], ['ipd_prefix.regex' => 'Use up to 8 letters, numbers, dashes or slashes.']);
+            'ipd_bill_prefix' => ['sometimes', 'string', 'regex:/^[A-Za-z0-9\/-]{1,8}$/'],
+        ], ['ipd_prefix.regex' => 'Use up to 8 letters, numbers, dashes or slashes.', 'ipd_bill_prefix.regex' => 'Use up to 8 letters, numbers, dashes or slashes.']);
         Setting::updateOrCreate(['key' => 'billing'], ['value' => array_merge(Setting::group('billing', self::BILLING_DEFAULTS), $data)]);
 
         return response()->json(Setting::group('billing', self::BILLING_DEFAULTS));

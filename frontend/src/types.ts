@@ -453,7 +453,7 @@ export type ReferralDoctor = { id: number; direction: 'by' | 'to'; name: string;
 
 export type PatientMerge = { id: number; from_uhid: string; from_name: string; to_uhid: string; to_name: string; moved: Record<string, number> | null; created_at: string; staff?: { id: number; name: string } | null }
 
-export type BillingPreferences = { default_payment_mode: string; pay_timing: 'before' | 'after'; ipd_prefix: string }
+export type BillingPreferences = { default_payment_mode: string; pay_timing: 'before' | 'after'; ipd_prefix: string; ipd_bill_prefix?: string }
 
 /** A row of a hospital-wide list: a department, a vendor, or a payer. */
 export type AdminEntry = { id: number; kind: 'department' | 'vendor' | 'payer'; name: string; details: Record<string, string> | null; is_active: boolean }
@@ -524,6 +524,8 @@ export type AdmissionCharge = {
   remarks: string | null
   /** Set when the line stands for another bill moved onto this one. */
   source_type?: string | null
+  /** The numbered bill this charge is printed on, if any. */
+  admission_bill_id?: number | null
   creator?: { id: number; name: string } | null
   deleted_at?: string | null
   deleter?: { id: number; name: string } | null
@@ -552,6 +554,8 @@ export type Admission = {
   doctor: { id: number; name: string; department?: string | null; signature_text?: string | null }
   bed: { id: number; ward: string; bed_no: string; daily_charge?: number } | null
   charges?: AdmissionCharge[]
+  /** Numbered bills made from the charges, oldest first. */
+  bills?: { id: number; bill_no: string; billed_on: string; notes: string | null; total: number; creator?: { id: number; name: string } | null }[]
   /** Lines taken off the bill, kept for the record. */
   deleted_charges?: AdmissionCharge[]
   aadhaar_no?: string | null

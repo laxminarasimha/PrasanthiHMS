@@ -87,6 +87,7 @@ export default function App() {
           <Route path="/lab/orders/:id/print" element={<PrintOnly><LabReportPrint /></PrintOnly>} />
           <Route path="/forms/:id/print" element={<PrintOnly><FormPrint /></PrintOnly>} />
           <Route path="/ipd/:id/print" element={<PrintOnly><IpdPrint /></PrintOnly>} />
+          <Route path="/ipd/:id/bills/:billId/print" element={<PrintOnly><IpdPrint /></PrintOnly>} />
           <Route path="/ipd/:id/receipt/:paymentId" element={<PrintOnly><IpdReceiptPrint /></PrintOnly>} />
           <Route path="/ipd/:id/summary/print" element={<PrintOnly><IpdSummaryPrint /></PrintOnly>} />
           <Route path="/pharmacy/bills/:id/print" element={<PrintOnly><PharmacySalePrint /></PrintOnly>} />

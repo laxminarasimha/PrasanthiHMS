@@ -221,6 +221,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/admissions/{admission}/payments', 'addPayment');
             Route::post('/admissions/{admission}/discharge', 'discharge');
             Route::post('/admissions/{admission}/transfer', 'transfer');
+            Route::post('/admissions/{admission}/bills', 'makeBill');
+            Route::delete('/admissions/{admission}/bills/{bill}', 'cancelBill');
         });
     });
 

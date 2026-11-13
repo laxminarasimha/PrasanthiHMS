@@ -38,6 +38,8 @@ export function IpdCase() {
   /** The charge being corrected, when the form is editing one instead of adding. */
   const [editingCharge, setEditingCharge] = useState<number | null>(null)
   const [showDeleted, setShowDeleted] = useState(false)
+  const [billUpTo, setBillUpTo] = useState('')
+  const [billNote, setBillNote] = useState('')
   const [ids, setIds] = useState({ aadhaar_no: '', gst_no: '' })
   const [pay, setPay] = useState({ type: 'advance', amount: '', mode: 'cash', reference: '', remarks: '', paid_on: today() })
   const [discount, setDiscount] = useState('')
@@ -69,6 +71,9 @@ export function IpdCase() {
   const url = `/ipd/admissions/${admission.id}`
   const open = admission.status === 'admitted'
   const billLocked = Boolean(admission.bill_approved_at)
+  const billNo = Object.fromEntries((admission.bills ?? []).map((b) => [b.id, b.bill_no]))
+  const unbilled = (admission.charges ?? []).filter((c) => !c.admission_bill_id)
+  const unbilledUpTo = unbilled.filter((c) => !billUpTo || c.charged_on <= billUpTo)
   const canEdit = Boolean(user?.can_ipd)
 
   // Sends one change, then shows the updated case or the reason it was refused.
@@ -202,6 +207,7 @@ export function IpdCase() {
                   <td>
                     {c.description}
                     {c.remarks && <small className="muted block">{c.remarks}</small>}
+                    {c.admission_bill_id && <small className="settled block">On bill {billNo[c.admission_bill_id] ?? ''}</small>}
                   </td>
                   <td>{c.category ?? '—'}</td>
                   <td className="num">{c.quantity}</td>
@@ -210,7 +216,7 @@ export function IpdCase() {
                   <td className="num">{rupees(c.amount)}</td>
                   <td>{c.creator?.name ?? '—'}</td>
                   <td className="num actions">
-                    {!billLocked && !c.source_type && (
+                    {!billLocked && !c.source_type && !c.admission_bill_id && (
                       <button
                         className="link"
                         onClick={() => {
@@ -221,7 +227,7 @@ export function IpdCase() {
                         Edit
                       </button>
                     )}
-                    {!billLocked && (
+                    {!billLocked && !c.admission_bill_id && (
                       <button className="link danger" onClick={() => window.confirm(`Remove "${c.description}" from the bill?`) && run(api.delete(`${url}/charges/${c.id}`))}>
                         Remove
                       </button>
@@ -317,6 +323,78 @@ export function IpdCase() {
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {(admission.charges?.length ?? 0) > 0 && (
+          <div className="numbered-bills gap-top">
+            <h3>Numbered bills</h3>
+            <p className="muted small">Group the charges so far into a bill with its own number, for example an interim bill every few days. Charges on a bill cannot be changed unless the bill is cancelled.</p>
+            {(admission.bills?.length ?? 0) > 0 && (
+              <div className="table-wrap">
+                <table className="compact">
+                  <thead>
+                    <tr>
+                      <th>Bill no.</th>
+                      <th>Date</th>
+                      <th>Note</th>
+                      <th>Made by</th>
+                      <th className="num">Lines</th>
+                      <th className="num">Amount</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {admission.bills!.map((b) => (
+                      <tr key={b.id} className="static">
+                        <td className="mono">{b.bill_no}</td>
+                        <td>{longDate(b.billed_on)}</td>
+                        <td>{b.notes ?? '—'}</td>
+                        <td>{b.creator?.name ?? '—'}</td>
+                        <td className="num">{admission.charges?.filter((c) => c.admission_bill_id === b.id).length}</td>
+                        <td className="num">{rupees(b.total)}</td>
+                        <td className="num actions">
+                          <a className="link" href={`/ipd/${admission.id}/bills/${b.id}/print`} target="_blank" rel="noreferrer">
+                            Print
+                          </a>
+                          {canEdit && !billLocked && (
+                            <button className="link danger" onClick={() => window.confirm(`Cancel bill ${b.bill_no}? Its charges stay on the case and can be billed again. The number will not be reused.`) && run(api.delete(`${url}/bills/${b.id}`), `Bill ${b.bill_no} cancelled.`)}>
+                              Cancel
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {canEdit && unbilled.length > 0 && (
+              <div className="toolbar gap-top">
+                <span>
+                  Not yet on a bill: <strong>{unbilled.length}</strong> charge{unbilled.length === 1 ? '' : 's'}, <strong>{rupees(unbilled.reduce((sum, c) => sum + c.amount, 0))}</strong>
+                </span>
+                <label className="inline-field">
+                  Charges up to
+                  <input type="date" className="date" max={today()} value={billUpTo} onChange={(e) => setBillUpTo(e.target.value)} aria-label="Bill charges up to this date" />
+                </label>
+                <input className="narrow" placeholder="Note (optional)" maxLength={255} value={billNote} onChange={(e) => setBillNote(e.target.value)} aria-label="Note for the bill" />
+                <button
+                  className="btn"
+                  disabled={unbilledUpTo.length === 0}
+                  onClick={async () => {
+                    const ok = await run(api.post(`${url}/bills`, { up_to: billUpTo || null, notes: billNote || null }), 'Bill made. Print it from the list.')
+                    if (ok) {
+                      setBillUpTo('')
+                      setBillNote('')
+                    }
+                  }}
+                >
+                  Make bill for {rupees(unbilledUpTo.reduce((sum, c) => sum + c.amount, 0))}
+                </button>
+              </div>
+            )}
+            {unbilled.length === 0 && <p className="settled small">Every charge is on a numbered bill.</p>}
           </div>
         )}
 

@@ -63,6 +63,12 @@ class Admission extends Model
         return $this->hasMany(AdmissionPayment::class)->orderBy('id');
     }
 
+    /** Numbered bills made from this case's charges. */
+    public function bills(): HasMany
+    {
+        return $this->hasMany(AdmissionBill::class)->orderBy('id');
+    }
+
     public function notes(): HasMany
     {
         return $this->hasMany(AdmissionNote::class)->orderByDesc('noted_at')->orderByDesc('id');

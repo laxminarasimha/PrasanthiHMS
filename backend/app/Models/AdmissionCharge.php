@@ -18,6 +18,11 @@ class AdmissionCharge extends Model
         return ['charged_on' => 'date:Y-m-d', 'quantity' => 'float', 'unit_price' => 'float', 'discount' => 'float', 'amount' => 'float'];
     }
 
+    public function bill(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(AdmissionBill::class, 'admission_bill_id');
+    }
+
     public function creator(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
