@@ -9,6 +9,7 @@ import { DoctorLibrary } from './pages/DoctorLibrary'
 import { DoctorQueue } from './pages/DoctorQueue'
 import { Calendar } from './pages/Calendar'
 import { FrontDesk } from './pages/FrontDesk'
+import { Admin } from './pages/Admin'
 import { Ipd } from './pages/ipd/Ipd'
 import { IpdCase } from './pages/ipd/IpdCase'
 import { IpdPrint } from './pages/ipd/IpdPrint'
@@ -110,6 +111,7 @@ export default function App() {
             <Route path="/ipd/:id" element={<Only when="can_ipd"><IpdCase /></Only>} />
             <Route path="/patients" element={<Patients />} />
             <Route path="/patients/:id" element={<PatientDashboard />} />
+            <Route path="/admin" element={<Only when="can_manage_setup"><Admin /></Only>} />
             <Route path="/services" element={<Only when="can_manage_setup"><Services /></Only>} />
             <Route path="/staff" element={<Only when="can_manage_staff"><Staff /></Only>} />
             <Route path="/reports" element={<Only when="can_view_reports"><Reports /></Only>} />

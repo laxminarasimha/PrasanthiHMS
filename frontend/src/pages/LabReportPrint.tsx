@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api'
-import { useAuth } from '../auth'
+import { ClinicFooter, ClinicHeader } from '../components/ClinicHeader'
 import { useSignature } from '../components/useSignature'
 import { clock, longDate } from '../format'
 import type { LabOrder, LabSettings } from '../types'
@@ -15,7 +15,6 @@ const stamp = (at: string) => `${longDate(at)} ${clock(at)}`
 export function LabReportPrint() {
   const { id } = useParams()
   const [params] = useSearchParams()
-  const { user } = useAuth()
   const [order, setOrder] = useState<LabOrder | null>(null)
   const [settings, setSettings] = useState<LabSettings | null>(null)
 
@@ -81,11 +80,9 @@ export function LabReportPrint() {
           Space left for the letterhead ({settings.letterhead_top_mm} mm)
         </div>
       ) : (
-        <header>
-          <h1>{settings.lab_name || user?.branch?.name || 'Prasanthi Hospitals'}</h1>
-          <p>{settings.lab_address || user?.branch?.city}</p>
+        <ClinicHeader name={settings.lab_name} address={settings.lab_address}>
           <h2>Laboratory report</h2>
-        </header>
+        </ClinicHeader>
       )}
 
       {(tabular || !settings.each_test_on_new_page) && patientBlock}
@@ -216,6 +213,7 @@ export function LabReportPrint() {
           <small>{last.approver ? 'Approved by' : 'Reported by'}</small>
         </div>
       </div>
+      <ClinicFooter />
     </div>
   )
 }

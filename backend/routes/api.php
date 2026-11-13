@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AppointmentController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BillController;
@@ -222,6 +223,22 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/templates', 'storeTemplate');
             Route::put('/templates/{template}', 'updateTemplate');
             Route::delete('/templates/{template}', 'destroyTemplate');
+        });
+    });
+
+    Route::controller(AdminController::class)->group(function () {
+        Route::get('/clinic', 'clinic');
+        Route::get('/referral-doctors', 'referralDoctors');
+
+        Route::middleware('ability:canManageSetup')->group(function () {
+            Route::put('/clinic', 'saveClinic');
+            Route::post('/clinic/logo', 'saveLogo');
+            Route::delete('/clinic/logo', 'destroyLogo');
+            Route::post('/referral-doctors', 'storeReferralDoctor');
+            Route::put('/referral-doctors/{doctor}', 'updateReferralDoctor');
+            Route::delete('/referral-doctors/{doctor}', 'destroyReferralDoctor');
+            Route::get('/patient-merges', 'merges');
+            Route::post('/patient-merges', 'merge');
         });
     });
 

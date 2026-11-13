@@ -15,6 +15,8 @@ class PatientController extends Controller
     public function index(Request $request): JsonResponse
     {
         $patients = Patient::query()
+            // A duplicate that was merged into another record is no longer offered anywhere.
+            ->whereNull('merged_into_id')
             ->when($request->string('q')->trim()->value(), function ($query, $q) {
                 $query->where(fn ($w) => $w->where('name', 'like', "%{$q}%")
                     ->orWhere('mobile', 'like', "{$q}%")
