@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AppointmentController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BackupController;
 use App\Http\Controllers\Api\BillController;
 use App\Http\Controllers\Api\CaseHistoryController;
 use App\Http\Controllers\Api\ConsultationController;
@@ -46,6 +47,9 @@ Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/logout', [AuthController::class, 'logout']);
+    Route::get('/backups', [BackupController::class, 'index']);
+    Route::post('/backups', [BackupController::class, 'store'])->middleware('throttle:6,1');
+    Route::get('/backups/{name}/download', [BackupController::class, 'download']);
     Route::put('/me/tabs', [AuthController::class, 'saveTabs']);
     Route::post('/me/password', [AuthController::class, 'changePassword'])->middleware('throttle:10,1');
 

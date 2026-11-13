@@ -245,3 +245,27 @@ Artisan::command('hms:clear-test-data {--remote : Act on the remote database} {-
     return 0;
 })->purpose('Remove practice patients and their records before real use');
 
+/*
+ * Writes the whole database to one compressed SQL file. On the server the files live in
+ * storage/app/private/backups and the app makes one a day by itself. With --remote it copies the
+ * hosting database down to this computer instead (into db-export/backups, which git ignores),
+ * so there is a copy that does not sit on the same server as the hospital's data.
+ */
+Artisan::command('hms:backup {--remote : Back up the hosting database to this computer} {--keep=30 : How many backups to keep}', function () {
+    $remote = (bool) $this->option('remote');
+    $folder = $remote ? base_path('../db-export/backups') : App\Support\DatabaseBackup::folder();
+
+    try {
+        $made = App\Support\DatabaseBackup::run($remote ? 'remote' : null, $folder, max(1, (int) $this->option('keep')));
+    } catch (Throwable $e) {
+        $this->error('Backup failed: '.$e->getMessage());
+
+        return 1;
+    }
+
+    $this->info('Backup written: '.realpath($made['path']));
+    $this->line($made['tables'].' tables, '.$made['rows'].' rows, '.round($made['size'] / 1024).' KB.');
+
+    return 0;
+})->purpose('Back up the database to a compressed SQL file');
+

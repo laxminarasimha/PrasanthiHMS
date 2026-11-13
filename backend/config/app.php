@@ -67,6 +67,9 @@ return [
 
     'timezone' => env('APP_TIMEZONE', 'Asia/Kolkata'),
 
+    // Write a database backup once a day, after the first page served that day.
+    'auto_backup' => (bool) env('AUTO_BACKUP', true),
+
     /*
     |--------------------------------------------------------------------------
     | Application Locale Configuration
