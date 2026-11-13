@@ -26,6 +26,7 @@ class HospitalReportController extends Controller
         'bills' => 'Front desk: bill report',
         'bill-lines' => 'Front desk: bill report, detailed',
         'collections' => 'Front desk: collections',
+        'cashier' => 'Collections by person (day close)',
         'services' => 'Front desk: services',
         'appointments' => 'Front desk: all appointments',
         'upcoming' => 'Front desk: upcoming appointments',
@@ -130,6 +131,40 @@ class HospitalReportController extends Controller
         return [[
             self::col('date', 'Date'), self::col('bill_no', 'Bill'), self::col('patient', 'Patient'), self::col('counter', 'Counter'), self::col('type', 'Type'),
             self::col('amount', 'Amount', 'money'), self::col('mode', 'Mode'), self::col('reference', 'Reference'), self::col('person', 'Collected by'),
+        ], $rows];
+    }
+
+    /**
+     * What each person took in across every counter (front desk, deposits, pharmacy, IPD), split by
+     * how it was paid, with refunds taken off. Used to tally the cash drawer at the end of the day.
+     */
+    private function cashier(Carbon $from, Carbon $to): array
+    {
+        $entries = collect();
+        $add = function ($rows, string $counter) use (&$entries) {
+            foreach ($rows as $row) {
+                $entries->push(['person' => $row->receiver?->name ?? 'Not recorded', 'counter' => $counter, 'mode' => $row->mode, 'amount' => $row->type === 'refund' ? -1 * $row->amount : $row->amount]);
+            }
+        };
+        $add(Payment::whereBetween('created_at', [$from, $to])->whereNotIn('mode', ['ipd', 'deposit'])->with('receiver:id,name')->get(), 'Front desk and lab');
+        $add(\App\Models\PatientDeposit::whereBetween('created_at', [$from, $to])->whereIn('type', ['deposit', 'refund'])->with('receiver:id,name')->get(), 'Deposits');
+        $add(\App\Models\PharmacyPayment::whereBetween('created_at', [$from, $to])->with('receiver:id,name')->get(), 'Pharmacy');
+        $add(\App\Models\AdmissionPayment::whereBetween('created_at', [$from, $to])->with('receiver:id,name')->get(), 'IPD');
+
+        $rows = $entries->groupBy(fn ($e) => $e['person'].'|'.$e['counter'])->map(function (Collection $group) {
+            $by = fn (array $modes) => round($group->whereIn('mode', $modes)->sum('amount'), 2);
+
+            return [
+                'person' => $group->first()['person'], 'counter' => $group->first()['counter'], 'entries' => $group->count(),
+                'cash' => $by(['cash']), 'upi' => $by(['upi']), 'card' => $by(['card']), 'other' => $by(['cheque', 'bank_transfer', 'insurance']),
+                'total' => round($group->sum('amount'), 2),
+            ];
+        })->sortBy(fn ($r) => $r['person'].$r['counter']);
+
+        return [[
+            self::col('person', 'Collected by'), self::col('counter', 'Counter'), self::col('entries', 'Entries', 'number'),
+            self::col('cash', 'Cash', 'money'), self::col('upi', 'UPI', 'money'), self::col('card', 'Card', 'money'),
+            self::col('other', 'Cheque / bank / insurance', 'money'), self::col('total', 'Total', 'money'),
         ], $rows];
     }
 

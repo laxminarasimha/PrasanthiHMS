@@ -45,6 +45,8 @@ Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/logout', [AuthController::class, 'logout']);
+    Route::post('/me/password', [AuthController::class, 'changePassword'])->middleware('throttle:10,1');
+    Route::get('/dashboard', [AuthController::class, 'dashboard']);
 
     Route::apiResource('patients', PatientController::class)->except('destroy');
 
