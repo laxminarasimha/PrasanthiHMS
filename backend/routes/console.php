@@ -175,3 +175,73 @@ Artisan::command('hms:import-lists {file} {--remote : Load into the remote datab
 
     return 0;
 })->purpose('Load lab tests and medicines from a JSON file of master lists');
+
+/*
+ * Removes practice records so the hospital can start with real ones: every patient and everything
+ * recorded against a patient (visits, bills, lab orders, pharmacy bills, admissions, deposits, forms).
+ * Price lists, lab tests, medicines, beds, staff and settings are kept. Numbers start again from 1.
+ *
+ * Without --go it only counts. With --go it asks you to type CLEAR first. --stock also empties
+ * pharmacy stock and purchases. --remote acts on the hosting database.
+ */
+Artisan::command('hms:clear-test-data {--remote : Act on the remote database} {--stock : Also clear pharmacy stock, purchases and purchase orders} {--go : Really delete, after asking}', function () {
+    $connection = $this->option('remote') ? 'remote' : config('database.default');
+    $db = DB::connection($connection);
+    $schema = Schema::connection($connection);
+
+    $records = [
+        'patients', 'patient_merges', 'patient_deposits', 'attachments', 'doctor_blocks',
+        'appointments', 'consultations', 'prescription_items', 'form_records',
+        'bills', 'bill_items', 'payments',
+        'lab_orders', 'lab_order_items', 'lab_results', 'lab_order_files',
+        'pharmacy_sales', 'pharmacy_sale_items', 'pharmacy_sale_returns', 'pharmacy_payments', 'pharmacy_changes',
+        'admissions', 'admission_charges', 'admission_bills', 'admission_notes', 'admission_payments', 'discharge_summaries',
+    ];
+    $stock = ['stock_batches', 'stock_adjustments', 'stock_returns', 'stock_return_items', 'purchase_invoices', 'purchase_orders', 'purchase_order_items'];
+    $tables = array_values(array_filter($this->option('stock') ? array_merge($records, $stock) : $records, fn ($t) => $schema->hasTable($t)));
+
+    $counts = collect($tables)->mapWithKeys(fn ($t) => [$t => $db->table($t)->count()]);
+    $samples = $db->table('users')->where('email', 'like', '%@prasanthi.test')->count();
+    $this->info('Database: '.$db->getDatabaseName().' ('.$connection.')');
+    $this->table(['Records', 'Rows'], $counts->filter()->map(fn ($n, $t) => [str_replace('_', ' ', $t), $n])->values()->all());
+    $this->line('Total rows to remove: '.$counts->sum().'. Sample logins to remove: '.$samples.'.');
+    $this->line('Kept: staff, settings, services, lab tests, medicines, beds, IPD services, templates'.($this->option('stock') ? '.' : ', and pharmacy stock (add --stock to clear that too).'));
+
+    if (! $this->option('go')) {
+        $this->comment('Nothing was changed. Run again with --go to delete these.');
+
+        return 0;
+    }
+    if ($this->ask('This cannot be undone. Type CLEAR to delete these records from '.$db->getDatabaseName()) !== 'CLEAR') {
+        $this->error('Not confirmed. Nothing was changed.');
+
+        return 1;
+    }
+
+    // Emptying whole tables (rather than deleting rows) makes patient, bill and case numbers start again from 1.
+    $schema->disableForeignKeyConstraints();
+    try {
+        foreach ($tables as $table) {
+            $db->table($table)->truncate();
+        }
+    } finally {
+        $schema->enableForeignKeyConstraints();
+    }
+
+    // The practice logins go too, unless something that was kept still points at one.
+    $removed = 0;
+    foreach ($db->table('users')->where('email', 'like', '%@prasanthi.test')->pluck('id') as $id) {
+        try {
+            $db->table('personal_access_tokens')->where('tokenable_id', $id)->delete();
+            $removed += $db->table('users')->where('id', $id)->delete();
+        } catch (Throwable) {
+            // Left in place, switched off.
+            $db->table('users')->where('id', $id)->update(['is_active' => false]);
+        }
+    }
+
+    $this->info('Removed '.$counts->sum().' rows and '.$removed.' sample login(s). The price lists, medicines, lab tests and staff are untouched.');
+
+    return 0;
+})->purpose('Remove practice patients and their records before real use');
+
