@@ -403,7 +403,7 @@ export function VisitPad() {
               )}
             </div>
           )}
-          <MedicineRows rows={medicines} onChange={setMedicines} names={suggestions} defaults={library?.medicine_defaults} invalid={(i) => Boolean(errors[`medicines.${i}.medicine`])} />
+          <MedicineRows rows={medicines} onChange={setMedicines} names={suggestions} defaults={library?.medicine_defaults} frequencies={library?.rx_settings.frequencies} timings={library?.rx_settings.timings} invalid={(i) => Boolean(errors[`medicines.${i}.medicine`])} />
           </>
     ),
     advice: (

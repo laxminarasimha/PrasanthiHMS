@@ -78,7 +78,8 @@ class DoctorLibraryController extends Controller
             'phrases' => RememberedPhrase::where('doctor_id', $doctorId)->orderByDesc('uses')->orderBy('text')->limit(1500)->get()->groupBy('kind'),
             'rx_groups' => RxGroup::where('doctor_id', $doctorId)->orderBy('name')->get(),
             'templates' => PrescriptionTemplate::where('doctor_id', $doctorId)->orderBy('name')->get(),
-            'medicine_defaults' => MedicineDefault::where('doctor_id', $doctorId)->get(['medicine', 'dose', 'frequency', 'timing', 'duration', 'instructions']),
+            'medicine_defaults' => MedicineDefault::where('doctor_id', $doctorId)->orderBy('medicine')->get(['id', 'medicine', 'dose', 'frequency', 'timing', 'duration', 'instructions', 'uses']),
+            'rx_settings' => (User::find($doctorId) ?? new User)->rxSettings(),
             'pad_hidden_sections' => User::find($doctorId)?->pad_hidden_sections ?? [],
             'pad_sections' => self::PAD_SECTIONS,
             'pad_section_order' => self::padOrder(User::find($doctorId)?->pad_section_order),
@@ -191,6 +192,73 @@ class DoctorLibraryController extends Controller
      *
      * @param  array<int, array<string, mixed>>  $medicines
      */
+    // ---- Medicines library: how this doctor usually gives each medicine ----
+
+    public function storeMedicineDefault(Request $request): JsonResponse
+    {
+        $data = $this->medicineDefaultData($request);
+        $default = MedicineDefault::firstOrNew(['doctor_id' => $this->owner($request), 'medicine' => $data['medicine']]);
+        $default->fill($data)->save();
+
+        return response()->json($default, 201);
+    }
+
+    public function updateMedicineDefault(Request $request, MedicineDefault $default): JsonResponse
+    {
+        $this->mine($request, $default->doctor_id);
+        $default->update($this->medicineDefaultData($request));
+
+        return response()->json($default);
+    }
+
+    public function destroyMedicineDefault(Request $request, MedicineDefault $default): JsonResponse
+    {
+        $this->mine($request, $default->doctor_id);
+        $default->delete();
+
+        return response()->json(null, 204);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function medicineDefaultData(Request $request): array
+    {
+        return $request->validate([
+            'medicine' => ['required', 'string', 'max:255'],
+            'dose' => ['nullable', 'string', 'max:50'],
+            'frequency' => ['nullable', 'string', 'max:50'],
+            'timing' => ['nullable', 'string', 'max:30'],
+            'duration' => ['nullable', 'string', 'max:50'],
+            'instructions' => ['nullable', 'string', 'max:255'],
+        ]);
+    }
+
+    /** The doctor's own frequency and timing lists, translations, and how the prescription is printed. */
+    public function saveRxSettings(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'frequencies' => ['required', 'array', 'min:1', 'max:40'],
+            'frequencies.*' => ['required', 'string', 'max:50', 'distinct'],
+            'timings' => ['required', 'array', 'min:1', 'max:40'],
+            'timings.*' => ['required', 'string', 'max:30', 'distinct'],
+            'print_language' => ['required', Rule::in(['en', 'both', 'local'])],
+            'translations' => ['present', 'array', 'max:300'],
+            'translations.*.phrase' => ['required', 'string', 'max:255'],
+            'translations.*.translation' => ['required', 'string', 'max:255'],
+            'capitalize_name' => ['sometimes', 'boolean'],
+        ]);
+        // Kept as a list of pairs so a phrase can contain any character.
+        $data['translations'] = collect($data['translations'])->map(fn ($t) => ['phrase' => trim($t['phrase']), 'translation' => trim($t['translation'])])
+            ->unique(fn ($t) => mb_strtolower($t['phrase']))->values()->all();
+
+        $ownerId = $this->owner($request);
+        $owner = $ownerId === $request->user()->id ? $request->user() : User::findOrFail($ownerId);
+        $owner->update(['rx_settings' => $data]);
+
+        return response()->json($owner->rxSettings());
+    }
+
     public static function learn(int $doctorId, Consultation $consultation, array $medicines): void
     {
         foreach (['complaint' => $consultation->complaints, 'diagnosis' => $consultation->diagnosis, 'advice' => $consultation->advice] as $kind => $text) {

@@ -56,4 +56,36 @@ class DoctorPadExtrasTest extends TestCase
         $this->putJson($url, ['investigations' => [['name' => 'TSH', 'date' => now()->addDay()->toDateString()]]])->assertStatus(422);
         $this->putJson($url, ['investigations' => []])->assertOk()->assertJsonPath('consultation.investigations', null);
     }
+
+    public function test_a_doctor_sets_their_own_prescription_lists_translations_and_medicine_library(): void
+    {
+        $doctor = User::factory()->create(['role' => 'doctor']);
+        Sanctum::actingAs($doctor);
+        $this->getJson('/api/doctor/library')->assertOk()->assertJsonPath('rx_settings.print_language', 'en')->assertJsonPath('rx_settings.timings.0', 'After food');
+
+        $settings = ['frequencies' => ['1-0-1', 'Weekly twice'], 'timings' => ['After food', 'With milk'], 'print_language' => 'both',
+            'translations' => [['phrase' => 'After food', 'translation' => 'భోజనం తర్వాత'], ['phrase' => 'after food', 'translation' => 'duplicate']], 'capitalize_name' => true];
+        $this->putJson('/api/doctor/rx-settings', ['print_language' => 'klingon'] + $settings)->assertStatus(422);
+        $this->putJson('/api/doctor/rx-settings', ['frequencies' => []] + $settings)->assertStatus(422);
+        $this->putJson('/api/doctor/rx-settings', $settings)->assertOk()->assertJsonCount(1, 'translations')->assertJsonPath('frequencies.1', 'Weekly twice');
+
+        // Whoever prints the prescription gets this doctor's print choices with the visit.
+        $visit = Appointment::create(['patient_id' => Patient::factory()->create()->id, 'doctor_id' => $doctor->id, 'scheduled_at' => now(), 'status' => 'arrived']);
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->getJson("/api/appointments/{$visit->id}/consultation")->assertOk()
+            ->assertJsonPath('rx_print.print_language', 'both')->assertJsonPath('rx_print.translations.0.translation', 'భోజనం తర్వాత')->assertJsonPath('rx_print.capitalize_name', true);
+        $this->putJson('/api/doctor/rx-settings', $settings)->assertForbidden();
+
+        // The medicines library: add, change and remove how a medicine is usually given.
+        Sanctum::actingAs($doctor);
+        $id = $this->postJson('/api/doctor/medicine-defaults', ['medicine' => 'Sample Tablet 500mg', 'dose' => '1 tablet', 'frequency' => '1-0-1'])->assertCreated()->json('id');
+        $this->postJson('/api/doctor/medicine-defaults', ['medicine' => 'Sample Tablet 500mg', 'duration' => '5 days'])->assertCreated()->assertJsonPath('id', $id);
+        $this->putJson("/api/doctor/medicine-defaults/{$id}", ['medicine' => 'Sample Tablet 500mg', 'timing' => 'With milk'])->assertOk()->assertJsonPath('timing', 'With milk');
+        $this->getJson('/api/doctor/library')->assertJsonCount(1, 'medicine_defaults')->assertJsonPath('medicine_defaults.0.id', $id);
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'doctor']));
+        $this->deleteJson("/api/doctor/medicine-defaults/{$id}")->assertForbidden();
+        Sanctum::actingAs($doctor);
+        $this->deleteJson("/api/doctor/medicine-defaults/{$id}")->assertNoContent();
+    }
 }

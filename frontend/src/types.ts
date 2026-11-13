@@ -161,6 +161,8 @@ export type Bill = {
 
 export type PrescribedMedicine = {
   id?: number
+  /** In the medicines library: how many times it has been prescribed. */
+  uses?: number
   medicine: string
   dose: string | null
   frequency: string | null
@@ -201,7 +203,18 @@ export type Consultation = {
 
 export type VisitPatient = Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'age_label' | 'title' | 'mobile' | 'blood_group'> & { allergies: string | null }
 
+/** A doctor's own prescription choices. */
+export type RxSettings = {
+  frequencies: string[]
+  timings: string[]
+  print_language: 'en' | 'both' | 'local'
+  translations: { phrase: string; translation: string }[]
+  capitalize_name: boolean
+}
+
 export type Visit = {
+  /** How the visit's doctor wants prescriptions printed. */
+  rx_print?: Pick<RxSettings, 'print_language' | 'translations' | 'capitalize_name'>
   appointment: { id: number; scheduled_at: string; status: AppointmentStatus; notes: string | null }
   patient: VisitPatient
   doctor: { id: number; name: string; department: string | null; signature_text: string | null }
@@ -630,6 +643,7 @@ export type DoctorLibrary = {
   rx_groups: RxGroup[]
   templates: PrescriptionTemplate[]
   medicine_defaults: PrescribedMedicine[]
+  rx_settings: RxSettings
   pad_hidden_sections: string[]
   pad_sections: string[]
   /** Every movable part of the pad, in this doctor's order. */

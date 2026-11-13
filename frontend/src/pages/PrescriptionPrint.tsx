@@ -21,6 +21,16 @@ export function PrescriptionPrint() {
   const signature = useSignature(visit?.doctor.id)
 
   if (!visit) return <p className="loading">Loading prescription…</p>
+
+  // Shows a word in the doctor's chosen language when it has a translation.
+  const rx = visit.rx_print
+  const known = new Map((rx?.translations ?? []).map((t) => [t.phrase.trim().toLowerCase(), t.translation]))
+  const tr = (text: string | null | undefined) => {
+    const translation = text ? known.get(text.trim().toLowerCase()) : undefined
+    if (!text || !translation || !rx || rx.print_language === 'en') return text ?? ''
+    return rx.print_language === 'local' ? translation : `${text} (${translation})`
+  }
+  const patientName = rx?.capitalize_name ? fullName(visit.patient).toUpperCase() : fullName(visit.patient)
   const c = visit.consultation
   if (!c) return <p className="loading">Nothing has been recorded for this visit yet.</p>
 
@@ -47,7 +57,7 @@ export function PrescriptionPrint() {
 
       <div className="receipt-meta">
         <div>
-          <strong>{fullName(visit.patient)}</strong>
+          <strong>{patientName}</strong>
           <br />
           {visit.patient.age_label} / {visit.patient.gender.charAt(0).toUpperCase()} · Patient ID: {visit.patient.uhid}
           <br />
@@ -111,12 +121,12 @@ export function PrescriptionPrint() {
                   <td>{i + 1}</td>
                   <td>
                     <strong>{m.medicine}</strong>
-                    {m.instructions && <small className="block">{m.instructions}</small>}
+                    {m.instructions && <small className="block">{tr(m.instructions)}</small>}
                   </td>
-                  <td>{m.dose}</td>
-                  <td>{m.frequency}</td>
-                  <td>{m.timing}</td>
-                  <td>{m.duration}</td>
+                  <td>{tr(m.dose)}</td>
+                  <td>{tr(m.frequency)}</td>
+                  <td>{tr(m.timing)}</td>
+                  <td>{tr(m.duration)}</td>
                 </tr>
               ))}
             </tbody>
@@ -125,7 +135,7 @@ export function PrescriptionPrint() {
       )}
 
       {c.tests_advised && <section><h3>Tests advised</h3><p>{c.tests_advised}</p></section>}
-      {c.advice && <section><h3>Advice</h3><p>{c.advice}</p></section>}
+      {c.advice && <section><h3>Advice</h3><p className="report-text">{c.advice.split('\n').map(tr).join('\n')}</p></section>}
       {c.refer_to && <section><h3>Referred to</h3><p>{c.refer_to}</p></section>}
       {c.follow_up_on && <section><h3>Next visit</h3><p>{longDate(c.follow_up_on)}</p></section>}
 

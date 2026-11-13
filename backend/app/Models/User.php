@@ -12,7 +12,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'branch_id', 'role', 'gender', 'phone', 'department', 'signature_text', 'is_active', 'pad_hidden_sections', 'pad_section_order', 'permissions', 'signature_path', 'availability'])]
+#[Fillable(['name', 'email', 'password', 'branch_id', 'role', 'gender', 'phone', 'department', 'signature_text', 'is_active', 'pad_hidden_sections', 'pad_section_order', 'rx_settings', 'permissions', 'signature_path', 'availability'])]
 #[Hidden(['password', 'remember_token', 'signature_path', 'permissions'])]
 class User extends Authenticatable
 {
@@ -31,9 +31,28 @@ class User extends Authenticatable
             'is_active' => 'boolean',
             'pad_hidden_sections' => 'array',
             'pad_section_order' => 'array',
+            'rx_settings' => 'array',
             'permissions' => 'array',
             'availability' => 'array',
         ];
+    }
+
+    /** What a doctor's prescription settings are until they change them. */
+    public const RX_DEFAULTS = [
+        'frequencies' => ['1-0-0', '0-1-0', '0-0-1', '1-0-1', '1-1-0', '0-1-1', '1-1-1', '1-1-1-1', 'SOS', 'Stat', 'Alternate days', 'Once a week'],
+        'timings' => ['After food', 'Before food', 'Empty stomach', 'At bedtime'],
+        // en: as typed; both: the typed words with the translation beside them; local: the translation alone.
+        'print_language' => 'en',
+        'translations' => [],
+        'capitalize_name' => false,
+    ];
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function rxSettings(): array
+    {
+        return array_merge(self::RX_DEFAULTS, $this->rx_settings ?? []);
     }
 
     /** What a person may be allowed to do, with the wording shown on the staff screen. */
