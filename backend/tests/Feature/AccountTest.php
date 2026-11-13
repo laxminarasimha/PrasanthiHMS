@@ -29,4 +29,16 @@ class AccountTest extends TestCase
         $this->postJson('/api/login', ['email' => $user->email, 'password' => 'OldPass123'])->assertStatus(422);
         $this->postJson('/api/login', ['email' => $user->email, 'password' => 'NewPass456'])->assertOk();
     }
+
+    public function test_a_person_hides_menu_tabs_they_do_not_use_without_losing_access(): void
+    {
+        $user = User::factory()->create(['role' => 'doctor']);
+        \Laravel\Sanctum\Sanctum::actingAs($user);
+
+        $this->getJson('/api/me')->assertOk()->assertJsonPath('hidden_tabs', []);
+        $this->putJson('/api/me/tabs', ['hidden' => ['billing']])->assertStatus(422);
+        $this->putJson('/api/me/tabs', ['hidden' => ['pharmacy', 'lab', 'lab']])->assertOk()->assertJsonPath('hidden_tabs', ['pharmacy', 'lab'])->assertJsonPath('can_run_pharmacy', true);
+        $this->getJson('/api/me')->assertJsonPath('hidden_tabs', ['pharmacy', 'lab']);
+        $this->putJson('/api/me/tabs', ['hidden' => []])->assertOk()->assertJsonPath('hidden_tabs', []);
+    }
 }

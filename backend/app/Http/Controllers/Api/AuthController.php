@@ -53,6 +53,20 @@ class AuthController extends Controller
         return response()->json(['message' => 'Password changed.']);
     }
 
+    public const MENU_TABS = ['front-desk', 'doctor', 'lab', 'pharmacy', 'ipd', 'patients', 'reports', 'setup'];
+
+    /** Saves which menu tabs a person does not want to see. Their permissions stay as they are. */
+    public function saveTabs(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'hidden' => ['present', 'array'],
+            'hidden.*' => ['string', \Illuminate\Validation\Rule::in(self::MENU_TABS)],
+        ]);
+        $request->user()->update(['hidden_tabs' => array_values(array_unique($data['hidden'])) ?: null]);
+
+        return response()->json($this->present($request->user()));
+    }
+
     public function me(Request $request): JsonResponse
     {
         return response()->json($this->present($request->user()));
@@ -90,6 +104,7 @@ class AuthController extends Controller
             'can_delete_bills' => $user->allows('canDeleteBills'),
             'can_change_price' => $user->allows('canChangePrice'),
             'pad_hidden_sections' => $user->pad_hidden_sections ?? [],
+            'hidden_tabs' => $user->hidden_tabs ?? [],
             'branch' => $user->branch?->only(['id', 'name', 'city']),
         ];
     }

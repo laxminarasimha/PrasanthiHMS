@@ -447,7 +447,7 @@ td.wrap.wide { max-width: 640px; }
 .row.end { justify-content: flex-end; }
 
 /* Tablets and small laptops: the menu sits in its own row under the bar, always in view */
-@media (min-width: 701px) and (max-width: 1340px) {
+@media (min-width: 701px) and (max-width: 1220px) {
   .topbar { flex-wrap: wrap; height: auto; padding: 0 16px; row-gap: 0; }
   .topbar .brand { line-height: 50px; }
   .patient-search:not(.on-page) { width: min(300px, 34vw); margin-left: auto; }
@@ -625,3 +625,8 @@ tbody tr.not-here { color: var(--muted); }
 /* Numbered IPD bills */
 .numbered-bills { border-top: 1px solid var(--border); padding-top: 14px; }
 .inline-field { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 0.9rem; }
+
+/* My account: which menu tabs to show */
+.tick-list { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 8px 0 4px; }
+.tick { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.tick input { width: auto; }

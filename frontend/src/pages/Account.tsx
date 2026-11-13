@@ -2,10 +2,14 @@ import { useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { useAuth } from '../auth'
 import { TextField } from '../components/Field'
+import { allowedTabs } from '../nav'
+import type { User } from '../types'
 
 /** A person's own account: who they are signed in as, and changing their password. */
 export function Account() {
-  const { user } = useAuth()
+  const { user, refresh } = useAuth()
+  const [hidden, setHidden] = useState<string[]>(user?.hidden_tabs ?? [])
+  const [tabNotice, setTabNotice] = useState('')
   const [form, setForm] = useState({ current_password: '', password: '', password_confirmation: '' })
   const [errors, setErrors] = useState<FieldErrors>({})
   const [notice, setNotice] = useState('')
@@ -28,6 +32,19 @@ export function Account() {
     }
   }
 
+  const tabs = user ? allowedTabs(user) : []
+  const saveTabs = async (next: string[]) => {
+    setHidden(next)
+    setTabNotice('')
+    try {
+      refresh((await api.put<User>('/me/tabs', { hidden: next })).data)
+      setTabNotice('Menu updated.')
+    } catch {
+      setHidden(user?.hidden_tabs ?? [])
+      setTabNotice('Could not save the menu. Try again.')
+    }
+  }
+
   return (
     <section className="card narrow">
       <div className="toolbar">
@@ -41,6 +58,23 @@ export function Account() {
           {user?.branch ? ` · ${user.branch.name}` : ''}
         </span>
       </p>
+
+      <h3>My menu</h3>
+      <p className="muted small">Untick the tabs you never use to keep your menu short. This only tidies the menu; it does not change what you are allowed to do, and you can tick them back any time.</p>
+      <div className="tick-list">
+        {tabs.map((t) => (
+          <label key={t.key} className="tick">
+            <input
+              type="checkbox"
+              checked={!hidden.includes(t.key)}
+              disabled={!hidden.includes(t.key) && tabs.length - hidden.filter((h) => tabs.some((x) => x.key === h)).length <= 1}
+              onChange={(e) => saveTabs(e.target.checked ? hidden.filter((h) => h !== t.key) : [...hidden, t.key])}
+            />
+            {t.label}
+          </label>
+        ))}
+      </div>
+      {tabNotice && <p className="muted small">{tabNotice}</p>}
 
       <h3>Change password</h3>
       {notice && <p className="notice">{notice}</p>}
