@@ -21,6 +21,8 @@ export function LabTests() {
   const [errors, setErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
+  /** The tests in the order being arranged, while re-ordering; null otherwise. */
+  const [ordering, setOrdering] = useState<LabCatalogueTest[] | null>(null)
 
   const load = useCallback(() => {
     api.get<LabCatalogueTest[]>('/lab/tests', { params: { all: 1 } }).then((res) => setTests(res.data))
@@ -77,6 +79,31 @@ export function LabTests() {
     }
   }
 
+  const moveTest = (index: number, to: number) =>
+    setOrdering((rows) => {
+      if (!rows || to < 0 || to >= rows.length) return rows
+      const next = [...rows]
+      next.splice(to, 0, next.splice(index, 1)[0])
+      return next
+    })
+  const saveOrder = async () => {
+    if (!ordering) return
+    try {
+      setTests((await api.put<LabCatalogueTest[]>('/lab/tests/order', { ids: ordering.map((t) => t.id) })).data)
+      setOrdering(null)
+      setNotice('Order saved. Tests appear in this order when ordering and on printed reports.')
+    } catch (err) {
+      setErrors(fieldErrors(err))
+    }
+  }
+  const moveParameter = (index: number, to: number) =>
+    setParameters((rows) => {
+      if (to < 0 || to >= rows.length) return rows
+      const next = [...rows]
+      next.splice(to, 0, next.splice(index, 1)[0])
+      return next
+    })
+
   const visible = tests.filter((t) => t.name.toLowerCase().includes(filter.trim().toLowerCase()))
   const errorList = Object.entries(errors).filter(([field]) => field.startsWith('parameters') || field === '_' || field === 'kind' || field === 'default_comment')
 
@@ -88,7 +115,19 @@ export function LabTests() {
         <div className="toolbar">
           <h1>Report templates</h1>
           <input className="search" type="search" placeholder="Filter tests" value={filter} onChange={(e) => setFilter(e.target.value)} />
-          {canEdit && (
+          {canEdit && !ordering && tests.length > 1 && (
+            <button
+              className="btn ghost"
+              onClick={() => {
+                setEditing(null)
+                setNotice('')
+                setOrdering(tests)
+              }}
+            >
+              Re-order tests
+            </button>
+          )}
+          {canEdit && !ordering && (
             <>
               <button className="btn ghost" onClick={() => open('new', 'text')}>
                 + New written report
@@ -102,6 +141,44 @@ export function LabTests() {
 
         {notice && <p className="notice">{notice}</p>}
 
+        {ordering && (
+          <div>
+            <p className="muted small">Move tests up or down. This is the order they appear in when ordering and on a printed report with several tests.</p>
+            <ol className="pad-order wide">
+              {ordering.map((t, i) => (
+                <li key={t.id} className={t.is_active ? '' : 'off'}>
+                  <span className="muted mono">{i + 1}</span>
+                  <span className="grow">
+                    {t.name}
+                    {t.department && <small className="muted"> · {t.department}</small>}
+                  </span>
+                  <button type="button" className="btn ghost small-btn" disabled={i === 0} onClick={() => moveTest(i, 0)} aria-label={`Move ${t.name} to the top`} title="To the top">
+                    ⤒
+                  </button>
+                  <button type="button" className="btn ghost small-btn" disabled={i === 0} onClick={() => moveTest(i, i - 1)} aria-label={`Move ${t.name} up`}>
+                    ↑
+                  </button>
+                  <button type="button" className="btn ghost small-btn" disabled={i === ordering.length - 1} onClick={() => moveTest(i, i + 1)} aria-label={`Move ${t.name} down`}>
+                    ↓
+                  </button>
+                </li>
+              ))}
+            </ol>
+            <div className="panel-foot row">
+              <button className="btn ghost" onClick={() => setOrdering(null)}>
+                Cancel
+              </button>
+              <button className="btn ghost" onClick={() => setOrdering((rows) => (rows ? [...rows].sort((a, b) => a.name.localeCompare(b.name)) : rows))}>
+                Sort A to Z
+              </button>
+              <button className="btn primary" onClick={saveOrder}>
+                Save order
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!ordering && (
         <div className="table-wrap">
           <table>
             <thead>
@@ -138,6 +215,7 @@ export function LabTests() {
             </tbody>
           </table>
         </div>
+        )}
       </section>
 
       {editing && (
@@ -182,9 +260,17 @@ export function LabTests() {
                           <input value={p.method ?? ''} onChange={(e) => setParameter(i, 'method', e.target.value)} aria-label="Method" />
                         </>
                       )}
-                      <button type="button" className="link danger" onClick={() => setParameters((rows) => (rows.length > 1 ? rows.filter((_, r) => r !== i) : [emptyParameter()]))}>
-                        Remove
-                      </button>
+                      <span className="row param-move">
+                        <button type="button" className="link" disabled={i === 0} onClick={() => moveParameter(i, i - 1)} aria-label={`Move row ${i + 1} up`} title="Move up">
+                          ↑
+                        </button>
+                        <button type="button" className="link" disabled={i === parameters.length - 1} onClick={() => moveParameter(i, i + 1)} aria-label={`Move row ${i + 1} down`} title="Move down">
+                          ↓
+                        </button>
+                        <button type="button" className="link danger" onClick={() => setParameters((rows) => (rows.length > 1 ? rows.filter((_, r) => r !== i) : [emptyParameter()]))}>
+                          Remove
+                        </button>
+                      </span>
                     </div>
                   ))}
                 </div>

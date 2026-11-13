@@ -51,6 +51,26 @@ class LabFilesTest extends TestCase
         $this->assertSame([], Storage::disk('local')->allFiles('lab-files'));
     }
 
+    public function test_tests_can_be_put_in_the_order_the_lab_wants(): void
+    {
+        $ids = collect(['Urine routine', 'Blood sugar', 'Complete blood picture'])
+            ->map(fn ($name) => $this->postJson('/api/lab/tests', ['name' => $name, 'price' => 100, 'parameters' => [['name' => 'Value']]])->assertCreated()->json('id'));
+        // With no order set they come out by name.
+        $this->assertSame(['Blood sugar', 'Complete blood picture', 'Urine routine'], array_column($this->getJson('/api/lab/tests')->json(), 'name'));
+
+        $this->putJson('/api/lab/tests/order', ['ids' => [$ids[2], $ids[0], $ids[1]]])->assertOk()->assertJsonPath('0.name', 'Complete blood picture');
+        $this->assertSame(['Complete blood picture', 'Urine routine', 'Blood sugar'], array_column($this->getJson('/api/lab/tests')->json(), 'name'));
+
+        // A lab order lists its tests in the same order, whatever order they were ticked in.
+        $order = $this->postJson('/api/lab/orders', ['patient_id' => Patient::factory()->create()->id, 'test_ids' => $ids->all()])->assertCreated()->json();
+        $this->assertSame(['Complete blood picture', 'Urine routine', 'Blood sugar'], array_column($order['items'], 'test_name'));
+
+        $this->putJson('/api/lab/tests/order', ['ids' => [$ids[0], $ids[0]]])->assertStatus(422);
+        $this->putJson('/api/lab/tests/order', ['ids' => [999999]])->assertStatus(422);
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->putJson('/api/lab/tests/order', ['ids' => $ids->all()])->assertForbidden();
+    }
+
     public function test_technician_signature_pictures_are_kept_when_other_preferences_are_saved(): void
     {
         $this->getJson('/api/lab/settings')->assertOk()->assertJsonPath('technician_1_signature', null)->assertJsonPath('tabular_print', false);

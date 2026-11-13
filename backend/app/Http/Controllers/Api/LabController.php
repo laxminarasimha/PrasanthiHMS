@@ -48,6 +48,21 @@ class LabController extends Controller
         return response()->json($this->saveTest($test, $request));
     }
 
+    /** Sets the order tests appear in pick lists and on printed reports: the ids given, first to last. */
+    public function orderTests(Request $request): JsonResponse
+    {
+        $this->authorizeLab($request);
+        $data = $request->validate(['ids' => ['required', 'array', 'min:1', 'max:5000'], 'ids.*' => ['integer', 'distinct', 'exists:lab_tests,id']]);
+
+        DB::transaction(function () use ($data) {
+            foreach (array_values($data['ids']) as $index => $id) {
+                LabTest::whereKey($id)->update(['print_order' => $index + 1]);
+            }
+        });
+
+        return $this->tests($request->merge(['all' => true]));
+    }
+
     private function saveTest(LabTest $test, Request $request): LabTest
     {
         $text = $request->input('kind') === 'text';

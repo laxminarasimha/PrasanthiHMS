@@ -108,6 +108,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/lab/tests', [LabController::class, 'tests']);
     Route::post('/lab/tests', [LabController::class, 'storeTest']);
+    Route::put('/lab/tests/order', [LabController::class, 'orderTests']);
     Route::put('/lab/tests/{test}', [LabController::class, 'updateTest']);
     Route::get('/lab/orders', [LabController::class, 'orders']);
     Route::post('/lab/orders', [LabController::class, 'storeOrder']);
