@@ -3,12 +3,14 @@ import { api, fieldErrors, type FieldErrors } from '../api'
 import { TextField } from '../components/Field'
 import { PAYMENT_MODES, longDate } from '../format'
 import { AdminList } from './AdminLists'
+import { FormDesigner } from './FormDesigner'
 import type { BillingPreferences, Clinic, PatientMerge, ReferralDoctor } from '../types'
 
-type Tab = 'clinic' | 'billing' | 'department' | 'payer' | 'vendor' | 'by' | 'to' | 'merge'
+type Tab = 'clinic' | 'billing' | 'forms' | 'department' | 'payer' | 'vendor' | 'by' | 'to' | 'merge'
 const TABS: [Tab, string][] = [
   ['clinic', 'Clinic details'],
   ['billing', 'Billing preferences'],
+  ['forms', 'Forms'],
   ['department', 'Departments'],
   ['payer', 'Insurers and payers'],
   ['vendor', 'Vendors'],
@@ -396,6 +398,7 @@ export function Admin() {
       </div>
       {tab === 'clinic' && <ClinicDetails />}
       {tab === 'billing' && <BillingPrefs />}
+      {tab === 'forms' && <FormDesigner />}
       {(tab === 'department' || tab === 'payer' || tab === 'vendor') && <AdminList key={tab} kind={tab} />}
       {(tab === 'by' || tab === 'to') && <ReferralDoctors key={tab} direction={tab} />}
       {tab === 'merge' && <MergePatients />}

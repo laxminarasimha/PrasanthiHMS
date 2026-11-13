@@ -6,6 +6,7 @@ import { SelectField, TextField } from '../../components/Field'
 import { ADMISSION_STATUS, PAYMENT_MODES, clock, longDate, modeLabel, nowLocal, rupees, today } from '../../format'
 import type { Admission, Bed, IpdBillTemplate, IpdService, OutstandingBill } from '../../types'
 import { AttachmentsPanel } from '../../components/FrontDeskPanels'
+import { IpdForms } from './IpdForms'
 import { IpdInvestigations } from './IpdInvestigations'
 import { IpdNotes } from './IpdNotes'
 import { IpdSummary } from './IpdSummary'
@@ -42,7 +43,7 @@ export function IpdCase() {
   const [discount, setDiscount] = useState('')
   const [closing, setClosing] = useState({ status: 'discharged', discharged_at: nowLocal() })
   const { user } = useAuth()
-  const [tab, setTab] = useState<'bill' | 'notes' | 'summary' | 'results' | 'files'>('bill')
+  const [tab, setTab] = useState<'bill' | 'notes' | 'summary' | 'results' | 'files' | 'forms'>('bill')
   const [templates, setTemplates] = useState<IpdBillTemplate[]>([])
   const [bedId, setBedId] = useState('')
   const [outstanding, setOutstanding] = useState<OutstandingBill[]>([])
@@ -157,9 +158,13 @@ export function IpdCase() {
           <button className={tab === 'files' ? 'active' : ''} onClick={() => setTab('files')}>
             Attachments
           </button>
+          <button className={tab === 'forms' ? 'active' : ''} onClick={() => setTab('forms')}>
+            Forms
+          </button>
         </div>
 
         {tab === 'results' && <IpdInvestigations admissionId={admission.id} />}
+        {tab === 'forms' && <IpdForms admissionId={admission.id} canEdit={canEdit} />}
         {tab === 'files' && <AttachmentsPanel patient={{ id: admission.patient.id, name: admission.patient.name, uhid: admission.patient.uhid }} />}
 
         {tab === 'notes' && <IpdNotes admissionId={admission.id} canEdit={canEdit} />}

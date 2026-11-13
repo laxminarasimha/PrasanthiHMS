@@ -458,6 +458,23 @@ export type BillingPreferences = { default_payment_mode: string; pay_timing: 'be
 /** A row of a hospital-wide list: a department, a vendor, or a payer. */
 export type AdminEntry = { id: number; kind: 'department' | 'vendor' | 'payer'; name: string; details: Record<string, string> | null; is_active: boolean }
 
+/** One line of a hospital-designed form. */
+export type FormField = { id: string; label: string; type: 'heading' | 'text' | 'textarea' | 'number' | 'date' | 'choice' | 'checkbox' | 'signature'; options: string[] | null }
+
+export type FormTemplate = { id: number; name: string; access: 'doctor' | 'ipd' | 'both'; fields: FormField[]; is_active: boolean }
+
+/** A filled-in form. It carries its own copy of the questions. */
+export type FormRecord = {
+  id: number
+  name: string
+  fields: FormField[]
+  values: Record<string, string | boolean> | null
+  created_at: string
+  author?: { id: number; name: string } | null
+  patient?: Pick<Patient, 'id' | 'uhid' | 'name' | 'title' | 'gender' | 'age_label'>
+  admission?: { id: number; ipd_no: string; doctor?: { id: number; name: string } | null } | null
+}
+
 export type NoteKind = 'clinical' | 'nursing' | 'ot'
 
 /** A clinical, nursing or operation note written during a stay. */
