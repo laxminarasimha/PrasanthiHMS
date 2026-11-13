@@ -57,6 +57,18 @@ export function PatientPicker({ patient, onChange, error }: Props) {
     }
   }
 
+  // A phone booking or a rush: only the name and number now, the rest when they arrive.
+  const temporary = async () => {
+    setErrors({})
+    try {
+      const res = await api.post<Patient>('/patients/temporary', { name: form.name, mobile: form.mobile })
+      setAdding(false)
+      onChange(res.data)
+    } catch (err) {
+      setErrors(fieldErrors(err))
+    }
+  }
+
   if (adding) {
     const set = (key: keyof typeof form) => (value: string) => setForm((f) => ({ ...f, [key]: value }))
     return (
@@ -114,6 +126,9 @@ export function PatientPicker({ patient, onChange, error }: Props) {
         </div>
         <div className="row gap-top">
           <span className="muted small grow">Other details can be added later under Patients.</span>
+          <button type="button" className="btn ghost" onClick={temporary} title="Book with only the name and mobile number; the rest is filled in when they arrive">
+            Add as temporary
+          </button>
           <button type="button" className="btn primary" onClick={register}>
             Register
           </button>

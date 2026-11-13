@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 #[Fillable([
-    'branch_id', 'title', 'name', 'gender', 'date_of_birth', 'dob_estimated', 'mobile', 'mobile_alt', 'email',
+    'branch_id', 'title', 'name', 'gender', 'date_of_birth', 'dob_estimated', 'is_temporary', 'mobile', 'mobile_alt', 'email',
     'blood_group', 'allergies', 'preferred_language', 'address', 'city', 'pincode', 'care_of', 'occupation',
     'referred_by', 'channel', 'tag', 'existing_id', 'created_by',
 ])]
@@ -27,6 +27,7 @@ class Patient extends Model
         return [
             'date_of_birth' => 'date:Y-m-d',
             'dob_estimated' => 'boolean',
+            'is_temporary' => 'boolean',
         ];
     }
 
@@ -48,7 +49,8 @@ class Patient extends Model
     public function getAgeLabelAttribute(): ?string
     {
         if (! $this->date_of_birth) {
-            return null;
+            // A temporary patient, or one loaded without a birth date: shown as a dash until it is filled in.
+            return array_key_exists('date_of_birth', $this->attributes) ? '—' : null;
         }
         $days = (int) $this->date_of_birth->diffInDays(now());
         $months = (int) $this->date_of_birth->diffInMonths(now());

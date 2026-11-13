@@ -139,6 +139,7 @@ export function Patients() {
                   </td>
                   <td>
                     <strong>{fullName(p)}</strong>
+                    {p.is_temporary && <span className="pill status-arrived"> Temporary</span>}
                   </td>
                   <td>
                     {p.age_label} / {p.gender.charAt(0).toUpperCase()}

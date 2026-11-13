@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api'
+import { DepositBox } from '../components/DepositBox'
 import { AttachmentsPanel } from '../components/FrontDeskPanels'
 import { ADMISSION_STATUS, STATUS_LABELS, clock, longDate, rupees, settlement, stampDate } from '../format'
 import type { PatientOverview } from '../types'
@@ -40,6 +41,8 @@ export function PatientDashboard() {
             <strong className={data.outstanding > 0 ? 'due' : ''}>{rupees(data.outstanding)}</strong>
           </div>
         </div>
+        {p.is_temporary && <p className="notice">Temporary patient: booked with a name and number only. Complete the registration under Patients.</p>}
+        <DepositBox patientId={p.id} balance={data.deposit_balance} history={data.deposits} onChange={(balance, deposits) => setData({ ...data, deposit_balance: balance, deposits })} />
       </section>
 
       <div className="two-up">

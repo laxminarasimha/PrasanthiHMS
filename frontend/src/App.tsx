@@ -10,6 +10,7 @@ import { DoctorQueue } from './pages/DoctorQueue'
 import { Calendar } from './pages/Calendar'
 import { FrontDesk } from './pages/FrontDesk'
 import { Admin } from './pages/Admin'
+import { AllBills } from './pages/AllBills'
 import { Ipd } from './pages/ipd/Ipd'
 import { IpdCase } from './pages/ipd/IpdCase'
 import { IpdPrint } from './pages/ipd/IpdPrint'
@@ -84,6 +85,7 @@ export default function App() {
           <Route path="/pharmacy/bills/:id/print" element={<PrintOnly><PharmacySalePrint /></PrintOnly>} />
           <Route element={<Protected />}>
             <Route path="/front-desk" element={<Only when="can_front_desk"><FrontDesk /></Only>} />
+            <Route path="/front-desk/bills" element={<Only when="can_front_desk"><AllBills /></Only>} />
             <Route path="/front-desk/calendar" element={<Only when="can_front_desk"><Calendar /></Only>} />
             <Route path="/doctor" element={<Only when="can_consult"><DoctorQueue /></Only>} />
             <Route path="/doctor/consults" element={<Only when="can_consult"><DoctorConsults /></Only>} />

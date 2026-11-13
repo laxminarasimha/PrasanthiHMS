@@ -404,6 +404,8 @@ tr.lab-heading td { font-weight: 700; background: var(--bg); text-transform: upp
 .translation-row { grid-template-columns: 1fr 1fr auto; }
 .template-row { grid-template-columns: 2fr 90px 110px auto; }
 .report-text { white-space: pre-wrap; }
+.deposit-box { border: 1px dashed var(--border); border-radius: 8px; padding: 8px 12px; margin-top: 12px; }
+.deposit-box .row { flex-wrap: wrap; }
 .signature-box { display: flex; flex-direction: column; gap: 6px; border: 1px dashed var(--border); border-radius: 8px; padding: 10px 12px; }
 .signature-box img { max-height: 60px; max-width: 200px; object-fit: contain; align-self: flex-start; background: #fff; }
 .file-add { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }

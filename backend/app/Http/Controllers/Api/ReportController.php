@@ -52,8 +52,16 @@ class ReportController extends Controller
             ->when($lab, fn ($q) => $q->whereIn('id', $labBillIds), fn ($q) => $q->whereNotIn('id', $labBillIds))
             ->sum('total');
 
+        // Deposits are money in hand on the day they are taken, whichever bill they later pay.
+        $deposits = \App\Models\PatientDeposit::whereBetween('created_at', [$from, $to])->whereIn('type', ['deposit', 'refund'])
+            ->selectRaw("mode, sum(case when type = 'refund' then -amount else amount end) as amount")->groupBy('mode')->pluck('amount', 'mode');
+        $frontDesk = $billPayments(false);
+        foreach ($frontDesk as $mode => $amount) {
+            $frontDesk[$mode] = round($amount + (float) ($deposits[$mode] ?? 0), 2);
+        }
+
         $departments = [
-            'consultation' => ['label' => 'Front desk', 'billed' => $billed(false), 'collected' => $billPayments(false)],
+            'consultation' => ['label' => 'Front desk', 'billed' => $billed(false), 'collected' => $frontDesk],
             'lab' => ['label' => 'Lab', 'billed' => $billed(true), 'collected' => $billPayments(true)],
             'pharmacy' => [
                 'label' => 'Pharmacy',

@@ -3,6 +3,7 @@ import { useAuth } from '../auth'
 import { api, fieldErrors } from '../api'
 import { PAYMENT_MODES, modeLabel, rupees } from '../format'
 import type { Bill, Service } from '../types'
+import { DepositBox } from './DepositBox'
 import { SelectField, TextField } from './Field'
 import { useBillingPreferences } from './useBillingPreferences'
 
@@ -211,6 +212,13 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
         <dt className="strong">Due</dt>
         <dd className={bill.due > 0 ? 'strong due' : 'strong settled'}>{rupees(bill.due)}</dd>
       </dl>
+
+      <DepositBox patientId={bill.patient.id} balance={bill.deposit_balance ?? 0} onChange={(balance) => setBill((b) => (b ? { ...b, deposit_balance: balance } : b))} />
+      {(bill.deposit_balance ?? 0) > 0 && bill.due > 0 && (
+        <button type="button" className="btn ghost gap-top" onClick={() => run(api.post(`/bills/${billId}/use-deposit`, { amount: Math.min(bill.deposit_balance ?? 0, bill.due) }))}>
+          Pay {rupees(Math.min(bill.deposit_balance ?? 0, bill.due))} from the deposit
+        </button>
+      )}
 
       {error && <p className="form-error">{error}</p>}
 

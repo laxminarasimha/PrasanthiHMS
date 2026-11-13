@@ -65,7 +65,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/doctor-blocks/{block}', [AppointmentController::class, 'destroyBlock']);
     });
 
-    Route::apiResource('bills', BillController::class)->only(['show', 'store', 'update']);
+    Route::apiResource('bills', BillController::class)->only(['index', 'show', 'store', 'update']);
+    Route::post('/bills/{bill}/use-deposit', [BillController::class, 'useDeposit'])->middleware('ability:canWorkFrontDesk');
+    Route::post('/patients/temporary', [PatientController::class, 'storeTemporary']);
     Route::post('/bills/{bill}/items', [BillController::class, 'addItem']);
     Route::delete('/bills/{bill}/items/{item}', [BillController::class, 'removeItem']);
     Route::post('/bills/{bill}/payments', [BillController::class, 'addPayment']);
@@ -82,6 +84,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::middleware('ability:canWorkFrontDesk')->group(function () {
             Route::put('/appointments/{appointment}/vitals', 'saveVitals');
             Route::post('/patients/{patient}/attachments', 'storeAttachment');
+            Route::post('/patients/{patient}/deposits', 'storeDeposit');
             Route::delete('/attachments/{attachment}', 'destroyAttachment');
         });
     });
