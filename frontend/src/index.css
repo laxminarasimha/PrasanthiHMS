@@ -208,6 +208,8 @@ fieldset .grid .field, fieldset .vitals .field { margin-top: 0; }
 .prescription p { margin: 0; white-space: pre-wrap; }
 .rx-vitals { color: var(--muted); border-bottom: 1px solid var(--border); padding-bottom: 10px; }
 .signature { margin-top: 64px; text-align: right; }
+.signature img.seal { max-height: 80px; max-width: 220px; }
+.tick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px 14px; }
 .signature img { display: block; max-height: 56px; max-width: 180px; margin: 0 0 4px auto; }
 .lab-signatures .right img { margin-left: auto; }
 

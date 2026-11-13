@@ -19,6 +19,7 @@ export function PrescriptionPrint() {
     })
   }, [id])
   const signature = useSignature(visit?.doctor.id)
+  const seal = useSignature(visit?.doctor.id, 0, 'seal')
 
   if (!visit) return <p className="loading">Loading prescription…</p>
 
@@ -30,6 +31,10 @@ export function PrescriptionPrint() {
     if (!text || !translation || !rx || rx.print_language === 'en') return text ?? ''
     return rx.print_language === 'local' ? translation : `${text} (${translation})`
   }
+  // The doctor's page layout: what prints, how large, and how much room to leave.
+  const layout = rx?.print
+  const shows = (section: string) => layout?.sections?.[section] !== false
+  const column = (name: string) => layout?.columns?.[name] !== false
   const patientName = rx?.capitalize_name ? fullName(visit.patient).toUpperCase() : fullName(visit.patient)
   const c = visit.consultation
   if (!c) return <p className="loading">Nothing has been recorded for this visit yet.</p>
@@ -52,16 +57,28 @@ export function PrescriptionPrint() {
     .join('; ')
 
   return (
-    <div className="receipt prescription">
-      <ClinicHeader />
+    <div className="receipt prescription" style={layout ? { fontSize: `${layout.font_size_pt}pt` } : undefined}>
+      {layout && <style>{`@media print { @page { margin: ${layout.margin_top_mm}mm ${layout.margin_side_mm}mm ${layout.margin_bottom_mm}mm; } .receipt.prescription { padding: 0; } }`}</style>}
+      {layout?.letterhead ? (
+        <div className="letterhead-gap no-print" style={{ height: `${layout.margin_top_mm}mm` }}>
+          Space left for the letterhead ({layout.margin_top_mm} mm)
+        </div>
+      ) : (
+        <ClinicHeader />
+      )}
 
       <div className="receipt-meta">
         <div>
           <strong>{patientName}</strong>
           <br />
-          {visit.patient.age_label} / {visit.patient.gender.charAt(0).toUpperCase()} · Patient ID: {visit.patient.uhid}
-          <br />
-          Mobile: {visit.patient.mobile}
+          {visit.patient.age_label} / {visit.patient.gender.charAt(0).toUpperCase()}
+          {layout?.show_patient_id !== false && <> · Patient ID: {visit.patient.uhid}</>}
+          {layout?.show_mobile !== false && (
+            <>
+              <br />
+              Mobile: {visit.patient.mobile}
+            </>
+          )}
         </div>
         <div className="right">
           <strong>{visit.doctor.name}</strong>
@@ -77,13 +94,13 @@ export function PrescriptionPrint() {
       </div>
 
       {visit.patient.allergies && <p className="rx-allergy">Allergies: {visit.patient.allergies}</p>}
-      {vitals.length > 0 && <p className="rx-vitals">{vitals.join(' · ')}</p>}
-      {c.complaints && <section><h3>Complaints</h3><p>{c.complaints}</p></section>}
-      {c.history && <section><h3>History</h3><p>{c.history}</p></section>}
-      {c.past_medication && <section><h3>Past medication</h3><p>{c.past_medication}</p></section>}
-      {generalExam && <section><h3>General examination</h3><p className="capitalise">{generalExam}</p></section>}
-      {c.findings && <section><h3>Systemic examination</h3><p>{c.findings}</p></section>}
-      {c.investigations?.length ? (
+      {shows('vitals') && vitals.length > 0 && <p className="rx-vitals">{vitals.join(' · ')}</p>}
+      {shows('complaints') && c.complaints && <section><h3>Complaints</h3><p>{c.complaints}</p></section>}
+      {shows('history') && c.history && <section><h3>History</h3><p>{c.history}</p></section>}
+      {shows('past_medication') && c.past_medication && <section><h3>Past medication</h3><p>{c.past_medication}</p></section>}
+      {shows('examination') && generalExam && <section><h3>General examination</h3><p className="capitalise">{generalExam}</p></section>}
+      {shows('examination') && c.findings && <section><h3>Systemic examination</h3><p>{c.findings}</p></section>}
+      {shows('results') && c.investigations?.length ? (
         <section>
           <h3>Test results</h3>
           <p>
@@ -98,8 +115,8 @@ export function PrescriptionPrint() {
           </p>
         </section>
       ) : null}
-      {c.diagnosis && <section><h3>Diagnosis</h3><p>{c.diagnosis}</p></section>}
-      {c.assessment_plan && <section><h3>Assessment / plan</h3><p>{c.assessment_plan}</p></section>}
+      {shows('diagnosis') && c.diagnosis && <section><h3>Diagnosis</h3><p>{c.diagnosis}</p></section>}
+      {shows('plan') && c.assessment_plan && <section><h3>Assessment / plan</h3><p>{c.assessment_plan}</p></section>}
 
       {c.medicines.length > 0 && (
         <section>
@@ -109,10 +126,10 @@ export function PrescriptionPrint() {
               <tr>
                 <th>#</th>
                 <th>Medicine</th>
-                <th>Dose</th>
-                <th>Frequency</th>
-                <th>When</th>
-                <th>Duration</th>
+                {column('dose') && <th>Dose</th>}
+                {column('frequency') && <th>Frequency</th>}
+                {column('timing') && <th>When</th>}
+                {column('duration') && <th>Duration</th>}
               </tr>
             </thead>
             <tbody>
@@ -121,12 +138,12 @@ export function PrescriptionPrint() {
                   <td>{i + 1}</td>
                   <td>
                     <strong>{m.medicine}</strong>
-                    {m.instructions && <small className="block">{tr(m.instructions)}</small>}
+                    {column('instructions') && m.instructions && <small className="block">{tr(m.instructions)}</small>}
                   </td>
-                  <td>{tr(m.dose)}</td>
-                  <td>{tr(m.frequency)}</td>
-                  <td>{tr(m.timing)}</td>
-                  <td>{tr(m.duration)}</td>
+                  {column('dose') && <td>{tr(m.dose)}</td>}
+                  {column('frequency') && <td>{tr(m.frequency)}</td>}
+                  {column('timing') && <td>{tr(m.timing)}</td>}
+                  {column('duration') && <td>{tr(m.duration)}</td>}
                 </tr>
               ))}
             </tbody>
@@ -134,16 +151,16 @@ export function PrescriptionPrint() {
         </section>
       )}
 
-      {c.tests_advised && <section><h3>Tests advised</h3><p>{c.tests_advised}</p></section>}
-      {c.advice && <section><h3>Advice</h3><p className="report-text">{c.advice.split('\n').map(tr).join('\n')}</p></section>}
-      {c.refer_to && <section><h3>Referred to</h3><p>{c.refer_to}</p></section>}
-      {c.follow_up_on && <section><h3>Next visit</h3><p>{longDate(c.follow_up_on)}</p></section>}
+      {shows('tests') && c.tests_advised && <section><h3>Tests advised</h3><p>{c.tests_advised}</p></section>}
+      {shows('advice') && c.advice && <section><h3>Advice</h3><p className="report-text">{c.advice.split('\n').map(tr).join('\n')}</p></section>}
+      {shows('refer') && c.refer_to && <section><h3>Referred to</h3><p>{c.refer_to}</p></section>}
+      {shows('next_visit') && c.follow_up_on && <section><h3>Next visit</h3><p>{longDate(c.follow_up_on)}</p></section>}
 
       <div className="signature">
         {signature && <img src={signature} alt="" />}
-        <strong>{visit.doctor.signature_text || visit.doctor.name}</strong>
+        {seal ? <img className="seal" src={seal} alt="" /> : <strong>{visit.doctor.signature_text || visit.doctor.name}</strong>}
       </div>
-      <ClinicFooter />
+      {!layout?.letterhead && <ClinicFooter />}
     </div>
   )
 }

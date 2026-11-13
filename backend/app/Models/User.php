@@ -12,8 +12,8 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'branch_id', 'role', 'gender', 'phone', 'department', 'signature_text', 'is_active', 'pad_hidden_sections', 'pad_section_order', 'rx_settings', 'permissions', 'signature_path', 'availability'])]
-#[Hidden(['password', 'remember_token', 'signature_path', 'permissions'])]
+#[Fillable(['name', 'email', 'password', 'branch_id', 'role', 'gender', 'phone', 'department', 'signature_text', 'is_active', 'pad_hidden_sections', 'pad_section_order', 'rx_settings', 'permissions', 'signature_path', 'seal_path', 'availability'])]
+#[Hidden(['password', 'remember_token', 'signature_path', 'seal_path', 'permissions'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
@@ -45,6 +45,15 @@ class User extends Authenticatable
         'print_language' => 'en',
         'translations' => [],
         'capitalize_name' => false,
+        // How the prescription is laid out on paper.
+        'print' => [
+            'letterhead' => false, // true: leave the heading off and keep the top of the page clear for pre-printed paper
+            'margin_top_mm' => 12, 'margin_bottom_mm' => 12, 'margin_side_mm' => 12,
+            'font_size_pt' => 11,
+            'show_mobile' => true, 'show_patient_id' => true,
+            'sections' => ['vitals' => true, 'complaints' => true, 'history' => true, 'past_medication' => true, 'examination' => true, 'results' => true, 'diagnosis' => true, 'plan' => true, 'tests' => true, 'advice' => true, 'refer' => true, 'next_visit' => true],
+            'columns' => ['dose' => true, 'frequency' => true, 'timing' => true, 'duration' => true, 'instructions' => true],
+        ],
     ];
 
     /**
@@ -52,7 +61,11 @@ class User extends Authenticatable
      */
     public function rxSettings(): array
     {
-        return array_merge(self::RX_DEFAULTS, $this->rx_settings ?? []);
+        $settings = array_merge(self::RX_DEFAULTS, $this->rx_settings ?? []);
+        // Fill in any print choice saved before it existed, down to each section and column.
+        $settings['print'] = array_replace_recursive(self::RX_DEFAULTS['print'], $settings['print'] ?? []);
+
+        return $settings;
     }
 
     /** What a person may be allowed to do, with the wording shown on the staff screen. */

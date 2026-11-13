@@ -80,6 +80,7 @@ class DoctorLibraryController extends Controller
             'templates' => PrescriptionTemplate::where('doctor_id', $doctorId)->orderBy('name')->get(),
             'medicine_defaults' => MedicineDefault::where('doctor_id', $doctorId)->orderBy('medicine')->get(['id', 'medicine', 'dose', 'frequency', 'timing', 'duration', 'instructions', 'uses']),
             'rx_settings' => (User::find($doctorId) ?? new User)->rxSettings(),
+            'has_seal' => filled(User::find($doctorId)?->seal_path),
             'pad_hidden_sections' => User::find($doctorId)?->pad_hidden_sections ?? [],
             'pad_sections' => self::PAD_SECTIONS,
             'pad_section_order' => self::padOrder(User::find($doctorId)?->pad_section_order),
@@ -247,6 +248,18 @@ class DoctorLibraryController extends Controller
             'translations.*.phrase' => ['required', 'string', 'max:255'],
             'translations.*.translation' => ['required', 'string', 'max:255'],
             'capitalize_name' => ['sometimes', 'boolean'],
+            'print' => ['sometimes', 'array'],
+            'print.letterhead' => ['sometimes', 'boolean'],
+            'print.margin_top_mm' => ['sometimes', 'integer', 'between:0,150'],
+            'print.margin_bottom_mm' => ['sometimes', 'integer', 'between:0,100'],
+            'print.margin_side_mm' => ['sometimes', 'integer', 'between:0,50'],
+            'print.font_size_pt' => ['sometimes', 'integer', 'between:8,16'],
+            'print.show_mobile' => ['sometimes', 'boolean'],
+            'print.show_patient_id' => ['sometimes', 'boolean'],
+            'print.sections' => ['sometimes', 'array:'.implode(',', array_keys(User::RX_DEFAULTS['print']['sections']))],
+            'print.sections.*' => ['boolean'],
+            'print.columns' => ['sometimes', 'array:'.implode(',', array_keys(User::RX_DEFAULTS['print']['columns']))],
+            'print.columns.*' => ['boolean'],
         ]);
         // Kept as a list of pairs so a phrase can contain any character.
         $data['translations'] = collect($data['translations'])->map(fn ($t) => ['phrase' => trim($t['phrase']), 'translation' => trim($t['translation'])])
@@ -254,9 +267,29 @@ class DoctorLibraryController extends Controller
 
         $ownerId = $this->owner($request);
         $owner = $ownerId === $request->user()->id ? $request->user() : User::findOrFail($ownerId);
-        $owner->update(['rx_settings' => $data]);
+        // A save that leaves the print layout out keeps the layout already chosen.
+        $current = $owner->rxSettings();
+        $data['print'] = array_replace_recursive($current['print'], $data['print'] ?? []);
+        $owner->update(['rx_settings' => array_merge($current, $data)]);
 
         return response()->json($owner->rxSettings());
+    }
+
+    /** Stores (or with no file, removes) the picture of the doctor's seal. */
+    public function saveSeal(Request $request): JsonResponse
+    {
+        $ownerId = $this->owner($request);
+        $request->validate(
+            ['file' => ['nullable', 'file', 'max:300', 'mimes:png,jpg,jpeg']],
+            ['file.max' => 'The seal picture must be 300 KB or smaller.', 'file.mimes' => 'Use a PNG or JPG picture of the seal.'],
+        );
+        $owner = User::findOrFail($ownerId);
+        if ($owner->seal_path) {
+            \Illuminate\Support\Facades\Storage::disk('local')->delete($owner->seal_path);
+        }
+        $owner->update(['seal_path' => $request->file('file')?->store('staff-seals', 'local')]);
+
+        return response()->json(['has_seal' => filled($owner->seal_path)]);
     }
 
     public static function learn(int $doctorId, Consultation $consultation, array $medicines): void

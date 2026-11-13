@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { api } from '../api'
-import type { PrescribedMedicine, RxSettings } from '../types'
+import { useSignature } from '../components/useSignature'
+import type { PrescribedMedicine, RxPrint, RxSettings } from '../types'
 
 type Run = (action: () => Promise<unknown>, done?: string) => Promise<boolean>
 
@@ -22,6 +23,12 @@ const TELUGU_STARTER: [string, string][] = [
   ['Once a week', 'వారానికి ఒకసారి'],
 ]
 
+const SECTIONS: [string, string][] = [
+  ['vitals', 'Vitals'], ['complaints', 'Complaints'], ['history', 'History'], ['past_medication', 'Past medication'], ['examination', 'Examination'], ['results', 'Test results'],
+  ['diagnosis', 'Diagnosis'], ['plan', 'Assessment / plan'], ['tests', 'Tests advised'], ['advice', 'Advice'], ['refer', 'Referred to'], ['next_visit', 'Next visit'],
+]
+const COLUMNS: [string, string][] = [['dose', 'Dose'], ['frequency', 'Frequency'], ['timing', 'When'], ['duration', 'Duration'], ['instructions', 'Instructions']]
+
 const LANGUAGES: [RxSettings['print_language'], string, string][] = [
   ['en', 'As typed', 'The prescription prints exactly as it was written.'],
   ['both', 'As typed, with the translation beside it', 'For example "After food (భోజనం తర్వాత)".'],
@@ -29,11 +36,25 @@ const LANGUAGES: [RxSettings['print_language'], string, string][] = [
 ]
 
 /** The doctor's own frequency and timing lists, translations, and how the prescription prints. */
-export function RxSettingsForm({ settings, doctorId, run }: { settings: RxSettings; doctorId: number; run: Run }) {
+export function RxSettingsForm({ settings, doctorId, run, hasSeal }: { settings: RxSettings; doctorId: number; run: Run; hasSeal: boolean }) {
   const [frequencies, setFrequencies] = useState(settings.frequencies.join('\n'))
   const [timings, setTimings] = useState(settings.timings.join('\n'))
   const [language, setLanguage] = useState(settings.print_language)
   const [capitalize, setCapitalize] = useState(settings.capitalize_name)
+  const [print, setPrint] = useState<RxPrint>(settings.print)
+  const [sealVersion, setSealVersion] = useState(0)
+  const [seal, setSeal] = useState(hasSeal)
+  const sealPicture = useSignature(seal ? doctorId : null, sealVersion, 'seal')
+  const setNumber = (key: 'margin_top_mm' | 'margin_bottom_mm' | 'margin_side_mm' | 'font_size_pt') => (value: string) => setPrint((p) => ({ ...p, [key]: value === '' ? 0 : Number(value) }))
+  const uploadSeal = async (file?: File) => {
+    const body = new FormData()
+    body.append('doctor_id', String(doctorId))
+    if (file) body.append('file', file)
+    if (await run(() => api.post('/doctor/seal', body), file ? 'Seal saved.' : 'Seal removed.')) {
+      setSeal(Boolean(file))
+      setSealVersion((v) => v + 1)
+    }
+  }
   const [translations, setTranslations] = useState(settings.translations.length ? settings.translations : [{ phrase: '', translation: '' }])
 
   const lines = (text: string) => [...new Set(text.split('\n').map((l) => l.trim()).filter(Boolean))]
@@ -54,6 +75,7 @@ export function RxSettingsForm({ settings, doctorId, run }: { settings: RxSettin
           timings: lines(timings),
           print_language: language,
           capitalize_name: capitalize,
+          print,
           translations: translations.filter((t) => t.phrase.trim() && t.translation.trim()),
         }),
       'Prescription settings saved.',
@@ -89,6 +111,82 @@ export function RxSettingsForm({ settings, doctorId, run }: { settings: RxSettin
         <input type="checkbox" checked={capitalize} onChange={(e) => setCapitalize(e.target.checked)} />
         Print the patient's name in capital letters
       </label>
+
+      <h3>Page layout</h3>
+      <label className="check top">
+        <input type="checkbox" checked={print.letterhead} onChange={(e) => setPrint({ ...print, letterhead: e.target.checked })} />
+        <span>
+          Print on my own letterhead
+          <small className="muted block">The hospital heading is left off. Set the top margin to the height of your pre-printed heading.</small>
+        </span>
+      </label>
+      <div className="grid four gap-top">
+        {(
+          [
+            ['margin_top_mm', 'Top margin (mm)', 0, 150],
+            ['margin_bottom_mm', 'Bottom margin (mm)', 0, 100],
+            ['margin_side_mm', 'Side margins (mm)', 0, 50],
+            ['font_size_pt', 'Text size (pt)', 8, 16],
+          ] as const
+        ).map(([key, label, min, max]) => (
+          <label className="field" key={key}>
+            <span className="field-label">{label}</span>
+            <input type="number" min={min} max={max} value={print[key]} onChange={(e) => setNumber(key)(e.target.value)} />
+          </label>
+        ))}
+      </div>
+
+      <h3>What prints</h3>
+      <div className="tick-grid">
+        <label className="check flush">
+          <input type="checkbox" checked={print.show_patient_id} onChange={(e) => setPrint({ ...print, show_patient_id: e.target.checked })} />
+          Patient ID
+        </label>
+        <label className="check flush">
+          <input type="checkbox" checked={print.show_mobile} onChange={(e) => setPrint({ ...print, show_mobile: e.target.checked })} />
+          Patient's mobile
+        </label>
+        {SECTIONS.map(([key, label]) => (
+          <label className="check flush" key={key}>
+            <input type="checkbox" checked={print.sections[key] !== false} onChange={(e) => setPrint({ ...print, sections: { ...print.sections, [key]: e.target.checked } })} />
+            {label}
+          </label>
+        ))}
+      </div>
+      <p className="muted small gap-top">Medicine columns (the medicine name always prints):</p>
+      <div className="tick-grid">
+        {COLUMNS.map(([key, label]) => (
+          <label className="check flush" key={key}>
+            <input type="checkbox" checked={print.columns[key] !== false} onChange={(e) => setPrint({ ...print, columns: { ...print.columns, [key]: e.target.checked } })} />
+            {label}
+          </label>
+        ))}
+      </div>
+
+      <h3>Doctor's seal</h3>
+      <div className="signature-box">
+        {sealPicture ? <img src={sealPicture} alt="Doctor's seal" /> : <span className="muted small">No seal picture. A picture of your seal (name, degree, registration number) prints beside the signature.</span>}
+        <div className="row">
+          <label className="btn ghost small-btn">
+            {seal ? 'Replace' : 'Upload'}
+            <input
+              type="file"
+              hidden
+              accept="image/png,image/jpeg"
+              onChange={(e) => {
+                uploadSeal(e.target.files?.[0])
+                e.target.value = ''
+              }}
+            />
+          </label>
+          {seal && (
+            <button type="button" className="link danger" onClick={() => uploadSeal()}>
+              Remove
+            </button>
+          )}
+          <span className="muted small">PNG or JPG, up to 300 KB. Saved straight away.</span>
+        </div>
+      </div>
 
       <h3>Translations</h3>
       <p className="muted small">

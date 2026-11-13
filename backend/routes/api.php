@@ -106,6 +106,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/medicine-defaults/{default}', 'updateMedicineDefault');
         Route::delete('/medicine-defaults/{default}', 'destroyMedicineDefault');
         Route::put('/rx-settings', 'saveRxSettings');
+        Route::post('/seal', 'saveSeal');
         Route::put('/pad-sections', 'savePadSections');
     });
     Route::get('/appointments/{appointment}/consultation', [ConsultationController::class, 'show']);
@@ -214,6 +215,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::get('/users/{user}/signature', [StaffController::class, 'signature']);
+    Route::get('/users/{user}/seal', [StaffController::class, 'seal']);
     Route::prefix('ipd')->controller(IpdRecordsController::class)->group(function () {
         Route::get('/admissions/{admission}/notes', 'notes');
         Route::get('/admissions/{admission}/summary', 'summary');

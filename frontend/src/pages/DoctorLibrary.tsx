@@ -143,7 +143,7 @@ export function DoctorLibrary() {
         ) : tab === 'medicines' ? (
           <MedicineLibrary rows={library.medicine_defaults} doctorId={doctorId} run={run} />
         ) : tab === 'settings' ? (
-          <RxSettingsForm key={doctorId} settings={library.rx_settings} doctorId={doctorId} run={run} />
+          <RxSettingsForm key={doctorId} settings={library.rx_settings} doctorId={doctorId} run={run} hasSeal={library.has_seal} />
         ) : tab === 'pad' ? (
           <div>
             <p className="muted">Untick the parts of the visit pad this doctor does not use. A hidden part still appears on a visit where it already has something written.</p>
