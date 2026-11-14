@@ -79,6 +79,7 @@ Route::middleware(['auth:sanctum', 'actor:staff'])->group(function () {
     Route::post('/backups', [BackupController::class, 'store'])->middleware('throttle:6,1');
     Route::get('/backups/{name}/download', [BackupController::class, 'download']);
     Route::put('/me/tabs', [AuthController::class, 'saveTabs']);
+    Route::put('/me/appearance', [AuthController::class, 'saveAppearance']);
     Route::post('/me/password', [AuthController::class, 'changePassword'])->middleware('throttle:10,1');
 
     Route::apiResource('patients', PatientController::class)->except('destroy');

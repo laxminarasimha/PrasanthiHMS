@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { useAuth } from '../auth'
 import { TextField } from '../components/Field'
+import { THEMES, applyAppearance, type Appearance } from '../appearance'
 import { allowedTabs } from '../nav'
 import type { User } from '../types'
 
@@ -32,6 +33,16 @@ export function Account() {
     }
   }
 
+  const look: Appearance = user?.appearance ?? { theme: 'prasanthi', text: 'normal' }
+  const saveLook = async (next: Appearance) => {
+    applyAppearance(next) // at once, so the choice is seen as it is made
+    try {
+      refresh((await api.put<User>('/me/appearance', next)).data)
+    } catch {
+      applyAppearance(look)
+    }
+  }
+
   const tabs = user ? allowedTabs(user) : []
   const saveTabs = async (next: string[]) => {
     setHidden(next)
@@ -58,6 +69,34 @@ export function Account() {
           {user?.branch ? ` · ${user.branch.name}` : ''}
         </span>
       </p>
+
+      <h3>Appearance</h3>
+      <p className="muted small">Pick the colours you like working in. This is yours alone and follows you to any computer you sign in on. Printed bills, prescriptions and reports always use the standard hospital colours.</p>
+      <div className="theme-list" role="radiogroup" aria-label="Theme">
+        {THEMES.map((t) => (
+          <button key={t.key} type="button" role="radio" aria-checked={look.theme === t.key} className={`theme-card ${look.theme === t.key ? 'on' : ''}`} onClick={() => saveLook({ ...look, theme: t.key })}>
+            <span className="theme-swatch" style={{ background: t.bg }}>
+              <i style={{ background: t.bar, borderBottom: `2px solid ${t.accent}` }} />
+              <span className="sw-body" style={{ background: t.surface, margin: '6px 8px', borderRadius: 4 }}>
+                <b style={{ background: t.brand }} />
+                <u style={{ background: t.key === 'night' ? '#a9a1b5' : '#655d6c' }} />
+              </span>
+            </span>
+            <strong>{t.name}</strong>
+            <small>{t.note}</small>
+          </button>
+        ))}
+      </div>
+      <div className="row wrap">
+        <span className="muted small">Text size:</span>
+        <div className="tabs flush">
+          {([['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']] as const).map(([key, label]) => (
+            <button key={key} type="button" className={look.text === key ? 'active' : ''} onClick={() => saveLook({ ...look, text: key })}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <h3>My menu</h3>
       <p className="muted small">Untick the tabs you never use to keep your menu short. This only tidies the menu; it does not change what you are allowed to do, and you can tick them back any time.</p>
