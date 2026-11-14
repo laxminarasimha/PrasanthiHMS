@@ -44,7 +44,32 @@ Route::get('/health', function () {
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
 
-Route::middleware('auth:sanctum')->group(function () {
+// ---- The patient's mobile app: its own logins, kept apart from staff ----
+Route::prefix('app')->controller(\App\Http\Controllers\Api\PatientAppController::class)->group(function () {
+    Route::post('/register', 'register')->middleware('throttle:6,1');
+    Route::post('/login', 'login')->middleware('throttle:10,1');
+
+    Route::middleware(['auth:sanctum', 'actor:patient'])->group(function () {
+        Route::get('/me', 'me');
+        Route::post('/logout', 'logout');
+        Route::get('/doctors', 'doctors');
+        Route::get('/doctors/{doctor}/slots', 'slots');
+        Route::get('/appointments', 'appointments');
+        Route::post('/appointments', 'book')->middleware('throttle:20,1');
+        Route::delete('/appointments/{appointment}', 'cancel');
+        Route::get('/medicines', 'medicines');
+        Route::get('/subscriptions', 'subscriptions');
+        Route::post('/subscriptions', 'storeSubscription');
+        Route::put('/subscriptions/{subscription}', 'updateSubscription');
+        Route::delete('/subscriptions/{subscription}', 'cancelSubscription');
+    });
+});
+
+Route::middleware(['auth:sanctum', 'actor:staff'])->group(function () {
+    Route::middleware('ability:canRunPharmacy')->controller(\App\Http\Controllers\Api\SubscriptionController::class)->group(function () {
+        Route::get('/pharmacy/subscriptions', 'index');
+        Route::post('/pharmacy/subscriptions/{subscription}/prepared', 'prepared');
+    });
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/backups', [BackupController::class, 'index']);
