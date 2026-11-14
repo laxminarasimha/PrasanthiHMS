@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { PatientDocuments } from '../../components/PatientDocuments'
 import { IpdCharts } from './IpdCharts'
 import { HealthSummary } from '../../components/HealthSummary'
 import { Link, useParams } from 'react-router-dom'
@@ -168,7 +169,7 @@ export function IpdCase() {
             Investigations
           </button>
           <button className={tab === 'files' ? 'active' : ''} onClick={() => setTab('files')}>
-            Attachments
+            Papers
           </button>
           <button className={tab === 'forms' ? 'active' : ''} onClick={() => setTab('forms')}>
             Forms
@@ -179,6 +180,12 @@ export function IpdCase() {
         {tab === 'results' && <IpdInvestigations admissionId={admission.id} />}
         {tab === 'forms' && <FormsPanel url={`/ipd/admissions/${admission.id}/forms`} use="ipd" canEdit={canEdit} />}
         {tab === 'files' && <AttachmentsPanel patient={{ id: admission.patient.id, name: admission.patient.name, uhid: admission.patient.uhid }} />}
+        {tab === 'files' && (
+          <>
+            <h3>Certificates, letters and consent forms</h3>
+            <PatientDocuments patient={admission.patient} canIssue={Boolean(user?.can_approve_ipd)} admissionId={admission.id} />
+          </>
+        )}
 
         {tab === 'notes' && (
           <>

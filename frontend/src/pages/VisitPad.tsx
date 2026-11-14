@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
+import { PatientDocuments } from '../components/PatientDocuments'
 import { IcdPicker, type IcdCode } from '../components/IcdPicker'
 import { HealthSummary } from '../components/HealthSummary'
 import { Link, useParams } from 'react-router-dom'
@@ -603,6 +604,9 @@ export function VisitPad() {
             )}
           </div>
         )}
+
+        <h3>Certificates and letters</h3>
+        <PatientDocuments patient={visit.patient} canIssue={Boolean(user?.can_approve_ipd)} appointmentId={visit.appointment.id} />
 
         <h3>Forms</h3>
         <p className="muted small">Assessment sheets, consents and other forms designed under Admin → Forms. They are saved on their own, apart from the visit notes above.</p>

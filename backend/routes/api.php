@@ -131,6 +131,13 @@ Route::middleware(['auth:sanctum', 'actor:staff'])->group(function () {
         Route::put('/health-items/{item}', 'update');
         Route::delete('/health-items/{item}', 'destroy');
     });
+    Route::controller(\App\Http\Controllers\Api\PatientDocumentController::class)->group(function () {
+        Route::get('/patients/{patient}/documents', 'index');
+        Route::get('/patients/{patient}/documents/draft', 'draft');
+        Route::post('/patients/{patient}/documents', 'store');
+        Route::get('/documents/{document}', 'show');
+        Route::post('/documents/{document}/cancel', 'cancel');
+    });
     Route::get('/patients/{patient}/case-history', [CaseHistoryController::class, 'show']);
     Route::get('/patients/{patient}/trends', [CaseHistoryController::class, 'trends']);
 

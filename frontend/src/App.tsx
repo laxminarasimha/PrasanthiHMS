@@ -27,6 +27,7 @@ import { LabSettings } from './pages/LabSettings'
 import { LabTests } from './pages/LabTests'
 import { Login } from './pages/Login'
 import { CaseHistory } from './pages/CaseHistory'
+import { DocumentPrint } from './pages/DocumentPrint'
 import { PatientDashboard } from './pages/PatientDashboard'
 import { Patients } from './pages/Patients'
 import { PharmacyBilling } from './pages/pharmacy/Billing'
@@ -86,6 +87,7 @@ export default function App() {
           <Route path="/visits/:id/print" element={<PrintOnly><PrescriptionPrint /></PrintOnly>} />
           <Route path="/lab/orders/:id/print" element={<PrintOnly><LabReportPrint /></PrintOnly>} />
           <Route path="/forms/:id/print" element={<PrintOnly><FormPrint /></PrintOnly>} />
+          <Route path="/documents/:id/print" element={<PrintOnly><DocumentPrint /></PrintOnly>} />
           <Route path="/ipd/:id/print" element={<PrintOnly><IpdPrint /></PrintOnly>} />
           <Route path="/ipd/:id/bills/:billId/print" element={<PrintOnly><IpdPrint /></PrintOnly>} />
           <Route path="/ipd/:id/receipt/:paymentId" element={<PrintOnly><IpdReceiptPrint /></PrintOnly>} />
