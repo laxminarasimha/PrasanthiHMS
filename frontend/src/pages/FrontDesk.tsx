@@ -150,30 +150,32 @@ export function FrontDesk() {
               ))}
             </select>
           )}
-          <button className="btn ghost" onClick={load} title="Refresh">
-            Refresh
-          </button>
-          <button className="btn ghost" onClick={() => open({ kind: 'summary' })}>
-            Summary
-          </button>
-          <button className="btn ghost" onClick={() => open({ kind: 'followups' })} title="Patients asked by a doctor to come back on this day">
-            Follow-ups{followUps.some((f) => !f.booked) && <span className="count">{followUps.filter((f) => !f.booked).length}</span>}
-          </button>
-          <Link className="btn ghost" to="/queue" target="_blank">
-            Patient queue
-          </Link>
-          <button className="btn ghost" onClick={() => { setWalkInPatient(null); open({ kind: 'walkin' }) }}>
-            + Other bill
-          </button>
-          <Link className="btn ghost" to="/front-desk/bills">
-            All bills
-          </Link>
-          <Link className="btn ghost" to="/front-desk/calendar">
-            Calendar
-          </Link>
           <button className="btn primary" onClick={() => open({ kind: 'new' })}>
             + New appointment
           </button>
+          <button className="btn ghost" onClick={() => { setWalkInPatient(null); open({ kind: 'walkin' }) }}>
+            + Other bill
+          </button>
+        </div>
+        <div className="toolbar minor">
+          <button className="btn ghost small-btn" onClick={load} title="Refresh">
+            Refresh
+          </button>
+          <button className="btn ghost small-btn" onClick={() => open({ kind: 'summary' })}>
+            Summary
+          </button>
+          <button className="btn ghost small-btn" onClick={() => open({ kind: 'followups' })} title="Patients asked by a doctor to come back on this day">
+            Follow-ups{followUps.some((f) => !f.booked) && <span className="count">{followUps.filter((f) => !f.booked).length}</span>}
+          </button>
+          <Link className="btn ghost small-btn" to="/queue" target="_blank">
+            Patient queue
+          </Link>
+          <Link className="btn ghost small-btn" to="/front-desk/bills">
+            All bills
+          </Link>
+          <Link className="btn ghost small-btn" to="/front-desk/calendar">
+            Calendar
+          </Link>
         </div>
 
         <div className="tabs">

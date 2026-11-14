@@ -984,3 +984,7 @@ tbody tr.not-here { color: var(--muted); }
   .rx-row.rx-head { display: none; }
   .rx-row > button, .rx-row > .link { justify-self: start; }
 }
+
+/* A quieter second row of actions under a page's main toolbar */
+.toolbar.minor { margin-top: -6px; gap: 6px; }
+.toolbar.minor .btn { font-weight: 500; }

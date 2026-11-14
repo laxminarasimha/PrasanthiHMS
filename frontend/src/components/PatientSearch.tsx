@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { fullName } from '../format'
 import type { Patient } from '../types'
+import { canLeave } from '../unsaved'
 
 /**
  * Finds any patient by name, mobile or patient ID. In the top bar it opens the patient's page;
@@ -42,7 +43,7 @@ export function PatientSearch({ onPick, placeholder = 'Find a patient', classNam
     setQuery('')
     setOpen(false)
     if (onPick) onPick(p)
-    else navigate(`/patients/${p.id}`)
+    else if (canLeave()) navigate(`/patients/${p.id}`)
   }
 
   return (
