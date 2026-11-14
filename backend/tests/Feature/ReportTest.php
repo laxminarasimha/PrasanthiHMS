@@ -71,7 +71,19 @@ class ReportTest extends TestCase
             ->assertJsonPath('counts.lab_orders', 1)
             ->assertJsonPath('counts.pharmacy_bills', 1)
             ->assertJsonPath('counts.admissions', 1)
-            ->assertJsonPath('counts.inpatients_now', 1);
+            ->assertJsonPath('counts.inpatients_now', 1)
+            ->assertJsonPath('counts.consultations', 0)
+            ->assertJsonPath('counts.visit_pads', 0);
+
+        // The desk marks the patient as seen by a doctor who wrote the notes elsewhere: the visit
+        // counts as a consultation, though no visit pad was written.
+        \App\Models\Appointment::firstOrFail()->update(['status' => 'reviewed']);
+        $this->getJson('/api/reports/summary')->assertOk()
+            ->assertJsonPath('counts.consultations', 1)
+            ->assertJsonPath('counts.visit_pads', 0);
+        $this->getJson('/api/reports/list/consultations')->assertOk()
+            ->assertJsonPath('rows.0.total', 1)->assertJsonPath('rows.0.new', 1)->assertJsonPath('rows.0.repeat', 0)
+            ->assertJsonPath('rows.0.doctor', $doctor->name);
 
         // Nothing happened last week.
         $lastWeek = now()->subWeek()->toDateString();

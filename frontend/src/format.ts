@@ -59,9 +59,13 @@ export const nowLocal = () => {
   return `${today()}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-/** How a bill's payment state reads in a list: an amount due, "On IPD bill" when it was moved there, or "Paid". */
-export const settlement = (due: number, movedToIpd: number | null | undefined) =>
-  due > 0 ? `${rupees(due)} due` : Number(movedToIpd) > 0 ? 'On IPD bill' : 'Paid'
+/**
+ * How a bill's payment state reads in a list: an amount due, "On IPD bill" when it was moved there,
+ * "No charge" when the bill came to nothing (a full discount), or "Paid". A bill of ₹0 is never
+ * called paid, because no money was taken for it.
+ */
+export const settlement = (due: number, movedToIpd: number | null | undefined, total?: number) =>
+  due > 0 ? `${rupees(due)} due` : Number(movedToIpd) > 0 ? 'On IPD bill' : total !== undefined && Number(total) <= 0 ? 'No charge' : 'Paid'
 
 /** Saves rows as a CSV file the pharmacist can open in Excel. */
 export function downloadCsv(filename: string, headers: string[], rows: (string | number | null | undefined)[][]) {

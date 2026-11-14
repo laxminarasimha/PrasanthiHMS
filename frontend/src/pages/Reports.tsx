@@ -17,6 +17,7 @@ const COUNTS: [string, string][] = [
   ['new_patients', 'New patients'],
   ['appointments', 'Appointments'],
   ['consultations', 'Consultations completed'],
+  ['visit_pads', 'With a visit pad written'],
   ['lab_orders', 'Lab orders'],
   ['pharmacy_bills', 'Pharmacy bills'],
   ['admissions', 'Admissions'],

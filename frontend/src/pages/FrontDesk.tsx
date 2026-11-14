@@ -6,7 +6,7 @@ import { BillPanel } from '../components/BillPanel'
 import { LabOrderForm } from '../components/LabOrderForm'
 import { AttachmentsPanel, EditAppointmentPanel, SummaryPanel, VitalsPanel } from '../components/FrontDeskPanels'
 import { PatientPicker } from '../components/PatientPicker'
-import { STATUS_LABELS, clock, longDate, rupees, stampTime, today } from '../format'
+import { STATUS_LABELS, clock, longDate, rupees, settlement, stampTime, today } from '../format'
 import type { Appointment, AppointmentStatus, Bill, Doctor, FollowUp, LabCatalogueTest, LabPackage, Patient, Service, WalkInBill } from '../types'
 
 type DayList = { data: Appointment[]; counts: Partial<Record<AppointmentStatus, number>> }
@@ -27,7 +27,7 @@ const DEPARTMENTS: [Department, string][] = [['all', 'All'], ['appointment', 'Ap
 /** A bill amount as the desk reads it at a glance: green when settled, red when money is owed. */
 function BillChip({ label, total, due, movedToIpd, onOpen }: { label?: string; total: number; due: number; movedToIpd?: number | null; onOpen: () => void }) {
   return (
-    <button className={`bill-chip ${due > 0 ? 'unpaid' : 'paid'}`} onClick={onOpen} title={due > 0 ? `${rupees(due)} due` : Number(movedToIpd) > 0 ? 'On IPD bill' : 'Paid'}>
+    <button className={`bill-chip ${due > 0 ? 'unpaid' : 'paid'}`} onClick={onOpen} title={settlement(due, movedToIpd, total)}>
       {label && <span>{label}</span>}
       {rupees(total)}
     </button>

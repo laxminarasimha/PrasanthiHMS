@@ -121,7 +121,7 @@ export function Lab() {
                         <button className="link" onClick={() => setPanel({ kind: 'bill', billId: o.bill!.id })}>
                           {rupees(o.bill.total)}
                         </button>
-                        <small className={`block ${o.bill.due > 0 ? 'due' : 'settled'}`}>{settlement(o.bill.due, o.bill.moved_to_ipd)}</small>
+                        <small className={`block ${o.bill.due > 0 ? 'due' : 'settled'}`}>{settlement(o.bill.due, o.bill.moved_to_ipd, o.bill.total)}</small>
                       </>
                     )}
                   </td>
