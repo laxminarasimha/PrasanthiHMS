@@ -364,11 +364,13 @@ export type Medicine = {
   gst_percent: number
   units_per_pack: number
   reorder_level: number
+  desired_stock?: number | null
+  preferred_stockist_id?: number | null
   is_active: boolean
   units_in_stock: number
 }
 
-export type Stockist = { id: number; name: string; phone: string | null; email?: string | null; gstin: string | null; address: string | null; invoices?: number; billed?: number; paid?: number; returned?: number; balance?: number }
+export type Stockist = { id: number; name: string; phone: string | null; email?: string | null; gstin: string | null; address: string | null; lead_days?: number; credit_days?: number; invoices?: number; billed?: number; paid?: number; returned?: number; balance?: number }
 
 export type StockBatch = {
   id: number
@@ -401,6 +403,9 @@ export type PurchaseInvoice = {
   id: number
   invoice_no: string
   invoice_date: string
+  due_date?: string | null
+  payments?: { id: number; amount: number; mode: string; reference: string | null; paid_on: string; payer?: { name: string } | null }[]
+  order?: { id: number; order_no: string } | null
   subtotal: number
   tax: number
   other_charges?: number
@@ -647,7 +652,9 @@ export type PurchaseOrder = {
   id: number
   order_no: string
   order_date: string
-  status: 'open' | 'received' | 'cancelled'
+  status: 'draft' | 'open' | 'received' | 'cancelled'
+  expected_on?: string | null
+  approved_at?: string | null
   remarks: string | null
   stockist: { id: number; name: string; phone?: string | null; address?: string | null }
   items_count?: number

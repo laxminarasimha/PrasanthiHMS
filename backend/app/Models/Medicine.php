@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['name', 'type', 'manufacturer', 'category', 'sub_category', 'ved', 'sde', 'fsn', 'is_scheduled', 'hsn_code', 'gst_percent', 'units_per_pack', 'reorder_level', 'is_active'])]
+#[Fillable(['name', 'type', 'manufacturer', 'category', 'sub_category', 'ved', 'sde', 'fsn', 'is_scheduled', 'hsn_code', 'gst_percent', 'units_per_pack', 'reorder_level', 'desired_stock', 'preferred_stockist_id', 'is_active'])]
 class Medicine extends Model
 {
     /**

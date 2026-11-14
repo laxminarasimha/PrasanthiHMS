@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['stockist_id', 'order_date', 'status', 'remarks', 'created_by'])]
+#[Fillable(['stockist_id', 'order_date', 'expected_on', 'status', 'approved_at', 'approved_by', 'remarks', 'created_by'])]
 class PurchaseOrder extends Model
 {
     /**
@@ -15,7 +15,7 @@ class PurchaseOrder extends Model
      */
     protected function casts(): array
     {
-        return ['order_date' => 'date:Y-m-d'];
+        return ['order_date' => 'date:Y-m-d', 'expected_on' => 'date:Y-m-d', 'approved_at' => 'datetime:Y-m-d H:i'];
     }
 
     protected static function booted(): void

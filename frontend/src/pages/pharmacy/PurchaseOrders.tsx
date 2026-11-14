@@ -7,8 +7,8 @@ import type { InventoryMedicine, Medicine, PurchaseOrder, Stockist } from '../..
 
 type Line = { medicine_id: string; units_per_pack: string; packs: string }
 const emptyLine = (): Line => ({ medicine_id: '', units_per_pack: '', packs: '' })
-const STATUS = { open: 'Open', received: 'Received', cancelled: 'Cancelled' } as const
-const STATUS_CLASS = { open: 'status-arrived', received: 'ok', cancelled: 'off' } as const
+const STATUS = { draft: 'Draft, to be approved', open: 'Ordered', received: 'Received', cancelled: 'Cancelled' } as const
+const STATUS_CLASS = { draft: 'warn', open: 'status-arrived', received: 'ok', cancelled: 'off' } as const
 
 /** Orders placed with stockists. An order is a request only; stock arrives through a purchase invoice. */
 export function PharmacyPurchaseOrders() {
@@ -74,12 +74,26 @@ export function PharmacyPurchaseOrders() {
     }
   }
 
-  const view = (order: PurchaseOrder) => api.get<PurchaseOrder>(`/pharmacy/purchase-orders/${order.id}`).then((res) => setViewing(res.data))
+  const [packs, setPacks] = useState<Record<number, string>>({})
+  const [viewError, setViewError] = useState('')
+  const view = (order: PurchaseOrder) =>
+    api.get<PurchaseOrder>(`/pharmacy/purchase-orders/${order.id}`).then((res) => {
+      setViewing(res.data)
+      setViewError('')
+      setPacks(Object.fromEntries((res.data.items ?? []).map((i) => [i.id, String(i.packs)])))
+    })
   const setStatus = async (status: string) => {
     if (!viewing) return
-    const res = await api.put<PurchaseOrder>(`/pharmacy/purchase-orders/${viewing.id}`, { status })
-    setViewing(res.data)
-    load()
+    try {
+      // Approving a draft sends the quantities as they now stand, in case they were corrected.
+      const items = viewing.status === 'draft' && status === 'open' ? (viewing.items ?? []).map((i) => ({ id: i.id, packs: Number(packs[i.id] || 0) })) : undefined
+      const res = await api.put<PurchaseOrder>(`/pharmacy/purchase-orders/${viewing.id}`, { status, items })
+      setViewing(res.data)
+      setViewError('')
+      load()
+    } catch (err) {
+      setViewError(Object.values(fieldErrors(err))[0])
+    }
   }
 
   return (
@@ -233,12 +247,33 @@ export function PharmacyPurchaseOrders() {
                       <td>{i + 1}</td>
                       <td>{item.medicine_name}</td>
                       <td className="num">{item.units_per_pack}</td>
-                      <td className="num">{item.packs}</td>
+                      <td className="num">
+                        {viewing.status === 'draft' && canEdit ? (
+                          <input className="packs no-print" type="number" min="0" value={packs[item.id] ?? ''} onChange={(e) => setPacks((all) => ({ ...all, [item.id]: e.target.value }))} aria-label={`Packs of ${item.medicine_name}`} />
+                        ) : (
+                          item.packs
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               {viewing.remarks && <p className="muted">{viewing.remarks}</p>}
+              {viewing.expected_on && viewing.status === 'open' && <p className="muted small">Expected by {longDate(viewing.expected_on)}.</p>}
+              {viewError && <p className="form-error">{viewError}</p>}
+              {canEdit && viewing.status === 'draft' && (
+                <>
+                  <p className="muted small no-print">This order was suggested from stock levels and sales. Correct the packs if needed (0 drops a line), then approve it. Nothing has been ordered yet.</p>
+                  <div className="panel-foot row no-print">
+                    <button className="btn ghost" onClick={() => setStatus('cancelled')}>
+                      Drop this order
+                    </button>
+                    <button className="btn primary" onClick={() => setStatus('open')}>
+                      Approve order
+                    </button>
+                  </div>
+                </>
+              )}
               {canEdit && viewing.status === 'open' && (
                 <div className="panel-foot row no-print">
                   <button className="btn ghost" onClick={() => setStatus('cancelled')}>

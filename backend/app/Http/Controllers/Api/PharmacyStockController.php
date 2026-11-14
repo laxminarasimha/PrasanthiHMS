@@ -192,14 +192,27 @@ class PharmacyStockController extends Controller
     public function payInvoice(Request $request, PurchaseInvoice $purchase): JsonResponse
     {
         $this->authorizePharmacy($request);
-        $data = $request->validate(['amount' => ['required', 'numeric', 'gt:0']]);
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'gt:0'],
+            'mode' => ['nullable', Rule::in(\App\Models\Payment::MODES)],
+            'reference' => ['nullable', 'string', 'max:255'],
+            'paid_on' => ['nullable', 'date', 'before_or_equal:today'],
+            'remarks' => ['nullable', 'string', 'max:500'],
+        ], ['paid_on.before_or_equal' => 'A payment cannot be dated in the future.']);
 
-        $balance = round($purchase->total - $purchase->paid, 2);
-        if ($data['amount'] > $balance) {
-            throw ValidationException::withMessages(['amount' => "Only ₹{$balance} is owed on this invoice."]);
-        }
+        DB::transaction(function () use ($purchase, $data, $request) {
+            $purchase = PurchaseInvoice::lockForUpdate()->findOrFail($purchase->id);
+            $balance = round($purchase->total - $purchase->paid, 2);
+            if ($data['amount'] > $balance) {
+                throw ValidationException::withMessages(['amount' => "Only ₹{$balance} is owed on this invoice."]);
+            }
 
-        $purchase->increment('paid', $data['amount']);
+            $purchase->payments()->create([
+                'amount' => $data['amount'], 'mode' => $data['mode'] ?? 'cash', 'reference' => $data['reference'] ?? null,
+                'paid_on' => $data['paid_on'] ?? today()->toDateString(), 'remarks' => $data['remarks'] ?? null, 'paid_by' => $request->user()->id,
+            ]);
+            $purchase->increment('paid', $data['amount']);
+        });
 
         return response()->json($purchase->fresh()->present());
     }
@@ -299,9 +312,36 @@ class PharmacyStockController extends Controller
     public function updatePurchaseOrder(Request $request, PurchaseOrder $order): JsonResponse
     {
         $this->authorizePharmacy($request);
-        $order->update($request->validate(['status' => ['required', Rule::in(['open', 'received', 'cancelled'])]]));
+        $data = $request->validate([
+            'status' => ['required', Rule::in(['open', 'received', 'cancelled'])],
+            'items' => ['sometimes', 'array'],
+            'items.*.id' => ['required', 'integer'],
+            'items.*.packs' => ['required', 'integer', 'min:0', 'max:100000'],
+        ]);
 
-        return response()->json($order->load(['stockist', 'items']));
+        // A draft is approved (which makes it an open order) or dropped; an open order is received or cancelled.
+        $allowed = ['draft' => ['open', 'cancelled'], 'open' => ['received', 'cancelled']][$order->status] ?? [];
+        if (! in_array($data['status'], $allowed, true)) {
+            throw ValidationException::withMessages(['status' => 'This order is already '.$order->status.'.']);
+        }
+
+        DB::transaction(function () use ($order, $data, $request) {
+            // Whoever approves a suggested order may first correct the quantities; a line set to nothing is dropped.
+            if ($order->status === 'draft' && $data['status'] === 'open') {
+                foreach ($data['items'] ?? [] as $line) {
+                    $line['packs'] > 0 ? $order->items()->whereKey($line['id'])->update(['packs' => $line['packs']]) : $order->items()->whereKey($line['id'])->delete();
+                }
+                if ($order->items()->count() === 0) {
+                    throw ValidationException::withMessages(['items' => 'The order has no medicines left. Cancel it instead.']);
+                }
+                $order->fill(['approved_at' => now(), 'approved_by' => $request->user()->id, 'order_date' => today()->toDateString(),
+                    'expected_on' => today()->addDays((int) ($order->stockist?->lead_days ?? 2))->toDateString()]);
+            }
+            $order->status = $data['status'];
+            $order->save();
+        });
+
+        return response()->json($order->fresh()->load(['stockist', 'items']));
     }
 
     private function authorizePharmacy(Request $request): void

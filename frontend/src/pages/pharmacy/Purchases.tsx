@@ -3,7 +3,7 @@ import { api, fieldErrors } from '../../api'
 import { useAuth } from '../../auth'
 import { SelectField, TextField } from '../../components/Field'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
-import { expiryLabel, longDate, rupees, today } from '../../format'
+import { PAYMENT_MODES, expiryLabel, longDate, modeLabel, rupees, today } from '../../format'
 import type { Medicine, PurchaseInvoice, Stockist } from '../../types'
 
 type Line = {
@@ -64,6 +64,9 @@ export function PharmacyPurchases() {
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
   const [payAmount, setPayAmount] = useState('')
+  const [payMode, setPayMode] = useState('cash')
+  const [payRef, setPayRef] = useState('')
+  const [payDate, setPayDate] = useState(today())
   const [payError, setPayError] = useState('')
 
   const load = useCallback(() => {
@@ -470,9 +473,10 @@ export function PharmacyPurchases() {
                   onSubmit={async (e) => {
                     e.preventDefault()
                     try {
-                      const res = await api.post<PurchaseInvoice>(`/pharmacy/purchases/${viewing.id}/payments`, { amount: payAmount })
+                      const res = await api.post<PurchaseInvoice>(`/pharmacy/purchases/${viewing.id}/payments`, { amount: payAmount, mode: payMode, reference: payRef || null, paid_on: payDate })
                       setViewing(res.data)
                       setPayAmount('')
+                      setPayRef('')
                       setPayError('')
                       load()
                     } catch (err) {
@@ -481,12 +485,33 @@ export function PharmacyPurchases() {
                   }}
                 >
                   <input type="number" min={0} step="0.01" placeholder="Amount paid to stockist" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} aria-label="Amount paid to stockist" />
+                  <select value={payMode} onChange={(e) => setPayMode(e.target.value)} aria-label="How it was paid">
+                    {PAYMENT_MODES.filter((m) => m.value !== 'insurance').map((m) => (
+                      <option key={m.value} value={m.value}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input placeholder="Cheque or transfer no." value={payRef} onChange={(e) => setPayRef(e.target.value)} aria-label="Cheque or transfer number" />
+                  <input type="date" max={today()} value={payDate} onChange={(e) => setPayDate(e.target.value || today())} aria-label="Paid on" />
                   <button className="btn primary" disabled={!payAmount || Number(payAmount) <= 0}>
                     Record payment
                   </button>
                 </form>
               )}
               {payError && <p className="form-error">{payError}</p>}
+              {viewing.due_date && viewing.total - viewing.paid > 0.004 && <p className="muted small">Due to be paid by {longDate(viewing.due_date)}.</p>}
+              {viewing.payments && viewing.payments.length > 0 && (
+                <ul className="plain-list small">
+                  {viewing.payments.map((pay) => (
+                    <li key={pay.id}>
+                      {longDate(pay.paid_on)} · {rupees(pay.amount)} by {modeLabel(pay.mode)}
+                      {pay.reference ? ` (${pay.reference})` : ''}
+                      {pay.payer ? ` · ${pay.payer.name}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              )}
               {viewing.remarks && <p className="muted">{viewing.remarks}</p>}
             </aside>
           )}
