@@ -148,4 +148,58 @@ class DayCloseTest extends TestCase
         // And today's own work is not held up.
         $this->postJson('/api/lab/orders', ['patient_id' => $made['patient']->id, 'test_ids' => [LabTest::first()->id]])->assertCreated();
     }
+
+    public function test_only_people_allowed_to_close_can_close_and_doctors_just_look(): void
+    {
+        $doctor = User::factory()->create(['role' => 'doctor']);
+        Sanctum::actingAs($doctor);
+        $this->getJson('/api/day-close')->assertOk()->assertJsonPath('may_close', false)->assertJsonPath('can_close', false);
+        $this->postJson('/api/day-close', ['counted_cash' => 0])->assertForbidden();
+        $this->assertSame(0, DayClose::count());
+
+        // The admin can name someone, such as the cashier, under Setup → Staff.
+        $doctor->update(['permissions' => ['canCloseDay' => true]]);
+        Sanctum::actingAs($doctor->fresh());
+        $this->getJson('/api/day-close')->assertJsonPath('can_close', true);
+        $this->postJson('/api/day-close', ['counted_cash' => 0])->assertCreated()->assertJsonPath('can_reopen', false);
+    }
+
+    public function test_the_day_is_the_hospitals_own_date_and_times_read_by_its_clock(): void
+    {
+        $this->assertSame('Asia/Kolkata', config('app.timezone'));
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+
+        // Half past one at night on the 15th in India is still the evening of the 14th by world time.
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-11-14 20:00:00', 'UTC'));
+        $made = $this->busyDay();
+        $this->getJson('/api/day-close')->assertOk()->assertJsonPath('today', '2026-11-15')->assertJsonPath('day', '2026-11-15')->assertJsonPath('expected_cash', 150);
+        $this->getJson('/api/day-close?day=2026-11-14')->assertJsonPath('expected_cash', 0)->assertJsonPath('blocking', 0);
+
+        $this->postJson('/api/day-close', ['counted_cash' => 150, 'override_reason' => 'Night emergency, balance in the morning'])
+            ->assertCreated()->assertJsonPath('closed.closed_at', '2026-11-15 01:30');
+        $this->travelBack();
+    }
+
+    public function test_a_discount_change_is_logged_once_with_what_it_was_and_what_it_became(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $made = $this->busyDay();
+
+        $this->putJson("/api/bills/{$made['labBill']}", ['discount' => 300])->assertOk();
+        // Pressing save again with the same figure changes nothing and logs nothing.
+        $this->putJson("/api/bills/{$made['labBill']}", ['discount' => 300])->assertOk();
+        $this->putJson("/api/bills/{$made['labBill']}", ['discount' => 300])->assertOk();
+
+        $logs = AuditLog::where('subject_type', 'Bill')->where('subject_id', $made['labBill'])->whereIn('action', ['bill.discount', 'change'])->get();
+        $this->assertCount(1, $logs);
+        $this->assertStringContainsString('discount ₹0.00 → ₹300.00 · bill ₹300.00 → ₹0.00', $logs[0]->summary);
+
+        $changes = $this->check($this->getJson('/api/day-close')->json(), 'bill_changes');
+        $this->assertSame(1, $changes['count']);
+        $this->assertStringContainsString('₹0.00 → ₹300.00', $changes['rows'][0]['detail']);
+
+        // A request that is refused part-way leaves nothing behind.
+        $this->postJson("/api/bills/{$made['bill']}/payments", ['type' => 'payment', 'amount' => 5000, 'mode' => 'cash'])->assertStatus(422);
+        $this->assertEquals(150, Bill::find($made['bill'])->paid);
+    }
 }

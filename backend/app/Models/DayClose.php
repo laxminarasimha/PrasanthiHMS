@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /**
  * A day whose accounts have been closed. While a day is closed, money cannot be recorded
@@ -34,7 +35,11 @@ class DayClose extends Model
     public static function refuseIfClosed(mixed $when): void
     {
         $day = Carbon::parse($when ?? now());
-        if (self::whereDate('day', $day->toDateString())->whereNull('reopened_at')->exists()) {
+        // While a bill is being saved, this look is held until the saving is done, so the day cannot be
+        // closed underneath it; and while a day is being closed, the look waits for the closing to finish.
+        $closed = self::whereDate('day', $day->toDateString())->whereNull('reopened_at')
+            ->when(DB::transactionLevel() > 0, fn ($q) => $q->sharedLock())->exists();
+        if ($closed) {
             abort(423, 'The accounts for '.$day->format('j M Y').' are closed, so money cannot be recorded or changed for that day. An admin can reopen it under Reports → Day close.');
         }
     }

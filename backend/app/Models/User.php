@@ -81,6 +81,7 @@ class User extends Authenticatable
         'canWorkIpd' => ['IPD', 'Admit patients, add IPD charges, take IPD payments and discharge.'],
         'canApproveIpd' => ['Approve IPD summaries and bills', 'Approve a discharge summary or an IPD bill, which locks it against changes.'],
         'canViewReports' => ['Reports', "See the hospital's billing, collection and activity reports."],
+        'canCloseDay' => ['Close the day', 'Count the cash and close a day’s accounts, which locks that day’s bills and payments.'],
         'canManageSetup' => ['Price lists and setup', 'Change services, OPD hours, beds and IPD services.'],
         'canManageStaff' => ['Staff and permissions', 'Add staff, reset passwords and change what each person may do.'],
     ];
