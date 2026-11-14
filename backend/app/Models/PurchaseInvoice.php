@@ -38,7 +38,11 @@ class PurchaseInvoice extends Model
     {
         $this->load(['stockist', 'batches.medicine:id,name', 'payments.payer:id,name', 'order:id,order_no']);
 
-        return ['batches' => $this->batches->map(fn (StockBatch $b) => $b->withCosting())->all()] + $this->toArray();
+        // Lines worth a second look: a rate, MRP or GST that differs from last time, or a quantity that differs from the order.
+        $flags = \App\Support\OrderMatch::flags($this);
+
+        return ['batches' => $this->batches->map(fn (StockBatch $b) => $b->withCosting() + ['flags' => $flags[$b->id] ?? []])->all(), 'flagged' => count($flags)]
+            + $this->makeHidden('order')->toArray() + ['order' => $this->order?->only(['id', 'order_no'])];
     }
 
     protected static function booted(): void

@@ -173,6 +173,9 @@ class PharmacyController extends Controller
             'stockist_id' => ['required', 'exists:stockists,id'],
             'invoice_no' => ['required', 'string', 'max:50', Rule::unique('purchase_invoices')->where('stockist_id', $request->input('stockist_id'))],
             'invoice_date' => ['required', 'date', 'before_or_equal:today'],
+            'due_date' => ['nullable', 'date', 'after_or_equal:invoice_date'],
+            // The order this delivery answers, if there was one: it must be an approved order to the same supplier.
+            'purchase_order_id' => ['nullable', Rule::exists('purchase_orders', 'id')->where('stockist_id', $request->input('stockist_id'))->where('status', 'open')],
             'remarks' => ['nullable', 'string', 'max:500'],
             'items' => ['required', 'array', 'min:1', 'max:200'],
             'items.*.medicine_id' => ['required', 'exists:medicines,id'],
@@ -195,6 +198,8 @@ class PharmacyController extends Controller
             'round_off' => ['nullable', 'numeric', 'between:-10,10'],
         ], [
             'invoice_no.unique' => 'This invoice number is already entered for this stockist.',
+            'purchase_order_id.exists' => 'Choose an approved, open order placed with this stockist.',
+            'due_date.after_or_equal' => 'The due date cannot be before the invoice date.',
             'items.required' => 'Add at least one medicine to the invoice.',
             'round_off.between' => 'Rounding is a few paise or rupees either way, not more than ₹10.',
         ]);
@@ -211,6 +216,7 @@ class PharmacyController extends Controller
                 'stockist_id' => $data['stockist_id'],
                 'invoice_no' => $data['invoice_no'],
                 'invoice_date' => $data['invoice_date'],
+                'due_date' => $data['due_date'] ?? null, 'purchase_order_id' => $data['purchase_order_id'] ?? null,
                 'remarks' => $data['remarks'] ?? null,
                 'other_charges' => (float) ($data['other_charges'] ?? 0), 'cash_discount' => (float) ($data['cash_discount'] ?? 0), 'round_off' => (float) ($data['round_off'] ?? 0),
                 'created_by' => $request->user()->id,
@@ -252,6 +258,8 @@ class PharmacyController extends Controller
                 throw ValidationException::withMessages(['cash_discount' => 'The cash discount is more than the invoice is worth.']);
             }
             $invoice->update($figures);
+            // An order whose every line has now come in full is closed as received; one that is short stays open.
+            \App\Support\OrderMatch::settle($invoice->order);
 
             return $invoice;
         });

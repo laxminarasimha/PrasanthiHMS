@@ -4,7 +4,7 @@ import { useAuth } from '../../auth'
 import { SelectField, TextField } from '../../components/Field'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { PAYMENT_MODES, expiryLabel, longDate, modeLabel, rupees, today } from '../../format'
-import type { Medicine, PurchaseInvoice, Stockist } from '../../types'
+import type { Medicine, PurchaseInvoice, PurchaseOrder, Stockist } from '../../types'
 
 type Line = {
   /** Set when the line is an existing batch on an invoice being corrected. */
@@ -57,6 +57,8 @@ export function PharmacyPurchases() {
   const [stockistId, setStockistId] = useState('')
   const [invoiceNo, setInvoiceNo] = useState('')
   const [invoiceDate, setInvoiceDate] = useState(today())
+  const [orders, setOrders] = useState<PurchaseOrder[]>([])
+  const [orderId, setOrderId] = useState('')
   const [remarks, setRemarks] = useState('')
   const [extras, setExtras] = useState({ other_charges: '', cash_discount: '', round_off: '' })
   const [lines, setLines] = useState<Line[]>([emptyLine()])
@@ -77,6 +79,8 @@ export function PharmacyPurchases() {
   const startAdding = () => {
     api.get<Stockist[]>('/pharmacy/stockists').then((res) => setStockists(res.data))
     api.get<Medicine[]>('/pharmacy/medicines').then((res) => setMedicines(res.data))
+    api.get<PurchaseOrder[]>('/pharmacy/purchase-orders').then((res) => setOrders(res.data.filter((o) => o.status === 'open')))
+    setOrderId('')
     setViewing(null)
     setEditing(null)
     setStockistId('')
@@ -155,6 +159,7 @@ export function PharmacyPurchases() {
         stockist_id: stockistId || null,
         invoice_no: invoiceNo,
         invoice_date: invoiceDate,
+        ...(editing ? {} : { purchase_order_id: orderId || null }),
         remarks: remarks || null,
         other_charges: extras.other_charges || 0,
         cash_discount: extras.cash_discount || 0,
@@ -196,6 +201,15 @@ export function PharmacyPurchases() {
             <SelectField label="Stockist" required value={stockistId} onChange={setStockistId} options={stockists.map((s) => ({ value: String(s.id), label: s.name }))} placeholder="Select stockist" />
             <TextField label="Invoice number" required value={invoiceNo} onChange={setInvoiceNo} />
             <TextField label="Invoice date" required type="date" value={invoiceDate} onChange={setInvoiceDate} />
+            {!editing && (
+              <SelectField
+                label="Against purchase order"
+                value={orders.some((o) => String(o.id) === orderId && String(o.stockist.id) === stockistId) ? orderId : ''}
+                onChange={setOrderId}
+                options={orders.filter((o) => String(o.stockist.id) === stockistId).map((o) => ({ value: String(o.id), label: `${o.order_no} · ${longDate(o.order_date)}` }))}
+                placeholder={stockistId && orders.some((o) => String(o.stockist.id) === stockistId) ? 'No order' : 'No open order with this stockist'}
+              />
+            )}
             <TextField label="Remarks" value={remarks} onChange={setRemarks} />
           </div>
           {stockists.length === 0 && <p className="muted small">No stockists yet. Add one under "Medicines &amp; stockists" first.</p>}
@@ -399,6 +413,12 @@ export function PharmacyPurchases() {
                   </button>
                 </div>
               </div>
+              {viewing.order && <p className="muted small">Against purchase order {viewing.order.order_no}.</p>}
+              {viewing.flagged ? (
+                <p className="form-error flag-note">
+                  {viewing.flagged} {viewing.flagged === 1 ? 'line needs' : 'lines need'} a second look, marked below. Check with the stockist's bill before paying.
+                </p>
+              ) : null}
               <table className="compact">
                 <thead>
                   <tr>
@@ -417,7 +437,14 @@ export function PharmacyPurchases() {
                 <tbody>
                   {viewing.batches?.map((b) => (
                     <tr key={b.id} className="static">
-                      <td>{b.medicine?.name}</td>
+                      <td>
+                        {b.medicine?.name}
+                        {b.flags?.map((flag) => (
+                          <small key={flag} className="block import-warn">
+                            {flag}
+                          </small>
+                        ))}
+                      </td>
                       <td>{b.batch_no}</td>
                       <td>{expiryLabel(b.expiry)}</td>
                       <td className="num">

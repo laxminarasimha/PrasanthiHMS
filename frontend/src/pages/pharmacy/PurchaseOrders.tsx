@@ -258,6 +258,57 @@ export function PharmacyPurchaseOrders() {
                   ))}
                 </tbody>
               </table>
+              {viewing.match && viewing.match.invoices.length > 0 && (
+                <>
+                  <h3>What came against this order</h3>
+                  <p className="muted small">
+                    {viewing.match.invoices.map((inv) => `Invoice ${inv.invoice_no} of ${longDate(inv.invoice_date)}`).join(', ')}.
+                  </p>
+                  <table className="compact">
+                    <thead>
+                      <tr>
+                        <th>Medicine</th>
+                        <th className="num">Ordered</th>
+                        <th className="num">Received</th>
+                        <th className="num">Free</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {viewing.match.lines.map((l) => (
+                        <tr key={l.medicine_id} className="static">
+                          <td>{l.medicine_name}</td>
+                          <td className="num">{l.ordered}</td>
+                          <td className="num">{l.received}</td>
+                          <td className="num">{l.free || '—'}</td>
+                          <td>
+                            {l.state === 'full' ? (
+                              <span className="pill ok">In full</span>
+                            ) : l.state === 'none' ? (
+                              <span className="pill off">Not received</span>
+                            ) : l.state === 'short' ? (
+                              <span className="pill warn">{l.ordered - l.received} short</span>
+                            ) : (
+                              <span className="pill warn">{l.received - l.ordered} more than ordered</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {viewing.match.extras.map((x) => (
+                        <tr key={x.medicine_name} className="static">
+                          <td>{x.medicine_name}</td>
+                          <td className="num">—</td>
+                          <td className="num">{x.received}</td>
+                          <td className="num">{x.free || '—'}</td>
+                          <td>
+                            <span className="pill warn">Not ordered</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
               {viewing.remarks && <p className="muted">{viewing.remarks}</p>}
               {viewing.expected_on && viewing.status === 'open' && <p className="muted small">Expected by {longDate(viewing.expected_on)}.</p>}
               {viewError && <p className="form-error">{viewError}</p>}
@@ -284,7 +335,7 @@ export function PharmacyPurchaseOrders() {
                   </button>
                 </div>
               )}
-              {viewing.status === 'open' && <p className="muted small no-print">Marking an order received does not add stock. Enter the stockist's invoice under Invoices to bring the stock in.</p>}
+              {viewing.status === 'open' && <p className="muted small no-print">Stock comes in through the stockist's invoice: under Invoices, choose this order in "Against purchase order". The order closes by itself once every line has come in full; mark it received here only to close it short.</p>}
             </aside>
           )}
         </div>

@@ -277,7 +277,7 @@ class PharmacyStockController extends Controller
 
     public function showPurchaseOrder(PurchaseOrder $order): JsonResponse
     {
-        return response()->json($order->load(['stockist', 'items']));
+        return response()->json($order->load(['stockist', 'items'])->toArray() + ['match' => \App\Support\OrderMatch::forOrder($order)]);
     }
 
     public function storePurchaseOrder(Request $request): JsonResponse
@@ -341,7 +341,9 @@ class PharmacyStockController extends Controller
             $order->save();
         });
 
-        return response()->json($order->fresh()->load(['stockist', 'items']));
+        $order = $order->fresh()->load(['stockist', 'items']);
+
+        return response()->json($order->toArray() + ['match' => \App\Support\OrderMatch::forOrder($order)]);
     }
 
     private function authorizePharmacy(Request $request): void
