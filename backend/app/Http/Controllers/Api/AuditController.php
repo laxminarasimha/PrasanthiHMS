@@ -17,7 +17,7 @@ class AuditController extends Controller
 
         return response()->json(
             AuditLog::where('patient_id', $patient->id)->latest('id')->limit(500)->get()
-                ->map(fn (AuditLog $r) => ['id' => $r->id, 'when' => $r->created_at->format('Y-m-d H:i'), 'who' => $r->user_name, 'action' => AuditLog::ACTIONS[$r->action] ?? $r->action, 'details' => $r->summary])
+                ->map(fn (AuditLog $r) => ['id' => $r->id, 'when' => $r->created_at->format('Y-m-d H:i'), 'who' => $r->user_name] + AuditLog::words($r))
         );
     }
 }

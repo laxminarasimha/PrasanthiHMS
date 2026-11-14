@@ -13,7 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->alias(['ability' => \App\Http\Middleware\RequireAbility::class, 'actor' => \App\Http\Middleware\OnlyActor::class]);
+        $middleware->alias(['ability' => \App\Http\Middleware\RequireAbility::class, 'actor' => \App\Http\Middleware\OnlyActor::class, 'activity' => \App\Http\Middleware\RecordActivity::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

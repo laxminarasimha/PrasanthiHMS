@@ -96,6 +96,24 @@ class BackupTest extends TestCase
         $this->assertCount(2, DatabaseBackup::all());
     }
 
+    public function test_a_backup_is_proved_restorable_and_a_damaged_one_is_caught(): void
+    {
+        Patient::factory()->count(3)->create();
+        $made = DatabaseBackup::run();
+
+        $this->artisan('hms:backup-check', ['file' => $made['path']])->expectsOutputToContain('including 3 patients')->expectsOutputToContain('They match')->assertExitCode(0);
+
+        // A file cut short, as a failed download would leave it.
+        $cut = $made['path'].'.cut.sql.gz';
+        file_put_contents($cut, gzencode(substr(gzdecode(file_get_contents($made['path'])), 0, 4000)));
+        $this->artisan('hms:backup-check', ['file' => $cut])->expectsOutputToContain('damaged or incomplete')->assertExitCode(1);
+
+        // A file that claims more than it holds.
+        $short = $made['path'].'.short.sql.gz';
+        file_put_contents($short, gzencode(preg_replace('/INSERT INTO `patients`.*?;\n/s', '', gzdecode(file_get_contents($made['path'])))));
+        $this->artisan('hms:backup-check', ['file' => $short])->expectsOutputToContain('do not match')->assertExitCode(1);
+    }
+
     public function test_the_command_writes_a_backup(): void
     {
         $this->artisan('hms:backup')->expectsOutputToContain('Backup written')->assertExitCode(0);

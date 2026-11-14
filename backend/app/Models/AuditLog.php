@@ -13,6 +13,9 @@ class AuditLog extends Model
 {
     public const UPDATED_AT = null;
 
+    /** Whether a line was written while handling the current request, so the catch-all does not write a second one. */
+    public static bool $written = false;
+
     protected $guarded = [];
 
     /** What each action is called on screen. */
@@ -37,6 +40,8 @@ class AuditLog extends Model
         'app.password' => 'Reset the mobile app password',
         'app.active' => 'Switched the mobile app account on or off',
         'bill.created' => 'Made a bill',
+        'auth.login' => 'Signed in',
+        'auth.failed' => 'Tried to sign in and failed',
         'bill.item_added' => 'Added a line to a bill',
         'bill.item_removed' => 'Removed a line from a bill',
         'bill.payment' => 'Recorded money on a bill',
@@ -55,28 +60,46 @@ class AuditLog extends Model
      * every ten minutes, so moving back and forth does not flood the log. A failure to write
      * the log never stops the work it describes.
      */
-    public static function record(string $action, ?int $patientId = null, ?Model $subject = null, ?string $summary = null): void
+    public static function record(string $action, ?int $patientId = null, ?Model $subject = null, ?string $summary = null, ?User $actor = null, ?string $actorName = null): void
     {
         try {
-            $user = request()->user();
-            if (! $user instanceof User) {
+            // Normally the signed-in person. At sign-in itself there is nobody signed in yet, so the caller says who.
+            $user = $actor ?? request()->user();
+            if (! $user instanceof User && $actorName === null) {
                 return;
             }
+            self::$written = true;
             $subjectType = $subject ? class_basename($subject) : null;
 
-            if (str_ends_with($action, '.opened') && self::where('user_id', $user->id)->where('action', $action)->where('patient_id', $patientId)
+            if ($user && str_ends_with($action, '.opened') && self::where('user_id', $user->id)->where('action', $action)->where('patient_id', $patientId)
                 ->where('subject_type', $subjectType)->where('subject_id', $subject?->getKey())->where('created_at', '>=', now()->subMinutes(10))->exists()) {
                 return;
             }
 
             self::create([
-                'user_id' => $user->id, 'user_name' => $user->name, 'action' => $action, 'patient_id' => $patientId,
+                'user_id' => $user?->id, 'user_name' => $user?->name ?? $actorName, 'action' => $action, 'patient_id' => $patientId,
                 'subject_type' => $subjectType, 'subject_id' => $subject?->getKey(),
                 'summary' => $summary ? mb_substr($summary, 0, 1000) : null, 'ip' => request()->ip(), 'created_at' => now(),
             ]);
         } catch (Throwable $e) {
             report($e);
         }
+    }
+
+    /**
+     * How a line reads on screen: what was done, and the details. A change caught by the
+     * catch-all carries its own wording, "What was done · details".
+     *
+     * @return array{action: string, details: string|null}
+     */
+    public static function words(self $row): array
+    {
+        if ($row->action !== 'change') {
+            return ['action' => self::ACTIONS[$row->action] ?? $row->action, 'details' => $row->summary];
+        }
+        [$action, $details] = array_pad(explode(' · ', (string) $row->summary, 2), 2, null);
+
+        return ['action' => $action, 'details' => $details];
     }
 
     /**

@@ -21,12 +21,16 @@ class AuthController extends Controller
         $user = User::where('email', $credentials['email'])->first();
 
         if (! $user || ! Hash::check($credentials['password'], $user->password)) {
+            // Kept so that someone guessing at passwords shows up in the activity log. The password tried is never stored.
+            \App\Models\AuditLog::record('auth.failed', null, null, $user ? 'Wrong password' : 'No such login', $user, mb_substr($credentials['email'], 0, 100));
             throw ValidationException::withMessages(['email' => 'The email or password is incorrect.']);
         }
 
         if (! $user->is_active) {
+            \App\Models\AuditLog::record('auth.failed', null, null, 'The login is switched off', $user);
             throw ValidationException::withMessages(['email' => 'This account has been deactivated.']);
         }
+        \App\Models\AuditLog::record('auth.login', null, null, null, $user);
 
         return response()->json([
             'token' => $user->createToken('web')->plainTextToken,
