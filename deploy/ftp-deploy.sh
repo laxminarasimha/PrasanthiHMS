@@ -56,6 +56,8 @@ grep -q 'usePublicPath' "$SITE/index.php" && php -l "$SITE/index.php" > /dev/nul
 
 # The archive is unpacked by a one-time script with an unguessable name, which deletes itself.
 SLUG="$(openssl rand -hex 10)"; TOKEN="$(openssl rand -hex 20)"
+# Set DEPLOY_CACHE=0 to leave the site uncached, should a cached release ever misbehave.
+DEPLOY_CACHE="${DEPLOY_CACHE:-1}"
 cat > "$WORK/unpack.php" <<PHP
 <?php
 header('Content-Type: text/plain');
@@ -66,6 +68,23 @@ if (\$zip->open(__DIR__.'/app/site.zip') !== true) { exit('cannot open archive')
 \$ok = \$zip->extractTo(__DIR__); \$count = \$zip->numFiles; \$zip->close();
 unlink(__DIR__.'/app/site.zip'); unlink(__FILE__);
 echo \$ok ? "extracted \$count files" : 'extract failed';
+// Settings and routes are worked out once here, instead of on every page request. Anything left
+// over from the last release is removed first, and if this fails the site simply runs uncached.
+\$caches = fn () => array_merge(glob(__DIR__.'/app/bootstrap/cache/config.php') ?: [], glob(__DIR__.'/app/bootstrap/cache/routes-*.php') ?: []);
+array_map('unlink', \$caches());
+if (\$ok && '$DEPLOY_CACHE' !== '0') {
+  try {
+    require __DIR__.'/app/vendor/autoload.php';
+    \$app = require __DIR__.'/app/bootstrap/app.php';
+    \$app->usePublicPath(__DIR__);
+    \$kernel = \$app->make(Illuminate\\Contracts\\Console\\Kernel::class);
+    \$kernel->call('config:cache'); \$kernel->call('route:cache');
+    echo ' · settings and routes cached';
+  } catch (Throwable \$e) {
+    array_map('unlink', \$caches());
+    echo ' · running uncached: '.\$e->getMessage();
+  }
+}
 PHP
 
 echo "==> Uploading"

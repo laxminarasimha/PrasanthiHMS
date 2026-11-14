@@ -18,9 +18,25 @@ class PatientController extends Controller
             // A duplicate that was merged into another record is no longer offered anywhere.
             ->whereNull('merged_into_id')
             ->when($request->string('q')->trim()->value(), function ($query, $q) {
-                $query->where(fn ($w) => $w->where('name', 'like', "%{$q}%")
-                    ->orWhere('mobile', 'like', "{$q}%")
-                    ->orWhere('uhid', 'like', "{$q}%"));
+                // A name is found however it is typed: with or without "Mr" or "Dr", initials with
+                // or without dots, the words in any order, extra spaces. Each word typed must appear
+                // somewhere in the name.
+                $words = collect(preg_split('/[\s.,]+/', $q))->map(fn ($word) => trim($word))->filter()
+                    ->reject(fn ($word) => in_array(mb_strtolower($word), array_map('mb_strtolower', Patient::TITLES), true))->values();
+                $like = fn (string $text) => str_replace(['%', '_'], ['\%', '\_'], $text);
+                $digits = preg_replace('/\D/', '', $q);
+
+                $query->where(function ($w) use ($q, $words, $like, $digits) {
+                    if ($words->isNotEmpty()) {
+                        $w->where(fn ($name) => $words->each(fn ($word) => $name->where('name', 'like', '%'.$like($word).'%')));
+                    }
+                    $w->orWhere('uhid', 'like', $like($q).'%')->orWhere('existing_id', $q);
+                    // A phone number, even typed with spaces or +91 in front.
+                    if (strlen($digits) >= 4) {
+                        $tail = strlen($digits) > 10 ? substr($digits, -10) : $digits;
+                        $w->orWhere('mobile', 'like', $tail.'%')->orWhere('mobile_alt', 'like', $tail.'%');
+                    }
+                });
             })
             // Exact match, for the "this number is already registered" check.
             ->when($request->string('mobile')->trim()->value(), fn ($query, $mobile) => $query
