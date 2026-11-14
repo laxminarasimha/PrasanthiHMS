@@ -8,7 +8,7 @@ import { FormsPanel } from '../components/FormsPanel'
 import { MedicineRows, emptyMedicine, filledMedicines } from '../components/MedicineRows'
 import { PhraseChips } from '../components/PhraseChips'
 import { ReferralList } from '../components/ReferralList'
-import { clock, longDate, rupees, today } from '../format'
+import { clock, longDate, rupees, stampDate, stampTime, today } from '../format'
 import type { Consultation, DoctorLibrary, LabCatalogueTest, LabOrder, PhraseKind, PrescribedMedicine as Medicine, PrescriptionTemplate, RxGroup, Visit } from '../types'
 
 const VITALS = [
@@ -64,6 +64,8 @@ export function VisitPad() {
   const [visit, setVisit] = useState<Visit | null>(null)
   const [form, setForm] = useState<Form>(toForm(null))
   const [medicines, setMedicines] = useState<Medicine[]>([emptyMedicine()])
+  const [amendment, setAmendment] = useState('')
+  const [warnings, setWarnings] = useState<{ kind: string; medicine: string; message: string }[]>([])
   const [exam, setExam] = useState<Exam>(toExam(null))
   const [investigations, setInvestigations] = useState<{ name: string; result: string; date: string }[]>([])
   const [suggestions, setSuggestions] = useState<string[]>([])
@@ -99,10 +101,36 @@ export function VisitPad() {
     api.get<string[]>('/medicines/suggest').then((res) => setSuggestions(res.data))
   }, [id])
 
+  // A second pair of eyes on the prescription: allergies and the same medicine twice.
+  const names = medicines.map((m) => m.medicine.trim()).filter(Boolean).join('|')
+  const allergyText = String(form.allergies ?? '')
+  const patientId = visit?.patient.id
+  const checkable = Boolean(user?.can_consult) && Boolean(visit) && !visit?.locked
+  useEffect(() => {
+    if (!patientId || !checkable) return
+    if (!names) {
+      setWarnings([])
+      return
+    }
+    let current = true
+    const timer = setTimeout(() => {
+      api.post<{ warnings: { kind: string; medicine: string; message: string }[] }>(`/patients/${patientId}/prescription-check`, { medicines: names.split('|'), allergies: allergyText || null })
+        .then((res) => current && setWarnings(res.data.warnings))
+        .catch(() => undefined)
+    }, 600)
+    return () => {
+      current = false
+      clearTimeout(timer)
+    }
+  }, [names, allergyText, patientId, checkable])
+
   if (!visit) return <p className="loading">Loading visit…</p>
 
   const canEdit = Boolean(user?.can_consult) && visit.appointment.status !== 'cancelled'
   const completed = Boolean(visit.consultation?.completed_at)
+  const locked = Boolean(visit.locked)
+  // The notes themselves can be changed only until the visit locks; forms and the health summary stay open.
+  const canWrite = canEdit && !locked
   const set = (key: string) => (value: string) => setForm((f) => ({ ...f, [key]: value }))
   const reloadLibrary = () => api.get<DoctorLibrary>('/doctor/library', { params: { doctor_id: visit.doctor.id } }).then((l) => setLibrary(l.data))
   const phrases = (kind: PhraseKind) => (library && !Array.isArray(library.phrases) ? (library.phrases[kind] ?? []) : [])
@@ -406,6 +434,16 @@ export function VisitPad() {
             </div>
           )}
           <MedicineRows rows={medicines} onChange={setMedicines} names={suggestions} defaults={library?.medicine_defaults} frequencies={library?.rx_settings.frequencies} timings={library?.rx_settings.timings} invalid={(i) => Boolean(errors[`medicines.${i}.medicine`])} />
+          {warnings.length > 0 && (
+            <div className="rx-warnings" role="alert">
+              {warnings.map((w, i) => (
+                <p key={i} className={w.kind}>
+                  <b>{w.kind === 'allergy' ? 'Allergy' : 'Repeated'}:</b> {w.message}
+                </p>
+              ))}
+              <small className="muted">A basic check of names only. It does not know doses or how different medicines act on each other.</small>
+            </div>
+          )}
           </>
     ),
     advice: (
@@ -460,7 +498,12 @@ export function VisitPad() {
           </div>
         )}
 
-        <fieldset disabled={!canEdit}>
+        {locked && (
+          <p className="notice lock-note">
+            This visit was finished on {longDate(visit.consultation!.completed_at!)} and is locked, so its notes cannot be changed. To correct or add something, write an amendment below; it is kept with the visit, with your name and the date.
+          </p>
+        )}
+        <fieldset disabled={!canWrite}>
           <div className={`allergy ${form.allergies.trim() ? 'has' : ''}`}>
             <TextField label="Allergies (kept on the patient's record)" placeholder="None known" value={form.allergies} onChange={set('allergies')} error={errors.allergies} />
           </div>
@@ -504,7 +547,7 @@ export function VisitPad() {
           ))}
         </fieldset>
 
-        {canEdit ? (
+        {canWrite ? (
           <div className="panel-foot row">
             <button className="btn ghost" disabled={saving} onClick={() => save(false)}>
               {completed ? 'Save changes' : 'Save draft'}
@@ -516,7 +559,44 @@ export function VisitPad() {
             )}
           </div>
         ) : (
-          <p className="muted gap-top">You can view this visit but not change it.</p>
+          !locked && <p className="muted gap-top">You can view this visit but not change it.</p>
+        )}
+
+        {completed && ((visit.consultation?.amendments?.length ?? 0) > 0 || (locked && canEdit)) && (
+          <div className="amendments">
+            <h3>Amendments</h3>
+            {visit.consultation?.amendments?.map((a) => (
+              <div key={a.id} className="amendment">
+                <small className="muted">
+                  {stampDate(a.created_at)} {stampTime(a.created_at)} · {a.author?.name ?? 'Staff'}
+                </small>
+                <p>{a.body}</p>
+              </div>
+            ))}
+            {locked && canEdit && (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault()
+                  setErrors({})
+                  try {
+                    apply((await api.post<Visit>(`/appointments/${id}/consultation/amendments`, { body: amendment })).data)
+                    setAmendment('')
+                    setNotice('Amendment added.')
+                  } catch (err) {
+                    setErrors(fieldErrors(err))
+                  }
+                }}
+              >
+                <textarea rows={3} maxLength={5000} placeholder="What needs correcting or adding, e.g. a result that came later" value={amendment} onChange={(e) => setAmendment(e.target.value)} aria-label="Amendment" />
+                {errors.body && <p className="form-error">{errors.body}</p>}
+                <div className="panel-foot">
+                  <button className="btn" disabled={!amendment.trim()}>
+                    Add amendment
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         )}
 
         <h3>Forms</h3>
@@ -597,6 +677,11 @@ export function VisitPad() {
               </ul>
             )}
             {h.advice && <p><b>Advice:</b> {h.advice}</p>}
+            {h.amendments?.map((a) => (
+              <p key={a.id}>
+                <b>Amendment, {stampDate(a.created_at)}:</b> {a.body}
+              </p>
+            ))}
             {h.medicines.length > 0 && canEdit && (
               <button type="button" className="link" onClick={() => setMedicines(h.medicines.map(({ id: _id, ...rest }) => rest))}>
                 Repeat these medicines

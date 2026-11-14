@@ -154,6 +154,9 @@ Route::middleware(['auth:sanctum', 'actor:staff'])->group(function () {
     });
     Route::get('/appointments/{appointment}/consultation', [ConsultationController::class, 'show']);
     Route::put('/appointments/{appointment}/consultation', [ConsultationController::class, 'save']);
+    Route::post('/appointments/{appointment}/consultation/amendments', [ConsultationController::class, 'amend']);
+    Route::post('/patients/{patient}/prescription-check', [ConsultationController::class, 'checkPrescription']);
+    Route::get('/patients/{patient}/audit-log', [\App\Http\Controllers\Api\AuditController::class, 'forPatient']);
     Route::get('/patients/{patient}/consultations', [ConsultationController::class, 'history']);
     Route::get('/medicines/suggest', [ConsultationController::class, 'suggestMedicines']);
 

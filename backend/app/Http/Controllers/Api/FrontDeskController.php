@@ -177,6 +177,7 @@ class FrontDeskController extends Controller
 
     public function overview(Patient $patient): JsonResponse
     {
+        \App\Models\AuditLog::record('patient.opened', $patient->id, $patient);
         $bills = Bill::where('patient_id', $patient->id)->with('labOrder:id,bill_id,order_no')->withIpdTransfers()->latest()->limit(50)->get();
 
         return response()->json([

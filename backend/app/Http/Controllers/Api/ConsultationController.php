@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
+use App\Models\AuditLog;
 use App\Models\Consultation;
 use App\Models\Medicine;
 use App\Models\Patient;
@@ -17,6 +18,15 @@ use Illuminate\Validation\Rule;
 class ConsultationController extends Controller
 {
     private const PATIENT = 'patient:id,uhid,title,name,gender,date_of_birth,mobile,blood_group,allergies';
+
+    /** The parts of a visit note, by the names used on screen, for the record of what was changed. */
+    private const NOTE_LABELS = [
+        'complaints' => 'Complaints', 'history' => 'History', 'past_medication' => 'Past medication', 'general_exam' => 'General examination',
+        'general_exam_notes' => 'Examination notes', 'findings' => 'Findings', 'diagnosis' => 'Diagnosis', 'assessment_plan' => 'Plan',
+        'tests_advised' => 'Tests advised', 'investigations' => 'Test results', 'advice' => 'Advice', 'follow_up_on' => 'Next visit', 'refer_to' => 'Referral',
+        'quick_notes' => 'Quick notes', 'weight_kg' => 'Weight', 'height_cm' => 'Height', 'bp_systolic' => 'BP', 'bp_diastolic' => 'BP ',
+        'pulse' => 'Pulse', 'temperature_f' => 'Temperature', 'spo2' => 'SpO2', 'resp_rate' => 'Respiratory rate',
+    ];
 
     public const GENERAL_EXAM_SIGNS = ['pallor', 'icterus', 'cyanosis', 'clubbing', 'lymphadenopathy', 'edema'];
 
@@ -57,6 +67,8 @@ class ConsultationController extends Controller
     /** The visit pad for an appointment: saved notes if any, otherwise a blank pad. */
     public function show(Appointment $appointment): JsonResponse
     {
+        AuditLog::record('visit.opened', $appointment->patient_id, $appointment);
+
         return response()->json($this->present($appointment));
     }
 
@@ -64,6 +76,9 @@ class ConsultationController extends Controller
     {
         abort_unless($request->user()->allows('canConsult'), 403, 'You are not allowed to write consultation notes.');
         abort_if($appointment->status === 'cancelled', 422, 'This appointment was cancelled.');
+        if ($appointment->consultation?->isLocked()) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['visit' => 'This visit was finished on '.$appointment->consultation->completed_at->format('j M Y').' and is locked. Add an amendment instead.']);
+        }
 
         $data = $request->validate([
             'weight_kg' => ['nullable', 'numeric', 'between:0.5,400'],
@@ -130,6 +145,9 @@ class ConsultationController extends Controller
             }
 
             $consultation = Consultation::firstOrNew(['appointment_id' => $appointment->id]);
+            $wasComplete = $consultation->completed_at !== null;
+            $before = $consultation->exists ? $consultation->only(array_keys(self::NOTE_LABELS)) : [];
+            $medicinesBefore = $consultation->exists ? $consultation->medicines()->pluck('medicine')->all() : [];
             $consultation->fill($data + [
                 'patient_id' => $appointment->patient_id,
                 'doctor_id' => $appointment->doctor_id,
@@ -147,6 +165,16 @@ class ConsultationController extends Controller
                 }
             }
 
+            $summary = AuditLog::changed(self::NOTE_LABELS, $before, $consultation->fresh()->only(array_keys(self::NOTE_LABELS)));
+            if ($medicines !== null && array_column($medicines, 'medicine') !== $medicinesBefore) {
+                $summary = ($summary ? $summary.', ' : 'Changed: ').'Prescription';
+            }
+            if ($complete && ! $wasComplete) {
+                AuditLog::record('visit.completed', $appointment->patient_id, $appointment, $summary);
+            } elseif ($summary) {
+                AuditLog::record('visit.saved', $appointment->patient_id, $appointment, $summary.($wasComplete ? ' (after the visit was finished)' : ''));
+            }
+
             // Keep the front desk queue in step with what the doctor is doing.
             if ($complete) {
                 DoctorLibraryController::learn($appointment->doctor_id, $consultation, $consultation->medicines()->get()->toArray());
@@ -159,13 +187,37 @@ class ConsultationController extends Controller
         return response()->json($this->present($appointment->fresh()));
     }
 
+    /** Adds a dated note to a locked visit. The original notes are left exactly as they were. */
+    public function amend(Request $request, Appointment $appointment): JsonResponse
+    {
+        abort_unless($request->user()->allows('canConsult'), 403, 'You are not allowed to write consultation notes.');
+        $consultation = $appointment->consultation;
+        abort_unless($consultation?->completed_at, 422, 'Only a finished visit can be amended. Change the notes directly instead.');
+        $data = $request->validate(['body' => ['required', 'string', 'max:5000']], ['body.required' => 'Write what needs correcting or adding.']);
+
+        $consultation->amendments()->create(['body' => trim($data['body']), 'created_by' => $request->user()->id]);
+        AuditLog::record('visit.amended', $appointment->patient_id, $appointment);
+
+        return response()->json($this->present($appointment->fresh()), 201);
+    }
+
+    /** Looks over a prescription for the patient's allergies and for the same medicine twice. */
+    public function checkPrescription(Request $request, Patient $patient): JsonResponse
+    {
+        abort_unless($request->user()->allows('canConsult'), 403);
+        $data = $request->validate(['medicines' => ['present', 'array', 'max:60'], 'medicines.*' => ['nullable', 'string', 'max:255'], 'allergies' => ['sometimes', 'nullable', 'string', 'max:1000']]);
+
+        // The pad may hold allergies typed but not yet saved; those count too.
+        return response()->json(['warnings' => \App\Support\PrescriptionSafety::warnings(array_key_exists('allergies', $data) ? $data['allergies'] : $patient->allergies, $data['medicines'])]);
+    }
+
     /** A patient's completed visits, newest first. */
     public function history(Patient $patient): JsonResponse
     {
         return response()->json(
             Consultation::where('patient_id', $patient->id)
                 ->whereNotNull('completed_at')
-                ->with(['medicines', 'doctor:id,name'])
+                ->with(['medicines', 'doctor:id,name', 'amendments.author:id,name'])
                 ->latest('completed_at')
                 ->limit(30)
                 ->get()
@@ -197,7 +249,7 @@ class ConsultationController extends Controller
      */
     private function present(Appointment $appointment): array
     {
-        $appointment->load([self::PATIENT, 'doctor:id,name,department,signature_text', 'service:id,name', 'consultation.medicines']);
+        $appointment->load([self::PATIENT, 'doctor:id,name,department,signature_text', 'service:id,name', 'consultation.medicines', 'consultation.amendments.author:id,name']);
 
         return [
             // attributesToArray applies the model's date formats; only() would hand back raw UTC timestamps.
@@ -206,6 +258,8 @@ class ConsultationController extends Controller
             'doctor' => $appointment->doctor,
             'service' => $appointment->service,
             'consultation' => $appointment->consultation,
+            // Locked from the day after it was finished: corrections then go in as amendments.
+            'locked' => (bool) $appointment->consultation?->isLocked(),
             // How this doctor wants prescriptions printed, for whoever prints it.
             'rx_print' => array_intersect_key(\App\Models\User::find($appointment->doctor_id)?->rxSettings() ?? [], array_flip(['print_language', 'translations', 'capitalize_name', 'print'])),
         ];

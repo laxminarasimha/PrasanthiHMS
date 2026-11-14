@@ -56,7 +56,10 @@ class PatientController extends Controller
         $data['branch_id'] = $request->user()->branch_id;
         $data['created_by'] = $request->user()->id;
 
-        return response()->json(Patient::create($data)->refresh(), 201);
+        $patient = Patient::create($data)->refresh();
+        \App\Models\AuditLog::record('patient.registered', $patient->id, $patient);
+
+        return response()->json($patient, 201);
     }
 
     public function show(Patient $patient): JsonResponse
@@ -67,7 +70,12 @@ class PatientController extends Controller
     public function update(Request $request, Patient $patient): JsonResponse
     {
         // Completing the registration makes a temporary patient a full one.
+        $labels = ['title' => 'Title', 'name' => 'Name', 'gender' => 'Gender', 'date_of_birth' => 'Date of birth', 'mobile' => 'Mobile', 'mobile_alt' => 'Other mobile', 'email' => 'Email', 'blood_group' => 'Blood group', 'allergies' => 'Allergies', 'address' => 'Address', 'city' => 'City', 'pincode' => 'PIN code', 'care_of' => 'Care of', 'occupation' => 'Occupation', 'referred_by' => 'Referred by'];
+        $before = $patient->only(array_keys($labels));
         $patient->update($this->validated($request) + ['is_temporary' => false]);
+        if ($summary = \App\Models\AuditLog::changed($labels, array_map(fn ($v) => $v instanceof \DateTimeInterface ? $v->format('Y-m-d') : $v, $before), array_map(fn ($v) => $v instanceof \DateTimeInterface ? $v->format('Y-m-d') : $v, $patient->only(array_keys($labels))))) {
+            \App\Models\AuditLog::record('patient.updated', $patient->id, $patient, $summary);
+        }
 
         return response()->json($patient);
     }

@@ -43,6 +43,20 @@ class Consultation extends Model
         return $this->belongsTo(User::class, 'doctor_id');
     }
 
+    public function amendments(): HasMany
+    {
+        return $this->hasMany(ConsultationAmendment::class)->orderBy('id');
+    }
+
+    /**
+     * A finished visit can be corrected for the rest of the day it was finished. From the next
+     * day it is locked: the notes stay as they were and later corrections are added as amendments.
+     */
+    public function isLocked(): bool
+    {
+        return $this->completed_at !== null && $this->completed_at->lt(today());
+    }
+
     public function medicines(): HasMany
     {
         return $this->hasMany(PrescriptionItem::class)->orderBy('position');

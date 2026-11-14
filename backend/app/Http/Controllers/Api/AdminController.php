@@ -277,6 +277,8 @@ class AdminController extends Controller
             ]);
         });
 
+        \App\Models\AuditLog::record('patient.merged', $merge->to_id, null, "{$merge->from_uhid} {$merge->from_name} into {$merge->to_uhid} {$merge->to_name}");
+
         return response()->json($merge->load('staff:id,name'), 201);
     }
 }

@@ -85,7 +85,58 @@ function VisitNotes({ v }: { v: Consultation }) {
         </ul>
       )}
       {v.follow_up_on && <p className="muted">Next visit: {longDate(v.follow_up_on)}</p>}
+      {v.amendments?.map((a) => (
+        <p key={a.id}>
+          <b>Amendment, {longDate(a.created_at)}{a.author ? `, ${a.author.name}` : ''}:</b> {a.body}
+        </p>
+      ))}
     </>
+  )
+}
+
+/** Who opened or changed this patient's records, newest first. */
+function RecordLog({ patientId }: { patientId: number }) {
+  const [rows, setRows] = useState<{ id: number; when: string; who: string; action: string; details: string | null }[] | null>(null)
+  useEffect(() => {
+    api.get(`/patients/${patientId}/audit-log`).then((res) => setRows(res.data))
+  }, [patientId])
+
+  return (
+    <section className="card">
+      <div className="toolbar">
+        <h2>Record log</h2>
+        <span className="muted">Who opened or changed this patient's records. Entries cannot be edited or removed.</span>
+      </div>
+      <div className="table-wrap">
+        <table className="compact">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Who</th>
+              <th>What they did</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows?.map((r) => (
+              <tr key={r.id} className="static">
+                <td>
+                  {longDate(r.when)} <small className="muted">{clock(r.when)}</small>
+                </td>
+                <td>{r.who}</td>
+                <td>{r.action}</td>
+                <td>{r.details ?? ''}</td>
+              </tr>
+            ))}
+            {rows?.length === 0 && (
+              <tr className="empty">
+                <td colSpan={4}>Nothing has been logged for this patient yet. The log starts from the day this feature was switched on.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   )
 }
 
@@ -94,7 +145,7 @@ export function CaseHistory() {
   const { id } = useParams()
   const { user } = useAuth()
   const navigate = useNavigate()
-  const [tab, setTab] = useState<'summary' | 'timeline' | 'tests' | 'vitals'>('summary')
+  const [tab, setTab] = useState<'summary' | 'timeline' | 'tests' | 'vitals' | 'log'>('summary')
   const [kind, setKind] = useState<keyof typeof KINDS>('all')
   const [data, setData] = useState<{ patient: Patient & { allergies?: string | null }; events: HistoryEvent[] } | null>(null)
   const [trends, setTrends] = useState<Trends | null>(null)
@@ -163,6 +214,11 @@ export function CaseHistory() {
           <button className={tab === 'vitals' ? 'active' : ''} onClick={() => setTab('vitals')}>
             Vitals <span>{trends?.vitals.length ?? 0}</span>
           </button>
+          {user?.can_view_reports && (
+            <button className={tab === 'log' ? 'active' : ''} onClick={() => setTab('log')}>
+              Record log
+            </button>
+          )}
         </div>
       </section>
 
@@ -319,6 +375,8 @@ export function CaseHistory() {
           </div>
         </section>
       )}
+
+      {tab === 'log' && <RecordLog patientId={p.id} />}
 
       {tab === 'vitals' && (
         <section className="card">

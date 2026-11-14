@@ -653,3 +653,12 @@ tbody tr.not-here { color: var(--muted); }
 .health-section li .actions { display: flex; gap: 10px; white-space: nowrap; font-size: 0.85rem; }
 .health-section p { margin: 2px 0 0; }
 .health-add { display: grid; grid-template-columns: 1fr; gap: 6px; margin-top: 6px; padding: 8px; border-radius: 8px; background: var(--bg); }
+
+/* Locked visits, amendments and prescription warnings */
+.lock-note { border-left: 4px solid var(--accent); }
+.amendments { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 4px; }
+.amendment { border-left: 3px solid var(--accent); padding: 4px 0 4px 12px; margin: 8px 0; }
+.amendment p { margin: 2px 0 0; white-space: pre-wrap; }
+.rx-warnings { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--danger-soft); border: 1px solid var(--danger); }
+.rx-warnings p { margin: 0 0 4px; color: var(--danger); }
+.rx-warnings p.duplicate { color: #8a4a08; }
