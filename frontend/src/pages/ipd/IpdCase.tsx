@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { IpdCharts } from './IpdCharts'
 import { HealthSummary } from '../../components/HealthSummary'
 import { Link, useParams } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
@@ -46,7 +47,7 @@ export function IpdCase() {
   const [discount, setDiscount] = useState('')
   const [closing, setClosing] = useState({ status: 'discharged', discharged_at: nowLocal() })
   const { user } = useAuth()
-  const [tab, setTab] = useState<'bill' | 'notes' | 'summary' | 'results' | 'files' | 'forms'>('bill')
+  const [tab, setTab] = useState<'bill' | 'notes' | 'charts' | 'summary' | 'results' | 'files' | 'forms'>('bill')
   const [templates, setTemplates] = useState<IpdBillTemplate[]>([])
   const [bedId, setBedId] = useState('')
   const [outstanding, setOutstanding] = useState<OutstandingBill[]>([])
@@ -155,6 +156,11 @@ export function IpdCase() {
           <button className={tab === 'notes' ? 'active' : ''} onClick={() => setTab('notes')}>
             Notes
           </button>
+          {user?.can_consult && (
+            <button className={tab === 'charts' ? 'active' : ''} onClick={() => setTab('charts')}>
+              Charts
+            </button>
+          )}
           <button className={tab === 'summary' ? 'active' : ''} onClick={() => setTab('summary')}>
             Discharge summary
           </button>
@@ -169,6 +175,7 @@ export function IpdCase() {
           </button>
         </div>
 
+        {tab === 'charts' && <IpdCharts admissionId={admission.id} userId={user?.id} canChart={Boolean(user?.can_consult)} canOrder={Boolean(user?.can_approve_ipd)} />}
         {tab === 'results' && <IpdInvestigations admissionId={admission.id} />}
         {tab === 'forms' && <FormsPanel url={`/ipd/admissions/${admission.id}/forms`} use="ipd" canEdit={canEdit} />}
         {tab === 'files' && <AttachmentsPanel patient={{ id: admission.patient.id, name: admission.patient.name, uhid: admission.patient.uhid }} />}

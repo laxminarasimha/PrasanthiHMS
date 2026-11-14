@@ -675,3 +675,21 @@ tbody tr.not-here { color: var(--muted); }
 .icd-picker .picker strong { font-family: ui-monospace, monospace; min-width: 52px; color: var(--brand-dark); }
 .icd-picker .picker li.none { padding: 10px; color: var(--muted); }
 .icd-line { font-size: 0.85em; color: #444; }
+
+/* Inpatient bedside chart */
+.chart-form { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: flex-end; padding: 10px; margin-bottom: 12px; border-radius: 8px; background: var(--bg); }
+.chart-form label { display: flex; flex-direction: column; gap: 3px; font-size: 0.78rem; font-weight: 600; color: var(--muted); min-width: 150px; }
+.chart-form label.short { min-width: 0; width: 96px; }
+.chart-form label.grow { flex: 1; min-width: 160px; }
+.chart-form input, .chart-form select { width: 100%; }
+.order { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+.order.stopped { background: var(--bg); }
+.order.stopped strong { text-decoration: line-through; color: var(--muted); }
+.order-head { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.dose-form { margin: 10px 0 0; }
+.doses { list-style: none; margin: 8px 0 0; padding: 8px 0 0; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; }
+.doses li { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; }
+.doses li b { color: var(--ok); min-width: 62px; }
+.doses li.held b, .doses li.refused b { color: var(--danger); }
+.doses li button { margin-left: auto; }
+@media (max-width: 700px) { .chart-form label, .chart-form label.short { width: calc(50% - 5px); min-width: 0; } .chart-form label.grow { width: 100%; } }

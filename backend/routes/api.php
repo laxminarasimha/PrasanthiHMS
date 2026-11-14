@@ -232,6 +232,18 @@ Route::middleware(['auth:sanctum', 'actor:staff'])->group(function () {
 
     Route::get('/pharmacy/reports/{type}', [PharmacyReportController::class, 'show']);
 
+    Route::prefix('ipd/admissions/{admission}/chart')->controller(\App\Http\Controllers\Api\IpdChartController::class)->group(function () {
+        Route::get('/', 'show');
+        Route::post('/vitals', 'storeVitals');
+        Route::delete('/vitals/{vital}', 'destroyVitals');
+        Route::post('/orders', 'storeOrder');
+        Route::post('/orders/{order}/stop', 'stopOrder');
+        Route::post('/orders/{order}/doses', 'storeDose');
+        Route::delete('/doses/{dose}', 'destroyDose');
+        Route::post('/fluids', 'storeFluid');
+        Route::delete('/fluids/{fluid}', 'destroyFluid');
+    });
+
     Route::prefix('ipd')->controller(IpdController::class)->group(function () {
         // Anyone signed in can look; changing things needs the right role.
         Route::get('/beds', 'beds');
