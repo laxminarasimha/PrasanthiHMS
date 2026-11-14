@@ -9,7 +9,8 @@ use Illuminate\Support\Facades\Route;
  */
 Route::fallback(function () {
     // An unknown API address is a mistake by the caller, not a page to show.
-    abort_if(request()->is('api/*'), 404, 'Not found.');
+    // Nor is a missing script or style: answering it with the page would hide that it is gone.
+    abort_if(request()->is('api/*', 'assets/*'), 404, 'Not found.');
 
     $spa = public_path('spa.html');
 

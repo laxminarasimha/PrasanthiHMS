@@ -1,57 +1,94 @@
-import type { ReactNode } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
+import type { ComponentType, ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { homeFor } from './access'
 import { AuthProvider, useAuth } from './auth'
 import { Layout } from './components/Layout'
-import { BillPrint } from './pages/BillPrint'
-import { DoctorConsults } from './pages/DoctorConsults'
-import { DoctorLibrary } from './pages/DoctorLibrary'
-import { DoctorQueue } from './pages/DoctorQueue'
-import { Calendar } from './pages/Calendar'
-import { FrontDesk } from './pages/FrontDesk'
-import { Account } from './pages/Account'
-import { Admin } from './pages/Admin'
-import { AllBills } from './pages/AllBills'
-import { FormPrint } from './pages/FormPrint'
-import { Ipd } from './pages/ipd/Ipd'
-import { IpdCase } from './pages/ipd/IpdCase'
-import { IpdChartPrint } from './pages/ipd/IpdChartPrint'
-import { IpdPrint } from './pages/ipd/IpdPrint'
-import { IpdReceiptPrint } from './pages/ipd/IpdReceiptPrint'
-import { IpdReports } from './pages/ipd/IpdReports'
-import { IpdSummaryPrint } from './pages/ipd/IpdSummaryPrint'
-import { IpdSetup } from './pages/ipd/IpdSetup'
-import { Lab } from './pages/Lab'
-import { LabReportPrint } from './pages/LabReportPrint'
-import { LabPackages } from './pages/LabPackages'
-import { LabSettings } from './pages/LabSettings'
-import { LabTests } from './pages/LabTests'
 import { Login } from './pages/Login'
-import { CaseHistory } from './pages/CaseHistory'
-import { DocumentPrint } from './pages/DocumentPrint'
-import { PatientDashboard } from './pages/PatientDashboard'
-import { Patients } from './pages/Patients'
-import { PharmacyBilling } from './pages/pharmacy/Billing'
-import { PharmacyBills } from './pages/pharmacy/Bills'
-import { PharmacyDashboard } from './pages/pharmacy/Dashboard'
-import { PharmacyInventory } from './pages/pharmacy/Inventory'
-import { PharmacyMedicines } from './pages/pharmacy/Medicines'
-import { PharmacyOpeningStock } from './pages/pharmacy/OpeningStock'
-import { PharmacyOrders } from './pages/pharmacy/Orders'
-import { PharmacySubscriptions } from './pages/pharmacy/Subscriptions'
-import { PharmacyPurchaseOrders } from './pages/pharmacy/PurchaseOrders'
-import { PharmacyPurchases } from './pages/pharmacy/Purchases'
-import { PharmacyReports } from './pages/pharmacy/Reports'
-import { PharmacySalePrint } from './pages/pharmacy/SalePrint'
-import { PharmacyStock } from './pages/pharmacy/Stock'
-import { PharmacyStockReturns } from './pages/pharmacy/StockReturns'
-import { PrescriptionPrint } from './pages/PrescriptionPrint'
-import { QueueBoard } from './pages/QueueBoard'
-import { Reports } from './pages/Reports'
-import { Services } from './pages/Services'
-import { Staff } from './pages/Staff'
-import { VisitPad } from './pages/VisitPad'
 import type { User } from './types'
+
+/** Pages still to be fetched, in the order they are listed below. */
+const waiting: Array<() => Promise<unknown>> = []
+
+function LoadFailed() {
+  return (
+    <p className="loading">
+      This page could not be opened. Check the internet connection, then{' '}
+      <button type="button" className="link" onClick={() => window.location.reload()}>try again</button>.
+    </p>
+  )
+}
+
+/**
+ * A page that is fetched the first time it is opened instead of with the sign-in screen,
+ * so the first screen does not wait for every other screen in the hospital.
+ */
+function page<M extends Record<K, ComponentType>, K extends string>(load: () => Promise<M>, name: K) {
+  waiting.push(load)
+  return lazy(() =>
+    load().then(
+      (m) => ({ default: m[name] as ComponentType }),
+      () => {
+        // After a new release the old file names are gone: loading the page afresh picks up the new ones.
+        const last = Number(sessionStorage.getItem('hms_reloaded') ?? 0)
+        if (navigator.onLine && Date.now() - last > 60_000) {
+          sessionStorage.setItem('hms_reloaded', String(Date.now()))
+          window.location.reload()
+          return new Promise<never>(() => {})
+        }
+        return { default: LoadFailed }
+      },
+    ),
+  )
+}
+
+const BillPrint = page(() => import('./pages/BillPrint'), 'BillPrint')
+const DoctorConsults = page(() => import('./pages/DoctorConsults'), 'DoctorConsults')
+const DoctorLibrary = page(() => import('./pages/DoctorLibrary'), 'DoctorLibrary')
+const DoctorQueue = page(() => import('./pages/DoctorQueue'), 'DoctorQueue')
+const Calendar = page(() => import('./pages/Calendar'), 'Calendar')
+const FrontDesk = page(() => import('./pages/FrontDesk'), 'FrontDesk')
+const Account = page(() => import('./pages/Account'), 'Account')
+const Admin = page(() => import('./pages/Admin'), 'Admin')
+const AllBills = page(() => import('./pages/AllBills'), 'AllBills')
+const FormPrint = page(() => import('./pages/FormPrint'), 'FormPrint')
+const Ipd = page(() => import('./pages/ipd/Ipd'), 'Ipd')
+const IpdCase = page(() => import('./pages/ipd/IpdCase'), 'IpdCase')
+const IpdChartPrint = page(() => import('./pages/ipd/IpdChartPrint'), 'IpdChartPrint')
+const IpdPrint = page(() => import('./pages/ipd/IpdPrint'), 'IpdPrint')
+const IpdReceiptPrint = page(() => import('./pages/ipd/IpdReceiptPrint'), 'IpdReceiptPrint')
+const IpdReports = page(() => import('./pages/ipd/IpdReports'), 'IpdReports')
+const IpdSummaryPrint = page(() => import('./pages/ipd/IpdSummaryPrint'), 'IpdSummaryPrint')
+const IpdSetup = page(() => import('./pages/ipd/IpdSetup'), 'IpdSetup')
+const Lab = page(() => import('./pages/Lab'), 'Lab')
+const LabReportPrint = page(() => import('./pages/LabReportPrint'), 'LabReportPrint')
+const LabPackages = page(() => import('./pages/LabPackages'), 'LabPackages')
+const LabSettings = page(() => import('./pages/LabSettings'), 'LabSettings')
+const LabTests = page(() => import('./pages/LabTests'), 'LabTests')
+const CaseHistory = page(() => import('./pages/CaseHistory'), 'CaseHistory')
+const DocumentPrint = page(() => import('./pages/DocumentPrint'), 'DocumentPrint')
+const PatientDashboard = page(() => import('./pages/PatientDashboard'), 'PatientDashboard')
+const Patients = page(() => import('./pages/Patients'), 'Patients')
+const PharmacyBilling = page(() => import('./pages/pharmacy/Billing'), 'PharmacyBilling')
+const PharmacyBills = page(() => import('./pages/pharmacy/Bills'), 'PharmacyBills')
+const PharmacyDashboard = page(() => import('./pages/pharmacy/Dashboard'), 'PharmacyDashboard')
+const PharmacyInventory = page(() => import('./pages/pharmacy/Inventory'), 'PharmacyInventory')
+const PharmacyMedicines = page(() => import('./pages/pharmacy/Medicines'), 'PharmacyMedicines')
+const PharmacyOpeningStock = page(() => import('./pages/pharmacy/OpeningStock'), 'PharmacyOpeningStock')
+const PharmacyOrders = page(() => import('./pages/pharmacy/Orders'), 'PharmacyOrders')
+const PharmacySubscriptions = page(() => import('./pages/pharmacy/Subscriptions'), 'PharmacySubscriptions')
+const PharmacyPurchaseOrders = page(() => import('./pages/pharmacy/PurchaseOrders'), 'PharmacyPurchaseOrders')
+const PharmacyPurchases = page(() => import('./pages/pharmacy/Purchases'), 'PharmacyPurchases')
+const PharmacyReports = page(() => import('./pages/pharmacy/Reports'), 'PharmacyReports')
+const PharmacySalePrint = page(() => import('./pages/pharmacy/SalePrint'), 'PharmacySalePrint')
+const PharmacyStock = page(() => import('./pages/pharmacy/Stock'), 'PharmacyStock')
+const PharmacyStockReturns = page(() => import('./pages/pharmacy/StockReturns'), 'PharmacyStockReturns')
+const PrescriptionPrint = page(() => import('./pages/PrescriptionPrint'), 'PrescriptionPrint')
+const QueueBoard = page(() => import('./pages/QueueBoard'), 'QueueBoard')
+const Reports = page(() => import('./pages/Reports'), 'Reports')
+const Services = page(() => import('./pages/Services'), 'Services')
+const Staff = page(() => import('./pages/Staff'), 'Staff')
+const VisitPad = page(() => import('./pages/VisitPad'), 'VisitPad')
 
 function Protected() {
   const { user, loading } = useAuth()
@@ -77,10 +114,21 @@ function Home() {
   return <Navigate to={user ? homeFor(user) : '/login'} replace />
 }
 
+const loading = <p className="loading">Loading…</p>
+
 export default function App() {
+  // Once the first screen is up, quietly fetch the rest one by one, so moving between screens does not wait.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void waiting.reduce((before, load) => before.then(load).then(() => {}, () => {}), Promise.resolve())
+    }, 2500)
+    return () => window.clearTimeout(timer)
+  }, [])
+
   return (
     <AuthProvider>
       <BrowserRouter>
+        <Suspense fallback={loading}>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/queue" element={<PrintOnly><QueueBoard /></PrintOnly>} />
@@ -137,6 +185,7 @@ export default function App() {
             <Route path="*" element={<Home />} />
           </Route>
         </Routes>
+        </Suspense>
       </BrowserRouter>
     </AuthProvider>
   )
