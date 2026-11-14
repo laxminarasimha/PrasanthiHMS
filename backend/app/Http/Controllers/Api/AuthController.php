@@ -53,6 +53,20 @@ class AuthController extends Controller
         return response()->json(['message' => 'Password changed.']);
     }
 
+    public const THEMES = ['prasanthi', 'ocean', 'forest', 'rose', 'slate', 'night'];
+
+    /** Saves a person's own choice of theme and text size. */
+    public function saveAppearance(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'theme' => ['required', \Illuminate\Validation\Rule::in(self::THEMES)],
+            'text' => ['required', \Illuminate\Validation\Rule::in(['small', 'normal', 'large'])],
+        ]);
+        $request->user()->update(['appearance' => $data]);
+
+        return response()->json($this->present($request->user()));
+    }
+
     public const MENU_TABS = ['front-desk', 'doctor', 'lab', 'pharmacy', 'ipd', 'patients', 'reports', 'setup'];
 
     /** Saves which menu tabs a person does not want to see. Their permissions stay as they are. */
@@ -105,6 +119,7 @@ class AuthController extends Controller
             'can_change_price' => $user->allows('canChangePrice'),
             'pad_hidden_sections' => $user->pad_hidden_sections ?? [],
             'hidden_tabs' => $user->hidden_tabs ?? [],
+            'appearance' => ($user->appearance ?? []) + ['theme' => 'prasanthi', 'text' => 'normal'],
             'branch' => $user->branch?->only(['id', 'name', 'city']),
         ];
     }

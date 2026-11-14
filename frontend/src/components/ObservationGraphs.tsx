@@ -2,9 +2,9 @@ import { useState } from 'react'
 
 export type Reading = { recorded_at: string; temperature_f: number | null; pulse: number | null; bp_systolic: number | null; bp_diastolic: number | null; resp_rate: number | null; spo2: number | null; blood_sugar: number | null }
 
-/** Colours checked for colour-blind separation and contrast on a white surface (dataviz palette slots 1 and 2). */
-const BLUE = '#2a78d6'
-const ORANGE = '#eb6834'
+/** Colours checked for colour-blind separation and contrast (dataviz palette slots 1 and 2); each theme supplies its own step. */
+const BLUE = 'var(--series-1)'
+const ORANGE = 'var(--series-2)'
 
 type Series = { key: keyof Reading; label: string; color: string }
 const PANELS: { title: string; unit: string; series: Series[]; digits?: number }[] = [
@@ -98,9 +98,9 @@ function Panel({ panel, readings, from, to, hover, onHover }: { panel: (typeof P
         {nearest !== null && picked.length > 0 && <line x1={x(nearest)} x2={x(nearest)} y1={PAD.top} y2={H - PAD.bottom} className="obs-cross" />}
         {lines.map((l) => (
           <g key={l.label}>
-            {l.points.length > 1 && <polyline points={l.points.map((p) => `${x(p.t)},${y(p.v)}`).join(' ')} fill="none" stroke={l.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />}
+            {l.points.length > 1 && <polyline points={l.points.map((p) => `${x(p.t)},${y(p.v)}`).join(' ')} style={{ fill: 'none', stroke: l.color }} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />}
             {l.points.map((p) => (
-              <circle key={p.t} cx={x(p.t)} cy={y(p.v)} r={p.t === nearest ? 5 : 4} fill={l.color} stroke="#fff" strokeWidth={2} />
+              <circle key={p.t} cx={x(p.t)} cy={y(p.v)} r={p.t === nearest ? 5 : 4} style={{ fill: l.color, stroke: 'var(--surface)' }} strokeWidth={2} />
             ))}
             {/* The latest value is written at the end of its line; the rest are in the table and on hover. */}
             {l.points.length > 0 && (

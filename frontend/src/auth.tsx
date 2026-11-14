@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { api, getToken, setToken } from './api'
+import { applyAppearance } from './appearance'
 import type { User } from './types'
 
 type AuthState = {
@@ -16,6 +17,11 @@ const AuthContext = createContext<AuthState | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(Boolean(getToken()))
+
+  // The look a person chose follows them to whichever computer they sign in on.
+  useEffect(() => {
+    if (user?.appearance) applyAppearance(user.appearance)
+  }, [user?.appearance])
 
   useEffect(() => {
     if (!getToken()) return
