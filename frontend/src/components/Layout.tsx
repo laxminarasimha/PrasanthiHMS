@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { PatientSearch } from './PatientSearch'
 import { useAuth } from '../auth'
@@ -77,7 +77,9 @@ export function Layout() {
         </div>
       </header>
       <main className="content">
-        <Outlet />
+        <Suspense fallback={<p className="loading">Loading…</p>}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   )

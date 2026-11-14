@@ -44,6 +44,13 @@ echo "==> Installing PHP packages (production only)"
 echo "==> Adding the web app to the public folder"
 cp "$ROOT/frontend/dist/index.html" "$APP/public/spa.html"
 cp -R "$ROOT/frontend/dist/assets" "$APP/public/assets"
+# A file in assets/ gets a new name whenever its contents change, so a browser may keep it for a
+# year without asking again. The page itself (spa.html) is still checked on every visit.
+cat > "$APP/public/assets/.htaccess" <<'HTACCESS'
+<IfModule mod_headers.c>
+    Header set Cache-Control "public, max-age=31536000, immutable"
+</IfModule>
+HTACCESS
 find "$ROOT/frontend/dist" -maxdepth 1 -type f ! -name 'index.html' -exec cp {} "$APP/public/" \;
 
 echo "==> Writing the production settings"
