@@ -36,6 +36,7 @@ import { PharmacyInventory } from './pages/pharmacy/Inventory'
 import { PharmacyMedicines } from './pages/pharmacy/Medicines'
 import { PharmacyOpeningStock } from './pages/pharmacy/OpeningStock'
 import { PharmacyOrders } from './pages/pharmacy/Orders'
+import { PharmacySubscriptions } from './pages/pharmacy/Subscriptions'
 import { PharmacyPurchaseOrders } from './pages/pharmacy/PurchaseOrders'
 import { PharmacyPurchases } from './pages/pharmacy/Purchases'
 import { PharmacyReports } from './pages/pharmacy/Reports'
@@ -107,6 +108,7 @@ export default function App() {
             <Route path="/pharmacy/bills" element={<Only when="can_run_pharmacy"><PharmacyBills /></Only>} />
             <Route path="/pharmacy/dashboard" element={<Only when="can_run_pharmacy"><PharmacyDashboard /></Only>} />
             <Route path="/pharmacy/orders" element={<Only when="can_run_pharmacy"><PharmacyOrders /></Only>} />
+            <Route path="/pharmacy/subscriptions" element={<Only when="can_run_pharmacy"><PharmacySubscriptions /></Only>} />
             <Route path="/pharmacy/inventory" element={<Only when="can_run_pharmacy"><PharmacyInventory /></Only>} />
             <Route path="/pharmacy/opening-stock" element={<Only when="can_run_pharmacy"><PharmacyOpeningStock /></Only>} />
             <Route path="/pharmacy/stock-returns" element={<Only when="can_run_pharmacy"><PharmacyStockReturns /></Only>} />
