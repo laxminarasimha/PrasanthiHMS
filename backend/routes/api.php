@@ -225,6 +225,12 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
         Route::delete('/sales/{sale}', 'void');
     });
 
+    Route::prefix('pharmacy')->controller(\App\Http\Controllers\Api\PharmacyManagerController::class)->group(function () {
+        Route::get('/manager', 'show');
+        Route::post('/manager/orders', 'makeOrders');
+        Route::get('/stockists/{stockist}/statement', 'statement');
+    });
+
     Route::prefix('pharmacy')->controller(PharmacyStockController::class)->group(function () {
         Route::get('/manufacturers', 'manufacturers');
         Route::post('/manufacturers', 'storeManufacturer');

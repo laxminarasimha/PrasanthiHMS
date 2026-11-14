@@ -89,6 +89,8 @@ class PharmacyController extends Controller
             'gst_percent' => ['required', 'numeric', 'min:0', 'max:40'],
             'units_per_pack' => ['required', 'integer', 'min:1', 'max:10000'],
             'reorder_level' => ['nullable', 'integer', 'min:0'],
+            'desired_stock' => ['nullable', 'integer', 'min:0', 'max:10000000'],
+            'preferred_stockist_id' => ['nullable', 'exists:stockists,id'],
             'is_active' => ['sometimes', 'boolean'],
         ], ['name.unique' => 'A medicine with this name is already in the list.']) + ['reorder_level' => 0];
     }
@@ -143,6 +145,8 @@ class PharmacyController extends Controller
             'email' => ['nullable', 'email', 'max:255'],
             'gstin' => ['nullable', 'string', 'max:20'],
             'address' => ['nullable', 'string', 'max:255'],
+            'lead_days' => ['sometimes', 'integer', 'min:0', 'max:120'],
+            'credit_days' => ['sometimes', 'integer', 'min:0', 'max:365'],
         ]);
     }
 

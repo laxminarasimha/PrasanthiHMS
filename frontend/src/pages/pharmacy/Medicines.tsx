@@ -13,8 +13,8 @@ const SDE = [{ value: 'S', label: 'Scarce' }, { value: 'D', label: 'Difficult to
 const FSN = [{ value: 'F', label: 'Fast moving' }, { value: 'S', label: 'Slow moving' }, { value: 'N', label: 'Non-moving' }]
 const classLabel = (list: { value: string; label: string }[], value?: string | null) => list.find((o) => o.value === value)?.label
 
-const blankMedicine = { name: '', type: 'Tablet', manufacturer: '', category: '', sub_category: '', ved: '', sde: '', fsn: '', hsn_code: '', gst_percent: '12', units_per_pack: '10', reorder_level: '0', is_active: true, is_scheduled: false }
-const blankStockist = { name: '', phone: '', email: '', gstin: '', address: '' }
+const blankMedicine = { name: '', type: 'Tablet', manufacturer: '', category: '', sub_category: '', ved: '', sde: '', fsn: '', hsn_code: '', gst_percent: '12', units_per_pack: '10', reorder_level: '0', desired_stock: '', preferred_stockist_id: '', is_active: true, is_scheduled: false }
+const blankStockist = { name: '', phone: '', email: '', gstin: '', address: '', lead_days: '2', credit_days: '0' }
 
 type Editing = { kind: 'medicine' | 'stockist' | 'manufacturer'; id: number | null } | null
 
@@ -57,7 +57,7 @@ export function PharmacyMedicines() {
       m
         ? {
             name: m.name, type: m.type ?? '', manufacturer: m.manufacturer ?? '', category: m.category ?? '', sub_category: m.sub_category ?? '', ved: m.ved ?? '', sde: m.sde ?? '', fsn: m.fsn ?? '', hsn_code: m.hsn_code ?? '',
-            gst_percent: String(m.gst_percent), units_per_pack: String(m.units_per_pack), reorder_level: String(m.reorder_level), is_active: m.is_active,
+            gst_percent: String(m.gst_percent), units_per_pack: String(m.units_per_pack), reorder_level: String(m.reorder_level), desired_stock: m.desired_stock ? String(m.desired_stock) : '', preferred_stockist_id: m.preferred_stockist_id ? String(m.preferred_stockist_id) : '', is_active: m.is_active,
             is_scheduled: m.is_scheduled,
           }
         : blankMedicine,
@@ -68,7 +68,7 @@ export function PharmacyMedicines() {
     setEditing({ kind: 'stockist', id: s?.id ?? null })
     setErrors({})
     setNotice('')
-    setStockist(s ? { name: s.name, phone: s.phone ?? '', email: s.email ?? '', gstin: s.gstin ?? '', address: s.address ?? '' } : blankStockist)
+    setStockist(s ? { name: s.name, phone: s.phone ?? '', email: s.email ?? '', gstin: s.gstin ?? '', address: s.address ?? '', lead_days: String(s.lead_days ?? 2), credit_days: String(s.credit_days ?? 0) } : blankStockist)
   }
 
   const openManufacturer = (m: Manufacturer | null) => {
@@ -84,7 +84,7 @@ export function PharmacyMedicines() {
     setSaving(true)
     setErrors({})
     const base = { medicine: '/pharmacy/medicines', stockist: '/pharmacy/stockists', manufacturer: '/pharmacy/manufacturers' }[editing.kind]
-    const payload = editing.kind === 'medicine' ? { ...medicine, ved: medicine.ved || null, sde: medicine.sde || null, fsn: medicine.fsn || null } : editing.kind === 'stockist' ? stockist : { name: manufacturerName }
+    const payload = editing.kind === 'medicine' ? { ...medicine, ved: medicine.ved || null, sde: medicine.sde || null, fsn: medicine.fsn || null, desired_stock: medicine.desired_stock || null, preferred_stockist_id: medicine.preferred_stockist_id || null } : editing.kind === 'stockist' ? stockist : { name: manufacturerName }
     try {
       const res = editing.id ? await api.put<{ name: string }>(`${base}/${editing.id}`, payload) : await api.post<{ name: string }>(base, payload)
       setNotice(`${res.data.name} was ${editing.id ? 'updated' : 'added'}.`)
@@ -304,7 +304,19 @@ export function PharmacyMedicines() {
                   <TextField label="HSN code" value={medicine.hsn_code} onChange={setM('hsn_code')} error={errors.hsn_code} />
                   <TextField label="Units per pack" required type="number" min={1} value={medicine.units_per_pack} onChange={setM('units_per_pack')} error={errors.units_per_pack} />
                   <TextField label="GST %" required type="number" min={0} step="0.01" value={medicine.gst_percent} onChange={setM('gst_percent')} error={errors.gst_percent} />
-                  <TextField label="Low-stock alert at (units)" type="number" min={0} value={medicine.reorder_level} onChange={setM('reorder_level')} error={errors.reorder_level} />
+                  <TextField label="Minimum on the shelf (units)" type="number" min={0} value={medicine.reorder_level} onChange={setM('reorder_level')} error={errors.reorder_level} />
+                  <TextField label="When ordering, fill up to (units)" type="number" min={0} value={medicine.desired_stock} onChange={setM('desired_stock')} error={errors.desired_stock} />
+                  <label className="field">
+                    <span className="field-label">Usual supplier</span>
+                    <select value={medicine.preferred_stockist_id} onChange={(e) => setM('preferred_stockist_id')(e.target.value)}>
+                      <option value="">The one it was last bought from</option>
+                      {stockists.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <label className="check span-2">
                     <input type="checkbox" checked={medicine.is_scheduled} onChange={(e) => setMedicine((f) => ({ ...f, is_scheduled: e.target.checked }))} />
                     Scheduled drug (sold only on prescription; listed in the schedule drug report)
@@ -334,6 +346,8 @@ export function PharmacyMedicines() {
                   <div className="span-2">
                     <TextField label="Address" value={stockist.address} onChange={setS('address')} error={errors.address} />
                   </div>
+                  <TextField label="Days to deliver an order" type="number" min={0} value={stockist.lead_days} onChange={setS('lead_days')} error={errors.lead_days} />
+                  <TextField label="Days of credit to pay a bill" type="number" min={0} value={stockist.credit_days} onChange={setS('credit_days')} error={errors.credit_days} />
                 </div>
               )}
             </fieldset>
