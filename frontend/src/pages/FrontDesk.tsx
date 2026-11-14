@@ -74,7 +74,7 @@ export function FrontDesk() {
   useEffect(() => {
     api.get<Doctor[]>('/doctors').then((res) => setDoctors(res.data))
     api.get<Service[]>('/services').then((res) => setServices(res.data))
-    api.get<LabCatalogueTest[]>('/lab/tests').then((res) => setLabTests(res.data))
+    api.get<LabCatalogueTest[]>('/lab/tests', { params: { brief: 1 } }).then((res) => setLabTests(res.data))
     api.get<LabPackage[]>('/lab/packages').then((res) => setLabPackages(res.data))
   }, [])
 

@@ -27,7 +27,8 @@ class LabController extends Controller
     public function tests(Request $request): JsonResponse
     {
         return response()->json(
-            LabTest::with('parameters')
+            // Screens that only pick tests ask for the short list, without each test's report template.
+            LabTest::when(! $request->boolean('brief'), fn ($q) => $q->with('parameters'))
                 ->when(! $request->boolean('all'), fn ($q) => $q->where('is_active', true))
                 ->orderBy('print_order')->orderBy('name')
                 ->get()

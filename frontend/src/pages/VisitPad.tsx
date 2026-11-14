@@ -105,7 +105,7 @@ export function VisitPad() {
       // The shortcuts belong to the doctor seeing the patient, whoever is typing.
       api.get<DoctorLibrary>('/doctor/library', { params: { doctor_id: res.data.doctor.id } }).then((l) => setLibrary(l.data)).catch(() => setLibrary(null))
     })
-    api.get<LabCatalogueTest[]>('/lab/tests').then((res) => setLabTests(res.data))
+    api.get<LabCatalogueTest[]>('/lab/tests', { params: { brief: 1 } }).then((res) => setLabTests(res.data))
     api.get<string[]>('/medicines/suggest').then((res) => setSuggestions(res.data))
   }, [id])
 

@@ -61,4 +61,26 @@ class PatientTest extends TestCase
             'name' => 'Renamed', 'gender' => 'male', 'date_of_birth' => '1980-01-01', 'mobile' => '9000011111', 'city' => 'Guntur',
         ])->assertOk()->assertJsonPath('name', 'Renamed')->assertJsonPath('city', 'Guntur');
     }
+
+    public function test_a_patient_is_found_however_the_name_or_number_is_typed(): void
+    {
+        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\User::factory()->create(['role' => 'frontdesk']));
+        \App\Models\Patient::factory()->create(['title' => 'Mrs', 'name' => 'K. Lakshmi  Devi', 'mobile' => '9876543210', 'mobile_alt' => '9123456780', 'existing_id' => 'HP-4411']);
+        \App\Models\Patient::factory()->create(['name' => 'Lakshmi Narayana', 'mobile' => '9000000001']);
+        \App\Models\Patient::factory()->create(['name' => 'Ravi Kumar', 'mobile' => '9000000002']);
+        $find = fn (string $q) => array_column($this->getJson('/api/patients?q='.urlencode($q))->assertOk()->json('data'), 'name');
+
+        $this->assertSame(['K. Lakshmi  Devi'], $find('Lakshmi Devi'));       // extra spaces in the stored name
+        $this->assertSame(['K. Lakshmi  Devi'], $find('Mrs Lakshmi Devi'));   // with the title
+        $this->assertSame(['K. Lakshmi  Devi'], $find('devi lakshmi'));       // the other way round
+        $this->assertSame(['K. Lakshmi  Devi'], $find('K Lakshmi Devi'));     // initial without the dot
+        $this->assertCount(2, $find('lakshmi'));
+        $this->assertSame(['Ravi Kumar'], $find('Mr. Ravi Kumar'));
+        $this->assertSame(['K. Lakshmi  Devi'], $find('98765 43210'));        // number with a space
+        $this->assertSame(['K. Lakshmi  Devi'], $find('+91 9876543210'));
+        $this->assertSame(['K. Lakshmi  Devi'], $find('9123456780'));         // the other number
+        $this->assertSame(['K. Lakshmi  Devi'], $find('HP-4411'));            // the old system's ID
+        $this->assertSame([], $find('Lakshmi Kumar'));                        // every word must fit one person
+        $this->assertSame([], $find('100%'));
+    }
 }
