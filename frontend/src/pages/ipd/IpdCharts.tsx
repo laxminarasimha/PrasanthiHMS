@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors } from '../../api'
+import { ObservationGraphs } from '../../components/ObservationGraphs'
 import { clock, longDate, nowLocal, today } from '../../format'
 
 type Who = { id: number; name: string } | null
@@ -96,6 +97,9 @@ export function IpdCharts({ admissionId, userId, canChart, canOrder }: Props) {
         <button className={`square ${section === 'fluids' ? 'active' : ''}`} onClick={() => setSection('fluids')}>
           Intake and output <span>{chart.fluids.length}</span>
         </button>
+        <a className="btn ghost small-btn push" href={`/ipd/${admissionId}/chart/print`} target="_blank" rel="noreferrer">
+          Print chart
+        </a>
       </div>
       {!chart.open && <p className="notice">This patient is no longer admitted, so the chart is closed. It can be read but not added to.</p>}
       {error && <p className="form-error">{error}</p>}
@@ -121,6 +125,7 @@ export function IpdCharts({ admissionId, userId, canChart, canOrder }: Props) {
               <button className="btn primary">Record</button>
             </form>
           )}
+          <ObservationGraphs readings={chart.vitals} />
           <div className="table-wrap">
             <table className="compact">
               <thead>
