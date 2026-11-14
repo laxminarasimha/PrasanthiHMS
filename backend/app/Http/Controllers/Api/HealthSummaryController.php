@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\Patient;
 use App\Models\PatientHealthItem;
 use Illuminate\Http\JsonResponse;
@@ -35,7 +36,8 @@ class HealthSummaryController extends Controller
             throw ValidationException::withMessages(['title' => "“{$twin->title}” is already on the summary."]);
         }
 
-        $patient->healthItems()->create($data + ['created_by' => $request->user()->id, 'updated_by' => $request->user()->id]);
+        $item = $patient->healthItems()->create($data + ['created_by' => $request->user()->id, 'updated_by' => $request->user()->id]);
+        AuditLog::record('health.added', $patient->id, $item, PatientHealthItem::KINDS[$item->kind].': '.$item->title);
 
         return response()->json($this->present($patient), 201);
     }
@@ -49,6 +51,7 @@ class HealthSummaryController extends Controller
             $data['ended_on'] = $data['is_active'] ? null : ($data['ended_on'] ?? $item->ended_on?->toDateString() ?? today()->toDateString());
         }
         $item->update($data + ['updated_by' => $request->user()->id]);
+        AuditLog::record('health.updated', $item->patient_id, $item, PatientHealthItem::KINDS[$item->kind].': '.$item->title.(array_key_exists('is_active', $data) ? ($data['is_active'] ? ' (active again)' : ' (marked as over)') : ''));
 
         return response()->json($this->present($item->patient));
     }
@@ -57,6 +60,7 @@ class HealthSummaryController extends Controller
     {
         $this->guardWrite($request);
         $patient = $item->patient;
+        AuditLog::record('health.removed', $patient->id, $item, PatientHealthItem::KINDS[$item->kind].': '.$item->title);
         $item->delete();
 
         return response()->json($this->present($patient));
@@ -67,7 +71,11 @@ class HealthSummaryController extends Controller
     {
         $this->guardWrite($request);
         $data = $request->validate(['allergies' => ['present', 'nullable', 'string', 'max:1000']]);
+        $was = $patient->allergies;
         $patient->update(['allergies' => filled($data['allergies']) ? trim($data['allergies']) : null]);
+        if ($was !== $patient->allergies) {
+            AuditLog::record('allergies.updated', $patient->id, $patient, 'From “'.($was ?? 'none').'” to “'.($patient->allergies ?? 'none').'”');
+        }
 
         return response()->json($this->present($patient));
     }

@@ -205,6 +205,8 @@ export type Consultation = {
   completed_at: string | null
   medicines: PrescribedMedicine[]
   doctor?: { id: number; name: string }
+  /** Dated corrections added after the visit was locked. */
+  amendments?: { id: number; body: string; created_at: string; author?: { id: number; name: string } | null }[]
 }
 
 export type VisitPatient = Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'age_label' | 'title' | 'mobile' | 'blood_group'> & { allergies: string | null }
@@ -240,6 +242,8 @@ export type Visit = {
   doctor: { id: number; name: string; department: string | null; signature_text: string | null }
   service: { id: number; name: string } | null
   consultation: Consultation | null
+  /** True from the day after the visit was finished: notes are fixed, corrections go in as amendments. */
+  locked?: boolean
 }
 
 export type QueueEntry = {

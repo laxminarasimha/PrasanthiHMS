@@ -43,6 +43,7 @@ class HospitalReportController extends Controller
         'lab-tests' => 'Lab: tests done',
         'lab-referrals' => 'Referrals: lab orders by referring doctor',
         'patient-referrals' => 'Referrals: new patients by referring doctor',
+        'activity' => 'Activity log: who opened and changed records',
     ];
 
     public function show(Request $request, string $type): JsonResponse
@@ -342,6 +343,20 @@ class HospitalReportController extends Controller
             self::col('test', 'Test'), self::col('parameter', 'Parameter'), self::col('results', 'Results', 'number'),
             self::col('normal', 'Normal', 'number'), self::col('high', 'High', 'number'), self::col('low', 'Low', 'number'),
         ], $rows];
+    }
+
+    /** Who opened or changed which record. */
+    private function activity(Carbon $from, Carbon $to): array
+    {
+        $rows = \App\Models\AuditLog::whereBetween('created_at', [$from, $to])->latest('id')->limit(5000)->get();
+        $patients = Patient::whereIn('id', $rows->pluck('patient_id')->filter()->unique())->get(['id', 'uhid', 'name'])->keyBy('id');
+
+        return [[
+            self::col('when', 'When'), self::col('who', 'Who'), self::col('action', 'What they did'), self::col('patient', 'Patient'), self::col('details', 'Details'),
+        ], $rows->map(fn ($r) => [
+            'when' => $r->created_at->format('Y-m-d H:i'), 'who' => $r->user_name, 'action' => \App\Models\AuditLog::ACTIONS[$r->action] ?? $r->action,
+            'patient' => isset($patients[$r->patient_id]) ? $patients[$r->patient_id]->uhid.' '.$patients[$r->patient_id]->name : null, 'details' => $r->summary,
+        ])];
     }
 
     // ---- Lab and referrals ----

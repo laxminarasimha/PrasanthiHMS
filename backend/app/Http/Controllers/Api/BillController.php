@@ -98,6 +98,7 @@ class BillController extends Controller
 
             return $bill;
         });
+        \App\Models\AuditLog::record('bill.created', $bill->patient_id, $bill, 'Bill '.$bill->fresh()->bill_no);
 
         return response()->json($this->present($bill), 201);
     }
@@ -138,7 +139,8 @@ class BillController extends Controller
     /** Adds a charge: a service from the price list, or anything typed in, with its own price, quantity and discount. */
     public function addItem(Request $request, Bill $bill): JsonResponse
     {
-        $this->addLineFrom($bill, $request->validate($this->lineRules('required_without')));
+        $this->addLineFrom($bill, $data = $request->validate($this->lineRules('required_without')));
+        \App\Models\AuditLog::record('bill.item_added', $bill->patient_id, $bill, 'Bill '.$bill->bill_no.': '.($data['description'] ?? \App\Models\Service::find($data['service_id'] ?? null)?->name ?? 'a charge'));
 
         return response()->json($this->present($bill), 201);
     }
@@ -194,6 +196,7 @@ class BillController extends Controller
             throw ValidationException::withMessages(['item' => 'Removing this would bring the bill below what is already paid. Refund the difference first.']);
         }
 
+        \App\Models\AuditLog::record('bill.item_removed', $bill->patient_id, $bill, 'Bill '.$bill->bill_no.': '.$item->description.', ₹'.(float) $item->amount);
         $item->delete();
         $bill->recalculate();
 
@@ -218,6 +221,7 @@ class BillController extends Controller
 
         $bill->payments()->create($data + ['received_by' => $request->user()->id]);
         $bill->recalculate();
+        \App\Models\AuditLog::record('bill.payment', $bill->patient_id, $bill, 'Bill '.$bill->bill_no.': '.($data['type'] === 'refund' ? 'refunded' : 'received').' ₹'.(float) $data['amount'].' by '.$data['mode']);
 
         return response()->json($this->present($bill), 201);
     }

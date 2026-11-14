@@ -63,8 +63,10 @@ class CaseHistoryController extends Controller
     {
         $this->guard($request);
 
+        \App\Models\AuditLog::record('history.opened', $patient->id, $patient);
+
         $visits = Consultation::where('patient_id', $patient->id)
-            ->with(['medicines', 'doctor:id,name', 'appointment:id,scheduled_at,status'])
+            ->with(['medicines', 'doctor:id,name', 'appointment:id,scheduled_at,status', 'amendments.author:id,name'])
             ->latest('id')->limit(200)->get()
             ->map(fn (Consultation $c) => [
                 'kind' => 'visit',

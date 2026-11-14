@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { api } from '../api'
 import { ClinicFooter, ClinicHeader } from '../components/ClinicHeader'
 import { useSignature } from '../components/useSignature'
-import { longDate, fullName } from '../format'
+import { longDate, fullName, stampDate } from '../format'
 import type { Visit } from '../types'
 
 /** The prescription as it is handed to the patient; opens the print dialog once loaded. */
@@ -155,6 +155,16 @@ export function PrescriptionPrint() {
       {shows('advice') && c.advice && <section><h3>Advice</h3><p className="report-text">{c.advice.split('\n').map(tr).join('\n')}</p></section>}
       {shows('refer') && c.refer_to && <section><h3>Referred to</h3><p>{c.refer_to}</p></section>}
       {shows('next_visit') && c.follow_up_on && <section><h3>Next visit</h3><p>{longDate(c.follow_up_on)}</p></section>}
+      {(c.amendments?.length ?? 0) > 0 && (
+        <section>
+          <h3>Amendments</h3>
+          {c.amendments!.map((a) => (
+            <p key={a.id} className="report-text">
+              {stampDate(a.created_at)}, {a.author?.name ?? 'Staff'}: {a.body}
+            </p>
+          ))}
+        </section>
+      )}
 
       <div className="signature">
         {signature && <img src={signature} alt="" />}
