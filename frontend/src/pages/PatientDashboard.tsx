@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
+import { AppAccountBox } from '../components/AppAccountBox'
 import { DepositBox } from '../components/DepositBox'
 import { PatientDocuments } from '../components/PatientDocuments'
 import { AttachmentsPanel } from '../components/FrontDeskPanels'
@@ -50,6 +51,7 @@ export function PatientDashboard() {
           </div>
         </div>
         {p.is_temporary && <p className="notice">Temporary patient: booked with a name and number only. Complete the registration under Patients.</p>}
+        <AppAccountBox patientId={p.id} canManage={Boolean(user?.can_front_desk)} />
         <DepositBox patientId={p.id} balance={data.deposit_balance} history={data.deposits} onChange={(balance, deposits) => setData({ ...data, deposit_balance: balance, deposits })} />
       </section>
 
