@@ -36,5 +36,9 @@ export function fieldErrors(error: unknown): FieldErrors {
   if (data?.errors) {
     return Object.fromEntries(Object.entries(data.errors).map(([field, messages]) => [field, messages[0]]))
   }
+  // No reply at all means the request never arrived: the internet or the server is down, not the entry.
+  if (!(error as AxiosError).response) {
+    return { _: 'Could not reach the server. Check the internet connection and try again; nothing was saved.' }
+  }
   return { _: data?.message ?? 'Something went wrong. Please try again.' }
 }

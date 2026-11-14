@@ -1,4 +1,5 @@
-import { Fragment, useEffect, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
+import { canLeave, setUnsaved } from '../unsaved'
 import { PatientDocuments } from '../components/PatientDocuments'
 import { IcdPicker, type IcdCode } from '../components/IcdPicker'
 import { HealthSummary } from '../components/HealthSummary'
@@ -67,6 +68,8 @@ export function VisitPad() {
   const [form, setForm] = useState<Form>(toForm(null))
   const [medicines, setMedicines] = useState<Medicine[]>([emptyMedicine()])
   const [amendment, setAmendment] = useState('')
+  const [baseline, setBaseline] = useState(0)
+  const [savedPad, setSavedPad] = useState<string | null>(null)
   const [codes, setCodes] = useState<IcdCode[]>([])
   const [warnings, setWarnings] = useState<{ kind: string; medicine: string; message: string }[]>([])
   const [exam, setExam] = useState<Exam>(toExam(null))
@@ -91,6 +94,7 @@ export function VisitPad() {
     setInvestigations((next.consultation?.investigations ?? []).map((row) => ({ name: row.name, result: row.result ?? '', date: row.date ?? '' })))
     setMedicines(next.consultation?.medicines.length ? next.consultation.medicines : [emptyMedicine()])
     setCodes(next.consultation?.diagnosis_codes ?? [])
+    setBaseline((n) => n + 1)
   }
 
   useEffect(() => {
@@ -104,6 +108,20 @@ export function VisitPad() {
     api.get<LabCatalogueTest[]>('/lab/tests').then((res) => setLabTests(res.data))
     api.get<string[]>('/medicines/suggest').then((res) => setSuggestions(res.data))
   }, [id])
+
+  // Notes typed since the pad was last loaded or saved. Leaving the page with these unsaved asks first.
+  const pad = JSON.stringify([form, exam, medicines.filter((m) => m.medicine.trim()), investigations, codes])
+  const latestPad = useRef(pad)
+  latestPad.current = pad
+  useEffect(() => {
+    // Only when the pad is loaded or saved afresh: that is the point to measure changes from.
+    if (baseline > 0) setSavedPad(latestPad.current)
+  }, [baseline])
+  const unsaved = savedPad !== null && pad !== savedPad && Boolean(user?.can_consult) && !visit?.locked
+  useEffect(() => {
+    setUnsaved(unsaved ? 'This visit has notes that are not saved yet. Leave without saving them?' : null)
+    return () => setUnsaved(null)
+  }, [unsaved])
 
   // A second pair of eyes on the prescription: allergies and the same medicine twice.
   const names = medicines.map((m) => m.medicine.trim()).filter(Boolean).join('|')
@@ -475,7 +493,7 @@ export function VisitPad() {
     <div className="split main-first">
       <section className="card">
         <div className="toolbar">
-          <Link className="btn ghost" to="/doctor">
+          <Link className="btn ghost" to="/doctor" onClick={(e) => !canLeave() && e.preventDefault()}>
             ← Queue
           </Link>
           <div className="grow">
