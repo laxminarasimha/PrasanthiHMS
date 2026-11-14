@@ -115,7 +115,13 @@ export function PrescriptionPrint() {
           </p>
         </section>
       ) : null}
-      {shows('diagnosis') && c.diagnosis && <section><h3>Diagnosis</h3><p>{c.diagnosis}</p></section>}
+      {shows('diagnosis') && (c.diagnosis || c.diagnosis_codes?.length) && (
+        <section>
+          <h3>Diagnosis</h3>
+          {c.diagnosis && <p>{c.diagnosis}</p>}
+          {c.diagnosis_codes?.length ? <p className="icd-line">ICD-10: {c.diagnosis_codes.map((d) => `${d.code} ${d.name}`).join('; ')}</p> : null}
+        </section>
+      )}
       {shows('plan') && c.assessment_plan && <section><h3>Assessment / plan</h3><p>{c.assessment_plan}</p></section>}
 
       {c.medicines.length > 0 && (

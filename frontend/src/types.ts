@@ -197,6 +197,8 @@ export type Consultation = {
   general_exam_notes: string | null
   findings: string | null
   diagnosis: string | null
+  /** Coded diagnoses from the ICD-10 list. */
+  diagnosis_codes?: { code: string; name: string }[] | null
   assessment_plan: string | null
   refer_to: string | null
   tests_advised: string | null

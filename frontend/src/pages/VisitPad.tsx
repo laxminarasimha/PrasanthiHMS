@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
+import { IcdPicker, type IcdCode } from '../components/IcdPicker'
 import { HealthSummary } from '../components/HealthSummary'
 import { Link, useParams } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../api'
@@ -65,6 +66,7 @@ export function VisitPad() {
   const [form, setForm] = useState<Form>(toForm(null))
   const [medicines, setMedicines] = useState<Medicine[]>([emptyMedicine()])
   const [amendment, setAmendment] = useState('')
+  const [codes, setCodes] = useState<IcdCode[]>([])
   const [warnings, setWarnings] = useState<{ kind: string; medicine: string; message: string }[]>([])
   const [exam, setExam] = useState<Exam>(toExam(null))
   const [investigations, setInvestigations] = useState<{ name: string; result: string; date: string }[]>([])
@@ -87,6 +89,7 @@ export function VisitPad() {
     setExam(toExam(next.consultation))
     setInvestigations((next.consultation?.investigations ?? []).map((row) => ({ name: row.name, result: row.result ?? '', date: row.date ?? '' })))
     setMedicines(next.consultation?.medicines.length ? next.consultation.medicines : [emptyMedicine()])
+    setCodes(next.consultation?.diagnosis_codes ?? [])
   }
 
   useEffect(() => {
@@ -175,6 +178,7 @@ export function VisitPad() {
     const payload: Record<string, unknown> = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v === '' ? null : v]))
     payload.general_exam = Object.fromEntries(SIGNS.map((sign) => [sign.key, exam[sign.key] || null]))
     payload.medicines = filledMedicines(medicines)
+    payload.diagnosis_codes = codes.map((c) => ({ code: c.code }))
     payload.investigations = investigations.filter((row) => row.name.trim() || row.result.trim()).map((row) => ({ name: row.name.trim(), result: row.result.trim() || null, date: row.date || null }))
     if (complete) payload.complete = true
     try {
@@ -313,6 +317,7 @@ export function VisitPad() {
             <textarea rows={2} placeholder="" value={form.diagnosis} onChange={(e) => set('diagnosis')(e.target.value)} />
           </Field>
           <PhraseChips phrases={phrases('diagnosis')} text={form.diagnosis} onPick={set('diagnosis')} />
+          <IcdPicker value={codes} onChange={setCodes} disabled={!canWrite} />
           </>
     ),
     assessment_plan: (
@@ -676,6 +681,7 @@ export function VisitPad() {
                 ))}
               </ul>
             )}
+            {h.diagnosis_codes?.length ? <p><b>Codes:</b> {h.diagnosis_codes.map((d) => `${d.code} ${d.name}`).join('; ')}</p> : null}
             {h.advice && <p><b>Advice:</b> {h.advice}</p>}
             {h.amendments?.map((a) => (
               <p key={a.id}>
