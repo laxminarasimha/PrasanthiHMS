@@ -21,4 +21,9 @@ class AdmissionPayment extends Model
     {
         return $this->belongsTo(User::class, 'received_by');
     }
+
+    public function admission(): BelongsTo
+    {
+        return $this->belongsTo(Admission::class);
+    }
 }
