@@ -4,14 +4,32 @@
     {
       "name": "backend",
       "runtimeExecutable": "php",
-      "runtimeArgs": ["backend/artisan", "serve", "--port=8000"],
+      "runtimeArgs": [
+        "backend/artisan",
+        "serve",
+        "--port=8000"
+      ],
       "port": 8000
     },
     {
       "name": "frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "dev"
+      ],
       "port": 5173
+    },
+    {
+      "name": "mobile",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd mobile && EXPO_PUBLIC_API_URL=http://localhost:8000/api CI=1 npx expo start --web --port 8081"
+      ],
+      "port": 8081
     }
   ]
 }

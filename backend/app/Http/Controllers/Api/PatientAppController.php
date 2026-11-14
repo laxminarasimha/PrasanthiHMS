@@ -286,8 +286,20 @@ class PatientAppController extends Controller
         return [
             'id' => $account->id, 'name' => $account->name, 'mobile' => $account->mobile, 'verified' => $account->verified_at !== null,
             'patient' => ['uhid' => $patient->uhid, 'gender' => $patient->gender, 'age_label' => $patient->age_label],
-            'hospital' => ['name' => config('app.name')],
+            'hospital' => $this->hospital(),
         ];
+    }
+
+    /**
+     * The hospital's name and phone as set under Setup, for the app's headings and "call us" lines.
+     *
+     * @return array{name: string, phone: string}
+     */
+    private function hospital(): array
+    {
+        $clinic = Setting::group('clinic', AdminController::CLINIC_DEFAULTS);
+
+        return ['name' => $clinic['name'] ?: 'Prasanthi Hospitals', 'phone' => (string) $clinic['phone']];
     }
 
     /**
