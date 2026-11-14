@@ -3,8 +3,15 @@ import axios, { AxiosError } from 'axios'
 const TOKEN_KEY = 'hms_token'
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY)
-export const setToken = (token: string | null) =>
-  token ? localStorage.setItem(TOKEN_KEY, token) : localStorage.removeItem(TOKEN_KEY)
+export const setToken = (token: string | null) => {
+  if (token) return localStorage.setItem(TOKEN_KEY, token)
+  localStorage.removeItem(TOKEN_KEY)
+  // Whoever was remembered as signed in goes with the token.
+  localStorage.removeItem(USER_KEY)
+}
+
+/** Where the signed-in person's details are kept, so the next page load need not wait to ask who they are. */
+export const USER_KEY = 'hms_user'
 
 // All requests go to /api, which Vite proxies to Laravel in development
 // and the web server routes to Laravel in production.

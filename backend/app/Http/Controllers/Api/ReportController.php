@@ -97,7 +97,12 @@ class ReportController extends Controller
             'counts' => [
                 'new_patients' => Patient::whereBetween('created_at', [$from, $to])->count(),
                 'appointments' => Appointment::whereBetween('scheduled_at', [$from, $to])->where('status', '!=', 'cancelled')->count(),
-                'consultations' => Consultation::whereBetween('completed_at', [$from, $to])->count(),
+                // A visit counts once the patient has been seen: the doctor finished the visit pad, or the
+                // desk marked the appointment Reviewed for a doctor who wrote the notes elsewhere.
+                'consultations' => Appointment::where(fn ($q) => $q
+                    ->where(fn ($q) => $q->whereBetween('scheduled_at', [$from, $to])->where('status', 'reviewed'))
+                    ->orWhereHas('consultation', fn ($q) => $q->whereBetween('completed_at', [$from, $to])))->count(),
+                'visit_pads' => Consultation::whereBetween('completed_at', [$from, $to])->count(),
                 'lab_orders' => LabOrder::whereBetween('ordered_at', [$from, $to])->count(),
                 'pharmacy_bills' => PharmacySale::whereBetween('sold_at', [$from, $to])->whereNull('voided_at')->count(),
                 'admissions' => Admission::whereBetween('admitted_at', [$from, $to])->count(),

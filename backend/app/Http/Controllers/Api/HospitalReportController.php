@@ -273,18 +273,41 @@ class HospitalReportController extends Controller
         return Consultation::whereBetween('completed_at', [$from, $to]);
     }
 
-    /** Completed consultations per doctor per day, with how many were first visits. */
+    /**
+     * Consultations per doctor per day, with how many were first visits. A visit counts once the
+     * patient has been seen: the doctor finished the visit pad, or the desk marked the appointment
+     * Reviewed for a doctor who wrote the notes elsewhere.
+     */
     private function consultations(Carbon $from, Carbon $to): array
     {
-        $all = $this->completed($from, $to)->with('doctor:id,name')->get(['id', 'doctor_id', 'patient_id', 'completed_at']);
-        $earlier = Consultation::whereIn('patient_id', $all->pluck('patient_id')->unique())->whereNotNull('completed_at')->get(['patient_id', 'completed_at'])->groupBy('patient_id')->map->min('completed_at');
+        $when = fn (Appointment $a) => $a->consultation?->completed_at ?? $a->scheduled_at;
+        $with = ['doctor:id,name', 'consultation:id,appointment_id,completed_at'];
+        $columns = ['id', 'doctor_id', 'patient_id', 'scheduled_at'];
 
-        $rows = $all->groupBy(fn (Consultation $c) => $c->completed_at->format('Y-m-d').'|'.$c->doctor_id)
-            ->map(function (Collection $visits) use ($earlier) {
-                $new = $visits->filter(fn (Consultation $c) => $c->completed_at->equalTo($earlier[$c->patient_id]))->count();
+        $all = Appointment::where(fn ($q) => $q
+            ->where(fn ($q) => $q->whereBetween('scheduled_at', [$from, $to])->where('status', 'reviewed'))
+            ->orWhereHas('consultation', fn ($q) => $q->whereBetween('completed_at', [$from, $to])))
+            ->with($with)->get($columns);
+
+        // Each patient's very first visit, to tell first visits from repeat ones.
+        $first = Appointment::whereIn('patient_id', $all->pluck('patient_id')->unique())
+            ->where(fn ($q) => $q->where('status', 'reviewed')->orWhereHas('consultation', fn ($q) => $q->whereNotNull('completed_at')))
+            ->with('consultation:id,appointment_id,completed_at')->get($columns)
+            ->groupBy('patient_id')->map(fn (Collection $visits) => $visits->sortBy($when)->first()->id);
+
+        // The day shown is the day the pad was finished when that falls in the range, otherwise the appointment's day.
+        $day = function (Appointment $a) use ($from, $to) {
+            $done = $a->consultation?->completed_at;
+
+            return ($done && $done->between($from, $to) ? $done : $a->scheduled_at)->format('Y-m-d');
+        };
+
+        $rows = $all->groupBy(fn (Appointment $a) => $day($a).'|'.$a->doctor_id)
+            ->map(function (Collection $visits) use ($first, $day) {
+                $new = $visits->filter(fn (Appointment $a) => $first[$a->patient_id] === $a->id)->count();
 
                 return [
-                    'date' => $visits->first()->completed_at->format('Y-m-d'), 'doctor' => $visits->first()->doctor?->name,
+                    'date' => $day($visits->first()), 'doctor' => $visits->first()->doctor?->name,
                     'total' => $visits->count(), 'new' => $new, 'repeat' => $visits->count() - $new,
                 ];
             })->sortKeys();
