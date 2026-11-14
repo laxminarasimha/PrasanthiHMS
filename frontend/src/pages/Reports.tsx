@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { FindPatients } from '../components/FindPatients'
 import { ReportScreen } from '../components/ReportScreen'
 import { modeLabel, rupees, today } from '../format'
 
@@ -30,7 +31,7 @@ export function Reports() {
   const [to, setTo] = useState(today())
   const [summary, setSummary] = useState<Summary | null>(null)
   const [error, setError] = useState('')
-  const [tab, setTab] = useState<'summary' | 'detailed'>('summary')
+  const [tab, setTab] = useState<'summary' | 'detailed' | 'find'>('summary')
 
   useEffect(() => {
     if (from > to) return
@@ -55,8 +56,20 @@ export function Reports() {
       <button className={tab === 'detailed' ? 'active' : ''} onClick={() => setTab('detailed')}>
         Front desk and doctor reports
       </button>
+      <button className={tab === 'find' ? 'active' : ''} onClick={() => setTab('find')}>
+        Find patients
+      </button>
     </div>
   )
+
+  if (tab === 'find') {
+    return (
+      <>
+        {tabs}
+        <FindPatients />
+      </>
+    )
+  }
 
   if (tab === 'detailed') {
     return (

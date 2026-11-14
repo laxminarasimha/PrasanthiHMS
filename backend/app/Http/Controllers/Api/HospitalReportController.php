@@ -7,8 +7,10 @@ use App\Models\Appointment;
 use App\Models\Bill;
 use App\Models\BillItem;
 use App\Models\Consultation;
+use App\Models\LabOrder;
 use App\Models\LabOrderItem;
 use App\Models\LabResult;
+use App\Models\Patient;
 use App\Models\Payment;
 use App\Models\PrescriptionItem;
 use Illuminate\Http\JsonResponse;
@@ -38,6 +40,9 @@ class HospitalReportController extends Controller
         'diagnoses' => 'Doctor: diagnosis report',
         'tests-advised' => 'Doctor: tests distribution',
         'test-outcomes' => 'Doctor: tests outcome',
+        'lab-tests' => 'Lab: tests done',
+        'lab-referrals' => 'Referrals: lab orders by referring doctor',
+        'patient-referrals' => 'Referrals: new patients by referring doctor',
     ];
 
     public function show(Request $request, string $type): JsonResponse
@@ -337,6 +342,152 @@ class HospitalReportController extends Controller
             self::col('test', 'Test'), self::col('parameter', 'Parameter'), self::col('results', 'Results', 'number'),
             self::col('normal', 'Normal', 'number'), self::col('high', 'High', 'number'), self::col('low', 'Low', 'number'),
         ], $rows];
+    }
+
+    // ---- Lab and referrals ----
+
+    /** How many times each lab test was ordered and reported, and what it billed. */
+    private function labTests(Carbon $from, Carbon $to): array
+    {
+        $rows = LabOrderItem::whereIn('lab_order_id', LabOrder::whereBetween('ordered_at', [$from, $to])->select('id'))
+            ->get(['test_name', 'department', 'price', 'reported_at'])
+            ->groupBy('test_name')
+            ->map(fn (Collection $group, $name) => [
+                'test' => $name, 'department' => $group->first()->department, 'ordered' => $group->count(),
+                'reported' => $group->whereNotNull('reported_at')->count(), 'amount' => round((float) $group->sum('price'), 2),
+            ])->sortByDesc('ordered');
+
+        return [[
+            self::col('test', 'Test'), self::col('department', 'Department'), self::col('ordered', 'Ordered', 'number'),
+            self::col('reported', 'Reported', 'number'), self::col('amount', 'Amount', 'money'),
+        ], $rows];
+    }
+
+    /** Lab work sent by each outside doctor: orders, tests and their value. */
+    private function labReferrals(Carbon $from, Carbon $to): array
+    {
+        $rows = LabOrder::whereBetween('ordered_at', [$from, $to])->with('items:id,lab_order_id,price')->get(['id', 'referred_by', 'patient_id'])
+            ->groupBy(fn ($o) => mb_strtolower(trim((string) $o->referred_by)))
+            ->map(fn (Collection $group) => [
+                'referred_by' => trim((string) $group->first()->referred_by) ?: 'Not referred (self)',
+                'orders' => $group->count(), 'patients' => $group->pluck('patient_id')->unique()->count(),
+                'tests' => $group->sum(fn ($o) => $o->items->count()), 'amount' => round((float) $group->sum(fn ($o) => $o->items->sum('price')), 2),
+            ])->sortByDesc('amount');
+
+        return [[
+            self::col('referred_by', 'Referred by'), self::col('orders', 'Lab orders', 'number'), self::col('patients', 'Patients', 'number'),
+            self::col('tests', 'Tests', 'number'), self::col('amount', 'Amount', 'money'),
+        ], $rows];
+    }
+
+    /** New patients registered in the period, by who sent them, with what they have been billed since. */
+    private function patientReferrals(Carbon $from, Carbon $to): array
+    {
+        $patients = Patient::whereBetween('created_at', [$from, $to])->get(['id', 'referred_by']);
+        $billed = Bill::whereIn('patient_id', $patients->pluck('id'))->selectRaw('patient_id, sum(total) as total')->groupBy('patient_id')->pluck('total', 'patient_id');
+
+        $rows = $patients->groupBy(fn ($p) => mb_strtolower(trim((string) $p->referred_by)))
+            ->map(fn (Collection $group) => [
+                'referred_by' => trim((string) $group->first()->referred_by) ?: 'Not referred (self)',
+                'patients' => $group->count(),
+                'billed' => round((float) $group->sum(fn ($p) => (float) ($billed[$p->id] ?? 0)), 2),
+            ])->sortByDesc('patients');
+
+        return [[self::col('referred_by', 'Referred by'), self::col('patients', 'New patients', 'number'), self::col('billed', 'Billed to them so far', 'money')], $rows];
+    }
+
+    /**
+     * Finds patients by who they are and what was found or given: age, gender, visit dates,
+     * a diagnosis, a medicine, or a lab value in a range. For recalls, camps and audits.
+     */
+    public function findPatients(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->allows('canViewReports'), 403, 'You are not allowed to view reports.');
+        $f = $request->validate([
+            'age_from' => ['nullable', 'integer', 'between:0,130'],
+            'age_to' => ['nullable', 'integer', 'between:0,130'],
+            'gender' => ['nullable', 'in:male,female,other'],
+            'visit_from' => ['nullable', 'date'],
+            'visit_to' => ['nullable', 'date', 'after_or_equal:visit_from'],
+            'diagnosis' => ['nullable', 'string', 'max:100'],
+            'medicine' => ['nullable', 'string', 'max:100'],
+            'test' => ['nullable', 'string', 'max:100'],
+            'value_from' => ['nullable', 'numeric'],
+            'value_to' => ['nullable', 'numeric'],
+        ]);
+        // Each limit may be given alone; only a pair has to be the right way round.
+        if (isset($f['age_from'], $f['age_to']) && $f['age_to'] < $f['age_from']) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['age_to' => 'The upper age cannot be below the lower age.']);
+        }
+        if (isset($f['value_from'], $f['value_to']) && $f['value_to'] < $f['value_from']) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['value_to' => 'The upper value cannot be below the lower value.']);
+        }
+        $like = fn (string $text) => '%'.str_replace(['%', '_'], ['\%', '\_'], trim($text)).'%';
+        $from = isset($f['visit_from']) ? Carbon::parse($f['visit_from'])->startOfDay() : null;
+        $to = isset($f['visit_to']) ? Carbon::parse($f['visit_to'])->endOfDay() : null;
+        $inRange = fn ($q, string $column) => $q->when($from, fn ($q) => $q->where($column, '>=', $from))->when($to, fn ($q) => $q->where($column, '<=', $to));
+
+        $query = Patient::query()
+            ->when($f['gender'] ?? null, fn ($q, $g) => $q->where('gender', $g))
+            // Aged N today means born after today minus N+1 years, up to today minus N years.
+            ->when(isset($f['age_from']), fn ($q) => $q->whereDate('date_of_birth', '<=', today()->subYears((int) $f['age_from'])))
+            ->when(isset($f['age_to']), fn ($q) => $q->whereDate('date_of_birth', '>', today()->subYears((int) $f['age_to'] + 1)));
+
+        $visits = filled($f['diagnosis'] ?? null) || filled($f['medicine'] ?? null) || $from || $to;
+        if ($visits) {
+            $query->whereIn('id', Consultation::query()
+                ->tap(fn ($q) => $inRange($q, 'created_at'))
+                ->when(filled($f['diagnosis'] ?? null), fn ($q) => $q->where('diagnosis', 'like', $like($f['diagnosis'])))
+                ->when(filled($f['medicine'] ?? null), fn ($q) => $q->whereIn('id', PrescriptionItem::where('medicine', 'like', $like($f['medicine']))->select('consultation_id')))
+                ->select('patient_id'));
+        }
+
+        $values = collect();
+        if (filled($f['test'] ?? null)) {
+            // Lab values are kept as text ("12.4", "Positive"), so the range is checked here rather than in the database.
+            $results = LabResult::query()
+                ->join('lab_order_items as i', 'i.id', '=', 'lab_results.lab_order_item_id')
+                ->join('lab_orders as o', 'o.id', '=', 'i.lab_order_id')
+                ->whereNotNull('i.reported_at')->where('lab_results.is_heading', false)->whereNotNull('lab_results.value')
+                ->where(fn ($q) => $q->where('i.test_name', 'like', $like($f['test']))->orWhere('lab_results.parameter', 'like', $like($f['test'])))
+                ->tap(fn ($q) => $inRange($q, 'i.reported_at'))
+                ->orderBy('i.reported_at')
+                ->get(['o.patient_id', 'lab_results.parameter', 'lab_results.value', 'lab_results.unit', 'i.reported_at']);
+            $ranged = isset($f['value_from']) || isset($f['value_to']);
+            $values = $results->filter(function ($r) use ($f, $ranged) {
+                if (! $ranged) {
+                    return true;
+                }
+                $number = str_replace(',', '', trim((string) $r->value));
+
+                return is_numeric($number) && (! isset($f['value_from']) || (float) $number >= (float) $f['value_from']) && (! isset($f['value_to']) || (float) $number <= (float) $f['value_to']);
+            })->groupBy('patient_id')->map(fn (Collection $g) => $g->last()); // the latest matching result of each patient
+            $query->whereIn('id', $values->keys());
+        }
+
+        $total = (clone $query)->count();
+        $patients = $query->orderBy('name')->limit(2000)->get(['id', 'uhid', 'title', 'name', 'gender', 'date_of_birth', 'mobile', 'city']);
+        $seen = Consultation::whereIn('patient_id', $patients->pluck('id'))->selectRaw('patient_id, count(*) as visits, max(created_at) as last_visit')->groupBy('patient_id')->get()->keyBy('patient_id');
+
+        $columns = [
+            self::col('uhid', 'Patient ID'), self::col('name', 'Name'), self::col('age', 'Age'), self::col('gender', 'Gender'), self::col('mobile', 'Mobile'), self::col('city', 'City'),
+            self::col('visits', 'Visits', 'number', false), self::col('last_visit', 'Last visit'),
+        ];
+        if (filled($f['test'] ?? null)) {
+            $columns[] = self::col('result', 'Latest matching result');
+        }
+
+        return response()->json([
+            'columns' => $columns,
+            'total' => $total,
+            'all_patients' => Patient::count(),
+            'rows' => $patients->map(fn (Patient $p) => [
+                'id' => $p->id, 'uhid' => $p->uhid, 'name' => trim(($p->title ? $p->title.' ' : '').$p->name), 'age' => $p->age_label, 'gender' => ucfirst((string) $p->gender),
+                'mobile' => $p->mobile, 'city' => $p->city, 'visits' => (int) ($seen[$p->id]->visits ?? 0),
+                'last_visit' => isset($seen[$p->id]) ? substr((string) $seen[$p->id]->last_visit, 0, 10) : null,
+                'result' => isset($values[$p->id]) ? trim($values[$p->id]->parameter.' '.$values[$p->id]->value.' '.$values[$p->id]->unit).' ('.substr((string) $values[$p->id]->reported_at, 0, 10).')' : null,
+            ]),
+        ]);
     }
 
     /**
