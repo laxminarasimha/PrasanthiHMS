@@ -97,6 +97,15 @@ export function PharmacyBilling() {
   const setLine = (batchId: number, key: 'quantity' | 'discount', value: string) =>
     setLines((rows) => rows.map((r) => (r.batchId === batchId ? { ...r, [key]: value } : r)))
 
+  // Reprints the last bill made today, for the customer who comes back to the counter for a copy.
+  const printPrevious = async () => {
+    setError('')
+    const res = await api.get<PharmacySale[]>('/pharmacy/sales')
+    const last = [...res.data].sort((a, b) => b.id - a.id)[0]
+    if (last) window.open(`/pharmacy/bills/${last.id}/print`, '_blank')
+    else setError('No pharmacy bill has been made today yet. Older bills can be printed from All bills.')
+  }
+
   const reset = () => {
     setLines([])
     setPatient(null)
@@ -335,9 +344,14 @@ export function PharmacyBilling() {
           {error && <p className="form-error">{error}</p>}
           {!canSell && <p className="muted gap-top">Only pharmacy staff can save bills.</p>}
           <div className="panel-foot between">
-            <button type="button" className="link" onClick={reset}>
-              Clear bill
-            </button>
+            <span className="row">
+              <button type="button" className="link" onClick={reset}>
+                Clear bill
+              </button>
+              <button type="button" className="link" onClick={printPrevious}>
+                Print previous bill
+              </button>
+            </span>
             <button className="btn primary" disabled={saving || lines.length === 0 || !canSell}>
               {saving ? 'Saving…' : 'Save bill'}
             </button>

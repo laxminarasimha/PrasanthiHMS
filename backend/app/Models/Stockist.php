@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
-#[Fillable(['name', 'phone', 'gstin', 'address'])]
+#[Fillable(['name', 'phone', 'email', 'gstin', 'address'])]
 class Stockist extends Model
 {
 }

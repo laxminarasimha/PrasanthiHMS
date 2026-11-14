@@ -144,4 +144,30 @@ class PharmacyTest extends TestCase
         $this->postJson('/api/pharmacy/medicines', ['name' => 'X', 'gst_percent' => 5, 'units_per_pack' => 1])->assertForbidden();
         $this->getJson('/api/pharmacy/stock')->assertOk();
     }
+
+    public function test_medicines_carry_inventory_classes_and_stockists_show_what_is_owed(): void
+    {
+        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\User::factory()->create(['role' => 'pharmacist']));
+
+        $base = ['gst_percent' => 12, 'units_per_pack' => 10];
+        $this->postJson('/api/pharmacy/medicines', $base + ['name' => 'Adrenaline 1mg Injection', 'category' => 'Emergency Medicine', 'sub_category' => 'Cardiac', 'ved' => 'V', 'sde' => 'S', 'fsn' => 'S'])
+            ->assertCreated()->assertJsonPath('ved', 'V')->assertJsonPath('sub_category', 'Cardiac');
+        $this->postJson('/api/pharmacy/medicines', $base + ['name' => 'Vitamin C 500mg Tablet', 'category' => 'General', 'ved' => 'D', 'fsn' => 'F'])->assertCreated();
+        $this->postJson('/api/pharmacy/medicines', $base + ['name' => 'Wrong Class', 'ved' => 'X'])->assertStatus(422)->assertJsonValidationErrors('ved');
+
+        $this->assertSame(['Adrenaline 1mg Injection'], array_column($this->getJson('/api/pharmacy/medicines?all=1&ved=V')->json(), 'name'));
+        $this->assertSame(['Vitamin C 500mg Tablet'], array_column($this->getJson('/api/pharmacy/medicines?all=1&fsn=F')->json(), 'name'));
+        $this->assertSame(['Adrenaline 1mg Injection'], array_column($this->getJson('/api/pharmacy/medicines?all=1&category=Emergency%20Medicine')->json(), 'name'));
+
+        $stockist = $this->postJson('/api/pharmacy/stockists', ['name' => 'Sample Agency', 'email' => 'not-an-email'])->assertStatus(422);
+        $stockist = $this->postJson('/api/pharmacy/stockists', ['name' => 'Sample Agency', 'email' => 'orders@agency.example'])->assertCreated()->json();
+        \App\Models\PurchaseInvoice::create(['stockist_id' => $stockist['id'], 'invoice_no' => 'A1', 'invoice_date' => today(), 'total' => 5000, 'paid' => 2000]);
+        \App\Models\PurchaseInvoice::create(['stockist_id' => $stockist['id'], 'invoice_no' => 'A2', 'invoice_date' => today(), 'total' => 1500, 'paid' => 0]);
+        $return = new \App\Models\StockReturn(['stockist_id' => $stockist['id'], 'returned_on' => today()]);
+        $return->forceFill(['total' => 500])->save();
+
+        $row = collect($this->getJson('/api/pharmacy/stockists')->assertOk()->json())->firstWhere('id', $stockist['id']);
+        $this->assertEquals([2, 6500, 2000, 500, 4000], [$row['invoices'], $row['billed'], $row['paid'], $row['returned'], $row['balance']]);
+        $this->assertSame('orders@agency.example', $row['email']);
+    }
 }

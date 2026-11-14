@@ -29,6 +29,10 @@ class PharmacyController extends Controller
             Medicine::query()
                 ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', "%{$term}%")->orWhere('manufacturer', 'like', "%{$term}%")))
                 ->when(! $request->boolean('all'), fn ($q) => $q->where('is_active', true))
+                ->when($request->query('category'), fn ($q, $v) => $q->where('category', $v))
+                ->when($request->query('ved'), fn ($q, $v) => $q->where('ved', $v))
+                ->when($request->query('sde'), fn ($q, $v) => $q->where('sde', $v))
+                ->when($request->query('fsn'), fn ($q, $v) => $q->where('fsn', $v))
                 ->withSum(['batches as units_in_stock' => fn ($q) => $q->whereDate('expiry', '>=', today())], 'units_in_stock')
                 ->orderBy('name')
                 ->limit(500)
@@ -54,7 +58,7 @@ class PharmacyController extends Controller
         $this->rememberManufacturer($data['manufacturer'] ?? null);
 
         // Keep a note of what was changed, for the "medicine data updated" report.
-        $labels = ['name' => 'Name', 'type' => 'Type', 'manufacturer' => 'Manufacturer', 'category' => 'Category', 'is_scheduled' => 'Scheduled drug', 'hsn_code' => 'HSN code', 'gst_percent' => 'GST %', 'units_per_pack' => 'Units per pack', 'reorder_level' => 'Reorder level', 'is_active' => 'In use'];
+        $labels = ['name' => 'Name', 'type' => 'Type', 'manufacturer' => 'Manufacturer', 'category' => 'Category', 'sub_category' => 'Sub category', 'ved' => 'VED class', 'sde' => 'SDE class', 'fsn' => 'FSN class', 'is_scheduled' => 'Scheduled drug', 'hsn_code' => 'HSN code', 'gst_percent' => 'GST %', 'units_per_pack' => 'Units per pack', 'reorder_level' => 'Reorder level', 'is_active' => 'In use'];
         $before = $medicine->only(array_keys($labels));
         $label = $medicine->name;
         $medicine->update($data);
@@ -76,6 +80,10 @@ class PharmacyController extends Controller
             'type' => ['nullable', 'string', 'max:30'],
             'manufacturer' => ['nullable', 'string', 'max:255'],
             'category' => ['nullable', 'string', 'max:255'],
+            'sub_category' => ['nullable', 'string', 'max:100'],
+            'ved' => ['nullable', Rule::in(['V', 'E', 'D'])],
+            'sde' => ['nullable', Rule::in(['S', 'D', 'E'])],
+            'fsn' => ['nullable', Rule::in(['F', 'S', 'N'])],
             'is_scheduled' => ['sometimes', 'boolean'],
             'hsn_code' => ['nullable', 'string', 'max:20'],
             'gst_percent' => ['required', 'numeric', 'min:0', 'max:40'],
@@ -96,7 +104,17 @@ class PharmacyController extends Controller
 
     public function stockists(): JsonResponse
     {
-        return response()->json(Stockist::orderBy('name')->get());
+        // What each supplier has billed, been paid and been sent back, so the amount still owed is plain.
+        $billed = \App\Models\PurchaseInvoice::selectRaw('stockist_id, sum(total) as billed, sum(paid) as paid, count(*) as invoices')->groupBy('stockist_id')->get()->keyBy('stockist_id');
+        $returned = \App\Models\StockReturn::selectRaw('stockist_id, sum(total) as returned')->groupBy('stockist_id')->pluck('returned', 'stockist_id');
+
+        return response()->json(Stockist::orderBy('name')->get()->map(function (Stockist $s) use ($billed, $returned) {
+            $b = round((float) ($billed[$s->id]->billed ?? 0), 2);
+            $p = round((float) ($billed[$s->id]->paid ?? 0), 2);
+            $r = round((float) ($returned[$s->id] ?? 0), 2);
+
+            return $s->toArray() + ['invoices' => (int) ($billed[$s->id]->invoices ?? 0), 'billed' => $b, 'paid' => $p, 'returned' => $r, 'balance' => round($b - $p - $r, 2)];
+        }));
     }
 
     public function storeStockist(Request $request): JsonResponse
@@ -122,6 +140,7 @@ class PharmacyController extends Controller
         return $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:20'],
+            'email' => ['nullable', 'email', 'max:255'],
             'gstin' => ['nullable', 'string', 'max:20'],
             'address' => ['nullable', 'string', 'max:255'],
         ]);
