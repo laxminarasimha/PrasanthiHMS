@@ -230,6 +230,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
         Route::post('/manufacturers', 'storeManufacturer');
         Route::put('/manufacturers/{manufacturer}', 'updateManufacturer');
         Route::post('/opening-stock', 'openingStock');
+        Route::post('/opening-stock/import', 'importOpeningStock');
         Route::get('/inventory', 'inventory');
         Route::post('/stock/{batch}/adjust', 'adjust');
         Route::post('/purchases/{purchase}/payments', 'payInvoice');

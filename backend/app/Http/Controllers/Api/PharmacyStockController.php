@@ -90,6 +90,50 @@ class PharmacyStockController extends Controller
         return response()->json(['added' => $batches->count()], 201);
     }
 
+    /**
+     * Opening stock from a sheet. Sent without `commit`, the sheet is only checked and the result shown.
+     * Sent with `commit`, it is checked again and added only if nothing is wrong and the totals are
+     * the ones the person saw and agreed to.
+     */
+    public function importOpeningStock(Request $request): JsonResponse
+    {
+        $this->authorizePharmacy($request);
+        $max = \App\Support\OpeningStockImport::MAX_LINES;
+        $data = $request->validate([
+            'rows' => ['required', 'array', 'min:1', "max:{$max}"],
+            'rows.*' => ['array'],
+            'add_missing' => ['sometimes', 'boolean'],
+            'commit' => ['sometimes', 'boolean'],
+            'confirm' => ['required_if:commit,true', 'array'],
+            'confirm.lines' => ['required_if:commit,true', 'integer'],
+            'confirm.units' => ['required_if:commit,true', 'integer'],
+            'confirm.at_cost' => ['required_if:commit,true', 'numeric'],
+            'sheet_total' => ['nullable', 'numeric', 'min:0'],
+        ], ['rows.required' => 'The sheet has no lines.', 'rows.max' => "A sheet can have at most {$max} lines. Split it into smaller sheets."]);
+
+        $result = \App\Support\OpeningStockImport::check($data['rows'], (bool) ($data['add_missing'] ?? false));
+        if (! ($data['commit'] ?? false)) {
+            return response()->json($result);
+        }
+
+        $totals = $result['totals'];
+        if ($totals['with_errors'] > 0) {
+            throw ValidationException::withMessages(['rows' => "{$totals['with_errors']} line(s) have mistakes. Nothing was added."]);
+        }
+        if ($totals['lines'] !== (int) $data['confirm']['lines'] || $totals['units'] !== (int) $data['confirm']['units'] || abs($totals['at_cost'] - (float) $data['confirm']['at_cost']) > 0.01) {
+            throw ValidationException::withMessages(['rows' => 'The sheet or the stock has changed since it was checked. Check it again.']);
+        }
+        if (isset($data['sheet_total']) && abs($totals['at_cost'] - (float) $data['sheet_total']) > 1) {
+            throw ValidationException::withMessages(['sheet_total' => 'The total on your own sheet does not match the total of these lines. Nothing was added.']);
+        }
+
+        $added = \App\Support\OpeningStockImport::save($result['rows']);
+        \App\Models\AuditLog::record('change', null, null, "Imported opening stock from a sheet · {$added} batches, {$totals['units']} units, ₹".number_format($totals['at_cost'], 2).' at cost'
+            .($totals['new_medicines'] ? " · {$totals['new_medicines']} medicines added to the list" : ''));
+
+        return response()->json(['added' => $added, 'totals' => $totals], 201);
+    }
+
     // ---- Inventory by medicine ----
 
     /** Units left per medicine, with tabs for what is expiring, running low or gone. */

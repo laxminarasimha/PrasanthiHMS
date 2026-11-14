@@ -99,3 +99,37 @@ export const AGE_UNITS = [
 
 /** A patient's name with their title, as it is printed: "Smt Lakshmi Devi". */
 export const fullName = (p: { name: string; title?: string | null }) => (p.title ? `${p.title} ${p.name}` : p.name)
+
+/** Reads the text of a CSV file into rows of cells. Handles quoted cells, commas and line breaks inside quotes, and Excel's BOM. */
+export function parseCsv(text: string): string[][] {
+  const rows: string[][] = []
+  let row: string[] = []
+  let cell = ''
+  let quoted = false
+  const source = text.replace(/^﻿/, '')
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i]
+    if (quoted) {
+      if (ch === '"' && source[i + 1] === '"') {
+        cell += '"'
+        i++
+      } else if (ch === '"') quoted = false
+      else cell += ch
+    } else if (ch === '"') quoted = true
+    else if (ch === ',' || ch === '\t') {
+      row.push(cell)
+      cell = ''
+    } else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && source[i + 1] === '\n') i++
+      row.push(cell)
+      rows.push(row)
+      row = []
+      cell = ''
+    } else cell += ch
+  }
+  if (cell !== '' || row.length) {
+    row.push(cell)
+    rows.push(row)
+  }
+  return rows.filter((r) => r.some((c) => c.trim() !== ''))
+}
