@@ -83,6 +83,72 @@ class PatientAppController extends Controller
         return response()->json($this->present($request->user()));
     }
 
+    /** Lets a patient change their own password, after proving they know the current one. Other phones are signed out. */
+    public function changePassword(Request $request): JsonResponse
+    {
+        $account = $request->user();
+        $data = $request->validate([
+            'current_password' => ['required', 'string'],
+            'password' => ['required', 'string', 'min:8', 'max:100', 'confirmed', 'different:current_password', 'regex:/[A-Za-z]/', 'regex:/[0-9]/'],
+        ], [
+            'password.regex' => 'Use at least 8 characters with both letters and numbers.', 'password.min' => 'Use at least 8 characters with both letters and numbers.',
+            'password.different' => 'Choose a password different from the current one.', 'password.confirmed' => 'The two new passwords are not the same.',
+        ]);
+        if (! Hash::check($data['current_password'], $account->password)) {
+            throw ValidationException::withMessages(['current_password' => 'That is not your current password.']);
+        }
+        $account->update(['password' => $data['password']]);
+        $account->tokens()->where('id', '!=', $account->currentAccessToken()->id)->delete();
+
+        return response()->json(['message' => 'Password changed.']);
+    }
+
+    /** The hospital's name, address and phone numbers, for the contact screen. */
+    public function hospitalInfo(): JsonResponse
+    {
+        $clinic = Setting::group('clinic', AdminController::CLINIC_DEFAULTS);
+
+        return response()->json(['name' => $clinic['name'] ?: 'Prasanthi Hospitals', 'tagline' => $clinic['tagline'], 'address' => $clinic['address'], 'phone' => $clinic['phone'], 'phone_alt' => $clinic['phone_alt'], 'email' => $clinic['email']]);
+    }
+
+    /**
+     * The patient's own medical records: finished visits with their prescriptions, and lab reports
+     * that are ready. Shown only once the hospital has verified that the account belongs to this
+     * patient, because a phone number typed into an app is not proof of who someone is.
+     */
+    public function records(Request $request): JsonResponse
+    {
+        $account = $request->user();
+        if (! $account->verified_at) {
+            return response()->json(['verified' => false, 'visits' => [], 'lab' => []]);
+        }
+
+        $visits = \App\Models\Consultation::where('patient_id', $account->patient_id)->whereNotNull('completed_at')
+            ->with(['medicines', 'doctor:id,name,department'])->latest('completed_at')->limit(50)->get()
+            ->map(fn ($c) => [
+                'id' => $c->id, 'date' => $c->completed_at->format('Y-m-d'), 'doctor' => $c->doctor?->only(['name', 'department']),
+                'diagnosis' => $c->diagnosis, 'advice' => $c->advice, 'tests_advised' => $c->tests_advised, 'follow_up_on' => $c->follow_up_on?->format('Y-m-d'),
+                'medicines' => $c->medicines->map(fn ($m) => ['medicine' => $m->medicine, 'directions' => implode(' · ', array_filter([$m->dose, $m->frequency, $m->timing, $m->duration, $m->instructions]))])->all(),
+            ]);
+
+        // A lab result goes out only when it is reported and, where the lab works that way, approved.
+        $needsApproval = (bool) Setting::group('lab', Setting::LAB_DEFAULTS)['approval_required'];
+        $lab = \App\Models\LabOrder::where('patient_id', $account->patient_id)
+            ->with(['items' => fn ($q) => $q->whereNotNull('reported_at')->when($needsApproval, fn ($w) => $w->whereNotNull('approved_at'))->with('results')])
+            ->latest('ordered_at')->limit(50)->get()
+            ->filter(fn ($o) => $o->items->isNotEmpty())
+            ->map(fn ($o) => [
+                'id' => $o->id, 'order_no' => $o->order_no, 'date' => $o->ordered_at->format('Y-m-d'),
+                'tests' => $o->items->map(fn ($i) => [
+                    'name' => $i->test_name, 'report' => $i->report_text, 'remarks' => $i->remarks,
+                    'results' => $i->results->where('is_heading', false)->filter(fn ($r) => filled($r->value))
+                        ->map(fn ($r) => ['parameter' => $r->parameter, 'value' => $r->value, 'unit' => $r->unit, 'range' => $r->reference_range, 'flag' => $r->flag])->values(),
+                ])->values(),
+            ])->values();
+
+        return response()->json(['verified' => true, 'visits' => $visits, 'lab' => $lab]);
+    }
+
     public function logout(Request $request): JsonResponse
     {
         $request->user()->currentAccessToken()->delete();

@@ -9,7 +9,13 @@ It talks to the same server as the web system.
 - book an appointment: choose a doctor, a day and a free time; cancel an upcoming one
 - keep a monthly medicine list (diabetes, thyroid and the like) that the hospital pharmacy makes up each month; pause, change or stop it
 
-**Doctors** sign in with their web-system email and password and see their appointments for any day.
+- see their own prescriptions and lab reports, once the front desk has verified the account on the web system
+- change their password and call the hospital
+
+**Doctors** sign in with their web-system email and password and see:
+- their appointments for any day
+- their admitted patients
+- for any of those patients: allergies, health summary, recent visits, recent lab results, and for inpatients the latest bedside observations
 
 ## Run it
 
@@ -39,4 +45,4 @@ EXPO_PUBLIC_API_URL=http://localhost:8000/api npx expo start --web
 - App icon and splash image in `assets/` are still the Expo defaults.
 - Store builds are made with EAS (`npx eas build`), which needs an Expo account, a Google Play
   developer account and an Apple developer account.
-- Patient sign-in is mobile number and password for now. OTP comes once an SMS provider is chosen.
+- Patient sign-in is mobile number and password for now. OTP comes once an SMS provider is chosen. A patient who forgets the password gets a one-time one from the front desk (patient page, Mobile app account).

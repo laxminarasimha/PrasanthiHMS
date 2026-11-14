@@ -52,6 +52,9 @@ Route::prefix('app')->controller(\App\Http\Controllers\Api\PatientAppController:
     Route::middleware(['auth:sanctum', 'actor:patient'])->group(function () {
         Route::get('/me', 'me');
         Route::post('/logout', 'logout');
+        Route::post('/password', 'changePassword')->middleware('throttle:10,1');
+        Route::get('/hospital', 'hospitalInfo');
+        Route::get('/records', 'records');
         Route::get('/doctors', 'doctors');
         Route::get('/doctors/{doctor}/slots', 'slots');
         Route::get('/appointments', 'appointments');
@@ -137,6 +140,12 @@ Route::middleware(['auth:sanctum', 'actor:staff'])->group(function () {
         Route::post('/patients/{patient}/documents', 'store');
         Route::get('/documents/{document}', 'show');
         Route::post('/documents/{document}/cancel', 'cancel');
+    });
+    Route::controller(\App\Http\Controllers\Api\PatientAccountController::class)->middleware('ability:canWorkFrontDesk')->group(function () {
+        Route::get('/patients/{patient}/app-account', 'show');
+        Route::post('/patients/{patient}/app-account/verify', 'verify');
+        Route::post('/patients/{patient}/app-account/password', 'resetPassword');
+        Route::post('/patients/{patient}/app-account/active', 'setActive');
     });
     Route::get('/patients/{patient}/case-history', [CaseHistoryController::class, 'show']);
     Route::get('/patients/{patient}/trends', [CaseHistoryController::class, 'trends']);

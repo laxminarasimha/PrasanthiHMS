@@ -2,10 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { Alert, Platform, Text, View } from 'react-native'
 import { api, ApiError, niceDate, niceTime, type Account, type Appointment, type Subscription } from '../api'
 import { Button, Card, Empty, Loading, Notice, Pill, Screen, TabBar, text } from '../ui'
+import { PatientAccount } from './Account'
 import { BookAppointment } from './Book'
+import { PatientRecords } from './Records'
 import { SubscriptionEdit } from './SubscriptionEdit'
 
-type Tab = 'appointments' | 'medicines' | 'account'
+type Tab = 'appointments' | 'medicines' | 'records' | 'account'
 
 /** Asks before something that cannot be undone; a browser preview uses its own dialog. */
 function confirm(title: string, message: string, yes: string, then: () => void) {
@@ -71,9 +73,9 @@ export function PatientHome({ account, onSignOut }: { account: Account; onSignOu
 
   return (
     <Screen
-      title={tab === 'appointments' ? 'My appointments' : tab === 'medicines' ? 'Monthly medicines' : 'My account'}
+      title={tab === 'appointments' ? 'My appointments' : tab === 'medicines' ? 'Monthly medicines' : tab === 'records' ? 'My records' : 'My account'}
       subtitle={account.hospital.name}
-      footer={<TabBar tabs={[{ key: 'appointments', label: 'Appointments' }, { key: 'medicines', label: 'Medicines' }, { key: 'account', label: 'Account' }]} value={tab} onChange={(t) => { setTab(t); setMessage({ text: '', kind: 'ok' }) }} />}
+      footer={<TabBar tabs={[{ key: 'appointments', label: 'Appointments' }, { key: 'medicines', label: 'Medicines' }, { key: 'records', label: 'Records' }, { key: 'account', label: 'Account' }]} value={tab} onChange={(t) => { setTab(t); setMessage({ text: '', kind: 'ok' }) }} />}
     >
       <Notice text={message.text} kind={message.kind} />
 
@@ -157,20 +159,9 @@ export function PatientHome({ account, onSignOut }: { account: Account; onSignOu
         </>
       )}
 
-      {tab === 'account' && (
-        <>
-          <Card>
-            <Text style={text.h2}>{account.name}</Text>
-            <Text style={text.body}>Mobile: {account.mobile}</Text>
-            <Text style={text.body}>Patient ID: {account.patient.uhid}</Text>
-            <Text style={text.muted}>
-              {account.patient.age_label} · {account.patient.gender.charAt(0).toUpperCase() + account.patient.gender.slice(1)}
-            </Text>
-          </Card>
-          {!account.verified && <Notice kind="info" text="If you have visited the hospital before, tell the front desk your Patient ID on your next visit and they will join this account to your earlier records." />}
-          <Button label="Sign out" kind="ghost" onPress={onSignOut} />
-        </>
-      )}
+      {tab === 'records' && <PatientRecords patientId={account.patient.uhid} />}
+
+      {tab === 'account' && <PatientAccount account={account} onSignOut={onSignOut} />}
     </Screen>
   )
 }

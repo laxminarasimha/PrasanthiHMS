@@ -174,4 +174,82 @@ class PatientAppTest extends TestCase
         $this->getJson('/api/app/subscriptions')->assertJsonCount(0);
         $this->assertSame('cancelled', MedicineSubscription::first()->status);
     }
+
+    public function test_records_open_only_after_the_hospital_verifies_the_account(): void
+    {
+        $doctor = User::factory()->create(['role' => 'doctor', 'name' => 'Dr Rao']);
+        $account = $this->account();
+        $patient = $account->patient;
+        $stranger = Patient::factory()->create();
+
+        // A finished visit, a draft visit, a reported lab test, a pending one, and another patient's records.
+        Sanctum::actingAs($doctor);
+        $visit = $this->postJson('/api/doctor/visits', ['patient_id' => $patient->id])->json('id');
+        $this->putJson("/api/appointments/{$visit}/consultation", ['diagnosis' => 'Type 2 diabetes', 'advice' => 'Walk daily', 'quick_notes' => 'private note', 'complete' => true, 'medicines' => [['medicine' => 'Metformin 500', 'frequency' => '1-0-1', 'duration' => '30 days']]])->assertOk();
+        $draft = $this->postJson('/api/doctor/visits', ['patient_id' => $patient->id])->json('id');
+        $this->putJson("/api/appointments/{$draft}/consultation", ['diagnosis' => 'Not finished yet'])->assertOk();
+        $order = \App\Models\LabOrder::create(['patient_id' => $patient->id, 'status' => 'partial', 'ordered_at' => now()]);
+        $order->items()->create(['test_name' => 'HbA1c', 'price' => 400, 'reported_at' => now()])->results()->create(['parameter' => 'HbA1c', 'unit' => '%', 'reference_range' => '4 - 5.6', 'value' => '8.1', 'flag' => 'high']);
+        $order->items()->create(['test_name' => 'Lipid profile', 'price' => 600])->results()->create(['parameter' => 'Cholesterol', 'value' => '999']);
+        $other = \App\Models\LabOrder::create(['patient_id' => $stranger->id, 'status' => 'completed', 'ordered_at' => now()]);
+        $other->items()->create(['test_name' => 'Secret', 'price' => 1, 'reported_at' => now()])->results()->create(['parameter' => 'Secret', 'value' => '1']);
+
+        Sanctum::actingAs($account);
+        $this->getJson('/api/app/records')->assertOk()->assertJsonPath('verified', false)->assertJsonCount(0, 'visits')->assertJsonCount(0, 'lab');
+
+        // The front desk verifies; a pharmacist may not.
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $this->postJson("/api/patients/{$patient->id}/app-account/verify", ['verified' => true])->assertForbidden();
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->getJson("/api/patients/{$stranger->id}/app-account")->assertOk()->assertJsonPath('account', null);
+        $this->postJson("/api/patients/{$stranger->id}/app-account/verify", ['verified' => true])->assertNotFound();
+        $this->getJson("/api/patients/{$patient->id}/app-account")->assertOk()->assertJsonPath('account.mobile', '9876543210')->assertJsonPath('account.verified_at', null);
+        $this->postJson("/api/patients/{$patient->id}/app-account/verify", ['verified' => true])->assertOk()->assertJsonPath('account.verified_at', now()->format('Y-m-d H:i'));
+
+        Sanctum::actingAs($account->fresh());
+        $records = $this->getJson('/api/app/records')->assertOk()->assertJsonPath('verified', true)->assertJsonCount(1, 'visits')->assertJsonCount(1, 'lab')->json();
+        $this->assertSame(['Type 2 diabetes', 'Dr Rao'], [$records['visits'][0]['diagnosis'], $records['visits'][0]['doctor']['name']]);
+        $this->assertSame('Metformin 500', $records['visits'][0]['medicines'][0]['medicine']);
+        $this->assertArrayNotHasKey('quick_notes', $records['visits'][0]); // the doctor's private notes stay private
+        $this->assertSame(['HbA1c'], array_column($records['lab'][0]['tests'], 'name')); // the unreported test is held back
+        $this->assertSame('8.1', $records['lab'][0]['tests'][0]['results'][0]['value']);
+        $this->assertStringNotContainsString('Secret', json_encode($records));
+
+        // Where the lab approves results first, an unapproved one is not shown.
+        Setting::updateOrCreate(['key' => 'lab'], ['value' => ['approval_required' => true] + Setting::LAB_DEFAULTS]);
+        $this->getJson('/api/app/records')->assertJsonCount(0, 'lab');
+    }
+
+    public function test_a_patient_changes_their_password_and_staff_can_reset_it(): void
+    {
+        $account = $this->account();
+        $second = $account->createToken('tablet')->plainTextToken;
+        $first = $this->postJson('/api/app/login', ['mobile' => '9876543210', 'password' => 'Health2026'])->json('token');
+        $auth = ['Authorization' => "Bearer {$first}"];
+
+        $this->getJson('/api/app/hospital', $auth)->assertOk()->assertJsonStructure(['name', 'address', 'phone']);
+        $new = ['password' => 'Better2027', 'password_confirmation' => 'Better2027'];
+        $this->postJson('/api/app/password', ['current_password' => 'wrong'] + $new, $auth)->assertStatus(422)->assertJsonValidationErrors('current_password');
+        $this->postJson('/api/app/password', ['current_password' => 'Health2026', 'password' => 'short', 'password_confirmation' => 'short'], $auth)->assertStatus(422);
+        $this->postJson('/api/app/password', ['current_password' => 'Health2026'] + $new, $auth)->assertOk();
+        $this->assertNull(\Laravel\Sanctum\PersonalAccessToken::findToken($second)); // other devices are signed out
+        $this->postJson('/api/app/login', ['mobile' => '9876543210', 'password' => 'Health2026'])->assertStatus(422);
+        $this->postJson('/api/app/login', ['mobile' => '9876543210', 'password' => 'Better2027'])->assertOk();
+
+        // The patient forgets it: the front desk gives a one-time password, which signs every phone out.
+        $this->app['auth']->forgetGuards();
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $temporary = $this->postJson("/api/patients/{$account->patient_id}/app-account/password")->assertOk()->json('temporary_password');
+        $this->assertMatchesRegularExpression('/^(?=.*[a-z])(?=.*[0-9]).{8,}$/', $temporary);
+        $this->assertSame(0, $account->tokens()->count());
+        $this->getJson("/api/patients/{$account->patient_id}/app-account")->assertJsonMissingPath('temporary_password');
+        $this->postJson('/api/app/login', ['mobile' => '9876543210', 'password' => 'Better2027'])->assertStatus(422);
+        $this->postJson('/api/app/login', ['mobile' => '9876543210', 'password' => $temporary])->assertOk();
+
+        // Switching the account off signs it out and refuses sign-in; switching it on restores it.
+        $this->postJson("/api/patients/{$account->patient_id}/app-account/active", ['active' => false])->assertOk()->assertJsonPath('account.is_active', false);
+        $this->postJson('/api/app/login', ['mobile' => '9876543210', 'password' => $temporary])->assertStatus(422);
+        $this->postJson("/api/patients/{$account->patient_id}/app-account/active", ['active' => true])->assertOk();
+        $this->postJson('/api/app/login', ['mobile' => '9876543210', 'password' => $temporary])->assertOk();
+    }
 }

@@ -111,3 +111,17 @@ export const niceTime = (value: string) => {
   const hour = d.getHours() % 12 || 12
   return `${hour}:${pad(d.getMinutes())} ${d.getHours() < 12 ? 'AM' : 'PM'}`
 }
+
+// ---- Records, hospital details, and what the doctor sees of a patient ----
+
+export type Hospital = { name: string; tagline: string | null; address: string | null; phone: string | null; phone_alt: string | null; email: string | null }
+export type RecordVisit = { id: number; date: string; doctor: { name: string; department: string | null } | null; diagnosis: string | null; advice: string | null; tests_advised: string | null; follow_up_on: string | null; medicines: { medicine: string; directions: string }[] }
+export type LabResultRow = { parameter: string; value: string; unit: string | null; range?: string | null; flag: string | null }
+export type RecordLab = { id: number; order_no: string; date: string; tests: { name: string; report: string | null; remarks: string | null; results: LabResultRow[] }[] }
+export type Records = { verified: boolean; visits: RecordVisit[]; lab: RecordLab[] }
+
+export type HealthSummary = { allergies: string | null; sections: { kind: string; label: string; items: { id: number; title: string; detail: string | null; since: string | null; is_active: boolean }[] }[] }
+export type PastVisit = { id: number; completed_at: string | null; diagnosis: string | null; complaints: string | null; advice: string | null; bp_systolic: number | null; bp_diastolic: number | null; weight_kg: number | null; medicines: { id: number; medicine: string; dose: string | null; frequency: string | null; duration: string | null }[]; doctor?: { name: string } }
+export type Trends = { tests: { test: string; parameter: string; unit: string | null; reference_range: string | null; points: { date: string; value: string; flag: string | null }[] }[] }
+export type Inpatient = { id: number; ipd_no: string; admitted_at: string; reason: string | null; patient: { id: number; uhid: string; name: string; title?: string | null; gender: string; age_label: string }; doctor: { id: number; name: string }; bed: { ward: string; bed_no: string } | null }
+export type BedsideVital = { id: number; recorded_at: string; temperature_f: number | null; pulse: number | null; bp_systolic: number | null; bp_diastolic: number | null; resp_rate: number | null; spo2: number | null; blood_sugar: number | null }
