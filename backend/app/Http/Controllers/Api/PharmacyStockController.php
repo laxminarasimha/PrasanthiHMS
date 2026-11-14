@@ -66,6 +66,9 @@ class PharmacyStockController extends Controller
             'items.*.mrp' => ['required', 'numeric', 'gt:0'],
             'items.*.cost_price' => ['required', 'numeric', 'min:0'],
             'items.*.gst_percent' => ['required', 'numeric', 'min:0', 'max:40'],
+            'items.*.rack_no' => ['nullable', 'string', 'max:30'],
+            'items.*.box_no' => ['nullable', 'string', 'max:30'],
+            'items.*.hsn_code' => ['nullable', 'string', 'max:20'],
         ], ['items.required' => 'Add at least one medicine.']);
 
         $batches = DB::transaction(fn () => collect($data['items'])->map(function (array $item, int $index) {
@@ -80,6 +83,7 @@ class PharmacyStockController extends Controller
                 'units_per_pack' => $item['units_per_pack'], 'packs' => (int) ceil($item['quantity'] / $item['units_per_pack']),
                 'pack_price' => $item['cost_price'], 'pack_mrp' => $item['mrp'], 'unit_mrp' => round($item['mrp'] / $item['units_per_pack'], 2),
                 'gst_percent' => $item['gst_percent'], 'units_received' => $item['quantity'], 'units_in_stock' => $item['quantity'],
+                'rack_no' => $item['rack_no'] ?? null, 'box_no' => $item['box_no'] ?? null, 'hsn_code' => $item['hsn_code'] ?? null,
             ]);
         }));
 
