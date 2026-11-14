@@ -170,6 +170,13 @@ class PharmacyEditController extends Controller
             'items.*.discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'items.*.gst_percent' => ['required', 'numeric', 'min:0', 'max:40'],
             'items.*.rack_no' => ['nullable', 'string', 'max:30'],
+            'items.*.box_no' => ['nullable', 'string', 'max:30'],
+            'items.*.hsn_code' => ['nullable', 'string', 'max:20'],
+            'items.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
+            'items.*.tax_on_free' => ['nullable', 'boolean'],
+            'other_charges' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
+            'cash_discount' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
+            'round_off' => ['nullable', 'numeric', 'between:-10,10'],
         ], [
             'invoice_no.unique' => 'This invoice number is already entered for this stockist.',
             'reason.required' => 'Say why this invoice is being changed.',
@@ -203,10 +210,14 @@ class PharmacyEditController extends Controller
                     'packs' => (int) $entry['packs'], 'free_packs' => $free,
                     'pack_price' => (float) $entry['pack_price'], 'pack_mrp' => (float) $entry['pack_mrp'],
                     'discount_percent' => (float) ($entry['discount_percent'] ?? 0), 'gst_percent' => (float) $entry['gst_percent'],
-                    'rack_no' => $entry['rack_no'] ?? null,
+                    'rack_no' => $entry['rack_no'] ?? null, 'box_no' => $entry['box_no'] ?? null, 'hsn_code' => $entry['hsn_code'] ?? null,
+                    'discount_amount' => (float) ($entry['discount_amount'] ?? 0), 'tax_on_free' => (bool) ($entry['tax_on_free'] ?? false),
                 ];
+                if ($new['discount_amount'] > $new['packs'] * $new['pack_price'] * (1 - $new['discount_percent'] / 100)) {
+                    throw ValidationException::withMessages(["items.{$index}.discount_amount" => "The discount on {$batch->medicine->name} is more than the line is worth."]);
+                }
                 array_push($changes, ...PharmacyChange::differences(
-                    ['batch_no' => 'batch', 'expiry' => 'expiry', 'packs' => 'packs', 'free_packs' => 'free packs', 'pack_price' => 'pack price ₹', 'pack_mrp' => 'pack MRP ₹', 'discount_percent' => 'discount %', 'gst_percent' => 'GST %', 'rack_no' => 'rack'],
+                    ['batch_no' => 'batch', 'expiry' => 'expiry', 'packs' => 'packs', 'free_packs' => 'free packs', 'pack_price' => 'pack price ₹', 'pack_mrp' => 'pack MRP ₹', 'discount_percent' => 'discount %', 'discount_amount' => 'discount ₹', 'gst_percent' => 'GST %', 'tax_on_free' => 'GST on free packs', 'hsn_code' => 'HSN', 'rack_no' => 'rack', 'box_no' => 'box'],
                     ['expiry' => $batch->expiry->toDateString()] + $batch->only(array_keys($new)),
                     $new,
                     $batch->medicine->name.' ',
@@ -214,14 +225,13 @@ class PharmacyEditController extends Controller
                 $batch->update($new + ['unit_mrp' => round($new['pack_mrp'] / $batch->units_per_pack, 2), 'units_received' => $units, 'units_in_stock' => $stock]);
             }
 
-            $subtotal = $tax = 0;
-            foreach ($batches as $batch) {
-                // The stockist charges for the paid packs only, less any trade discount, plus GST.
-                $line = round($batch->packs * $batch->pack_price * (1 - $batch->discount_percent / 100), 2);
-                $subtotal += $line;
-                $tax += round($line * $batch->gst_percent / 100, 2);
+            $extras = ['other_charges' => (float) ($data['other_charges'] ?? $purchase->other_charges), 'cash_discount' => (float) ($data['cash_discount'] ?? $purchase->cash_discount), 'round_off' => (float) ($data['round_off'] ?? $purchase->round_off)];
+            array_push($changes, ...PharmacyChange::differences(['other_charges' => 'Other charges ₹', 'cash_discount' => 'Cash discount ₹', 'round_off' => 'Round off ₹'], $purchase->only(array_keys($extras)), $extras));
+            $purchase->fill($extras);
+            ['subtotal' => $subtotal, 'tax' => $tax, 'total' => $total] = $purchase->figures();
+            if ($total < 0) {
+                throw ValidationException::withMessages(['cash_discount' => 'The cash discount is more than the invoice is worth.']);
             }
-            $total = round($subtotal + $tax, 2);
             if ($purchase->paid > $total) {
                 throw ValidationException::withMessages(['reason' => "₹{$purchase->paid} has already been paid on this invoice, which is more than the new total of ₹{$total}."]);
             }
@@ -232,12 +242,12 @@ class PharmacyEditController extends Controller
 
             $purchase->update([
                 'stockist_id' => $data['stockist_id'], 'invoice_no' => $data['invoice_no'], 'invoice_date' => $data['invoice_date'], 'remarks' => $data['remarks'] ?? null,
-                'subtotal' => round($subtotal, 2), 'tax' => round($tax, 2), 'total' => $total,
+                'subtotal' => round($subtotal, 2), 'tax' => round($tax, 2), 'total' => $total] + $extras + [
             ]);
             $this->log('invoice', $purchase->id, $purchase->invoice_no, $changes, $data['reason'], $request);
         });
 
-        return response()->json($purchase->fresh()->load(['stockist', 'batches.medicine:id,name']));
+        return response()->json($purchase->fresh()->present());
     }
 
     /** Corrects what is written on a batch: its number, expiry, MRP and rack. The count is changed with a stock adjustment instead. */

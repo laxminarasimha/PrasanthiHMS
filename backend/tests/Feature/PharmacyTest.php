@@ -170,4 +170,53 @@ class PharmacyTest extends TestCase
         $this->assertEquals([2, 6500, 2000, 500, 4000], [$row['invoices'], $row['billed'], $row['paid'], $row['returned'], $row['balance']]);
         $this->assertSame('orders@agency.example', $row['email']);
     }
+
+    public function test_a_scheme_with_free_packs_shows_the_real_cost_and_margin(): void
+    {
+        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\User::factory()->create(['role' => 'pharmacist']));
+
+        // "10 + 2": ten strips paid at ₹50, two free, MRP ₹72 a strip of 10 tablets, 12% GST.
+        $invoice = $this->receive([$this->line(['packs' => 10, 'free_packs' => 2, 'pack_price' => 50, 'pack_mrp' => 72, 'gst_percent' => 12, 'hsn_code' => '30049099', 'rack_no' => 'R3', 'box_no' => 'B2'])]);
+        $batch = $invoice['batches'][0];
+        $this->assertEquals([500, 60, 560], [$invoice['subtotal'], $invoice['tax'], $invoice['total']]); // only the ten paid strips are charged
+        $this->assertSame(120, $batch['units_received']);                                                  // all twelve go into stock
+        $this->assertEquals(4.17, $batch['unit_cost']);                                                    // ₹500 over 120 tablets, not over 100
+        $this->assertEquals(7.2, $batch['unit_mrp']);
+        $this->assertEquals(42.1, $batch['margin_percent']);
+        $this->assertSame(['30049099', 'B2'], [$batch['hsn_code'], $batch['box_no']]);
+
+        // Selling it measures profit against the real cost.
+        $sale = $this->sell([['stock_batch_id' => $batch['id'], 'quantity' => 10]])->assertCreated()->json();
+        $this->assertEquals(4.17, \App\Models\PharmacySaleItem::where('pharmacy_sale_id', $sale['id'])->value('unit_cost'));
+    }
+
+    public function test_rupee_discounts_tax_on_free_packs_and_bill_level_figures_reach_the_total(): void
+    {
+        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\User::factory()->create(['role' => 'pharmacist']));
+        $line = $this->line(['packs' => 10, 'free_packs' => 2, 'pack_price' => 100, 'pack_mrp' => 150, 'discount_percent' => 10, 'discount_amount' => 50, 'gst_percent' => 12, 'tax_on_free' => true]);
+
+        // 10 x 100 less 10% = 900, less ₹50 = 850. GST on 850 plus the two free strips (200) = 126.
+        // Then freight 40, cash discount 16, rounded up by 0.00: 850 + 126 + 40 - 16 = 1000.
+        $stockist = $this->postJson('/api/pharmacy/stockists', ['name' => 'Scheme Agency'])->json('id');
+        $body = ['stockist_id' => $stockist, 'invoice_no' => 'S-1', 'invoice_date' => today()->toDateString(), 'items' => [$line], 'other_charges' => 40, 'cash_discount' => 16, 'round_off' => 0];
+        $invoice = $this->postJson('/api/pharmacy/purchases', $body)->assertCreated()->json();
+        $this->assertEquals([850, 126, 1000], [$invoice['subtotal'], $invoice['tax'], $invoice['total']]);
+        $this->assertEquals(7.08, $invoice['batches'][0]['unit_cost']); // 850 over 120 units
+
+        $this->postJson('/api/pharmacy/purchases', ['invoice_no' => 'S-2', 'items' => [['discount_amount' => 5000] + $line]] + $body)->assertStatus(422)->assertJsonValidationErrors('items.0.discount_amount');
+        $this->postJson('/api/pharmacy/purchases', ['invoice_no' => 'S-3', 'cash_discount' => 99999] + $body)->assertStatus(422)->assertJsonValidationErrors('cash_discount');
+        $this->postJson('/api/pharmacy/purchases', ['invoice_no' => 'S-4', 'round_off' => 50] + $body)->assertStatus(422)->assertJsonValidationErrors('round_off');
+
+        // Correcting the invoice keeps the same arithmetic, and the change is written down.
+        $b = $invoice['batches'][0];
+        $edited = $this->putJson("/api/pharmacy/purchases/{$invoice['id']}", [
+            'stockist_id' => $stockist, 'invoice_no' => 'S-1', 'invoice_date' => today()->toDateString(), 'reason' => 'Freight was typed wrongly', 'other_charges' => 60, 'cash_discount' => 16, 'round_off' => -0.5,
+            'items' => [['id' => $b['id'], 'batch_no' => $b['batch_no'], 'expiry' => substr($b['expiry'], 0, 7), 'packs' => 10, 'free_packs' => 2, 'pack_price' => 100, 'pack_mrp' => 150, 'discount_percent' => 10, 'discount_amount' => 50, 'gst_percent' => 12, 'tax_on_free' => false]],
+        ])->assertOk()->json();
+        // Without GST on the free strips: 850 + 102 + 60 - 16 - 0.5 = 995.5
+        $this->assertEquals([850, 102, 995.5], [$edited['subtotal'], $edited['tax'], $edited['total']]);
+        $summary = \App\Models\PharmacyChange::where('kind', 'invoice')->latest('id')->value('summary');
+        $this->assertStringContainsString('Other charges', $summary);
+        $this->assertStringContainsString('GST on free packs', $summary);
+    }
 }

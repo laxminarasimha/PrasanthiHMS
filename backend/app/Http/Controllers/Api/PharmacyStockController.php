@@ -153,7 +153,7 @@ class PharmacyStockController extends Controller
 
         $purchase->increment('paid', $data['amount']);
 
-        return response()->json($purchase->fresh()->load(['stockist', 'batches.medicine:id,name']));
+        return response()->json($purchase->fresh()->present());
     }
 
     public function stockReturns(): JsonResponse
