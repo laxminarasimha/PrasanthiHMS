@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
 import { DepositBox } from '../components/DepositBox'
+import { PatientDocuments } from '../components/PatientDocuments'
 import { AttachmentsPanel } from '../components/FrontDeskPanels'
 import { ADMISSION_STATUS, STATUS_LABELS, clock, longDate, rupees, settlement, stampDate } from '../format'
 import type { PatientOverview } from '../types'
@@ -191,6 +192,11 @@ export function PatientDashboard() {
           </table>
         </section>
       </div>
+
+      <section className="card">
+        <h2>Certificates and letters</h2>
+        <PatientDocuments patient={p} canIssue={Boolean(user?.can_approve_ipd)} />
+      </section>
 
       <section className="card">
         <h2>Attachments</h2>

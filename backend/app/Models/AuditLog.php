@@ -30,6 +30,8 @@ class AuditLog extends Model
         'health.updated' => 'Changed the health summary',
         'health.removed' => 'Removed from the health summary',
         'allergies.updated' => 'Changed allergies',
+        'document.issued' => 'Issued a certificate or letter',
+        'document.cancelled' => 'Cancelled a certificate or letter',
         'bill.created' => 'Made a bill',
         'bill.item_added' => 'Added a line to a bill',
         'bill.item_removed' => 'Removed a line from a bill',
