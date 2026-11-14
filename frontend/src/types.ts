@@ -374,6 +374,8 @@ export type Stockist = { id: number; name: string; phone: string | null; email?:
 
 export type StockBatch = {
   id: number
+  /** On an invoice: what to check on this line against the last purchase and the order. */
+  flags?: string[]
   medicine_id: number
   batch_no: string
   expiry: string
@@ -406,6 +408,7 @@ export type PurchaseInvoice = {
   due_date?: string | null
   payments?: { id: number; amount: number; mode: string; reference: string | null; paid_on: string; payer?: { name: string } | null }[]
   order?: { id: number; order_no: string } | null
+  flagged?: number
   subtotal: number
   tax: number
   other_charges?: number
@@ -659,6 +662,12 @@ export type PurchaseOrder = {
   stockist: { id: number; name: string; phone?: string | null; address?: string | null }
   items_count?: number
   items?: { id: number; medicine_name: string; units_per_pack: number; packs: number }[]
+  match?: {
+    lines: { medicine_id: number; medicine_name: string; ordered: number; received: number; free: number; state: 'none' | 'short' | 'full' | 'over' }[]
+    extras: { medicine_name: string; received: number; free: number }[]
+    invoices: { id: number; invoice_no: string; invoice_date: string; total: number }[]
+    complete: boolean
+  }
 }
 
 export type ReportColumn = { key: string; label: string; type: 'text' | 'money' | 'number'; total: boolean }

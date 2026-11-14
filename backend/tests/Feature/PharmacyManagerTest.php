@@ -142,4 +142,53 @@ class PharmacyManagerTest extends TestCase
         $this->assertEquals([1500, 1100, 950], array_column($statement['lines'], 'balance'));
         $this->assertEquals(950, $statement['closing']);
     }
+
+    public function test_an_invoice_is_set_against_its_order_and_odd_lines_are_pointed_out(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $supplier = Stockist::create(['name' => 'City Pharma', 'credit_days' => 21]);
+        $other = Stockist::create(['name' => 'Other Agencies']);
+        $a = $this->medicine('Atorvastatin 10');
+        $b = $this->medicine('Paracetamol 500');
+        $c = $this->medicine('Cetirizine 10');
+
+        // Bought before at ₹20 a pack, MRP ₹30.
+        $first = PurchaseInvoice::create(['stockist_id' => $supplier->id, 'invoice_no' => 'OLD-1', 'invoice_date' => today()->subMonth(), 'subtotal' => 200, 'tax' => 24, 'total' => 224, 'paid' => 224]);
+        $this->batch($a, 100, ['purchase_invoice_id' => $first->id]);
+
+        $order = $this->postJson('/api/pharmacy/purchase-orders', ['stockist_id' => $supplier->id, 'order_date' => today()->toDateString(), 'items' => [
+            ['medicine_id' => $a->id, 'units_per_pack' => 10, 'packs' => 10], ['medicine_id' => $b->id, 'units_per_pack' => 10, 'packs' => 5],
+        ]])->assertCreated()->json();
+
+        $line = fn (Medicine $m, int $packs, array $over = []) => $over + ['medicine_id' => $m->id, 'batch_no' => 'N'.$m->id.$packs, 'expiry' => now()->addYear()->format('Y-m'), 'units_per_pack' => 10, 'packs' => $packs, 'pack_price' => 20, 'pack_mrp' => 30, 'gst_percent' => 12];
+        $invoice = fn (string $no, array $items, array $over = []) => $this->postJson('/api/pharmacy/purchases', $over + ['stockist_id' => $supplier->id, 'invoice_no' => $no, 'invoice_date' => today()->toDateString(), 'purchase_order_id' => $order['id'], 'items' => $items]);
+
+        // An order placed with someone else cannot be used.
+        $invoice('X-0', [$line($a, 1)], ['stockist_id' => $other->id])->assertStatus(422)->assertJsonValidationErrors('purchase_order_id');
+
+        // First delivery: 8 of the 10 packs of A (with 2 free) at a higher rate and a lower MRP, and something that was never ordered at an odd GST.
+        $got = $invoice('INV-10', [
+            $line($a, 8, ['free_packs' => 2, 'pack_price' => 23, 'pack_mrp' => 28]),
+            $line($c, 3, ['gst_percent' => 18]),
+        ])->assertCreated()->assertJsonPath('order.order_no', $order['order_no'])->assertJsonPath('flagged', 2)
+            ->assertJsonPath('due_date', today()->addDays(21)->toDateString())->json();
+        $flags = collect($got['batches'])->mapWithKeys(fn ($batch) => [$batch['medicine_id'] => implode(' ', $batch['flags'])]);
+        $this->assertStringContainsString('Rate ₹23.00 a pack; last time ₹20.00 (+15%)', $flags[$a->id]);
+        $this->assertStringContainsString('MRP ₹28.00; last time ₹30.00', $flags[$a->id]);
+        $this->assertStringContainsString('Ordered 10 packs; 8 received so far', $flags[$a->id]);
+        $this->assertStringContainsString('GST 18%; the medicine list says 12%', $flags[$c->id]);
+        $this->assertStringContainsString("Not on order {$order['order_no']}", $flags[$c->id]);
+
+        $shown = $this->getJson("/api/pharmacy/purchase-orders/{$order['id']}")->assertOk()->assertJsonPath('status', 'open')->assertJsonPath('match.complete', false)->json('match');
+        $lines = collect($shown['lines'])->keyBy('medicine_id');
+        $this->assertSame([10, 8, 2, 'short'], [$lines[$a->id]['ordered'], $lines[$a->id]['received'], $lines[$a->id]['free'], $lines[$a->id]['state']]);
+        $this->assertSame('none', $lines[$b->id]['state']);
+        $this->assertSame('Cetirizine 10', $shown['extras'][0]['medicine_name']);
+        $this->assertCount(1, $shown['invoices']);
+
+        // The rest arrives: the order closes by itself and can no longer be chosen.
+        $invoice('INV-11', [$line($a, 2), $line($b, 5)])->assertCreated();
+        $this->getJson("/api/pharmacy/purchase-orders/{$order['id']}")->assertJsonPath('status', 'received')->assertJsonPath('match.complete', true);
+        $invoice('INV-12', [$line($b, 1)])->assertStatus(422)->assertJsonValidationErrors('purchase_order_id');
+    }
 }

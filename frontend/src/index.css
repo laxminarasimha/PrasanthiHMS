@@ -1041,3 +1041,4 @@ input.packs { width: 84px; text-align: right; }
 .day-section table a, .plain-list a { color: var(--brand); font-weight: 600; text-decoration: none; }
 .day-section td .pill { white-space: nowrap; }
 .todo li.note strong { color: var(--brand); }
+.flag-note { margin: 0 0 10px; }
