@@ -356,6 +356,11 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity'])->group(function (
     });
 
     Route::get('/reports/summary', [ReportController::class, 'summary']);
+    Route::controller(\App\Http\Controllers\Api\DayCloseController::class)->group(function () {
+        Route::get('/day-close', 'show');
+        Route::post('/day-close', 'close');
+        Route::post('/day-close/{close}/reopen', 'reopen');
+    });
     Route::get('/reports/find-patients', [HospitalReportController::class, 'findPatients']);
     Route::get('/reports/list/{type}', [HospitalReportController::class, 'show']);
 

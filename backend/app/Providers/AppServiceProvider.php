@@ -19,6 +19,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Money records of a closed day cannot be added to or changed.
+        \App\Models\DayClose::lockMoney();
+
         // Once a day, after a page has gone out, write a backup of the database.
         if (! $this->app->runningInConsole() && ! $this->app->runningUnitTests() && config('app.auto_backup')) {
             $this->app->terminating(fn () => \App\Support\DatabaseBackup::runIfDue());

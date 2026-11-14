@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { DayClose } from '../components/DayClose'
 import { FindPatients } from '../components/FindPatients'
 import { ReportScreen } from '../components/ReportScreen'
 import { modeLabel, rupees, today } from '../format'
@@ -32,7 +33,7 @@ export function Reports() {
   const [to, setTo] = useState(today())
   const [summary, setSummary] = useState<Summary | null>(null)
   const [error, setError] = useState('')
-  const [tab, setTab] = useState<'summary' | 'detailed' | 'find'>('summary')
+  const [tab, setTab] = useState<'summary' | 'detailed' | 'find' | 'close'>('summary')
 
   useEffect(() => {
     if (from > to) return
@@ -60,8 +61,20 @@ export function Reports() {
       <button className={tab === 'find' ? 'active' : ''} onClick={() => setTab('find')}>
         Find patients
       </button>
+      <button className={tab === 'close' ? 'active' : ''} onClick={() => setTab('close')}>
+        Day close
+      </button>
     </div>
   )
+
+  if (tab === 'close') {
+    return (
+      <>
+        {tabs}
+        <DayClose />
+      </>
+    )
+  }
 
   if (tab === 'find') {
     return (

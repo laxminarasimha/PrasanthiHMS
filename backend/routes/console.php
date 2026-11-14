@@ -196,6 +196,7 @@ Artisan::command('hms:clear-test-data {--remote : Act on the remote database} {-
         'lab_orders', 'lab_order_items', 'lab_results', 'lab_order_files',
         'pharmacy_sales', 'pharmacy_sale_items', 'pharmacy_sale_returns', 'pharmacy_payments', 'pharmacy_changes',
         'admissions', 'admission_charges', 'admission_bills', 'admission_notes', 'admission_payments', 'discharge_summaries',
+        'day_closes',
     ];
     $stock = ['stock_batches', 'stock_adjustments', 'stock_returns', 'stock_return_items', 'purchase_invoices', 'purchase_orders', 'purchase_order_items'];
     $tables = array_values(array_filter($this->option('stock') ? array_merge($records, $stock) : $records, fn ($t) => $schema->hasTable($t)));

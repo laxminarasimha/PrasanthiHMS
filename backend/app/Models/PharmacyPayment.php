@@ -21,4 +21,9 @@ class PharmacyPayment extends Model
     {
         return $this->belongsTo(User::class, 'received_by');
     }
+
+    public function sale(): BelongsTo
+    {
+        return $this->belongsTo(PharmacySale::class, 'pharmacy_sale_id');
+    }
 }

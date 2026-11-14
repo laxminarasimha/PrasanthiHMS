@@ -23,4 +23,9 @@ class Payment extends Model
     {
         return $this->belongsTo(User::class, 'received_by');
     }
+
+    public function bill(): BelongsTo
+    {
+        return $this->belongsTo(Bill::class);
+    }
 }
