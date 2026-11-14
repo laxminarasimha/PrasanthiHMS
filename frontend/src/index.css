@@ -637,3 +637,19 @@ tbody tr.not-here { color: var(--muted); }
 .finder label.wide { grid-column: span 2; }
 .finder-actions { display: flex; gap: 8px; }
 @media (max-width: 520px) { .finder { grid-template-columns: 1fr 1fr; } }
+
+/* Health summary: the lasting facts of a patient's health */
+.health-summary { display: flex; flex-direction: column; gap: 10px; }
+.health-allergy { padding: 8px 10px; border-radius: 8px; background: var(--ok-soft); display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.health-allergy.has { background: var(--danger-soft); color: var(--danger); font-weight: 600; }
+.health-allergy form { flex: 1; min-width: 200px; }
+.health-allergy form input { flex: 1; min-width: 0; }
+.health-section { border-top: 1px solid var(--border); padding-top: 8px; }
+.health-head { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.health-head h4 { margin: 0; flex: 1; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.health-section ul { list-style: none; margin: 4px 0 0; padding: 0; }
+.health-section li { display: flex; gap: 10px; align-items: flex-start; padding: 5px 0; }
+.health-section li.over strong { font-weight: 400; text-decoration: line-through; color: var(--muted); }
+.health-section li .actions { display: flex; gap: 10px; white-space: nowrap; font-size: 0.85rem; }
+.health-section p { margin: 2px 0 0; }
+.health-add { display: grid; grid-template-columns: 1fr; gap: 6px; margin-top: 6px; padding: 8px; border-radius: 8px; background: var(--bg); }

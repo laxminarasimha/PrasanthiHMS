@@ -40,6 +40,12 @@ class Patient extends Model
         });
     }
 
+    /** The lasting facts of this patient's health, shown at every visit. */
+    public function healthItems(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(PatientHealthItem::class);
+    }
+
     public function getAgeAttribute(): ?int
     {
         return $this->date_of_birth ? (int) $this->date_of_birth->diffInYears(now()) : null;

@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
+import { HealthSummary } from '../components/HealthSummary'
 import { Link, useParams } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { useAuth } from '../auth'
@@ -524,7 +525,15 @@ export function VisitPad() {
       </section>
 
       <aside className="card panel">
-        <h2>Lab results</h2>
+        <h2>Health summary</h2>
+        <HealthSummary
+          patientId={visit.patient.id}
+          canEdit={canEdit}
+          hideAllergies
+          onUseMedicines={(rows) => addMedicines(rows.map((r) => ({ ...emptyMedicine(), medicine: r.medicine, instructions: r.instructions ? r.instructions.slice(0, 255) : null })))}
+        />
+
+        <h2 className="gap-top">Lab results</h2>
         {labOrders.length === 0 && <p className="muted">No lab orders for this patient yet.</p>}
         {labOrders.map((o) => (
           <details key={o.id} className="past" open={o.status !== 'pending' && labOrders[0].id === o.id}>

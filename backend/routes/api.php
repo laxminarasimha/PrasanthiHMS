@@ -124,6 +124,13 @@ Route::middleware(['auth:sanctum', 'actor:staff'])->group(function () {
 
     Route::get('/doctor/queue', [ConsultationController::class, 'queue']);
     Route::post('/doctor/visits', [CaseHistoryController::class, 'startVisit'])->middleware('ability:canConsult');
+    Route::controller(\App\Http\Controllers\Api\HealthSummaryController::class)->group(function () {
+        Route::get('/patients/{patient}/health', 'show');
+        Route::post('/patients/{patient}/health', 'store');
+        Route::put('/patients/{patient}/health/allergies', 'allergies');
+        Route::put('/health-items/{item}', 'update');
+        Route::delete('/health-items/{item}', 'destroy');
+    });
     Route::get('/patients/{patient}/case-history', [CaseHistoryController::class, 'show']);
     Route::get('/patients/{patient}/trends', [CaseHistoryController::class, 'trends']);
 

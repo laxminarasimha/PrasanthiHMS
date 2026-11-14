@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { HealthSummary } from '../../components/HealthSummary'
 import { Link, useParams } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
 import { useAuth } from '../../auth'
@@ -172,7 +173,17 @@ export function IpdCase() {
         {tab === 'forms' && <FormsPanel url={`/ipd/admissions/${admission.id}/forms`} use="ipd" canEdit={canEdit} />}
         {tab === 'files' && <AttachmentsPanel patient={{ id: admission.patient.id, name: admission.patient.name, uhid: admission.patient.uhid }} />}
 
-        {tab === 'notes' && <IpdNotes admissionId={admission.id} canEdit={canEdit} />}
+        {tab === 'notes' && (
+          <>
+            <details className="past">
+              <summary>
+                <strong>Health summary</strong> <span className="muted">conditions, regular medicines, allergies, past surgeries</span>
+              </summary>
+              <HealthSummary patientId={admission.patient.id} canEdit={Boolean(user?.can_consult)} />
+            </details>
+            <IpdNotes admissionId={admission.id} canEdit={canEdit} />
+          </>
+        )}
         {tab === 'summary' && <IpdSummary admissionId={admission.id} canEdit={canEdit} canApprove={Boolean(user?.can_approve_ipd)} />}
         {tab === 'bill' && (
         <>

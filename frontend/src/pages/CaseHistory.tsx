@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
+import { HealthSummary } from '../components/HealthSummary'
 import { ADMISSION_STATUS, clock, fullName, longDate } from '../format'
 import type { Consultation, Patient } from '../types'
 
@@ -93,7 +94,7 @@ export function CaseHistory() {
   const { id } = useParams()
   const { user } = useAuth()
   const navigate = useNavigate()
-  const [tab, setTab] = useState<'timeline' | 'tests' | 'vitals'>('timeline')
+  const [tab, setTab] = useState<'summary' | 'timeline' | 'tests' | 'vitals'>('summary')
   const [kind, setKind] = useState<keyof typeof KINDS>('all')
   const [data, setData] = useState<{ patient: Patient & { allergies?: string | null }; events: HistoryEvent[] } | null>(null)
   const [trends, setTrends] = useState<Trends | null>(null)
@@ -150,6 +151,9 @@ export function CaseHistory() {
         </div>
         {error && <p className="form-error">{error}</p>}
         <div className="tabs flush gap-top">
+          <button className={tab === 'summary' ? 'active' : ''} onClick={() => setTab('summary')}>
+            Health summary
+          </button>
           <button className={tab === 'timeline' ? 'active' : ''} onClick={() => setTab('timeline')}>
             Case history <span>{data.events.length}</span>
           </button>
@@ -161,6 +165,12 @@ export function CaseHistory() {
           </button>
         </div>
       </section>
+
+      {tab === 'summary' && (
+        <section className="card">
+          <HealthSummary patientId={p.id} canEdit={Boolean(user?.can_consult)} />
+        </section>
+      )}
 
       {tab === 'timeline' && (
         <section className="card">

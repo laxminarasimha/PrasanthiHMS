@@ -25,6 +25,8 @@ class AdminController extends Controller
     private const PATIENT_TABLES = [
         'appointments' => 'appointments', 'bills' => 'bills', 'consultations' => 'consultations', 'lab_orders' => 'lab orders',
         'pharmacy_sales' => 'pharmacy bills', 'admissions' => 'admissions', 'attachments' => 'attachments',
+        'patient_deposits' => 'deposits', 'form_records' => 'forms', 'patient_health_items' => 'health summary items',
+        'patient_accounts' => 'mobile app account', 'medicine_subscriptions' => 'monthly medicine lists',
     ];
 
     // ---- Clinic details ----
