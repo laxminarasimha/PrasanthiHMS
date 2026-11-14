@@ -68,7 +68,7 @@ Route::prefix('app')->controller(\App\Http\Controllers\Api\PatientAppController:
     });
 });
 
-Route::middleware(['auth:sanctum', 'actor:staff'])->group(function () {
+Route::middleware(['auth:sanctum', 'actor:staff', 'activity'])->group(function () {
     Route::middleware('ability:canRunPharmacy')->controller(\App\Http\Controllers\Api\SubscriptionController::class)->group(function () {
         Route::get('/pharmacy/subscriptions', 'index');
         Route::post('/pharmacy/subscriptions/{subscription}/prepared', 'prepared');

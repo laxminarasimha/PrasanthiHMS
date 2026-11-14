@@ -317,3 +317,78 @@ Artisan::command('hms:import-icd {file? : Tab-separated file of code and name} {
     return 0;
 })->purpose('Load the ICD-10 diagnosis code list');
 
+/*
+ * Proves a backup can be put back. It loads a backup file into an empty scratch database on this
+ * computer, counts what arrived, and compares that with what the backup says it holds. The scratch
+ * database is removed afterwards; the real databases are never touched.
+ *
+ * Without a file it checks the newest backup in db-export/backups (made by `hms:backup --remote`),
+ * or failing that the newest one in storage.
+ */
+Artisan::command('hms:backup-check {file? : A .sql.gz backup file}', function () {
+    $path = $this->argument('file');
+    if (! $path) {
+        $newest = fn (string $dir) => collect(glob($dir.'/hms-*.sql.gz') ?: [])->sort()->last();
+        $path = $newest(base_path('../db-export/backups')) ?: $newest(App\Support\DatabaseBackup::folder());
+    }
+    if (! $path || ! is_file($path)) {
+        $this->error('No backup file found. Make one first with: php artisan hms:backup --remote');
+
+        return 1;
+    }
+
+    $sql = @gzdecode((string) file_get_contents($path));
+    if ($sql === false || ! preg_match('/-- End of backup: (\d+) tables, (\d+) rows/', $sql, $said)) {
+        $this->error('This file is damaged or incomplete: it cannot be unpacked, or it stops before the end.');
+
+        return 1;
+    }
+    [$tablesSaid, $rowsSaid] = [(int) $said[1], (int) $said[2]];
+
+    $main = DB::connection();
+    $scratch = 'hms_restore_check';
+    try {
+        if ($main->getDriverName() === 'sqlite') {
+            $pdo = new PDO('sqlite::memory:');
+            $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $pdo->exec(preg_replace('/^SET .*;$/m', '', $sql));
+            $tables = $pdo->query("select name from sqlite_master where type = 'table' and name not like 'sqlite_%'")->fetchAll(PDO::FETCH_COLUMN);
+        } else {
+            $c = $main->getConfig();
+            $main->statement("DROP DATABASE IF EXISTS `{$scratch}`");
+            $main->statement("CREATE DATABASE `{$scratch}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+            $pdo = new PDO("mysql:host={$c['host']};port={$c['port']};dbname={$scratch};charset=utf8mb4", $c['username'], $c['password'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+            $statement = $pdo->query($sql);
+            do {
+                // Each statement of the file in turn; an error in any of them throws here.
+            } while ($statement->nextRowset());
+            $tables = $pdo->query('show tables')->fetchAll(PDO::FETCH_COLUMN);
+        }
+        $rows = 0;
+        foreach ($tables as $table) {
+            $rows += (int) $pdo->query("select count(*) from `{$table}`")->fetchColumn();
+        }
+        $patients = in_array('patients', $tables, true) ? (int) $pdo->query('select count(*) from `patients`')->fetchColumn() : 0;
+    } catch (Throwable $e) {
+        $this->error('The backup could not be loaded: '.$e->getMessage());
+
+        return 1;
+    } finally {
+        if ($main->getDriverName() !== 'sqlite') {
+            $main->statement("DROP DATABASE IF EXISTS `{$scratch}`");
+        }
+    }
+
+    $this->line('Backup: '.basename($path).' ('.round(filesize($path) / 1024).' KB)');
+    $this->line("It says it holds {$tablesSaid} tables and {$rowsSaid} rows.");
+    $this->line('Loaded into an empty database: '.count($tables)." tables and {$rows} rows, including {$patients} patients.");
+    if (count($tables) !== $tablesSaid || $rows !== $rowsSaid) {
+        $this->error('These do not match. Do not rely on this backup; make a new one and check again.');
+
+        return 1;
+    }
+    $this->info('They match. This backup can be restored.');
+
+    return 0;
+})->purpose('Prove that a backup file can be restored');
+

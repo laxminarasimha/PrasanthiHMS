@@ -367,9 +367,8 @@ class HospitalReportController extends Controller
         return [[
             self::col('when', 'When'), self::col('who', 'Who'), self::col('action', 'What they did'), self::col('patient', 'Patient'), self::col('details', 'Details'),
         ], $rows->map(fn ($r) => [
-            'when' => $r->created_at->format('Y-m-d H:i'), 'who' => $r->user_name, 'action' => \App\Models\AuditLog::ACTIONS[$r->action] ?? $r->action,
-            'patient' => isset($patients[$r->patient_id]) ? $patients[$r->patient_id]->uhid.' '.$patients[$r->patient_id]->name : null, 'details' => $r->summary,
-        ])];
+            'when' => $r->created_at->format('Y-m-d H:i'), 'who' => $r->user_name, 'patient' => isset($patients[$r->patient_id]) ? $patients[$r->patient_id]->uhid.' '.$patients[$r->patient_id]->name : null,
+        ] + \App\Models\AuditLog::words($r))];
     }
 
     // ---- Lab and referrals ----
