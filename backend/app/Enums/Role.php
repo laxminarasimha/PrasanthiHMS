@@ -23,6 +23,12 @@ enum Role: string
         };
     }
 
+    /** Closing a day's accounts is for the admin, and for anyone the admin names under Setup → Staff. */
+    public function canCloseDay(): bool
+    {
+        return $this === self::Admin;
+    }
+
     /** Roles allowed to add and edit staff accounts. */
     public function canManageStaff(): bool
     {

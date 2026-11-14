@@ -32,6 +32,7 @@ class DayCloseController extends Controller
     public function close(Request $request): JsonResponse
     {
         $this->guard($request);
+        abort_unless($request->user()->allows('canCloseDay'), 403, 'You can see the day close, but you are not allowed to close a day.');
         $day = $this->day($request);
         $data = $request->validate([
             'counted_cash' => ['required', 'numeric', 'min:0', 'max:99999999'],
@@ -43,6 +44,15 @@ class DayCloseController extends Controller
             if (DayClose::whereDate('day', $day->toDateString())->whereNull('reopened_at')->lockForUpdate()->exists()) {
                 throw ValidationException::withMessages(['day' => 'This day is already closed.']);
             }
+
+            // The lock goes on first and the counting comes after, all in this one step. A bill that was
+            // being saved finishes before the next line returns and is counted below; one that arrives
+            // later waits for this step and is then refused. If a reason is missing, the step is undone.
+            $close = DayClose::create([
+                'day' => $day->toDateString(),
+                'closed_by' => $request->user()->id, 'closed_by_name' => $request->user()->name, 'closed_at' => now(),
+                'expected_cash' => 0, 'counted_cash' => round((float) $data['counted_cash'], 2), 'variance' => 0, 'snapshot' => [],
+            ]);
 
             $book = DayBook::for($day);
             $variance = round((float) $data['counted_cash'] - $book['expected_cash'], 2);
@@ -57,15 +67,15 @@ class DayCloseController extends Controller
                 throw ValidationException::withMessages($errors);
             }
 
-            return DayClose::create([
-                'day' => $day->toDateString(),
-                'closed_by' => $request->user()->id, 'closed_by_name' => $request->user()->name, 'closed_at' => now(),
-                'expected_cash' => $book['expected_cash'], 'counted_cash' => round((float) $data['counted_cash'], 2), 'variance' => $variance,
+            $close->update([
+                'expected_cash' => $book['expected_cash'], 'variance' => $variance,
                 'variance_note' => abs($variance) >= 0.01 ? trim($data['variance_note']) : null,
                 'exceptions' => $book['blocking'],
                 'override_reason' => $book['blocking'] > 0 ? trim($data['override_reason']) : null,
                 'snapshot' => $book,
             ]);
+
+            return $close;
         });
 
         AuditLog::record('day.closed', null, $close, $day->format('j M Y')
@@ -99,10 +109,11 @@ class DayCloseController extends Controller
     private function present(Request $request, Carbon $day): array
     {
         $history = DayClose::whereDate('day', $day->toDateString())->latest('id')->get()
-            ->map(fn (DayClose $c) => $c->only([
+            // toArray, so the times go out as the hospital's clock reads them rather than as world time.
+            ->map(fn (DayClose $c) => collect($c->toArray())->only([
                 'id', 'closed_by_name', 'closed_at', 'expected_cash', 'counted_cash', 'variance', 'variance_note', 'exceptions',
                 'override_reason', 'reopened_by_name', 'reopened_at', 'reopen_reason',
-            ]));
+            ])->all());
         $closed = $history->first(fn ($c) => $c['reopened_at'] === null);
 
         // The last week at a glance, so a day nobody closed does not go unnoticed.
@@ -112,7 +123,10 @@ class DayCloseController extends Controller
         return DayBook::for($day) + [
             'closed' => $closed,
             'history' => $history->values(),
-            'can_close' => $closed === null,
+            // The hospital's own date, so a computer set to another time zone still closes the right day.
+            'today' => today()->toDateString(),
+            'may_close' => $request->user()->allows('canCloseDay'),
+            'can_close' => $closed === null && $request->user()->allows('canCloseDay'),
             'can_reopen' => $closed !== null && $request->user()->role === Role::Admin,
             'recent' => $week->map(fn ($d) => ['day' => $d, 'closed' => $closedDays->contains($d)])->values(),
         ];

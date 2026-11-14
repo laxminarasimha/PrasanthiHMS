@@ -32,6 +32,8 @@ type Book = {
   notes: number
   closed: Closing | null
   history: Closing[]
+  today: string
+  may_close: boolean
   can_close: boolean
   can_reopen: boolean
   recent: { day: string; closed: boolean }[]
@@ -48,7 +50,8 @@ const shortDay = (day: string) => new Date(day + 'T00:00:00').toLocaleDateString
  * records cannot be changed until an admin reopens it.
  */
 export function DayClose() {
-  const [day, setDay] = useState(today())
+  // Until a day is picked, the server says which day it is: the hospital's date, not this computer's.
+  const [picked, setDay] = useState<string | null>(null)
   const [book, setBook] = useState<Book | null>(null)
   const [error, setError] = useState('')
   const [counted, setCounted] = useState('')
@@ -61,20 +64,23 @@ export function DayClose() {
 
   const load = useCallback(() => {
     api
-      .get<Book>('/day-close', { params: { day } })
+      .get<Book>('/day-close', { params: picked ? { day: picked } : {} })
       .then((res) => {
         setBook(res.data)
         setError('')
       })
       .catch((e) => setError(fieldErrors(e)._ ?? fieldErrors(e).day ?? 'Could not load the day.'))
-  }, [day])
+  }, [picked])
 
   useEffect(load, [load])
+
+  const day = picked ?? book?.day ?? ''
+  const hospitalToday = book?.today ?? today()
 
   /** Moves to another day with a clean form, so one day's count is never sent for another. */
   const pick = (next: string) => {
     if (next === day) return
-    setDay(next)
+    setDay(next === hospitalToday ? null : next)
     setBook(null)
     setErrors({})
     setCounted('')
@@ -147,8 +153,8 @@ export function DayClose() {
     <section className="card">
       <div className="toolbar">
         <h1>Day close</h1>
-        <input type="date" className="date no-print" value={day} max={today()} onChange={(e) => pick(e.target.value || today())} aria-label="Day" />
-        <button className="btn ghost no-print" onClick={() => pick(today())}>
+        <input type="date" className="date no-print" value={day} max={hospitalToday} onChange={(e) => pick(e.target.value || hospitalToday)} aria-label="Day" />
+        <button className="btn ghost no-print" onClick={() => pick(hospitalToday)}>
           Today
         </button>
         <span className="print-only">{longDate(day)}</span>
@@ -200,6 +206,7 @@ export function DayClose() {
                 ? `${book.blocking} ${book.blocking === 1 ? 'item has' : 'items have'} to be settled, or explained, before closing.`
                 : 'Nothing is holding up the closing.'}
               {book.notes > 0 && ` ${book.notes} more to note.`}
+              {!book.may_close && ' You can look at the day here; closing it is for staff who have been given "Close the day" under Setup → Staff.'}
             </p>
           )}
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\Bill;
 use App\Models\BillItem;
 use App\Models\PatientDeposit;
@@ -125,6 +126,9 @@ class BillController extends Controller
             throw ValidationException::withMessages(['discount' => "This discount would bring the bill below what is already paid. Refund ₹{$excess} as well, or refund first."]);
         }
 
+        $before = round((float) $bill->discount, 2);
+        $wasWorth = round((float) $bill->total, 2);
+
         DB::transaction(function () use ($bill, $data, $excess, $request) {
             if ($excess > 0) {
                 $bill->payments()->create(['type' => 'refund', 'amount' => $excess, 'mode' => $data['refund_mode'], 'reference' => 'Discount given after payment', 'received_by' => $request->user()->id]);
@@ -132,6 +136,15 @@ class BillController extends Controller
             $bill->discount = $data['discount'];
             $bill->recalculate();
         });
+
+        // Saving the same discount again changes nothing, so it leaves no line in the log.
+        $after = round((float) $bill->discount, 2);
+        AuditLog::$written = true;
+        if ($after !== $before) {
+            $money = fn (float $amount) => '₹'.number_format($amount, 2);
+            AuditLog::record('bill.discount', $bill->patient_id, $bill, "{$bill->bill_no} · discount {$money($before)} → {$money($after)} · bill {$money($wasWorth)} → {$money((float) $bill->total)}"
+                .($excess > 0 ? " · {$money($excess)} refunded" : ''));
+        }
 
         return response()->json($this->present($bill));
     }

@@ -205,7 +205,7 @@ class DayBook
         unset($department);
 
         $changes = AuditLog::whereBetween('created_at', [$from, $to])
-            ->where(fn ($q) => $q->where('action', 'bill.item_removed')->orWhere(fn ($q) => $q->where('action', 'change')
+            ->where(fn ($q) => $q->whereIn('action', ['bill.item_removed', 'bill.discount'])->orWhere(fn ($q) => $q->where('action', 'change')
                 ->where(fn ($q) => collect(self::BILL_CHANGES)->each(fn ($label) => $q->orWhere('summary', 'like', $label.'%')))))
             ->oldest('id')->get();
 
@@ -220,14 +220,17 @@ class DayBook
             'checks' => [
                 self::check('refunds', 'Refunds given', false, 'Money handed back to patients.', $refunds->map(fn ($r) => ['text' => $r['text'], 'detail' => $r['detail'], 'to' => $r['to']])),
                 self::check('bill_changes', 'Bills changed or cancelled', false, 'Discounts changed, lines removed, bills deleted.',
-                    $changes->map(function (AuditLog $row) use ($page) {
-                        $words = AuditLog::words($row);
+                    // The same thing saved twice in the same minute by the same person is one event, shown once with its count.
+                    $changes->groupBy(fn (AuditLog $row) => implode('|', [$row->user_id, $row->action, $row->summary, $row->patient_id, $row->subject_id, $row->created_at->format('Y-m-d H:i')]))
+                        ->map(function (Collection $same) use ($page) {
+                            $row = $same->first();
+                            $words = AuditLog::words($row);
 
-                        return [
-                            'text' => ($row->user_name ?: 'Someone').' · '.$words['action'],
-                            'detail' => trim(($words['details'] ? $words['details'].' · ' : '').$row->created_at->format('g:i A')),
-                            'to' => $page($row->patient_id),
-                        ];
+                            return [
+                                'text' => ($row->user_name ?: 'Someone').' · '.$words['action'].($same->count() > 1 ? " ({$same->count()} times)" : ''),
+                                'detail' => trim(($words['details'] ? $words['details'].' · ' : '').$row->created_at->format('g:i A')),
+                                'to' => $page($row->patient_id),
+                            ];
                     })),
             ],
         ];
