@@ -724,3 +724,14 @@ tbody tr.not-here { color: var(--muted); }
 /* A patient's mobile app account, on the patient page */
 .app-account { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 10px 0; display: flex; flex-direction: column; gap: 6px; }
 .app-account p { margin: 0; }
+
+/* Purchase invoice: one card a medicine, every figure labelled */
+.purchase-line { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+.purchase-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 8px 10px; }
+.purchase-fields label { display: flex; flex-direction: column; gap: 3px; font-size: 0.78rem; font-weight: 600; color: var(--muted); }
+.purchase-fields label.wide { grid-column: span 2; }
+.purchase-fields input, .purchase-fields select { padding: 6px 8px; width: 100%; }
+.purchase-foot { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); }
+.purchase-foot .check { margin: 0; font-size: 0.85rem; }
+.purchase-cost { font-size: 0.9rem; }
+.totals dd input.narrow { width: 110px; padding: 4px 8px; text-align: right; }

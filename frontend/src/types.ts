@@ -384,6 +384,13 @@ export type StockBatch = {
   units_received: number
   units_in_stock: number
   rack_no: string | null
+  box_no?: string | null
+  hsn_code?: string | null
+  discount_amount?: number
+  tax_on_free?: boolean
+  /** What one unit really cost once free packs are counted, and the margin against MRP. Sent with an invoice. */
+  unit_cost?: number
+  margin_percent?: number | null
   medicine?: { id: number; name: string; reorder_level?: number }
   invoice?: { id: number; invoice_no: string } | null
 }
@@ -394,6 +401,9 @@ export type PurchaseInvoice = {
   invoice_date: string
   subtotal: number
   tax: number
+  other_charges?: number
+  cash_discount?: number
+  round_off?: number
   total: number
   paid: number
   remarks: string | null

@@ -157,7 +157,7 @@ class PharmacyController extends Controller
 
     public function showPurchase(PurchaseInvoice $purchase): JsonResponse
     {
-        return response()->json($purchase->load(['stockist', 'batches.medicine:id,name']));
+        return response()->json($purchase->present());
     }
 
     /** Records a supplier invoice and puts every line into stock as its own batch. */
@@ -182,9 +182,17 @@ class PharmacyController extends Controller
             'items.*.discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'items.*.gst_percent' => ['required', 'numeric', 'min:0', 'max:40'],
             'items.*.rack_no' => ['nullable', 'string', 'max:30'],
+            'items.*.box_no' => ['nullable', 'string', 'max:30'],
+            'items.*.hsn_code' => ['nullable', 'string', 'max:20'],
+            'items.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
+            'items.*.tax_on_free' => ['nullable', 'boolean'],
+            'other_charges' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
+            'cash_discount' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
+            'round_off' => ['nullable', 'numeric', 'between:-10,10'],
         ], [
             'invoice_no.unique' => 'This invoice number is already entered for this stockist.',
             'items.required' => 'Add at least one medicine to the invoice.',
+            'round_off.between' => 'Rounding is a few paise or rupees either way, not more than ₹10.',
         ]);
 
         foreach ($data['items'] as $index => $item) {
@@ -200,18 +208,18 @@ class PharmacyController extends Controller
                 'invoice_no' => $data['invoice_no'],
                 'invoice_date' => $data['invoice_date'],
                 'remarks' => $data['remarks'] ?? null,
+                'other_charges' => (float) ($data['other_charges'] ?? 0), 'cash_discount' => (float) ($data['cash_discount'] ?? 0), 'round_off' => (float) ($data['round_off'] ?? 0),
                 'created_by' => $request->user()->id,
             ]);
 
-            $subtotal = $tax = 0;
-            foreach ($data['items'] as $item) {
+            foreach ($data['items'] as $index => $item) {
                 $free = (int) ($item['free_packs'] ?? 0);
                 $discount = (float) ($item['discount_percent'] ?? 0);
                 $units = ($item['packs'] + $free) * $item['units_per_pack'];
                 // The stockist charges for the paid packs only, less any trade discount, plus GST.
-                $line = round($item['packs'] * $item['pack_price'] * (1 - $discount / 100), 2);
-                $subtotal += $line;
-                $tax += round($line * $item['gst_percent'] / 100, 2);
+                if ((float) ($item['discount_amount'] ?? 0) > $item['packs'] * $item['pack_price'] * (1 - $discount / 100)) {
+                    throw ValidationException::withMessages(["items.{$index}.discount_amount" => 'Line '.($index + 1).': the discount is more than the line is worth.']);
+                }
 
                 $invoice->batches()->create([
                     'medicine_id' => $item['medicine_id'],
@@ -228,15 +236,23 @@ class PharmacyController extends Controller
                     'units_received' => $units,
                     'units_in_stock' => $units,
                     'rack_no' => $item['rack_no'] ?? null,
+                    'box_no' => $item['box_no'] ?? null,
+                    'hsn_code' => $item['hsn_code'] ?? null,
+                    'discount_amount' => (float) ($item['discount_amount'] ?? 0),
+                    'tax_on_free' => (bool) ($item['tax_on_free'] ?? false),
                 ]);
             }
 
-            $invoice->update(['subtotal' => round($subtotal, 2), 'tax' => round($tax, 2), 'total' => round($subtotal + $tax, 2)]);
+            $figures = $invoice->figures();
+            if ($figures['total'] < 0) {
+                throw ValidationException::withMessages(['cash_discount' => 'The cash discount is more than the invoice is worth.']);
+            }
+            $invoice->update($figures);
 
             return $invoice;
         });
 
-        return response()->json($invoice->load(['stockist', 'batches.medicine:id,name']), 201);
+        return response()->json($invoice->present(), 201);
     }
 
     // ---- Stock ----
@@ -392,7 +408,7 @@ class PharmacyController extends Controller
                 $lines[] = [
                     'medicine_id' => $batch->medicine_id, 'stock_batch_id' => $batch->id, 'medicine_name' => $name,
                     'batch_no' => $batch->batch_no, 'expiry' => $batch->expiry->toDateString(), 'quantity' => $item['quantity'],
-                    'unit_price' => $batch->unit_mrp, 'unit_cost' => $batch->unitCost(), 'discount_percent' => $discount, 'gst_percent' => $batch->gst_percent, 'amount' => $amount,
+                    'unit_price' => $batch->unit_mrp, 'unit_cost' => $batch->effectiveUnitCost(), 'discount_percent' => $discount, 'gst_percent' => $batch->gst_percent, 'amount' => $amount,
                 ];
                 $batch->decrement('units_in_stock', $item['quantity']);
             }

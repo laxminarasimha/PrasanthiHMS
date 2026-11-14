@@ -20,13 +20,29 @@ type Line = {
   discount_percent: string
   gst_percent: string
   rack_no: string
+  box_no: string
+  hsn_code: string
+  discount_amount: string
+  tax_on_free: boolean
 }
 
 const emptyLine = (): Line => ({
-  medicine_id: '', batch_no: '', expiry: '', units_per_pack: '', packs: '', free_packs: '', pack_price: '', pack_mrp: '', discount_percent: '', gst_percent: '', rack_no: '',
+  medicine_id: '', batch_no: '', expiry: '', units_per_pack: '', packs: '', free_packs: '', pack_price: '', pack_mrp: '', discount_percent: '', gst_percent: '', rack_no: '', box_no: '', hsn_code: '', discount_amount: '', tax_on_free: false,
 })
 
-const lineNet = (l: Line) => Number(l.packs || 0) * Number(l.pack_price || 0) * (1 - Number(l.discount_percent || 0) / 100)
+/** What the stockist charges for the line before tax: paid packs, less the discount in % and in rupees. */
+const lineNet = (l: Line) => Math.max(0, Number(l.packs || 0) * Number(l.pack_price || 0) * (1 - Number(l.discount_percent || 0) / 100) - Number(l.discount_amount || 0))
+const lineTax = (l: Line) => ((lineNet(l) + (l.tax_on_free ? Number(l.free_packs || 0) * Number(l.pack_price || 0) : 0)) * Number(l.gst_percent || 0)) / 100
+/** The real cost of one unit once the free packs are counted, and the margin against MRP. */
+const costing = (l: Line) => {
+  const perPack = Number(l.units_per_pack || 0)
+  const units = (Number(l.packs || 0) + Number(l.free_packs || 0)) * perPack
+  if (!units || !Number(l.pack_price)) return null
+  const cost = lineNet(l) / units
+  const mrp = perPack && Number(l.pack_mrp) ? Number(l.pack_mrp) / perPack : 0
+  return { units, free: Number(l.free_packs || 0) * perPack, cost, mrp, margin: mrp ? ((mrp - cost) / mrp) * 100 : null }
+}
+const two = (n: number) => Math.round(n * 100) / 100
 
 export function PharmacyPurchases() {
   const { user } = useAuth()
@@ -42,6 +58,7 @@ export function PharmacyPurchases() {
   const [invoiceNo, setInvoiceNo] = useState('')
   const [invoiceDate, setInvoiceDate] = useState(today())
   const [remarks, setRemarks] = useState('')
+  const [extras, setExtras] = useState({ other_charges: '', cash_discount: '', round_off: '' })
   const [lines, setLines] = useState<Line[]>([emptyLine()])
   const [errors, setErrors] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
@@ -63,6 +80,7 @@ export function PharmacyPurchases() {
     setInvoiceNo('')
     setInvoiceDate(today())
     setRemarks('')
+    setExtras({ other_charges: '', cash_discount: '', round_off: '' })
     setLines([emptyLine()])
     setAdding(true)
     setNotice('')
@@ -78,12 +96,14 @@ export function PharmacyPurchases() {
     setInvoiceNo(invoice.invoice_no)
     setInvoiceDate(invoice.invoice_date.slice(0, 10))
     setRemarks(invoice.remarks ?? '')
+    setExtras({ other_charges: invoice.other_charges ? String(invoice.other_charges) : '', cash_discount: invoice.cash_discount ? String(invoice.cash_discount) : '', round_off: invoice.round_off ? String(invoice.round_off) : '' })
     setReason('')
     setLines(
       (invoice.batches ?? []).map((b) => ({
         id: b.id, medicine_id: String(b.medicine_id), batch_no: b.batch_no, expiry: b.expiry.slice(0, 7), units_per_pack: String(b.units_per_pack),
         packs: String(b.packs), free_packs: String(b.free_packs), pack_price: String(b.pack_price), pack_mrp: String(b.pack_mrp),
-        discount_percent: String(b.discount_percent), gst_percent: String(b.gst_percent), rack_no: b.rack_no ?? '',
+        discount_percent: String(b.discount_percent), gst_percent: String(b.gst_percent), rack_no: b.rack_no ?? '', box_no: b.box_no ?? '', hsn_code: b.hsn_code ?? '',
+        discount_amount: b.discount_amount ? String(b.discount_amount) : '', tax_on_free: Boolean(b.tax_on_free),
       })),
     )
     setViewing(null)
@@ -92,7 +112,7 @@ export function PharmacyPurchases() {
     setErrors([])
   }
 
-  const setLine = (index: number, key: keyof Line, value: string) =>
+  const setLine = (index: number, key: keyof Line, value: string | boolean) =>
     setLines((rows) =>
       rows.map((row, i) => {
         if (i !== index) return row
@@ -103,6 +123,15 @@ export function PharmacyPurchases() {
           if (medicine) {
             next.units_per_pack = String(medicine.units_per_pack)
             next.gst_percent = String(medicine.gst_percent)
+            next.hsn_code = medicine.hsn_code ?? ''
+          }
+        }
+        // A scheme typed the way it is said, "10+2", fills both boxes: ten paid, two free.
+        if (key === 'packs' && typeof value === 'string') {
+          const scheme = value.match(/^\s*(\d+)\s*\+\s*(\d+)\s*$/)
+          if (scheme) {
+            next.packs = scheme[1]
+            next.free_packs = scheme[2]
           }
         }
         return next
@@ -111,7 +140,8 @@ export function PharmacyPurchases() {
 
   const filled = lines.filter((l) => l.medicine_id || l.batch_no || l.packs)
   const subtotal = filled.reduce((sum, l) => sum + lineNet(l), 0)
-  const tax = filled.reduce((sum, l) => sum + (lineNet(l) * Number(l.gst_percent || 0)) / 100, 0)
+  const tax = filled.reduce((sum, l) => sum + lineTax(l), 0)
+  const grand = subtotal + tax + Number(extras.other_charges || 0) - Number(extras.cash_discount || 0) + Number(extras.round_off || 0)
 
   const save = async (e: FormEvent) => {
     e.preventDefault()
@@ -123,7 +153,10 @@ export function PharmacyPurchases() {
         invoice_no: invoiceNo,
         invoice_date: invoiceDate,
         remarks: remarks || null,
-        items: filled.map((l) => ({ ...l, free_packs: l.free_packs || 0, discount_percent: l.discount_percent || 0, rack_no: l.rack_no || null })),
+        other_charges: extras.other_charges || 0,
+        cash_discount: extras.cash_discount || 0,
+        round_off: extras.round_off || 0,
+        items: filled.map((l) => ({ ...l, free_packs: l.free_packs || 0, discount_percent: l.discount_percent || 0, discount_amount: l.discount_amount || 0, rack_no: l.rack_no || null, box_no: l.box_no || null, hsn_code: l.hsn_code || null })),
       }
       const res = editing ? await api.put<PurchaseInvoice>(`/pharmacy/purchases/${editing.id}`, { ...body, reason }) : await api.post<PurchaseInvoice>('/pharmacy/purchases', body)
       setNotice(editing ? `Invoice ${res.data.invoice_no} changed and stock corrected. The change is recorded in the Invoice modified report.` : `Invoice ${res.data.invoice_no} saved. ${res.data.batches?.length ?? 0} batch(es) added to stock.`)
@@ -166,53 +199,89 @@ export function PharmacyPurchases() {
 
           {editing && <p className="muted small">Correct what was typed wrongly. Changing the packs changes the stock by the same number of units. Medicines cannot be added or removed here; use a stock return or a new invoice for that.</p>}
           <h3>Medicines received</h3>
-          <div className="rx">
-            <div className="purchase-row rx-head">
-              <span>Medicine</span>
-              <span>Batch</span>
-              <span>Expiry</span>
-              <span>Units/pack</span>
-              <span>Packs</span>
-              <span>Free</span>
-              <span>Price/pack</span>
-              <span>MRP/pack</span>
-              <span>Disc %</span>
-              <span>GST %</span>
-              <span>Rack</span>
-              <span className="num">Net</span>
-              <span />
-            </div>
-            {lines.map((l, i) => (
-              <div className="purchase-row" key={i}>
-                <select value={l.medicine_id} disabled={Boolean(editing)} onChange={(e) => setLine(i, 'medicine_id', e.target.value)} aria-label={`Medicine ${i + 1}`}>
-                  <option value="">Select medicine</option>
-                  {medicines.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-                <input value={l.batch_no} onChange={(e) => setLine(i, 'batch_no', e.target.value)} aria-label="Batch number" />
-                <input type="month" value={l.expiry} onChange={(e) => setLine(i, 'expiry', e.target.value)} aria-label="Expiry month" />
-                <input type="number" min={1} value={l.units_per_pack} disabled={Boolean(editing)} onChange={(e) => setLine(i, 'units_per_pack', e.target.value)} aria-label="Units per pack" />
-                <input type="number" min={1} value={l.packs} onChange={(e) => setLine(i, 'packs', e.target.value)} aria-label="Packs" />
-                <input type="number" min={0} value={l.free_packs} onChange={(e) => setLine(i, 'free_packs', e.target.value)} aria-label="Free packs" />
-                <input type="number" min={0} step="0.01" value={l.pack_price} onChange={(e) => setLine(i, 'pack_price', e.target.value)} aria-label="Price per pack" />
-                <input type="number" min={0} step="0.01" value={l.pack_mrp} onChange={(e) => setLine(i, 'pack_mrp', e.target.value)} aria-label="MRP per pack" />
-                <input type="number" min={0} max={100} step="0.01" value={l.discount_percent} onChange={(e) => setLine(i, 'discount_percent', e.target.value)} aria-label="Discount percent" />
-                <input type="number" min={0} step="0.01" value={l.gst_percent} onChange={(e) => setLine(i, 'gst_percent', e.target.value)} aria-label="GST percent" />
-                <input value={l.rack_no} onChange={(e) => setLine(i, 'rack_no', e.target.value)} aria-label="Rack" />
-                <span className="num mono">{rupees(Math.round(lineNet(l) * 100) / 100)}</span>
-                {editing ? (
-                  <span />
-                ) : (
-                  <button type="button" className="link danger" onClick={() => setLines((rows) => (rows.length > 1 ? rows.filter((_, r) => r !== i) : [emptyLine()]))}>
-                    Remove
-                  </button>
-                )}
+          <p className="muted small">For a scheme, type it the way the stockist says it: <b>10+2</b> in the Qty box means ten paid packs and two free. Stock goes up by all twelve; you pay for ten.</p>
+          {lines.map((l, i) => {
+            const c = costing(l)
+            const num = (key: keyof Line, label: string, more: { step?: string; min?: number; max?: number; disabled?: boolean } = {}) => (
+              <label>
+                {label}
+                <input type="number" min={more.min ?? 0} max={more.max} step={more.step} disabled={more.disabled} value={String(l[key] ?? '')} onChange={(e) => setLine(i, key, e.target.value)} />
+              </label>
+            )
+            return (
+              <div className="purchase-line" key={i}>
+                <div className="purchase-fields">
+                  <label className="wide">
+                    Medicine
+                    <select value={l.medicine_id} disabled={Boolean(editing)} onChange={(e) => setLine(i, 'medicine_id', e.target.value)} aria-label={`Medicine ${i + 1}`}>
+                      <option value="">Select medicine</option>
+                      {medicines.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Batch
+                    <input value={l.batch_no} onChange={(e) => setLine(i, 'batch_no', e.target.value)} />
+                  </label>
+                  <label>
+                    Expiry
+                    <input type="month" value={l.expiry} onChange={(e) => setLine(i, 'expiry', e.target.value)} />
+                  </label>
+                  {num('units_per_pack', 'Units in a pack', { min: 1, disabled: Boolean(editing) })}
+                  <label>
+                    Qty (packs)
+                    <input inputMode="numeric" placeholder="10 or 10+2" value={l.packs} onChange={(e) => setLine(i, 'packs', e.target.value)} onBlur={(e) => setLine(i, 'packs', e.target.value.replace(/[^0-9]/g, ''))} />
+                  </label>
+                  {num('free_packs', 'Free (packs)')}
+                  {num('pack_price', 'Purchase rate / pack ₹', { step: '0.01' })}
+                  {num('pack_mrp', 'MRP / pack ₹', { step: '0.01' })}
+                  {num('discount_percent', 'Discount %', { step: '0.01', max: 100 })}
+                  {num('discount_amount', 'Discount ₹', { step: '0.01' })}
+                  {num('gst_percent', 'GST %', { step: '0.01' })}
+                  <label>
+                    HSN code
+                    <input maxLength={20} value={l.hsn_code} onChange={(e) => setLine(i, 'hsn_code', e.target.value)} />
+                  </label>
+                  <label>
+                    Rack
+                    <input maxLength={30} value={l.rack_no} onChange={(e) => setLine(i, 'rack_no', e.target.value)} />
+                  </label>
+                  <label>
+                    Box
+                    <input maxLength={30} value={l.box_no} onChange={(e) => setLine(i, 'box_no', e.target.value)} />
+                  </label>
+                </div>
+                <div className="purchase-foot">
+                  <label className="check">
+                    <input type="checkbox" checked={l.tax_on_free} disabled={!Number(l.free_packs)} onChange={(e) => setLine(i, 'tax_on_free', e.target.checked)} />
+                    GST charged on the free packs too
+                  </label>
+                  <span className="grow purchase-cost">
+                    {c ? (
+                      <>
+                        You pay <b>{rupees(two(lineNet(l)))}</b> + GST {rupees(two(lineTax(l)))} · stock goes up by <b>{c.units}</b> units{c.free ? ` (${c.free} free)` : ''} · real cost <b>{rupees(two(c.cost))}</b> a unit
+                        {c.mrp ? (
+                          <>
+                            {' '}against MRP {rupees(two(c.mrp))} · margin <b className={c.margin !== null && c.margin < 0 ? 'due' : 'settled'}>{c.margin !== null ? `${c.margin.toFixed(1)}%` : '—'}</b>
+                          </>
+                        ) : null}
+                      </>
+                    ) : (
+                      <span className="muted">Fill in the quantity and rate to see the real cost and margin.</span>
+                    )}
+                  </span>
+                  {!editing && (
+                    <button type="button" className="link danger" onClick={() => setLines((rows) => (rows.length > 1 ? rows.filter((_, r) => r !== i) : [emptyLine()]))}>
+                      Remove
+                    </button>
+                  )}
+                </div>
               </div>
-            ))}
-          </div>
+            )
+          })}
           {!editing && (
             <button type="button" className="link add-medicine" onClick={() => setLines((rows) => [...rows, emptyLine()])}>
               + Add another medicine
@@ -224,8 +293,20 @@ export function PharmacyPurchases() {
             <dd>{rupees(Math.round(subtotal * 100) / 100)}</dd>
             <dt>GST</dt>
             <dd>{rupees(Math.round(tax * 100) / 100)}</dd>
+            <dt>Freight and other charges ₹</dt>
+            <dd>
+              <input type="number" min={0} step="0.01" className="narrow num" value={extras.other_charges} onChange={(e) => setExtras({ ...extras, other_charges: e.target.value })} aria-label="Freight and other charges" />
+            </dd>
+            <dt>Cash discount on the bill ₹</dt>
+            <dd>
+              <input type="number" min={0} step="0.01" className="narrow num" value={extras.cash_discount} onChange={(e) => setExtras({ ...extras, cash_discount: e.target.value })} aria-label="Cash discount" />
+            </dd>
+            <dt>Round off ₹ (+ or −)</dt>
+            <dd>
+              <input type="number" min={-10} max={10} step="0.01" className="narrow num" value={extras.round_off} onChange={(e) => setExtras({ ...extras, round_off: e.target.value })} aria-label="Round off" />
+            </dd>
             <dt className="strong">Invoice total</dt>
-            <dd className="strong">{rupees(Math.round((subtotal + tax) * 100) / 100)}</dd>
+            <dd className="strong">{rupees(two(grand))}</dd>
           </dl>
 
           {errors.length > 0 && (
@@ -322,8 +403,12 @@ export function PharmacyPurchases() {
                     <th>Batch</th>
                     <th>Expiry</th>
                     <th className="num">Packs</th>
-                    <th className="num">Price</th>
-                    <th className="num">MRP</th>
+                    <th className="num">Rate / pack</th>
+                    <th className="num">MRP / pack</th>
+                    <th className="num">Disc</th>
+                    <th className="num">GST %</th>
+                    <th className="num">Real cost / unit</th>
+                    <th className="num">Margin</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -338,6 +423,13 @@ export function PharmacyPurchases() {
                       </td>
                       <td className="num">{rupees(b.pack_price)}</td>
                       <td className="num">{rupees(b.pack_mrp)}</td>
+                      <td className="num">{[b.discount_percent ? `${b.discount_percent}%` : '', b.discount_amount ? rupees(b.discount_amount) : ''].filter(Boolean).join(' + ') || '—'}</td>
+                      <td className="num">
+                        {b.gst_percent}
+                        {b.tax_on_free ? <small className="muted block">also on free</small> : null}
+                      </td>
+                      <td className="num">{b.unit_cost !== undefined ? rupees(b.unit_cost) : '—'}</td>
+                      <td className={`num ${b.margin_percent != null && b.margin_percent < 0 ? 'due' : ''}`}>{b.margin_percent != null ? `${b.margin_percent}%` : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -347,6 +439,24 @@ export function PharmacyPurchases() {
                 <dd>{rupees(viewing.subtotal)}</dd>
                 <dt>GST</dt>
                 <dd>{rupees(viewing.tax)}</dd>
+                {viewing.other_charges ? (
+                  <>
+                    <dt>Freight and other charges</dt>
+                    <dd>{rupees(viewing.other_charges)}</dd>
+                  </>
+                ) : null}
+                {viewing.cash_discount ? (
+                  <>
+                    <dt>Cash discount</dt>
+                    <dd>−{rupees(viewing.cash_discount)}</dd>
+                  </>
+                ) : null}
+                {viewing.round_off ? (
+                  <>
+                    <dt>Round off</dt>
+                    <dd>{viewing.round_off > 0 ? '+' : '−'}{rupees(Math.abs(viewing.round_off))}</dd>
+                  </>
+                ) : null}
                 <dt className="strong">Total</dt>
                 <dd className="strong">{rupees(viewing.total)}</dd>
                 <dt>Paid to stockist</dt>
