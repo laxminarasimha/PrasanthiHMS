@@ -291,6 +291,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::get('/reports/summary', [ReportController::class, 'summary']);
+    Route::get('/reports/find-patients', [HospitalReportController::class, 'findPatients']);
     Route::get('/reports/list/{type}', [HospitalReportController::class, 'show']);
 
     Route::middleware(EnsureCanManageStaff::class)->group(function () {

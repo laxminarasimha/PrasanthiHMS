@@ -630,3 +630,10 @@ tbody tr.not-here { color: var(--muted); }
 .tick-list { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 8px 0 4px; }
 .tick { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .tick input { width: auto; }
+
+/* Reports: find patients */
+.finder { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 14px; align-items: end; }
+.finder label { display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem; color: var(--muted); font-weight: 600; }
+.finder label.wide { grid-column: span 2; }
+.finder-actions { display: flex; gap: 8px; }
+@media (max-width: 520px) { .finder { grid-template-columns: 1fr 1fr; } }
