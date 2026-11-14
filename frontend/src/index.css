@@ -1015,3 +1015,11 @@ tbody tr.not-here { color: var(--muted); }
 .day-form .actions { display: flex; gap: 8px; justify-content: flex-end; }
 .cash-close { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; align-items: stretch; }
 .cash-close .field { justify-content: center; }
+
+/* Opening stock from a sheet */
+.file-btn { cursor: pointer; }
+.import-pick { margin-top: 12px; }
+.import-pick .check, .import-agree .check { margin-top: 0; }
+.import-agree { margin: 12px 0; }
+.import-list-head { margin-top: 18px; }
+.import-warn { color: var(--warn); }

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors } from '../../api'
 import { useAuth } from '../../auth'
+import { OpeningStockImport } from '../../components/OpeningStockImport'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { rupees } from '../../format'
 import type { Medicine } from '../../types'
@@ -27,6 +28,7 @@ export function PharmacyOpeningStock() {
   const [errors, setErrors] = useState<string[]>([])
   const [notice, setNotice] = useState('')
   const [saving, setSaving] = useState(false)
+  const [way, setWay] = useState<'type' | 'sheet'>('type')
 
   useEffect(() => {
     api.get<Medicine[]>('/pharmacy/medicines').then((res) => setMedicines(res.data))
@@ -70,7 +72,21 @@ export function PharmacyOpeningStock() {
   return (
     <>
       <PharmacyTabs />
-      <form className="card" onSubmit={save} noValidate>
+      <div className="tabs no-print">
+        <button type="button" className={way === 'type' ? 'active' : ''} onClick={() => setWay('type')}>
+          Type it in
+        </button>
+        <button type="button" className={way === 'sheet' ? 'active' : ''} onClick={() => setWay('sheet')}>
+          Import a sheet
+        </button>
+      </div>
+      {way === 'sheet' && (
+        <>
+          {notice && <p className="notice">{notice}</p>}
+          <OpeningStockImport canSave={Boolean(user?.can_run_pharmacy)} onAdded={setNotice} />
+        </>
+      )}
+      <form className="card" onSubmit={save} noValidate hidden={way !== 'type'}>
         <div className="toolbar">
           <h1 className="grow">Opening stock</h1>
         </div>
