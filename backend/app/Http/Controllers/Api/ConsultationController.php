@@ -22,7 +22,7 @@ class ConsultationController extends Controller
     /** The parts of a visit note, by the names used on screen, for the record of what was changed. */
     private const NOTE_LABELS = [
         'complaints' => 'Complaints', 'history' => 'History', 'past_medication' => 'Past medication', 'general_exam' => 'General examination',
-        'general_exam_notes' => 'Examination notes', 'findings' => 'Findings', 'diagnosis' => 'Diagnosis', 'assessment_plan' => 'Plan',
+        'general_exam_notes' => 'Examination notes', 'findings' => 'Findings', 'diagnosis' => 'Diagnosis', 'diagnosis_codes' => 'Diagnosis codes', 'assessment_plan' => 'Plan',
         'tests_advised' => 'Tests advised', 'investigations' => 'Test results', 'advice' => 'Advice', 'follow_up_on' => 'Next visit', 'refer_to' => 'Referral',
         'quick_notes' => 'Quick notes', 'weight_kg' => 'Weight', 'height_cm' => 'Height', 'bp_systolic' => 'BP', 'bp_diastolic' => 'BP ',
         'pulse' => 'Pulse', 'temperature_f' => 'Temperature', 'spo2' => 'SpO2', 'resp_rate' => 'Respiratory rate',
@@ -101,6 +101,8 @@ class ConsultationController extends Controller
             'complaints' => ['nullable', 'string', 'max:5000'],
             'findings' => ['nullable', 'string', 'max:5000'],
             'diagnosis' => ['nullable', 'string', 'max:5000'],
+            'diagnosis_codes' => ['sometimes', 'nullable', 'array', 'max:20'],
+            'diagnosis_codes.*.code' => ['required', 'string', 'max:10', 'distinct', 'exists:icd_codes,code'],
             'tests_advised' => ['nullable', 'string', 'max:5000'],
             'investigations' => ['sometimes', 'nullable', 'array', 'max:40'],
             'investigations.*.name' => ['required', 'string', 'max:100'],
@@ -118,6 +120,7 @@ class ConsultationController extends Controller
             'medicines.*.instructions' => ['nullable', 'string', 'max:255'],
         ], [
             'medicines.*.medicine.required' => 'Enter the medicine name or remove the empty row.',
+            'diagnosis_codes.*.code.exists' => 'That diagnosis code is not in the list.',
             'investigations.*.name.required' => 'Enter the test name or remove the empty row.',
             'investigations.*.date.before_or_equal' => 'A test result cannot be dated in the future.',
             'bp_systolic.required_with' => 'Enter both blood pressure values.',
@@ -133,6 +136,11 @@ class ConsultationController extends Controller
         // Keep only the signs that were actually marked.
         if (isset($data['general_exam'])) {
             $data['general_exam'] = array_filter($data['general_exam']) ?: null;
+        }
+        if (array_key_exists('diagnosis_codes', $data)) {
+            // The names are taken from the list itself, never from what was sent.
+            $names = \App\Models\IcdCode::whereIn('code', array_column($data['diagnosis_codes'] ?? [], 'code'))->pluck('name', 'code');
+            $data['diagnosis_codes'] = collect($data['diagnosis_codes'] ?? [])->map(fn ($row) => ['code' => $row['code'], 'name' => $names[$row['code']]])->values()->all() ?: null;
         }
         if (array_key_exists('investigations', $data)) {
             $data['investigations'] = collect($data['investigations'] ?? [])->map(fn ($row) => ['name' => $row['name'], 'result' => $row['result'] ?? null, 'date' => $row['date'] ?? null])->values()->all() ?: null;
@@ -222,6 +230,27 @@ class ConsultationController extends Controller
                 ->limit(30)
                 ->get()
         );
+    }
+
+    /** Diagnoses from the ICD-10 list that match what is typed: a code ("E11") or words ("diabetes"). */
+    public function icdCodes(Request $request): JsonResponse
+    {
+        $term = trim((string) $request->query('q'));
+        if (mb_strlen($term) < 2) {
+            return response()->json([]);
+        }
+        $like = str_replace(['%', '_'], ['\%', '\_'], $term);
+        $words = array_filter(explode(' ', $like));
+
+        $found = \App\Models\IcdCode::query()
+            ->where(fn ($q) => $q->where('code', 'like', $like.'%')->orWhere(fn ($w) => collect($words)->each(fn ($word) => $w->where('name', 'like', '%'.$word.'%'))))
+            ->limit(300)->get(['code', 'name']);
+
+        // A matching code first, then names that start with the words, the shorter and broader entries before the finer ones.
+        $lower = mb_strtolower($term);
+        $rank = fn ($c) => (str_starts_with(mb_strtolower($c->code), $lower) ? 0 : (str_starts_with(mb_strtolower($c->name), $lower) ? 1 : 2)) * 1000 + strlen($c->code) * 10 + min(9, intdiv(mb_strlen($c->name), 20));
+
+        return response()->json($found->sortBy(fn ($c) => [$rank($c), $c->code])->take(25)->values());
     }
 
     /** Medicine names to offer while typing: the pharmacy's own list first, then names prescribed before. */

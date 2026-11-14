@@ -38,6 +38,7 @@ class HospitalReportController extends Controller
         'consultations' => 'Doctor: consultation report',
         'prescriptions' => 'Doctor: prescription report',
         'diagnoses' => 'Doctor: diagnosis report',
+        'diagnosis-codes' => 'Doctor: coded diagnoses (ICD-10)',
         'tests-advised' => 'Doctor: tests distribution',
         'test-outcomes' => 'Doctor: tests outcome',
         'lab-tests' => 'Lab: tests done',
@@ -310,6 +311,18 @@ class HospitalReportController extends Controller
         return [[self::col('name', 'Diagnosis'), self::col('times', 'Visits', 'number')], $this->countLines($this->completed($from, $to)->whereNotNull('diagnosis')->pluck('diagnosis'))];
     }
 
+    /** How many visits and patients carried each ICD-10 code. */
+    private function diagnosisCodes(Carbon $from, Carbon $to): array
+    {
+        $rows = $this->completed($from, $to)->whereNotNull('diagnosis_codes')->get(['patient_id', 'diagnosis_codes'])
+            ->flatMap(fn ($c) => collect($c->diagnosis_codes)->map(fn ($d) => $d + ['patient_id' => $c->patient_id]))
+            ->groupBy('code')
+            ->map(fn (Collection $group, $code) => ['code' => $code, 'name' => $group->first()['name'], 'visits' => $group->count(), 'patients' => $group->pluck('patient_id')->unique()->count()])
+            ->sortByDesc('visits');
+
+        return [[self::col('code', 'Code'), self::col('name', 'Diagnosis'), self::col('visits', 'Visits', 'number'), self::col('patients', 'Patients', 'number', false)], $rows];
+    }
+
     /** Tests ordered from the lab for visits in the period, plus tests written as advised. */
     private function testsAdvised(Carbon $from, Carbon $to): array
     {
@@ -425,6 +438,7 @@ class HospitalReportController extends Controller
             'visit_from' => ['nullable', 'date'],
             'visit_to' => ['nullable', 'date', 'after_or_equal:visit_from'],
             'diagnosis' => ['nullable', 'string', 'max:100'],
+            'icd' => ['nullable', 'string', 'max:10', 'regex:/^[A-Za-z][0-9A-Za-z.]*$/'],
             'medicine' => ['nullable', 'string', 'max:100'],
             'test' => ['nullable', 'string', 'max:100'],
             'value_from' => ['nullable', 'numeric'],
@@ -448,11 +462,13 @@ class HospitalReportController extends Controller
             ->when(isset($f['age_from']), fn ($q) => $q->whereDate('date_of_birth', '<=', today()->subYears((int) $f['age_from'])))
             ->when(isset($f['age_to']), fn ($q) => $q->whereDate('date_of_birth', '>', today()->subYears((int) $f['age_to'] + 1)));
 
-        $visits = filled($f['diagnosis'] ?? null) || filled($f['medicine'] ?? null) || $from || $to;
+        $visits = filled($f['diagnosis'] ?? null) || filled($f['icd'] ?? null) || filled($f['medicine'] ?? null) || $from || $to;
         if ($visits) {
             $query->whereIn('id', Consultation::query()
                 ->tap(fn ($q) => $inRange($q, 'created_at'))
                 ->when(filled($f['diagnosis'] ?? null), fn ($q) => $q->where('diagnosis', 'like', $like($f['diagnosis'])))
+                // "E11" finds E11 and everything under it (E11.9 and so on).
+                ->when(filled($f['icd'] ?? null), fn ($q) => $q->where('diagnosis_codes', 'like', '%"code":"'.strtoupper(trim($f['icd'])).'%'))
                 ->when(filled($f['medicine'] ?? null), fn ($q) => $q->whereIn('id', PrescriptionItem::where('medicine', 'like', $like($f['medicine']))->select('consultation_id')))
                 ->select('patient_id'));
         }

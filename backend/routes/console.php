@@ -269,3 +269,51 @@ Artisan::command('hms:backup {--remote : Back up the hosting database to this co
     return 0;
 })->purpose('Back up the database to a compressed SQL file');
 
+/*
+ * Loads the ICD-10 diagnosis list. The file has one code per line: the code, a tab, the name.
+ * Lines starting with # are ignored. Without a file it loads the short ICD-10-CM list kept in
+ * database/data. With --replace the old list is emptied first (use this when switching to the
+ * WHO list); codes already saved on visits keep their own copy of the name either way.
+ */
+Artisan::command('hms:import-icd {file? : Tab-separated file of code and name} {--remote : Load into the remote database} {--replace : Empty the list first}', function () {
+    $connection = $this->option('remote') ? 'remote' : config('database.default');
+    $path = $this->argument('file') ?: database_path('data/icd10cm-short.tsv');
+    if (! is_file($path)) {
+        $this->error('Could not find a list file at '.$path);
+
+        return 1;
+    }
+
+    $rows = [];
+    foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        if (str_starts_with($line, '#')) {
+            continue;
+        }
+        [$code, $name] = array_pad(explode("\t", $line, 2), 2, '');
+        $code = strtoupper(trim($code));
+        $name = trim($name);
+        if (preg_match('/^[A-Z][0-9][0-9A-Z](\.[0-9A-Z]{1,4})?$/', $code) && $name !== '') {
+            $rows[$code] = ['code' => $code, 'name' => mb_substr($name, 0, 300)];
+        }
+    }
+    if (count($rows) < 100) {
+        $this->error('Only '.count($rows).' usable lines were found, so nothing was loaded. Each line should be: code, a tab, the name.');
+
+        return 1;
+    }
+
+    $db = DB::connection($connection);
+    $db->transaction(function () use ($db, $rows) {
+        if ($this->option('replace')) {
+            $db->table('icd_codes')->delete();
+        }
+        foreach (array_chunk(array_values($rows), 500) as $chunk) {
+            $db->table('icd_codes')->upsert($chunk, ['code'], ['name']);
+        }
+    });
+
+    $this->info('The '.$connection.' database now has '.$db->table('icd_codes')->count().' diagnosis codes ('.count($rows).' read from '.basename($path).').');
+
+    return 0;
+})->purpose('Load the ICD-10 diagnosis code list');
+

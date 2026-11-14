@@ -56,6 +56,7 @@ function VisitNotes({ v }: { v: Consultation }) {
     ['Past medication', v.past_medication],
     ['Examination', [v.general_exam_notes, v.findings].filter(Boolean).join('\n') || null],
     ['Diagnosis', v.diagnosis],
+    ['ICD-10', v.diagnosis_codes?.length ? v.diagnosis_codes.map((d) => `${d.code} ${d.name}`).join('; ') : null],
     ['Plan', v.assessment_plan],
     ['Tests advised', v.tests_advised],
     ['Advice', v.advice],

@@ -662,3 +662,16 @@ tbody tr.not-here { color: var(--muted); }
 .rx-warnings { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--danger-soft); border: 1px solid var(--danger); }
 .rx-warnings p { margin: 0 0 4px; color: var(--danger); }
 .rx-warnings p.duplicate { color: #8a4a08; }
+
+/* ICD-10 diagnosis codes on the visit pad */
+.icd-picker { position: relative; margin-top: 8px; }
+.icd-chosen { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.icd-chosen li { display: flex; gap: 8px; align-items: baseline; padding: 4px 8px; background: var(--bg); border-radius: 6px; font-size: 0.92rem; }
+.icd-chosen li b { font-family: ui-monospace, monospace; color: var(--brand-dark); white-space: nowrap; }
+.icd-chosen li button { margin-left: auto; font-size: 1.1rem; line-height: 1; text-decoration: none; }
+.icd-picker .picker { position: absolute; left: 0; right: 0; top: 100%; z-index: 30; max-height: 320px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); margin: 4px 0 0; padding: 4px; list-style: none; }
+.icd-picker .picker button { display: flex; gap: 10px; align-items: baseline; width: 100%; text-align: left; background: none; border: 0; padding: 7px 8px; border-radius: 6px; cursor: pointer; font: inherit; color: var(--text); }
+.icd-picker .picker button:hover { background: var(--bg); }
+.icd-picker .picker strong { font-family: ui-monospace, monospace; min-width: 52px; color: var(--brand-dark); }
+.icd-picker .picker li.none { padding: 10px; color: var(--muted); }
+.icd-line { font-size: 0.85em; color: #444; }

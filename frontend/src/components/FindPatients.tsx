@@ -6,7 +6,7 @@ import { downloadCsv, longDate, today } from '../format'
 type Column = { key: string; label: string; type: string }
 type Found = { columns: Column[]; rows: (Record<string, string | number | null> & { id: number })[]; total: number; all_patients: number }
 
-const blank = { age_from: '', age_to: '', gender: '', visit_from: '', visit_to: '', diagnosis: '', medicine: '', test: '', value_from: '', value_to: '' }
+const blank = { age_from: '', age_to: '', gender: '', visit_from: '', visit_to: '', diagnosis: '', icd: '', medicine: '', test: '', value_from: '', value_to: '' }
 
 /** Finds patients by age, gender, visit dates, diagnosis, medicine or a lab value: for recalls, camps and audits. */
 export function FindPatients() {
@@ -67,6 +67,10 @@ export function FindPatients() {
         <label className="wide">
           Diagnosis contains
           <input placeholder="e.g. diabetes" maxLength={100} value={form.diagnosis} onChange={set('diagnosis')} />
+        </label>
+        <label>
+          ICD-10 code
+          <input placeholder="e.g. E11" maxLength={10} value={form.icd} onChange={set('icd')} />
         </label>
         <label className="wide">
           Was given a medicine containing
