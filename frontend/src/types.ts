@@ -346,6 +346,11 @@ export type Medicine = {
   type: string | null
   manufacturer: string | null
   category: string | null
+  sub_category?: string | null
+  /** Inventory classes: Vital/Essential/Desirable, Scarce/Difficult/Easy, Fast/Slow/Non-moving. */
+  ved?: 'V' | 'E' | 'D' | null
+  sde?: 'S' | 'D' | 'E' | null
+  fsn?: 'F' | 'S' | 'N' | null
   is_scheduled: boolean
   hsn_code: string | null
   gst_percent: number
@@ -355,7 +360,7 @@ export type Medicine = {
   units_in_stock: number
 }
 
-export type Stockist = { id: number; name: string; phone: string | null; gstin: string | null; address: string | null }
+export type Stockist = { id: number; name: string; phone: string | null; email?: string | null; gstin: string | null; address: string | null; invoices?: number; billed?: number; paid?: number; returned?: number; balance?: number }
 
 export type StockBatch = {
   id: number

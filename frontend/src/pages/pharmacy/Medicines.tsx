@@ -3,12 +3,18 @@ import { api, fieldErrors, type FieldErrors } from '../../api'
 import { useAuth } from '../../auth'
 import { SelectField, TextField } from '../../components/Field'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
+import { downloadCsv, rupees, today } from '../../format'
 import type { Manufacturer, Medicine, Stockist } from '../../types'
 
-const TYPES = ['Tablet', 'Capsule', 'Syrup', 'Injection', 'Ointment', 'Drops', 'Sachet', 'Inhaler', 'Surgical', 'Other'].map((t) => ({ value: t, label: t }))
+const TYPES = ['Tablet', 'Capsule', 'Chewable Tablet', 'Dispersible Tablet', 'Syrup', 'Suspension', 'Solution', 'Injection', 'Ointment', 'Cream', 'Gel', 'Lotion', 'Drops', 'Powder', 'Sachet', 'Inhaler', 'Spray', 'Suppository', 'Surgical', 'Other'].map((t) => ({ value: t, label: t }))
+const CATEGORIES = ['General', 'Scheduled Drug H', 'Scheduled Drug H1', 'Scheduled Drug X', 'Fast Moving', 'Emergency Medicine', 'High Risk Medicine', 'Surgical and consumables']
+const VED = [{ value: 'V', label: 'Vital' }, { value: 'E', label: 'Essential' }, { value: 'D', label: 'Desirable' }]
+const SDE = [{ value: 'S', label: 'Scarce' }, { value: 'D', label: 'Difficult to get' }, { value: 'E', label: 'Easy to get' }]
+const FSN = [{ value: 'F', label: 'Fast moving' }, { value: 'S', label: 'Slow moving' }, { value: 'N', label: 'Non-moving' }]
+const classLabel = (list: { value: string; label: string }[], value?: string | null) => list.find((o) => o.value === value)?.label
 
-const blankMedicine = { name: '', type: 'Tablet', manufacturer: '', category: '', hsn_code: '', gst_percent: '12', units_per_pack: '10', reorder_level: '0', is_active: true, is_scheduled: false }
-const blankStockist = { name: '', phone: '', gstin: '', address: '' }
+const blankMedicine = { name: '', type: 'Tablet', manufacturer: '', category: '', sub_category: '', ved: '', sde: '', fsn: '', hsn_code: '', gst_percent: '12', units_per_pack: '10', reorder_level: '0', is_active: true, is_scheduled: false }
+const blankStockist = { name: '', phone: '', email: '', gstin: '', address: '' }
 
 type Editing = { kind: 'medicine' | 'stockist' | 'manufacturer'; id: number | null } | null
 
@@ -20,6 +26,7 @@ export function PharmacyMedicines() {
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([])
   const [manufacturerName, setManufacturerName] = useState('')
   const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState({ category: '', ved: '', sde: '', fsn: '' })
   const [editing, setEditing] = useState<Editing>(null)
   const [medicine, setMedicine] = useState(blankMedicine)
   const [stockist, setStockist] = useState(blankStockist)
@@ -28,8 +35,8 @@ export function PharmacyMedicines() {
   const [notice, setNotice] = useState('')
 
   const load = useCallback(() => {
-    api.get<Medicine[]>('/pharmacy/medicines', { params: { all: 1, q: query.trim() || undefined } }).then((res) => setMedicines(res.data))
-  }, [query])
+    api.get<Medicine[]>('/pharmacy/medicines', { params: { all: 1, q: query.trim() || undefined, category: filter.category || undefined, ved: filter.ved || undefined, sde: filter.sde || undefined, fsn: filter.fsn || undefined } }).then((res) => setMedicines(res.data))
+  }, [query, filter])
 
   useEffect(() => {
     const timer = setTimeout(load, 250)
@@ -49,7 +56,7 @@ export function PharmacyMedicines() {
     setMedicine(
       m
         ? {
-            name: m.name, type: m.type ?? '', manufacturer: m.manufacturer ?? '', category: m.category ?? '', hsn_code: m.hsn_code ?? '',
+            name: m.name, type: m.type ?? '', manufacturer: m.manufacturer ?? '', category: m.category ?? '', sub_category: m.sub_category ?? '', ved: m.ved ?? '', sde: m.sde ?? '', fsn: m.fsn ?? '', hsn_code: m.hsn_code ?? '',
             gst_percent: String(m.gst_percent), units_per_pack: String(m.units_per_pack), reorder_level: String(m.reorder_level), is_active: m.is_active,
             is_scheduled: m.is_scheduled,
           }
@@ -61,7 +68,7 @@ export function PharmacyMedicines() {
     setEditing({ kind: 'stockist', id: s?.id ?? null })
     setErrors({})
     setNotice('')
-    setStockist(s ? { name: s.name, phone: s.phone ?? '', gstin: s.gstin ?? '', address: s.address ?? '' } : blankStockist)
+    setStockist(s ? { name: s.name, phone: s.phone ?? '', email: s.email ?? '', gstin: s.gstin ?? '', address: s.address ?? '' } : blankStockist)
   }
 
   const openManufacturer = (m: Manufacturer | null) => {
@@ -77,7 +84,7 @@ export function PharmacyMedicines() {
     setSaving(true)
     setErrors({})
     const base = { medicine: '/pharmacy/medicines', stockist: '/pharmacy/stockists', manufacturer: '/pharmacy/manufacturers' }[editing.kind]
-    const payload = editing.kind === 'medicine' ? medicine : editing.kind === 'stockist' ? stockist : { name: manufacturerName }
+    const payload = editing.kind === 'medicine' ? { ...medicine, ved: medicine.ved || null, sde: medicine.sde || null, fsn: medicine.fsn || null } : editing.kind === 'stockist' ? stockist : { name: manufacturerName }
     try {
       const res = editing.id ? await api.put<{ name: string }>(`${base}/${editing.id}`, payload) : await api.post<{ name: string }>(base, payload)
       setNotice(`${res.data.name} was ${editing.id ? 'updated' : 'added'}.`)
@@ -103,6 +110,22 @@ export function PharmacyMedicines() {
             <div className="toolbar">
               <h1>Medicines</h1>
               <input className="search" type="search" placeholder="Filter by name or manufacturer" value={query} onChange={(e) => setQuery(e.target.value)} />
+              <select className="narrow" value={filter.category} onChange={(e) => setFilter({ ...filter, category: e.target.value })} aria-label="Category">
+                <option value="">Any category</option>
+                {CATEGORIES.map((c) => (
+                  <option key={c}>{c}</option>
+                ))}
+              </select>
+              {([['ved', VED, 'VED'], ['sde', SDE, 'SDE'], ['fsn', FSN, 'FSN']] as const).map(([key, list, name]) => (
+                <select key={key} className="narrow" value={filter[key]} onChange={(e) => setFilter({ ...filter, [key]: e.target.value })} aria-label={`${name} class`}>
+                  <option value="">Any {name}</option>
+                  {list.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              ))}
               {canEdit && (
                 <button className="btn primary" onClick={() => openMedicine(null)}>
                   + New medicine
@@ -117,6 +140,7 @@ export function PharmacyMedicines() {
                     <th>Medicine</th>
                     <th>Type</th>
                     <th>Manufacturer</th>
+                    <th>Category and class</th>
                     <th className="num">Per pack</th>
                     <th className="num">GST %</th>
                     <th className="num">In stock</th>
@@ -131,6 +155,11 @@ export function PharmacyMedicines() {
                       </td>
                       <td>{m.type ?? '—'}</td>
                       <td>{m.manufacturer ?? '—'}</td>
+                      <td>
+                        {m.category ?? '—'}
+                        {m.sub_category ? ` · ${m.sub_category}` : ''}
+                        {(m.ved || m.sde || m.fsn) && <small className="muted block">{[classLabel(VED, m.ved), classLabel(SDE, m.sde), classLabel(FSN, m.fsn)].filter(Boolean).join(' · ')}</small>}
+                      </td>
                       <td className="num">{m.units_per_pack}</td>
                       <td className="num">{m.gst_percent}</td>
                       <td className="num">
@@ -144,7 +173,7 @@ export function PharmacyMedicines() {
                   ))}
                   {medicines.length === 0 && (
                     <tr className="empty">
-                      <td colSpan={7}>No medicines found.</td>
+                      <td colSpan={8}>No medicines found.</td>
                     </tr>
                   )}
                 </tbody>
@@ -154,7 +183,17 @@ export function PharmacyMedicines() {
 
           <section className="card">
             <div className="toolbar">
-              <h1 className="grow">Stockists</h1>
+              <h1>Stockists</h1>
+              <span className="muted grow">
+                We owe in all: <strong className={stockists.some((s) => (s.balance ?? 0) > 0) ? 'due' : ''}>{rupees(stockists.reduce((sum, s) => sum + Math.max(0, s.balance ?? 0), 0))}</strong>
+              </span>
+              <button
+                className="btn ghost"
+                disabled={stockists.length === 0}
+                onClick={() => downloadCsv(`stockists-${today()}.csv`, ['Name', 'Phone', 'Email', 'GSTIN', 'Address', 'Invoices', 'Billed', 'Paid', 'Returned', 'We owe'], stockists.map((s) => [s.name, s.phone, s.email, s.gstin, s.address, s.invoices ?? 0, s.billed ?? 0, s.paid ?? 0, s.returned ?? 0, s.balance ?? 0]))}
+              >
+                Export
+              </button>
               {canEdit && (
                 <button className="btn ghost" onClick={() => openStockist(null)}>
                   + New stockist
@@ -166,9 +205,13 @@ export function PharmacyMedicines() {
                 <thead>
                   <tr>
                     <th>Name</th>
-                    <th>Phone</th>
+                    <th>Phone and email</th>
                     <th>GSTIN</th>
-                    <th>Address</th>
+                    <th className="num">Invoices</th>
+                    <th className="num">Billed</th>
+                    <th className="num">Paid</th>
+                    <th className="num">Returned</th>
+                    <th className="num">We owe</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -177,14 +220,21 @@ export function PharmacyMedicines() {
                       <td>
                         <strong>{s.name}</strong>
                       </td>
-                      <td className="mono">{s.phone ?? '—'}</td>
+                      <td className="mono">
+                        {s.phone ?? '—'}
+                        {s.email && <small className="muted block">{s.email}</small>}
+                      </td>
                       <td className="mono">{s.gstin ?? '—'}</td>
-                      <td>{s.address ?? '—'}</td>
+                      <td className="num">{s.invoices ?? 0}</td>
+                      <td className="num">{rupees(s.billed ?? 0)}</td>
+                      <td className="num">{rupees(s.paid ?? 0)}</td>
+                      <td className="num">{s.returned ? rupees(s.returned) : '—'}</td>
+                      <td className={`num ${(s.balance ?? 0) > 0 ? 'due' : 'settled'}`}>{rupees(s.balance ?? 0)}</td>
                     </tr>
                   ))}
                   {stockists.length === 0 && (
                     <tr className="empty">
-                      <td colSpan={4}>No stockists yet.</td>
+                      <td colSpan={8}>No stockists yet.</td>
                     </tr>
                   )}
                 </tbody>
@@ -238,7 +288,19 @@ export function PharmacyMedicines() {
                       ))}
                     </datalist>
                   </label>
-                  <TextField label="Category" placeholder="Scheduled drug" value={medicine.category} onChange={setM('category')} error={errors.category} />
+                  <label className="field">
+                    <span className="field-label">Category</span>
+                    <input list="medicine-categories" placeholder="Choose or type" value={medicine.category} onChange={(e) => setM('category')(e.target.value)} />
+                    <datalist id="medicine-categories">
+                      {CATEGORIES.map((c) => (
+                        <option key={c} value={c} />
+                      ))}
+                    </datalist>
+                  </label>
+                  <TextField label="Sub category" placeholder="e.g. Antibiotic" value={medicine.sub_category} onChange={setM('sub_category')} error={errors.sub_category} />
+                  <SelectField label="How vital (VED)" value={medicine.ved} onChange={setM('ved')} options={VED} placeholder="Not set" error={errors.ved} />
+                  <SelectField label="How easy to get (SDE)" value={medicine.sde} onChange={setM('sde')} options={SDE} placeholder="Not set" error={errors.sde} />
+                  <SelectField label="How fast it sells (FSN)" value={medicine.fsn} onChange={setM('fsn')} options={FSN} placeholder="Not set" error={errors.fsn} />
                   <TextField label="HSN code" value={medicine.hsn_code} onChange={setM('hsn_code')} error={errors.hsn_code} />
                   <TextField label="Units per pack" required type="number" min={1} value={medicine.units_per_pack} onChange={setM('units_per_pack')} error={errors.units_per_pack} />
                   <TextField label="GST %" required type="number" min={0} step="0.01" value={medicine.gst_percent} onChange={setM('gst_percent')} error={errors.gst_percent} />
@@ -266,6 +328,9 @@ export function PharmacyMedicines() {
                   </div>
                   <TextField label="Phone" inputMode="tel" value={stockist.phone} onChange={setS('phone')} error={errors.phone} />
                   <TextField label="GSTIN" value={stockist.gstin} onChange={setS('gstin')} error={errors.gstin} />
+                  <div className="span-2">
+                    <TextField label="Email" type="email" value={stockist.email} onChange={setS('email')} error={errors.email} />
+                  </div>
                   <div className="span-2">
                     <TextField label="Address" value={stockist.address} onChange={setS('address')} error={errors.address} />
                   </div>
