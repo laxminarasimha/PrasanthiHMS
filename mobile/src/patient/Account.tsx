@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Linking, Text, View } from 'react-native'
-import { api, ApiError, type Account, type Hospital } from '../api'
+import { api, ApiError, type Account, type Hospital, type Person } from '../api'
 import { Button, Card, Field, Notice, text } from '../ui'
+import { Family } from './Family'
 
 /** Who is signed in, how to reach the hospital, and changing the password. */
-export function PatientAccount({ account, onSignOut }: { account: Account; onSignOut: () => void }) {
+export function PatientAccount({ account, people, onPeople, onSignOut }: { account: Account; people: Person[]; onPeople: (people: Person[]) => void; onSignOut: () => void }) {
   const [hospital, setHospital] = useState<Hospital | null>(null)
   const [changing, setChanging] = useState(false)
   const [form, setForm] = useState({ current: '', next: '', again: '' })
@@ -44,6 +45,8 @@ export function PatientAccount({ account, onSignOut }: { account: Account; onSig
         </Text>
       </Card>
 
+      <Family people={people} onChange={onPeople} />
+
       <Notice text={message.text} kind={message.kind} />
 
       <Card>
@@ -75,6 +78,20 @@ export function PatientAccount({ account, onSignOut }: { account: Account; onSig
             <Button key={p} label={`Call ${p}`} kind="ghost" onPress={() => void Linking.openURL(`tel:${p.replace(/[^0-9+]/g, '')}`)} />
           ))}
           {phones.length === 0 && <Text style={text.muted}>The hospital's phone number is not set yet.</Text>}
+          {hospital.address ? <Button label="Show the way in Maps" kind="ghost" onPress={() => void Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${hospital.name}, ${hospital.address}`)}`)} /> : null}
+          {hospital.email ? <Button label={`Email ${hospital.email}`} kind="ghost" onPress={() => void Linking.openURL(`mailto:${hospital.email}`)} /> : null}
+        </Card>
+      )}
+
+      {hospital?.doctors && hospital.doctors.length > 0 && (
+        <Card>
+          <Text style={text.h2}>Our doctors</Text>
+          {hospital.doctors.map((d) => (
+            <View key={d.id}>
+              <Text style={text.strong}>{d.name}</Text>
+              {d.department ? <Text style={text.muted}>{d.department}</Text> : null}
+            </View>
+          ))}
         </Card>
       )}
 

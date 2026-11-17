@@ -29,6 +29,35 @@ class PatientAccount extends Authenticatable
         return $this->belongsTo(Patient::class);
     }
 
+    public function members(): HasMany
+    {
+        return $this->hasMany(PatientAccountMember::class)->orderBy('id');
+    }
+
+    /**
+     * Every patient record this login looks after: the person's own first, then their family.
+     *
+     * @return list<int>
+     */
+    public function patientIds(): array
+    {
+        return array_values(array_unique([$this->patient_id, ...$this->members()->pluck('patient_id')->all()]));
+    }
+
+    /**
+     * The patient a request is about: the one named in it, if this login looks after them, otherwise the person's own.
+     * Naming anyone else is answered as "not found", so the app cannot be used to probe for other patients.
+     */
+    public function patientFor(mixed $patientId): int
+    {
+        if ($patientId === null || $patientId === '') {
+            return $this->patient_id;
+        }
+        abort_unless(in_array((int) $patientId, $this->patientIds(), true), 404, 'That person is not on your account.');
+
+        return (int) $patientId;
+    }
+
     public function subscriptions(): HasMany
     {
         return $this->hasMany(MedicineSubscription::class)->orderByDesc('id');

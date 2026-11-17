@@ -3,7 +3,7 @@ import { Text } from 'react-native'
 import { api, ApiError, setToken, type StaffUser } from '../api'
 import { Button, Card, Field, Notice, Screen, text } from '../ui'
 
-/** Doctors sign in with the same email and password they use on the hospital's web system. */
+/** Doctors, and owners or managers who see the reports, sign in with the email and password they use on the hospital's web system. */
 export function DoctorLogin({ onBack, onSignedIn }: { onBack: () => void; onSignedIn: (token: string, user: StaffUser) => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -15,12 +15,12 @@ export function DoctorLogin({ onBack, onSignedIn }: { onBack: () => void; onSign
     setBusy(true)
     try {
       const res = await api.post<{ token: string; user: StaffUser }>('/login', { email: email.trim(), password })
-      if (!res.user.can_consult) {
+      if (!res.user.can_consult && !res.user.can_view_reports) {
         // Signed in, but this app has nothing for them yet: give the sign-in back.
         setToken(res.token)
         await api.post('/logout').catch(() => undefined)
         setToken(null)
-        setError('This app is for doctors at the moment. Please use the web system for your work.')
+        setError('This app is for doctors and for those who see the hospital reports. Please use the web system for your work.')
         return
       }
       onSignedIn(res.token, res.user)
@@ -32,7 +32,7 @@ export function DoctorLogin({ onBack, onSignedIn }: { onBack: () => void; onSign
   }
 
   return (
-    <Screen title="Doctor sign in" onBack={onBack}>
+    <Screen title="Doctor and staff sign in" onBack={onBack}>
       <Card>
         <Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
         <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoComplete="current-password" />

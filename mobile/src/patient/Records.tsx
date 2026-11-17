@@ -1,22 +1,30 @@
 import { useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
-import { api, ApiError, niceDate, type Records } from '../api'
+import { api, ApiError, niceDate, type Person, type Records } from '../api'
 import { colors, space } from '../theme'
-import { Card, Empty, Loading, Notice, text } from '../ui'
+import { Card, Choice, Empty, Loading, Notice, Switch, text } from '../ui'
+import { PatientBills } from './Bills'
 
 /** The patient's own prescriptions and lab reports, once the hospital has verified the account. */
-export function PatientRecords({ patientId }: { patientId: string }) {
+export function PatientRecords({ people, first, section }: { people: Person[]; /** Whose records to open on, when a notice led here. */ first?: number; section?: 'visits' | 'lab' | 'bills' }) {
+  const [who, setWho] = useState(String(people.find((p) => p.patient_id === first)?.patient_id ?? people[0].patient_id))
   const [records, setRecords] = useState<Records | null>(null)
-  const [show, setShow] = useState<'visits' | 'lab'>('visits')
+  const [show, setShow] = useState<'visits' | 'lab' | 'bills'>(section ?? 'visits')
   const [open, setOpen] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const person = people.find((p) => String(p.patient_id) === who) ?? people[0]
+  const patientId = person.uhid
 
   useEffect(() => {
-    api.get<Records>('/app/records').then(setRecords).catch((e: ApiError) => setError(e.message))
-  }, [])
+    setRecords(null)
+    setError('')
+    api.get<Records>('/app/records', { patient_id: String(person.patient_id) }).then(setRecords).catch((e: ApiError) => setError(e.message))
+  }, [person.patient_id])
 
-  if (error) return <Notice text={error} />
-  if (!records) return <Loading />
+  const picker = people.length > 1 ? <Choice value={who} onChange={setWho} options={people.map((p) => ({ value: String(p.patient_id), label: p.relation === 'Self' ? 'Me' : `${p.name.split(' ')[0]} (${p.relation})` }))} /> : null
+
+  if (error) return <>{picker}<Notice text={error} /></>
+  if (!records) return <>{picker}<Loading /></>
 
   if (!records.verified) {
     return (
@@ -34,13 +42,9 @@ export function PatientRecords({ patientId }: { patientId: string }) {
 
   return (
     <>
-      <View style={styles.switch}>
-        {([['visits', `Prescriptions (${records.visits.length})`], ['lab', `Lab reports (${records.lab.length})`]] as const).map(([key, label]) => (
-          <Pressable key={key} onPress={() => setShow(key)} accessibilityRole="tab" accessibilityState={{ selected: show === key }} style={[styles.switchItem, show === key && styles.switchOn]}>
-            <Text style={[styles.switchText, show === key && { color: '#fff' }]}>{label}</Text>
-          </Pressable>
-        ))}
-      </View>
+      {picker}
+      <Switch value={show} onChange={setShow} options={[{ value: 'visits', label: 'Prescriptions' }, { value: 'lab', label: 'Lab reports' }, { value: 'bills', label: 'Bills' }]} />
+      {show === 'bills' && <PatientBills patientId={person.patient_id} />}
 
       {show === 'visits' && records.visits.length === 0 && <Empty text="No prescriptions yet. They appear here after a doctor finishes your visit." />}
       {show === 'visits' &&
@@ -116,10 +120,6 @@ export function PatientRecords({ patientId }: { patientId: string }) {
 
 const styles = StyleSheet.create({
   id: { fontSize: 26, fontWeight: '800', color: colors.brandDark, letterSpacing: 1, textAlign: 'center', paddingVertical: space.sm },
-  switch: { flexDirection: 'row', backgroundColor: colors.surface, borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 3 },
-  switchItem: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 8 },
-  switchOn: { backgroundColor: colors.brand },
-  switchText: { fontSize: 14, fontWeight: '700', color: colors.text },
   detail: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: space.sm, gap: space.sm },
   label: { fontSize: 13, fontWeight: '700', color: colors.muted },
   medicine: { backgroundColor: colors.bg, borderRadius: 8, padding: space.sm },

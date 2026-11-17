@@ -60,15 +60,17 @@ export const api = {
 
 // ---- What the server sends ----
 
-export type Account = { id: number; name: string; mobile: string; verified: boolean; patient: { uhid: string; gender: string; age_label: string }; hospital: { name: string; phone: string } }
+/** Someone this login looks after: the person themself, or a family member. */
+export type Person = { patient_id: number; name: string; relation: string; uhid: string; gender: string; age_label: string }
+export type Account = { id: number; name: string; mobile: string; verified: boolean; patient: { id: number; uhid: string; gender: string; age_label: string }; people: Person[]; hospital: { name: string; phone: string } }
 export type Doctor = { id: number; name: string; department: string | null }
 export type Slot = { time: string; label: string; available: boolean }
-export type Appointment = { id: number; scheduled_at: string; status: 'booked' | 'arrived' | 'ongoing' | 'reviewed' | 'cancelled'; token_no: number | null; notes: string | null; doctor: Doctor | null; can_cancel: boolean }
+export type Appointment = { id: number; scheduled_at: string; status: 'booked' | 'arrived' | 'ongoing' | 'reviewed' | 'cancelled'; token_no: number | null; notes: string | null; doctor: Doctor | null; patient?: { id: number; name: string } | null; can_cancel: boolean }
 export type MedicineName = { id: number; name: string; type: string | null }
 export type SubscriptionItem = { medicine_id: number | null; name: string; quantity: number }
 export type Subscription = { id: number; title: string; items: SubscriptionItem[]; day_of_month: number; status: 'active' | 'paused' | 'cancelled'; next_due_on: string; last_prepared_on: string | null; notes: string | null }
 
-export type StaffUser = { id: number; name: string; role: string; role_label: string; can_consult: boolean; branch: { name: string } | null }
+export type StaffUser = { id: number; name: string; role: string; role_label: string; can_consult: boolean; can_view_reports?: boolean; can_run_pharmacy?: boolean; can_ipd?: boolean; branch: { name: string } | null }
 export type QueueEntry = {
   id: number
   scheduled_at: string
@@ -114,7 +116,7 @@ export const niceTime = (value: string) => {
 
 // ---- Records, hospital details, and what the doctor sees of a patient ----
 
-export type Hospital = { name: string; tagline: string | null; address: string | null; phone: string | null; phone_alt: string | null; email: string | null }
+export type Hospital = { name: string; tagline: string | null; address: string | null; phone: string | null; phone_alt: string | null; email: string | null; doctors?: Doctor[] }
 export type RecordVisit = { id: number; date: string; doctor: { name: string; department: string | null } | null; diagnosis: string | null; advice: string | null; tests_advised: string | null; follow_up_on: string | null; medicines: { medicine: string; directions: string }[] }
 export type LabResultRow = { parameter: string; value: string; unit: string | null; range?: string | null; flag: string | null }
 export type RecordLab = { id: number; order_no: string; date: string; tests: { name: string; report: string | null; remarks: string | null; results: LabResultRow[] }[] }
@@ -125,3 +127,43 @@ export type PastVisit = { id: number; completed_at: string | null; diagnosis: st
 export type Trends = { tests: { test: string; parameter: string; unit: string | null; reference_range: string | null; points: { date: string; value: string; flag: string | null }[] }[] }
 export type Inpatient = { id: number; ipd_no: string; admitted_at: string; reason: string | null; patient: { id: number; uhid: string; name: string; title?: string | null; gender: string; age_label: string }; doctor: { id: number; name: string }; bed: { ward: string; bed_no: string } | null }
 export type BedsideVital = { id: number; recorded_at: string; temperature_f: number | null; pulse: number | null; bp_systolic: number | null; bp_diastolic: number | null; resp_rate: number | null; spo2: number | null; blood_sugar: number | null }
+
+// ---- Family, bills and today's notices ----
+
+export type BillRow = { kind: string; bill_no: string; date: string; total: number; paid: number; due: number; patient_id: number }
+export type Bills = { verified: boolean; bills: BillRow[]; due: number }
+export type HomeNotice = { kind: string; tone: 'info' | 'ok' | 'warn' | 'note'; tab: 'appointments' | 'medicines' | 'records' | 'bills' | 'account'; title: string; text: string; patient_id?: number }
+export type HomeData = { verified: boolean; notices: HomeNotice[]; due: number }
+
+/** Rupees the way a bill prints them: ₹1,25,000 or ₹45.50. */
+export const rupees = (amount: number) => {
+  const [whole, paise] = Math.abs(amount).toFixed(2).split('.')
+  const last3 = whole.slice(-3)
+  const rest = whole.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',')
+  return `${amount < 0 ? '-' : ''}₹${rest ? `${rest},` : ''}${last3}${paise === '00' ? '' : `.${paise}`}`
+}
+/** Now, as the server writes times: "2026-11-17 14:05". */
+export const nowStamp = () => {
+  const d = new Date()
+  return `${isoDate(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+// ---- What staff see ----
+
+export type AbnormalOrder = { order_id: number; order_no: string; reported_at: string; patient: { id: number; uhid: string; title?: string | null; name: string; gender: string; age_label: string }; results: { test: string; parameter: string; value: string; unit: string | null; range: string | null; flag: 'high' | 'low' }[] }
+export type FoundPatient = { id: number; uhid: string; title?: string | null; name: string; gender: string; age_label: string; mobile: string | null }
+export type WardNote = { id: number; kind: string; noted_at: string; body: string | null; author?: { name: string } | null }
+export type Department = { label: string; billed: number; collected: Record<string, number>; collected_total: number; refunded?: number; due?: number }
+export type Summary = { from: string; to: string; modes: string[]; departments: Record<string, Department>; counts: Record<string, number> }
+export type DayCheck = { key: string; label: string; blocking: boolean; count: number }
+export type DayBook = {
+  day: string
+  today: string
+  sections: { key: string; label: string; checks: DayCheck[] }[]
+  expected_cash: number
+  blocking: number
+  notes: number
+  closed: { closed_by_name: string; closed_at: string; counted_cash: number; variance: number } | null
+  recent: { day: string; closed: boolean }[]
+}
+export type PharmacyDesk = { actions: { key: string; tone: 'danger' | 'warn' | 'note'; count: number; text: string }[] }

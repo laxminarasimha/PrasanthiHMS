@@ -1,10 +1,19 @@
-import { type ReactNode } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps, type ViewStyle } from 'react-native'
+import { useState, type ReactNode } from 'react'
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps, type ViewStyle } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors, space } from './theme'
 
 /** A full page with the hospital's purple bar on top and a scrolling body. */
-export function Screen({ title, subtitle, onBack, right, children, footer, refresh }: { title: string; subtitle?: string; onBack?: () => void; right?: ReactNode; children: ReactNode; footer?: ReactNode; refresh?: ReactNode }) {
+export function Screen({ title, subtitle, onBack, right, children, footer, refresh, onRefresh }: { title: string; subtitle?: string; onBack?: () => void; right?: ReactNode; children: ReactNode; footer?: ReactNode; refresh?: ReactNode; /** Pulling the page down runs this. */ onRefresh?: () => Promise<unknown> | void }) {
+  const [pulling, setPulling] = useState(false)
+  const pull = async () => {
+    setPulling(true)
+    try {
+      await onRefresh?.()
+    } finally {
+      setPulling(false)
+    }
+  }
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <View style={styles.bar}>
@@ -27,7 +36,15 @@ export function Screen({ title, subtitle, onBack, right, children, footer, refre
       </View>
       <View style={styles.accent} />
       {refresh}
-      <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">
+      {/* The page moves up out of the keyboard's way, and dragging it puts the keyboard away. */}
+      <ScrollView
+        style={styles.body}
+        contentContainerStyle={styles.bodyContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets
+        refreshControl={onRefresh ? <RefreshControl refreshing={pulling} onRefresh={pull} tintColor={colors.brand} colors={[colors.brand]} /> : undefined}
+      >
         {children}
       </ScrollView>
       {footer}
@@ -110,6 +127,21 @@ export function Pill({ status }: { status: string }) {
   )
 }
 
+/** A choice between two or three views of the same page, e.g. prescriptions and lab reports. */
+export function Switch<T extends string>({ options, value, onChange }: { options: { value: T; label: string }[]; value: T; onChange: (value: T) => void }) {
+  return (
+    <View style={styles.switch}>
+      {options.map((o) => (
+        <Pressable key={o.value} onPress={() => onChange(o.value)} accessibilityRole="tab" accessibilityState={{ selected: value === o.value }} style={[styles.switchItem, value === o.value && styles.switchOn]}>
+          <Text style={[styles.switchText, value === o.value && { color: '#fff' }]} numberOfLines={1}>
+            {o.label}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  )
+}
+
 export function Loading() {
   return (
     <View style={{ padding: space.xl, alignItems: 'center' }}>
@@ -173,8 +205,12 @@ const styles = StyleSheet.create({
   notice: { borderRadius: 10, padding: space.md },
   pill: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
   empty: { textAlign: 'center', color: colors.muted, paddingVertical: space.xl, fontSize: 15, lineHeight: 22 },
+  switch: { flexDirection: 'row', backgroundColor: colors.surface, borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 3 },
+  switchItem: { flex: 1, alignItems: 'center', paddingVertical: 9, paddingHorizontal: 4, borderRadius: 8 },
+  switchOn: { backgroundColor: colors.brand },
+  switchText: { fontSize: 13, fontWeight: '700', color: colors.text },
   tabBar: { flexDirection: 'row', backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
   tab: { flex: 1, alignItems: 'center', paddingVertical: space.sm, minHeight: 54, justifyContent: 'center', gap: 4 },
   tabDot: { width: 22, height: 3, borderRadius: 2, backgroundColor: 'transparent' },
-  tabText: { fontSize: 13, color: colors.muted },
+  tabText: { fontSize: 12, color: colors.muted },
 })
