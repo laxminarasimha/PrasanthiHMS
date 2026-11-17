@@ -7,6 +7,7 @@ import { AbnormalResults } from './Alerts'
 import { FindPatient } from './Find'
 import { HospitalDay } from './Hospital'
 import { PatientView, type PatientRef } from './PatientView'
+import { VisitPad } from './VisitPad'
 
 type Tab = 'appointments' | 'inpatients' | 'alerts' | 'find' | 'hospital'
 const TITLES: Record<Tab, string> = { appointments: 'My appointments', inpatients: 'My inpatients', alerts: 'Results to see', find: 'Find a patient', hospital: 'Hospital today' }
@@ -25,6 +26,8 @@ export function DoctorHome({ user, onSignOut }: { user: StaffUser; onSignOut: ()
   const [refreshKey, setRefreshKey] = useState(0)
   const [inpatients, setInpatients] = useState<Inpatient[] | null>(null)
   const [viewing, setViewing] = useState<{ patient: PatientRef; admissionId?: number; subtitle?: string } | null>(null)
+  // The appointment whose visit pad is open. A patient's history can be opened on top of it.
+  const [pad, setPad] = useState<number | null>(null)
 
   const load = useCallback(() => {
     if (!user.can_consult) return Promise.resolve()
@@ -48,7 +51,31 @@ export function DoctorHome({ user, onSignOut }: { user: StaffUser; onSignOut: ()
     api.get<Inpatient[]>('/ipd/admissions', { status: 'admitted' }).then((list) => setInpatients(list.filter((a) => a.doctor.id === user.id))).catch((e: ApiError) => setError(e.message))
   }, [tab, user.id, refreshKey])
 
-  if (viewing) return <PatientView patient={viewing.patient} admissionId={viewing.admissionId} subtitle={viewing.subtitle} onBack={() => setViewing(null)} />
+  if (viewing) {
+    return (
+      <PatientView
+        patient={viewing.patient}
+        admissionId={viewing.admissionId}
+        subtitle={viewing.subtitle}
+        onBack={() => setViewing(null)}
+        canWrite={Boolean(user.can_consult)}
+        // Only a doctor starts a visit from here: it is put in their own name. Not while a pad is already open underneath.
+        onStartVisit={user.role === 'doctor' && pad === null ? (id) => { setViewing(null); setPad(id) } : undefined}
+      />
+    )
+  }
+  if (pad !== null) {
+    return (
+      <VisitPad
+        appointmentId={pad}
+        onBack={() => {
+          setPad(null)
+          void load()
+        }}
+        onHistory={(patient) => setViewing({ patient })}
+      />
+    )
+  }
 
   const stay = (admittedAt: string) => {
     const days = Math.max(1, Math.ceil((Date.now() - new Date(admittedAt.replace(' ', 'T')).getTime()) / 86400000))
@@ -135,7 +162,7 @@ export function DoctorHome({ user, onSignOut }: { user: StaffUser; onSignOut: ()
       {!queue && !error && <Loading />}
       {queue?.length === 0 && <Empty text="No appointments for this day." />}
       {queue?.map((q) => (
-        <Pressable key={q.id} onPress={() => setViewing({ patient: q.patient })} accessibilityRole="button">
+        <Pressable key={q.id} onPress={() => (q.status === 'cancelled' ? setViewing({ patient: q.patient }) : setPad(q.id))} accessibilityRole="button">
         <Card>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
             <View style={{ flex: 1 }}>
@@ -154,6 +181,7 @@ export function DoctorHome({ user, onSignOut }: { user: StaffUser; onSignOut: ()
             {q.token_no ? ` · Token ${q.token_no}` : ''}
             {q.service ? ` · ${q.service.name}` : ''}
           </Text>
+          <Text style={text.link}>{q.status === 'reviewed' ? 'Open the visit' : q.status === 'cancelled' ? 'See the patient' : 'Open the visit pad'}</Text>
           <Text style={text.muted}>
             {[q.visits ? `${q.visits} earlier visit${q.visits === 1 ? '' : 's'}` : 'First visit', waiting(q), q.vitals_ready && q.status !== 'reviewed' ? 'Vitals taken' : '', q.booked_via === 'app' ? 'Booked from the app' : ''].filter(Boolean).join(' · ')}
           </Text>
