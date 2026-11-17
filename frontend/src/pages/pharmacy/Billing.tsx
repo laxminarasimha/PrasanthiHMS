@@ -307,7 +307,7 @@ export function PharmacyBilling() {
             <input
               ref={searchBox}
               type="search"
-              placeholder="Type a medicine name"
+              placeholder="Type a medicine or drug name"
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value)
@@ -325,6 +325,7 @@ export function PharmacyBilling() {
                   <li key={b.id} role="option" aria-selected={i === at}>
                     <button type="button" className={i === at ? 'on' : ''} onClick={() => add(m, b)} onMouseEnter={() => setAt(i)}>
                       <strong>{m.name}</strong>
+                      {m.composition && <small className="muted">{m.composition}</small>}
                       <small className="muted">
                         Batch {b.batch_no} · exp {expiryLabel(b.expiry)} · {b.units_in_stock} in stock · {rupees(b.unit_mrp)} each
                         {first ? ' · sell this first' : ''}

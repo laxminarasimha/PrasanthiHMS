@@ -222,6 +222,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
     Route::get('/patients/{patient}/audit-log', [\App\Http\Controllers\Api\AuditController::class, 'forPatient']);
     Route::get('/patients/{patient}/consultations', [ConsultationController::class, 'history']);
     Route::get('/medicines/suggest', [ConsultationController::class, 'suggestMedicines']);
+    Route::get('/medicines/find', [ConsultationController::class, 'findMedicines']);
     Route::get('/icd-codes', [ConsultationController::class, 'icdCodes']);
 
     Route::get('/lab/tests', [LabController::class, 'tests']);

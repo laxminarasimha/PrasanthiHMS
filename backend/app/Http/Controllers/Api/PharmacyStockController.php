@@ -150,7 +150,7 @@ class PharmacyStockController extends Controller
             ->withSum(['batches as expiring_units' => fn ($q) => $q->where('units_in_stock', '>', 0)->whereDate('expiry', '<=', $soon)], 'units_in_stock')
             ->withMin(['batches as next_expiry' => fn ($q) => $q->where('units_in_stock', '>', 0)], 'expiry')
             ->withSum('batches as on_shelf', 'units_in_stock')
-            ->orderBy('name')->get(['id', 'name', 'type', 'manufacturer', 'reorder_level'])
+            ->orderBy('name')->get(['id', 'name', 'composition', 'type', 'manufacturer', 'reorder_level'])
             ->each(function (Medicine $m) {
                 $m->units_in_stock = (int) $m->units_in_stock;
                 $m->expiring_units = (int) $m->expiring_units;

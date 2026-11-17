@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Consultation;
+use App\Models\DrugIngredient;
 use App\Models\Manufacturer;
 use App\Models\Medicine;
 use App\Models\Payment;
@@ -14,6 +15,7 @@ use App\Models\StockBatch;
 use App\Models\Stockist;
 use App\Models\StockReturn;
 use App\Support\OrderMatch;
+use App\Support\Composition;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -62,6 +64,7 @@ class PharmacyController extends Controller
         $stockists = Stockist::pluck('name', 'id');
 
         $medicines = Medicine::where('is_active', true)
+            ->with('ingredients:id,name')
             ->withSum('batches as on_shelf', 'units_in_stock')
             ->orderBy('name')->limit(5000)
             ->get(['id', 'name', 'composition', 'type', 'manufacturer', 'units_per_pack', 'preferred_stockist_id'])
@@ -80,6 +83,7 @@ class PharmacyController extends Controller
                 return [
                     'id' => $m->id, 'name' => $m->name, 'composition' => $m->composition, 'type' => $m->type, 'manufacturer' => $m->manufacturer,
                     'units_per_pack' => $m->units_per_pack, 'on_shelf' => (int) $m->on_shelf,
+                    'drugs' => $m->ingredients->map(fn ($d) => ['id' => $d->id, 'name' => $d->name, 'strength' => $d->pivot->strength])->values(),
                     'usual_stockist_id' => $usual ? (int) $usual : null, 'usual_stockist' => $usual ? ($stockists[$usual] ?? null) : null,
                     'suppliers' => $suppliers,
                 ];
@@ -88,6 +92,7 @@ class PharmacyController extends Controller
         return response()->json([
             'medicines' => $medicines,
             'compositions' => Medicine::whereNotNull('composition')->where('composition', '!=', '')->distinct()->orderBy('composition')->pluck('composition'),
+            'drugs' => DrugIngredient::has('medicines')->orderBy('name')->pluck('name'),
         ]);
     }
 
@@ -97,7 +102,7 @@ class PharmacyController extends Controller
         $this->authorizePharmacy($request);
         $data = $request->validate(['composition' => ['present', 'nullable', 'string', 'max:255']]);
         $was = $medicine->composition;
-        $medicine->update(['composition' => filled($data['composition']) ? preg_replace('/\s+/', ' ', trim($data['composition'])) : null]);
+        Composition::apply($medicine, $data['composition']);
         if ($was !== $medicine->composition) {
             PharmacyChange::create(['kind' => 'medicine', 'subject_id' => $medicine->id, 'label' => $medicine->name, 'summary' => 'Composition: '.($was ?? '—').' → '.($medicine->composition ?? '—'), 'created_by' => $request->user()->id]);
         }
@@ -112,7 +117,10 @@ class PharmacyController extends Controller
         $data = $this->medicineData($request);
         $this->rememberManufacturer($data['manufacturer'] ?? null);
 
-        return response()->json(Medicine::create($data), 201);
+        $medicine = Medicine::create($data);
+        Composition::apply($medicine, $data['composition'] ?? null);
+
+        return response()->json($medicine, 201);
     }
 
     public function updateMedicine(Request $request, Medicine $medicine): JsonResponse
@@ -126,6 +134,9 @@ class PharmacyController extends Controller
         $before = $medicine->only(array_keys($labels));
         $label = $medicine->name;
         $medicine->update($data);
+        if (array_key_exists('composition', $data)) {
+            Composition::apply($medicine, $data['composition']);
+        }
         $changes = PharmacyChange::differences($labels, $before, $medicine->only(array_keys($labels)));
         if ($changes) {
             PharmacyChange::create(['kind' => 'medicine', 'subject_id' => $medicine->id, 'label' => $label, 'summary' => implode("\n", $changes), 'created_by' => $request->user()->id]);
@@ -361,12 +372,12 @@ class PharmacyController extends Controller
 
         return response()->json(
             Medicine::where('is_active', true)
-                ->where('name', 'like', "%{$term}%")
+                ->where(fn ($w) => $w->where('name', 'like', "%{$term}%")->orWhere('composition', 'like', "%{$term}%"))
                 ->whereHas('sellableBatches')
                 ->with(['sellableBatches' => fn ($q) => $q->select('id', 'medicine_id', 'batch_no', 'expiry', 'unit_mrp', 'gst_percent', 'units_in_stock', 'rack_no')])
                 ->orderBy('name')
                 ->limit(12)
-                ->get(['id', 'name', 'type'])
+                ->get(['id', 'name', 'type', 'composition'])
         );
     }
 
