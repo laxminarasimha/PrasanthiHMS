@@ -74,6 +74,7 @@ class User extends Authenticatable
     public const ABILITIES = [
         'canWorkFrontDesk' => ['Front desk: appointments and billing', 'Book appointments, change their status, take vitals and make bills.'],
         'canChangePrice' => ['Change the price while billing', 'Charge a price different from the price list for a service.'],
+        'canFilePastRecords' => ['Old paper records', 'Scan the papers a patient brings from before, check what was read from them and file them in the record.'],
         'canConsult' => ['Doctor: visit pad', 'Open the visit pad, write notes and prescriptions, and use the doctor library.'],
         'canRunLab' => ['Lab', 'Enter and approve lab results, and edit lab tests, packages and preferences.'],
         'canRunPharmacy' => ['Pharmacy', 'Sell medicines, receive stock, and edit medicines, bills and invoices.'],

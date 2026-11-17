@@ -65,6 +65,12 @@ enum Role: string
         return in_array($this, [self::Admin, self::Doctor, self::Nurse, self::Frontdesk], true);
     }
 
+    /** Roles allowed to scan a patient's old papers, check what was read from them and file them in the record. */
+    public function canFilePastRecords(): bool
+    {
+        return in_array($this, [self::Admin, self::Doctor, self::Nurse, self::Frontdesk], true);
+    }
+
     /** Roles allowed to approve a discharge summary or an IPD bill, which locks it. */
     public function canApproveIpd(): bool
     {

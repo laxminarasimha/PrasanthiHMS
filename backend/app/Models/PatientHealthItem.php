@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /** One lasting fact on a patient's health summary, e.g. "Type 2 diabetes, since 2018". */
-#[Fillable(['patient_id', 'kind', 'title', 'detail', 'since', 'is_active', 'ended_on', 'created_by', 'updated_by'])]
+#[Fillable(['patient_id', 'past_record_id', 'kind', 'title', 'detail', 'since', 'is_active', 'ended_on', 'created_by', 'updated_by'])]
 class PatientHealthItem extends Model
 {
     /** The sections of the summary, in the order they are shown. */

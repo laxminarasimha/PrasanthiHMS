@@ -188,7 +188,7 @@ class FrontDeskController extends Controller
             'lab_orders' => LabOrder::where('patient_id', $patient->id)->with('items:id,lab_order_id,test_name,reported_at')->latest('ordered_at')->limit(30)->get(),
             'pharmacy_bills' => PharmacySale::where('patient_id', $patient->id)->whereNull('voided_at')->latest('sold_at')->limit(30)->get(),
             'admissions' => Admission::where('patient_id', $patient->id)->with(['doctor:id,name', 'bed:id,ward,bed_no'])->latest('admitted_at')->limit(20)->get(),
-            'attachments' => Attachment::where('patient_id', $patient->id)->with('uploader:id,name')->latest('document_date')->get(),
+            'attachments' => Attachment::where('patient_id', $patient->id)->whereNull('past_record_id')->with('uploader:id,name')->latest('document_date')->get(),
             'outstanding' => round($bills->sum('due'), 2),
             'deposit_balance' => PatientDeposit::balance($patient->id),
             'deposits' => PatientDeposit::where('patient_id', $patient->id)->with('receiver:id,name')->latest('id')->limit(50)->get(),
@@ -199,7 +199,8 @@ class FrontDeskController extends Controller
 
     public function attachments(Patient $patient): JsonResponse
     {
-        return response()->json(Attachment::where('patient_id', $patient->id)->with('uploader:id,name')->latest('document_date')->latest('id')->get());
+        // The pages of old papers are shown with those papers, not in this list.
+        return response()->json(Attachment::where('patient_id', $patient->id)->whereNull('past_record_id')->with('uploader:id,name')->latest('document_date')->latest('id')->get());
     }
 
     public function storeAttachment(Request $request, Patient $patient): JsonResponse
@@ -232,6 +233,7 @@ class FrontDeskController extends Controller
 
     public function destroyAttachment(Attachment $attachment): JsonResponse
     {
+        abort_if($attachment->past_record_id !== null, 409, 'This is a page of an old paper. Remove the paper itself instead.');
         Storage::disk('local')->delete($attachment->path);
         $attachment->delete();
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
+import { useAuth } from '../auth'
 import { AppointmentForm } from '../components/AppointmentForm'
 import { BillPanel } from '../components/BillPanel'
 import { LabOrderForm } from '../components/LabOrderForm'
@@ -35,6 +36,7 @@ function BillChip({ label, total, due, movedToIpd, onOpen }: { label?: string; t
 }
 
 export function FrontDesk() {
+  const { user } = useAuth()
   const [date, setDate] = useState(today())
   const [status, setStatus] = useState<AppointmentStatus | ''>('')
   const [department, setDepartment] = useState<Department>('all')
@@ -176,6 +178,11 @@ export function FrontDesk() {
           <Link className="btn ghost small-btn" to="/front-desk/calendar">
             Calendar
           </Link>
+          {user?.can_file_past_records && (
+            <Link className="btn ghost small-btn" to="/past-records">
+              Old papers
+            </Link>
+          )}
         </div>
 
         <div className="tabs">

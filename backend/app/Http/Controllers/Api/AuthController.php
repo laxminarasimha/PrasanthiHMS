@@ -116,6 +116,7 @@ class AuthController extends Controller
             'can_run_pharmacy' => $user->allows('canRunPharmacy'),
             'can_manage_setup' => $user->allows('canManageSetup'),
             'can_front_desk' => $user->allows('canWorkFrontDesk'),
+            'can_file_past_records' => $user->allows('canFilePastRecords'),
             'can_ipd' => $user->allows('canWorkIpd'),
             'can_approve_ipd' => $user->allows('canApproveIpd'),
             'can_view_reports' => $user->allows('canViewReports'),

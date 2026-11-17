@@ -14,12 +14,14 @@ use App\Http\Controllers\Api\HospitalReportController;
 use App\Http\Controllers\Api\IpdController;
 use App\Http\Controllers\Api\IpdRecordsController;
 use App\Http\Controllers\Api\LabController;
+use App\Http\Controllers\Api\PastRecordController;
 use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\PharmacyController;
 use App\Http\Controllers\Api\PharmacyEditController;
 use App\Http\Controllers\Api\PharmacyReportController;
 use App\Http\Controllers\Api\PharmacySalesController;
 use App\Http\Controllers\Api\PharmacyStockController;
+use App\Http\Controllers\Api\RecordReaderController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\StaffController;
@@ -74,6 +76,14 @@ Route::prefix('app')->middleware(['auth:sanctum', 'actor:patient'])->controller(
     Route::post('/family', 'addMember')->middleware('throttle:20,1');
     Route::delete('/family/{patient}', 'removeMember');
     Route::post('/account/delete', 'deleteAccount')->middleware('throttle:10,1');
+});
+
+// The hospital's reading computer, which signs in with its own key and can only fetch and return scans to read.
+Route::prefix('reader')->middleware('throttle:240,1')->controller(RecordReaderController::class)->group(function () {
+    Route::post('/hello', 'hello');
+    Route::post('/next', 'next');
+    Route::get('/pages/{attachment}', 'page');
+    Route::post('/records/{record}/done', 'done');
 });
 
 Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(function () {
@@ -131,6 +141,25 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
             Route::post('/patients/{patient}/attachments', 'storeAttachment');
             Route::post('/patients/{patient}/deposits', 'storeDeposit');
             Route::delete('/attachments/{attachment}', 'destroyAttachment');
+        });
+    });
+
+    // Old papers a patient brings: scanned, read into a draft, checked, then filed.
+    Route::controller(PastRecordController::class)->group(function () {
+        Route::middleware('ability:canManageSetup')->group(function () {
+            Route::get('/past-records/setup', 'setup');
+            Route::post('/past-records/setup/reader-key', 'newReaderKey');
+            Route::delete('/past-records/setup/reader-key', 'removeReaderKey');
+        });
+        Route::middleware('ability:canFilePastRecords')->group(function () {
+            Route::get('/past-records', 'index');
+            Route::get('/patients/{patient}/past-records', 'forPatient');
+            Route::post('/patients/{patient}/past-records', 'store');
+            Route::get('/past-records/{record}', 'show');
+            Route::put('/past-records/{record}', 'update');
+            Route::post('/past-records/{record}/read', 'read');
+            Route::post('/past-records/{record}/file', 'file');
+            Route::delete('/past-records/{record}', 'destroy');
         });
     });
 
