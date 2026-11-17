@@ -1203,3 +1203,16 @@ tbody tr.empty .link { font-weight: 600; }
   .subnav-menu { position: static; }
   .subnav-drop { left: 8px; right: 8px; top: 100%; border-radius: 0 0 12px 12px; }
 }
+
+/* ---- Pharmacy billing: worked from the keyboard at the counter ---- */
+.picker button.on { background: var(--brand-soft); }
+.key-hint { display: block; margin-top: 6px; font-size: 0.8rem; }
+small.soon { color: var(--warn); font-weight: 600; }
+.totals dd.bill-total { font-size: 1.6rem; font-weight: 800; color: var(--brand-dark); letter-spacing: -0.01em; }
+.change { display: flex; align-items: center; min-height: 38px; font-size: 1.15rem; color: var(--muted); }
+.change.has { color: var(--ok); }
+@media (max-width: 700px) { .key-hint { display: none; } }
+.bill-actions { display: flex; gap: 8px; margin-top: 18px; }
+.bill-actions .btn { flex: 1; }
+.bill-actions .btn.primary { flex: 1.6; }
+.bill-links { display: flex; justify-content: space-between; gap: 12px; margin-top: 12px; font-size: 0.9rem; }
