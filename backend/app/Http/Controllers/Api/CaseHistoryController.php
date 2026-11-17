@@ -159,6 +159,42 @@ class CaseHistoryController extends Controller
         return response()->json(['tests' => $tests, 'vitals' => $vitals]);
     }
 
+    /**
+     * Lab results outside their normal range that came back in the last week, for the patients a
+     * doctor has seen lately or has in a bed. An admin who is not a doctor sees them for everyone.
+     */
+    public function abnormalResults(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $since = now()->subDays(7);
+
+        $mine = $user->role === Role::Doctor
+            ? Appointment::where('doctor_id', $user->id)->where('scheduled_at', '>=', now()->subDays(90))->pluck('patient_id')
+                ->concat(Admission::where('doctor_id', $user->id)->where(fn ($q) => $q->where('status', 'admitted')->orWhere('discharged_at', '>=', now()->subDays(30)))->pluck('patient_id'))->unique()->values()
+            : null;
+
+        $rows = DB::table('lab_results as r')
+            ->join('lab_order_items as i', 'i.id', '=', 'r.lab_order_item_id')
+            ->join('lab_orders as o', 'o.id', '=', 'i.lab_order_id')
+            ->whereIn('r.flag', ['high', 'low'])->where('i.reported_at', '>=', $since)
+            ->when($mine !== null, fn ($q) => $q->whereIn('o.patient_id', $mine))
+            ->orderByDesc('i.reported_at')->orderBy('r.id')->limit(300)
+            ->get(['o.id as order_id', 'o.order_no', 'o.patient_id', 'i.test_name', 'i.reported_at', 'r.parameter', 'r.value', 'r.unit', 'r.reference_range', 'r.flag']);
+
+        $patients = Patient::whereIn('id', $rows->pluck('patient_id')->unique())->get()->keyBy('id');
+
+        return response()->json($rows->groupBy('order_id')->map(function ($results) use ($patients) {
+            $first = $results->first();
+            $patient = $patients[$first->patient_id] ?? null;
+
+            return [
+                'order_id' => $first->order_id, 'order_no' => $first->order_no, 'reported_at' => substr((string) $results->max('reported_at'), 0, 16),
+                'patient' => $patient?->only(['id', 'uhid', 'title', 'name', 'gender', 'age_label']),
+                'results' => $results->map(fn ($r) => ['test' => $r->test_name, 'parameter' => $r->parameter, 'value' => $r->value, 'unit' => $r->unit, 'range' => $r->reference_range, 'flag' => $r->flag])->values(),
+            ];
+        })->filter(fn ($o) => $o['patient'])->values());
+    }
+
     /** Clinical notes are for the people who treat or test the patient, not for billing counters. */
     private function guard(Request $request): void
     {

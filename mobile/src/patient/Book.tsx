@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { addDays, api, ApiError, niceDate, shortDay, todayIso, type Appointment, type Doctor, type Slot } from '../api'
+import { addDays, api, ApiError, niceDate, shortDay, todayIso, type Appointment, type Doctor, type Person, type Slot } from '../api'
 import { colors, space } from '../theme'
-import { Button, Card, Empty, Field, Loading, Notice, Screen, text } from '../ui'
+import { Button, Card, Choice, Empty, Field, Loading, Notice, Screen, text } from '../ui'
 
 /** Choose a doctor, a day and a free time, then confirm. */
-export function BookAppointment({ onBack, onBooked }: { onBack: () => void; onBooked: (a: Appointment) => void }) {
+export function BookAppointment({ people, onBack, onBooked }: { people: Person[]; onBack: () => void; onBooked: (a: Appointment) => void }) {
+  const [who, setWho] = useState(String(people[0].patient_id))
   const [doctors, setDoctors] = useState<Doctor[] | null>(null)
   const [doctor, setDoctor] = useState<Doctor | null>(null)
   const [date, setDate] = useState(todayIso())
@@ -39,7 +40,7 @@ export function BookAppointment({ onBack, onBooked }: { onBack: () => void; onBo
     setBusy(true)
     setError('')
     try {
-      onBooked(await api.post<Appointment>('/app/appointments', { doctor_id: doctor.id, scheduled_at: `${date} ${time}`, notes: notes.trim() || null }))
+      onBooked(await api.post<Appointment>('/app/appointments', { doctor_id: doctor.id, scheduled_at: `${date} ${time}`, notes: notes.trim() || null, patient_id: Number(who) }))
     } catch (e) {
       setError((e as ApiError).message)
       // The time may have just been taken: show the day afresh.
@@ -69,6 +70,12 @@ export function BookAppointment({ onBack, onBooked }: { onBack: () => void; onBo
       }
     >
       <Notice text={error} />
+      {people.length > 1 && (
+        <Card>
+          <Text style={text.h2}>Who is it for?</Text>
+          <Choice value={who} onChange={setWho} options={people.map((p) => ({ value: String(p.patient_id), label: p.relation === 'Self' ? 'Me' : `${p.name} (${p.relation})` }))} />
+        </Card>
+      )}
       <Card>
         <Text style={text.h2}>1. Doctor</Text>
         {!doctors && !error && <Loading />}

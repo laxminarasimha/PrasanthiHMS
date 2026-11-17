@@ -108,7 +108,8 @@ class PatientAppController extends Controller
     {
         $clinic = Setting::group('clinic', AdminController::CLINIC_DEFAULTS);
 
-        return response()->json(['name' => $clinic['name'] ?: 'Prasanthi Hospitals', 'tagline' => $clinic['tagline'], 'address' => $clinic['address'], 'phone' => $clinic['phone'], 'phone_alt' => $clinic['phone_alt'], 'email' => $clinic['email']]);
+        return response()->json(['name' => $clinic['name'] ?: 'Prasanthi Hospitals', 'tagline' => $clinic['tagline'], 'address' => $clinic['address'], 'phone' => $clinic['phone'], 'phone_alt' => $clinic['phone_alt'], 'email' => $clinic['email'],
+            'doctors' => User::where('role', Role::Doctor)->where('is_active', true)->orderBy('name')->get(['id', 'name', 'department'])]);
     }
 
     /**
@@ -119,11 +120,13 @@ class PatientAppController extends Controller
     public function records(Request $request): JsonResponse
     {
         $account = $request->user();
+        // Whose records: checked first, so asking about someone not on the account is refused whatever the account's state.
+        $patientId = $account->patientFor($request->query('patient_id'));
         if (! $account->verified_at) {
             return response()->json(['verified' => false, 'visits' => [], 'lab' => []]);
         }
 
-        $visits = \App\Models\Consultation::where('patient_id', $account->patient_id)->whereNotNull('completed_at')
+        $visits = \App\Models\Consultation::where('patient_id', $patientId)->whereNotNull('completed_at')
             ->with(['medicines', 'doctor:id,name,department'])->latest('completed_at')->limit(50)->get()
             ->map(fn ($c) => [
                 'id' => $c->id, 'date' => $c->completed_at->format('Y-m-d'), 'doctor' => $c->doctor?->only(['name', 'department']),
@@ -133,7 +136,7 @@ class PatientAppController extends Controller
 
         // A lab result goes out only when it is reported and, where the lab works that way, approved.
         $needsApproval = (bool) Setting::group('lab', Setting::LAB_DEFAULTS)['approval_required'];
-        $lab = \App\Models\LabOrder::where('patient_id', $account->patient_id)
+        $lab = \App\Models\LabOrder::where('patient_id', $patientId)
             ->with(['items' => fn ($q) => $q->whereNotNull('reported_at')->when($needsApproval, fn ($w) => $w->whereNotNull('approved_at'))->with('results')])
             ->latest('ordered_at')->limit(50)->get()
             ->filter(fn ($o) => $o->items->isNotEmpty())
@@ -179,11 +182,13 @@ class PatientAppController extends Controller
             'doctor_id' => ['required', Rule::exists('users', 'id')->where('role', Role::Doctor->value)->where('is_active', true)],
             'scheduled_at' => ['required', 'date_format:Y-m-d H:i'],
             'notes' => ['nullable', 'string', 'max:255'],
+            'patient_id' => ['nullable', 'integer'],
         ]);
         $at = Carbon::parse($data['scheduled_at']);
         $doctor = User::find($data['doctor_id']);
+        $patientId = $account->patientFor($data['patient_id'] ?? null);
 
-        $appointment = DB::transaction(function () use ($account, $data, $at, $doctor) {
+        $appointment = DB::transaction(function () use ($patientId, $data, $at, $doctor) {
             // Read the day again under a lock, so two people cannot take the last place in a slot.
             Appointment::where('doctor_id', $doctor->id)->whereDate('scheduled_at', $at->toDateString())->lockForUpdate()->get(['id']);
             $slot = collect($this->slotsFor($doctor, $at))->firstWhere('time', $at->format('H:i'));
@@ -193,37 +198,37 @@ class PatientAppController extends Controller
             if (! $slot['available']) {
                 throw ValidationException::withMessages(['scheduled_at' => 'That time has just been taken or has passed. Choose another.']);
             }
-            if (Appointment::where('patient_id', $account->patient_id)->where('doctor_id', $doctor->id)->whereDate('scheduled_at', $at->toDateString())->where('status', '!=', 'cancelled')->exists()) {
-                throw ValidationException::withMessages(['scheduled_at' => 'You already have an appointment with this doctor on that day.']);
+            if (Appointment::where('patient_id', $patientId)->where('doctor_id', $doctor->id)->whereDate('scheduled_at', $at->toDateString())->where('status', '!=', 'cancelled')->exists()) {
+                throw ValidationException::withMessages(['scheduled_at' => 'There is already an appointment with this doctor on that day.']);
             }
 
             return Appointment::create([
-                'patient_id' => $account->patient_id, 'doctor_id' => $doctor->id, 'scheduled_at' => $at->format('Y-m-d H:i'), 'status' => 'booked',
+                'patient_id' => $patientId, 'doctor_id' => $doctor->id, 'scheduled_at' => $at->format('Y-m-d H:i'), 'status' => 'booked',
                 'notes' => $data['notes'] ?? null, 'booked_via' => 'app',
                 'token_no' => (int) Appointment::where('doctor_id', $doctor->id)->whereDate('scheduled_at', $at->toDateString())->max('token_no') + 1,
             ]);
         });
 
-        return response()->json($this->presentAppointment($appointment->load('doctor:id,name,department')), 201);
+        return response()->json($this->presentAppointment($appointment->load(['doctor:id,name,department', 'patient:id,name'])), 201);
     }
 
     public function appointments(Request $request): JsonResponse
     {
         return response()->json(
-            Appointment::where('patient_id', $request->user()->patient_id)->with('doctor:id,name,department')
-                ->latest('scheduled_at')->limit(50)->get()->map(fn (Appointment $a) => $this->presentAppointment($a))
+            Appointment::whereIn('patient_id', $request->user()->patientIds())->with(['doctor:id,name,department', 'patient:id,name'])
+                ->latest('scheduled_at')->limit(80)->get()->map(fn (Appointment $a) => $this->presentAppointment($a))
         );
     }
 
     public function cancel(Request $request, Appointment $appointment): JsonResponse
     {
-        abort_unless($appointment->patient_id === $request->user()->patient_id, 404);
+        abort_unless(in_array($appointment->patient_id, $request->user()->patientIds(), true), 404);
         if ($appointment->status !== 'booked' || $appointment->scheduled_at->isPast()) {
             throw ValidationException::withMessages(['appointment' => 'Only an upcoming appointment that has not started can be cancelled here. Please call the hospital.']);
         }
         $appointment->update(['status' => 'cancelled']);
 
-        return response()->json($this->presentAppointment($appointment->load('doctor:id,name,department')));
+        return response()->json($this->presentAppointment($appointment->load(['doctor:id,name,department', 'patient:id,name'])));
     }
 
     // ---- Monthly medicines ----
@@ -351,9 +356,24 @@ class PatientAppController extends Controller
 
         return [
             'id' => $account->id, 'name' => $account->name, 'mobile' => $account->mobile, 'verified' => $account->verified_at !== null,
-            'patient' => ['uhid' => $patient->uhid, 'gender' => $patient->gender, 'age_label' => $patient->age_label],
+            'patient' => ['id' => $patient->id, 'uhid' => $patient->uhid, 'gender' => $patient->gender, 'age_label' => $patient->age_label],
+            'people' => self::people($account),
             'hospital' => $this->hospital(),
         ];
+    }
+
+    /**
+     * The person and the family members they look after, the person first.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function people(PatientAccount $account): array
+    {
+        $show = fn (Patient $p, string $relation) => ['patient_id' => $p->id, 'name' => $p->name, 'relation' => $relation, 'uhid' => $p->uhid, 'gender' => $p->gender, 'age_label' => $p->age_label];
+
+        return collect([$show($account->patient, 'Self')])
+            ->concat($account->members()->with('patient')->get()->filter(fn ($m) => $m->patient && $m->patient_id !== $account->patient_id)->unique('patient_id')->map(fn ($m) => $show($m->patient, $m->relation)))
+            ->values()->all();
     }
 
     /**
@@ -376,6 +396,7 @@ class PatientAppController extends Controller
         return [
             'id' => $a->id, 'scheduled_at' => $a->scheduled_at->format('Y-m-d H:i'), 'status' => $a->status, 'token_no' => $a->token_no, 'notes' => $a->notes,
             'doctor' => $a->doctor?->only(['id', 'name', 'department']),
+            'patient' => $a->patient?->only(['id', 'name']),
             'can_cancel' => $a->status === 'booked' && $a->scheduled_at->isFuture(),
         ];
     }

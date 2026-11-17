@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Alert, Platform, Text, View } from 'react-native'
-import { api, ApiError, niceDate, niceTime, type Account, type Appointment, type Subscription } from '../api'
+import { api, ApiError, niceDate, niceTime, todayIso, type Account, type Appointment, type HomeData, type Person, type Subscription } from '../api'
 import { Button, Card, Empty, Loading, Notice, Pill, Screen, TabBar, text } from '../ui'
 import { PatientAccount } from './Account'
 import { BookAppointment } from './Book'
 import { PatientRecords } from './Records'
 import { SubscriptionEdit } from './SubscriptionEdit'
+import { PatientToday } from './Today'
 
-type Tab = 'appointments' | 'medicines' | 'records' | 'account'
+type Tab = 'today' | 'appointments' | 'medicines' | 'records' | 'account'
+const TITLES: Record<Tab, string> = { today: 'Today', appointments: 'My appointments', medicines: 'Monthly medicines', records: 'My records', account: 'My account' }
 
 /** Asks before something that cannot be undone; a browser preview uses its own dialog. */
 function confirm(title: string, message: string, yes: string, then: () => void) {
@@ -19,26 +21,39 @@ function confirm(title: string, message: string, yes: string, then: () => void) 
 }
 
 export function PatientHome({ account, onSignOut }: { account: Account; onSignOut: () => void }) {
-  const [tab, setTab] = useState<Tab>('appointments')
+  const [tab, setTab] = useState<Tab>('today')
+  const [people, setPeople] = useState<Person[]>(account.people)
+  const [home, setHome] = useState<HomeData | null>(null)
+  // Where a notice on the first screen leads: whose records, and which part of them.
+  const [recordsAt, setRecordsAt] = useState<{ first?: number; section?: 'visits' | 'lab' | 'bills' }>({})
   const [page, setPage] = useState<{ kind: 'book' } | { kind: 'subscription'; existing: Subscription | null } | null>(null)
   const [appointments, setAppointments] = useState<Appointment[] | null>(null)
   const [subscriptions, setSubscriptions] = useState<Subscription[] | null>(null)
   const [message, setMessage] = useState<{ text: string; kind: 'ok' | 'error' }>({ text: '', kind: 'ok' })
 
-  const load = useCallback(() => {
-    api.get<Appointment[]>('/app/appointments').then(setAppointments).catch((e: ApiError) => setMessage({ text: e.message, kind: 'error' }))
-    api.get<Subscription[]>('/app/subscriptions').then(setSubscriptions).catch(() => undefined)
-  }, [])
-  useEffect(load, [load])
+  const load = useCallback(
+    () =>
+      Promise.all([
+        api.get<Appointment[]>('/app/appointments').then(setAppointments).catch((e: ApiError) => setMessage({ text: e.message, kind: 'error' })),
+        api.get<Subscription[]>('/app/subscriptions').then(setSubscriptions).catch(() => undefined),
+        api.get<HomeData>('/app/home').then(setHome).catch(() => setHome({ verified: false, notices: [], due: 0 })),
+      ]),
+    [],
+  )
+  useEffect(() => {
+    void load()
+  }, [load])
 
   if (page?.kind === 'book') {
     return (
       <BookAppointment
+        people={people}
         onBack={() => setPage(null)}
         onBooked={(a) => {
           setPage(null)
-          setMessage({ text: `Booked with ${a.doctor?.name} on ${niceDate(a.scheduled_at)} at ${niceTime(a.scheduled_at)}. Your token number is ${a.token_no}.`, kind: 'ok' })
-          load()
+          setTab('appointments')
+          setMessage({ text: `Booked with ${a.doctor?.name} on ${niceDate(a.scheduled_at)} at ${niceTime(a.scheduled_at)}${a.patient && a.patient.id !== account.patient.id ? ` for ${a.patient.name}` : ''}. The token number is ${a.token_no}.`, kind: 'ok' })
+          void load()
         }}
       />
     )
@@ -67,17 +82,32 @@ export function PatientHome({ account, onSignOut }: { account: Account; onSignOu
     }
   }
 
-  const upcoming = appointments?.filter((a) => a.can_cancel || (a.status !== 'cancelled' && a.status !== 'reviewed' && a.scheduled_at.slice(0, 10) >= new Date().toISOString().slice(0, 10))) ?? []
+  const upcoming = appointments?.filter((a) => a.can_cancel || (a.status !== 'cancelled' && a.status !== 'reviewed' && a.scheduled_at.slice(0, 10) >= todayIso())) ?? []
   const earlier = appointments?.filter((a) => !upcoming.includes(a)) ?? []
   const editBody = (s: Subscription) => ({ title: s.title, day_of_month: s.day_of_month, notes: s.notes, items: s.items })
 
   return (
     <Screen
-      title={tab === 'appointments' ? 'My appointments' : tab === 'medicines' ? 'Monthly medicines' : tab === 'records' ? 'My records' : 'My account'}
+      title={TITLES[tab]}
       subtitle={account.hospital.name}
-      footer={<TabBar tabs={[{ key: 'appointments', label: 'Appointments' }, { key: 'medicines', label: 'Medicines' }, { key: 'records', label: 'Records' }, { key: 'account', label: 'Account' }]} value={tab} onChange={(t) => { setTab(t); setMessage({ text: '', kind: 'ok' }) }} />}
+      onRefresh={load}
+      footer={<TabBar tabs={[{ key: 'today', label: 'Today' }, { key: 'appointments', label: 'Bookings' }, { key: 'medicines', label: 'Medicines' }, { key: 'records', label: 'Records' }, { key: 'account', label: 'Account' }]} value={tab} onChange={(t) => { setTab(t); setRecordsAt({}); setMessage({ text: '', kind: 'ok' }) }} />}
     >
       <Notice text={message.text} kind={message.kind} />
+
+      {tab === 'today' && (
+        <PatientToday
+          account={account}
+          home={home}
+          onBook={() => setPage({ kind: 'book' })}
+          onOpen={(n) => {
+            setMessage({ text: '', kind: 'ok' })
+            if (n.tab === 'bills') setRecordsAt({ section: 'bills' })
+            else if (n.tab === 'records') setRecordsAt({ first: n.patient_id, section: 'lab' })
+            setTab(n.tab === 'bills' ? 'records' : n.tab)
+          }}
+        />
+      )}
 
       {tab === 'appointments' && (
         <>
@@ -98,6 +128,7 @@ export function PatientHome({ account, onSignOut }: { account: Account; onSignOu
               </View>
               <Text style={text.body}>{a.doctor?.name}</Text>
               {a.doctor?.department ? <Text style={text.muted}>{a.doctor.department}</Text> : null}
+              {a.patient && a.patient.id !== account.patient.id ? <Text style={text.strong}>For {a.patient.name}</Text> : null}
               {a.notes ? <Text style={text.muted}>{a.notes}</Text> : null}
               {a.can_cancel && (
                 <Button
@@ -117,7 +148,10 @@ export function PatientHome({ account, onSignOut }: { account: Account; onSignOu
                   <Text style={text.body}>
                     {niceDate(a.scheduled_at)} · {niceTime(a.scheduled_at)}
                   </Text>
-                  <Text style={text.muted}>{a.doctor?.name}</Text>
+                  <Text style={text.muted}>
+                    {a.doctor?.name}
+                    {a.patient && a.patient.id !== account.patient.id ? ` · for ${a.patient.name}` : ''}
+                  </Text>
                 </View>
                 <Pill status={a.status} />
               </View>
@@ -159,9 +193,9 @@ export function PatientHome({ account, onSignOut }: { account: Account; onSignOu
         </>
       )}
 
-      {tab === 'records' && <PatientRecords patientId={account.patient.uhid} />}
+      {tab === 'records' && <PatientRecords key={`${recordsAt.first ?? ''}${recordsAt.section ?? ''}`} people={people} first={recordsAt.first} section={recordsAt.section} />}
 
-      {tab === 'account' && <PatientAccount account={account} onSignOut={onSignOut} />}
+      {tab === 'account' && <PatientAccount account={account} people={people} onPeople={setPeople} onSignOut={onSignOut} />}
     </Screen>
   )
 }

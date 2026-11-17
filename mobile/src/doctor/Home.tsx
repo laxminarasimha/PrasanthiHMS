@@ -3,36 +3,50 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { addDays, api, ApiError, niceDate, niceTime, todayIso, type Inpatient, type QueueEntry, type StaffUser } from '../api'
 import { colors, space } from '../theme'
 import { Button, Card, Empty, Loading, Notice, Pill, Screen, TabBar, text } from '../ui'
+import { AbnormalResults } from './Alerts'
+import { FindPatient } from './Find'
+import { HospitalDay } from './Hospital'
 import { PatientView, type PatientRef } from './PatientView'
+
+type Tab = 'appointments' | 'inpatients' | 'alerts' | 'find' | 'hospital'
+const TITLES: Record<Tab, string> = { appointments: 'My appointments', inpatients: 'My inpatients', alerts: 'Results to see', find: 'Find a patient', hospital: 'Hospital today' }
 
 /** The doctor's appointments for a day, refreshed on its own while the screen is open. */
 export function DoctorHome({ user, onSignOut }: { user: StaffUser; onSignOut: () => void }) {
   const [date, setDate] = useState(todayIso())
   const [queue, setQueue] = useState<QueueEntry[] | null>(null)
   const [error, setError] = useState('')
-  const [tab, setTab] = useState<'appointments' | 'inpatients'>('appointments')
+  // A doctor starts on their appointments; an owner or manager who does not consult starts on the hospital's day.
+  const tabs: { key: Tab; label: string }[] = [
+    ...(user.can_consult ? [{ key: 'appointments' as const, label: 'Today' }, { key: 'inpatients' as const, label: 'Inpatients' }, { key: 'alerts' as const, label: 'Results' }, { key: 'find' as const, label: 'Find' }] : []),
+    ...(user.can_view_reports ? [{ key: 'hospital' as const, label: 'Hospital' }] : []),
+  ]
+  const [tab, setTab] = useState<Tab>(tabs[0]?.key ?? 'hospital')
+  const [refreshKey, setRefreshKey] = useState(0)
   const [inpatients, setInpatients] = useState<Inpatient[] | null>(null)
   const [viewing, setViewing] = useState<{ patient: PatientRef; admissionId?: number; subtitle?: string } | null>(null)
 
   const load = useCallback(() => {
-    api.get<QueueEntry[]>('/doctor/queue', { date }).then((list) => {
+    if (!user.can_consult) return Promise.resolve()
+    return api.get<QueueEntry[]>('/doctor/queue', { date }).then((list) => {
       setQueue(list)
       setError('')
     }).catch((e: ApiError) => setError(e.message))
-  }, [date])
+  }, [date, user.can_consult])
 
   useEffect(() => {
     setQueue(null)
-    load()
-    const timer = setInterval(load, 30000)
+    void load()
+    const timer = setInterval(() => void load(), 30000)
     return () => clearInterval(timer)
   }, [load])
 
   // Patients in a bed under this doctor's name.
   useEffect(() => {
     if (tab !== 'inpatients') return
+    setInpatients(null)
     api.get<Inpatient[]>('/ipd/admissions', { status: 'admitted' }).then((list) => setInpatients(list.filter((a) => a.doctor.id === user.id))).catch((e: ApiError) => setError(e.message))
-  }, [tab, user.id])
+  }, [tab, user.id, refreshKey])
 
   if (viewing) return <PatientView patient={viewing.patient} admissionId={viewing.admissionId} subtitle={viewing.subtitle} onBack={() => setViewing(null)} />
 
@@ -50,15 +64,22 @@ export function DoctorHome({ user, onSignOut }: { user: StaffUser; onSignOut: ()
 
   return (
     <Screen
-      title={tab === 'appointments' ? 'My appointments' : 'My inpatients'}
+      title={TITLES[tab]}
       subtitle={user.name}
+      onRefresh={async () => {
+        setRefreshKey((k) => k + 1)
+        await load()
+      }}
       right={
         <Pressable onPress={onSignOut} accessibilityRole="button" hitSlop={8}>
           <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Sign out</Text>
         </Pressable>
       }
-      footer={<TabBar tabs={[{ key: 'appointments', label: 'Appointments' }, { key: 'inpatients', label: 'Inpatients' }]} value={tab} onChange={(t) => { setTab(t); setError('') }} />}
+      footer={tabs.length > 1 ? <TabBar tabs={tabs} value={tab} onChange={(t) => { setTab(t); setError('') }} /> : undefined}
     >
+      {tab === 'alerts' && <AbnormalResults key={refreshKey} onOpen={(patient) => setViewing({ patient })} />}
+      {tab === 'find' && <FindPatient onOpen={(patient) => setViewing({ patient })} />}
+      {tab === 'hospital' && <HospitalDay user={user} refreshKey={refreshKey} />}
       {tab === 'inpatients' && (
         <>
           <Notice text={error} />

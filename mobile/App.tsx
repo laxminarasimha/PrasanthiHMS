@@ -89,7 +89,7 @@ export default function App() {
         </View>
         <View style={styles.actions}>
           <Button label="I am a patient" onPress={() => setEntry('patient')} />
-          <Button label="I am a doctor" kind="ghost" onPress={() => setEntry('doctor')} />
+          <Button label="Doctor or hospital staff" kind="ghost" onPress={() => setEntry('doctor')} />
         </View>
       </SafeAreaView>
     )

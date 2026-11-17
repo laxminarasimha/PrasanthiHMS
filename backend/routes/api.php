@@ -67,6 +67,13 @@ Route::prefix('app')->controller(\App\Http\Controllers\Api\PatientAppController:
         Route::delete('/subscriptions/{subscription}', 'cancelSubscription');
     });
 });
+Route::prefix('app')->middleware(['auth:sanctum', 'actor:patient'])->controller(\App\Http\Controllers\Api\PatientAppExtrasController::class)->group(function () {
+    Route::get('/home', 'home');
+    Route::get('/bills', 'bills');
+    Route::get('/family', 'family');
+    Route::post('/family', 'addMember')->middleware('throttle:20,1');
+    Route::delete('/family/{patient}', 'removeMember');
+});
 
 Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(function () {
     Route::middleware('ability:canRunPharmacy')->controller(\App\Http\Controllers\Api\SubscriptionController::class)->group(function () {
@@ -128,6 +135,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
 
     Route::get('/doctor/queue', [ConsultationController::class, 'queue']);
     Route::post('/doctor/visits', [CaseHistoryController::class, 'startVisit'])->middleware('ability:canConsult');
+    Route::get('/doctor/abnormal-results', [CaseHistoryController::class, 'abnormalResults'])->middleware('ability:canConsult');
     Route::controller(\App\Http\Controllers\Api\HealthSummaryController::class)->group(function () {
         Route::get('/patients/{patient}/health', 'show');
         Route::post('/patients/{patient}/health', 'store');

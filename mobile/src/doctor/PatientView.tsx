@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
-import { api, niceDate, niceTime, type BedsideVital, type HealthSummary, type PastVisit, type Trends } from '../api'
+import { api, ApiError, niceDate, niceTime, nowStamp, type BedsideVital, type HealthSummary, type PastVisit, type Trends, type WardNote } from '../api'
 import { colors, space } from '../theme'
-import { Card, Empty, Loading, Screen, text } from '../ui'
+import { Button, Card, Empty, Field, Loading, Notice, Screen, text } from '../ui'
 
 export type PatientRef = { id: number; uhid: string; name: string; title?: string | null; gender: string; age_label: string }
 
@@ -12,12 +12,32 @@ export function PatientView({ patient, admissionId, subtitle, onBack }: { patien
   const [visits, setVisits] = useState<PastVisit[] | null>(null)
   const [trends, setTrends] = useState<Trends | null>(null)
   const [vitals, setVitals] = useState<BedsideVital[] | null>(null)
+  const [notes, setNotes] = useState<WardNote[] | null>(null)
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [noteMessage, setNoteMessage] = useState<{ text: string; kind: 'ok' | 'error' }>({ text: '', kind: 'ok' })
+
+  const saveNote = async () => {
+    setSaving(true)
+    try {
+      setNotes(await api.post<WardNote[]>(`/ipd/admissions/${admissionId}/notes`, { kind: 'clinical', noted_at: nowStamp(), body: note.trim() }))
+      setNote('')
+      setNoteMessage({ text: 'The note is saved to the case sheet.', kind: 'ok' })
+    } catch (e) {
+      setNoteMessage({ text: (e as ApiError).message, kind: 'error' })
+    } finally {
+      setSaving(false)
+    }
+  }
 
   useEffect(() => {
     api.get<HealthSummary>(`/patients/${patient.id}/health`).then(setHealth).catch(() => setHealth({ allergies: null, sections: [] }))
     api.get<PastVisit[]>(`/patients/${patient.id}/consultations`).then(setVisits).catch(() => setVisits([]))
     api.get<Trends>(`/patients/${patient.id}/trends`).then(setTrends).catch(() => setTrends({ tests: [] }))
-    if (admissionId) api.get<{ vitals: BedsideVital[] }>(`/ipd/admissions/${admissionId}/chart`).then((c) => setVitals(c.vitals)).catch(() => setVitals([]))
+    if (admissionId) {
+      api.get<{ vitals: BedsideVital[] }>(`/ipd/admissions/${admissionId}/chart`).then((c) => setVitals(c.vitals)).catch(() => setVitals([]))
+      api.get<WardNote[]>(`/ipd/admissions/${admissionId}/notes`).then(setNotes).catch(() => setNotes([]))
+    }
   }, [patient.id, admissionId])
 
   const filled = health?.sections.filter((s) => s.items.some((i) => i.is_active)) ?? []
@@ -47,6 +67,30 @@ export function PatientView({ patient, admissionId, subtitle, onBack }: { patien
               </Text>
             </>
           )}
+        </Card>
+      ) : null}
+
+      {admissionId ? (
+        <Card>
+          <Text style={text.h2}>Round notes</Text>
+          <Field label="Add a note from this round" value={note} onChangeText={setNote} multiline placeholder="Condition, plan, orders to follow" style={{ minHeight: 88, paddingTop: 12, textAlignVertical: 'top' }} />
+          <Notice text={noteMessage.text} kind={noteMessage.kind} />
+          <Button label="Save note" onPress={saveNote} busy={saving} disabled={note.trim().length < 2} />
+          {!notes && <Loading />}
+          {/* The three latest, newest first, whichever order they arrive in. */}
+          {[...(notes ?? [])]
+            .filter((n) => n.body)
+            .sort((a, b) => b.noted_at.localeCompare(a.noted_at))
+            .slice(0, 3)
+            .map((n) => (
+              <View key={n.id} style={styles.visit}>
+                <Text style={text.muted}>
+                  {niceDate(n.noted_at)} {niceTime(n.noted_at)}
+                  {n.author ? ` · ${n.author.name}` : ''} · {n.kind === 'clinical' ? 'Doctor' : n.kind === 'nursing' ? 'Nursing' : 'Theatre'}
+                </Text>
+                <Text style={text.body}>{n.body}</Text>
+              </View>
+            ))}
         </Card>
       ) : null}
 
@@ -106,7 +150,7 @@ export function PatientView({ patient, admissionId, subtitle, onBack }: { patien
           )
         })}
       </Card>
-      <Text style={[text.muted, { textAlign: 'center' }]}>To write notes or prescribe, use the web system.</Text>
+      <Text style={[text.muted, { textAlign: 'center' }]}>To prescribe or write a visit pad, use the web system.</Text>
     </Screen>
   )
 }
