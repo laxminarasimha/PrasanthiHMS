@@ -53,7 +53,7 @@
 }
 
 :root {
-  --bar-h: 63px;
+  --bar-h: 60px;
   font: 15px/1.5 system-ui, 'Segoe UI', Roboto, sans-serif;
   color: var(--text);
   background: var(--bg);
@@ -101,7 +101,9 @@ h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color
 .patient-search.on-page .picker { left: 0; right: auto; }
 @media (max-width: 700px) { .patient-search:not(.on-page) { flex: 1; width: auto; min-width: 0; max-width: 420px; margin: 0 4px 0 auto; } }
 .whoami { display: flex; align-items: center; gap: 12px; text-align: right; white-space: nowrap; }
-.avatar { width: 34px; height: 34px; flex: none; border-radius: 50%; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-weight: 700; font-size: 0.85rem; letter-spacing: 0.02em; }
+.avatar { width: 34px; height: 34px; flex: none; border-radius: 50%; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-weight: 700; font-size: 0.85rem; letter-spacing: 0.02em; text-decoration: none; transition: box-shadow 0.15s; }
+.avatar:hover { box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.35); }
+.signout svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .whoami small { display: block; opacity: 0.8; font-size: 0.8rem; }
 .topbar .btn.ghost { color: #fff; background: transparent; border-color: rgba(255, 255, 255, 0.4); min-height: 34px; padding: 5px 12px; }
 .topbar .btn.ghost:hover:not(:disabled) { background: rgba(255, 255, 255, 0.15); }
@@ -310,10 +312,11 @@ input.result.low { border-color: var(--info); color: var(--info); font-weight: 7
 @media (max-width: 1000px) { .panel.wide { width: 100%; } }
 
 /* Pharmacy */
-.subnav { display: flex; gap: 2px; margin-bottom: 16px; flex-wrap: wrap; padding: 5px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--card-shadow); }
-.subnav a { padding: 6px 13px; border-radius: 8px; text-decoration: none; color: var(--muted); font-weight: 500; transition: background 0.15s, color 0.15s; }
-.subnav a:hover { background: var(--hover); color: var(--text); }
-.subnav a.active { background: var(--brand-soft); color: var(--brand-dark); font-weight: 700; box-shadow: inset 0 -2px 0 var(--brand); }
+.subnav { display: flex; gap: 2px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: -22px -22px 20px; padding: 0 20px; background: var(--surface); border-bottom: 1px solid var(--border); box-shadow: 0 2px 6px var(--shadow-soft); }
+.subnav::-webkit-scrollbar { display: none; }
+.subnav a, .subnav-menu > button { font: inherit; font-weight: 500; white-space: nowrap; padding: 11px 13px 8px; border: 0; border-bottom: 3px solid transparent; background: none; text-decoration: none; color: var(--muted); cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s; }
+.subnav a:hover, .subnav-menu > button:hover { background: var(--hover); color: var(--text); }
+.subnav a.active, .subnav-menu > button.active { color: var(--brand-dark); font-weight: 700; border-bottom-color: var(--brand); }
 .stack { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 .panel.narrow { width: 340px; }
 .grid.three { grid-template-columns: repeat(3, 1fr); }
@@ -377,11 +380,14 @@ h2.gap-top { margin-top: 20px; }
 .capitalise::first-letter { text-transform: uppercase; }
 
 /* Complete pharmacy */
-.subnav.grouped { gap: 4px 6px; align-items: center; }
-.subnav-group { display: flex; gap: 2px; align-items: center; flex-wrap: wrap; padding-right: 8px; border-right: 1px solid var(--border); }
-.subnav-group:last-child { border-right: 0; padding-right: 0; }
-.subnav-group > span { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); opacity: 0.8; margin: 0 4px 0 6px; }
-.subnav.grouped a { padding: 5px 10px; font-size: 0.92rem; }
+/* A menu with groups: each group opens as a short list, so the whole menu stays on one line. */
+.subnav.grouped { overflow: visible; }
+.subnav-menu { position: relative; display: flex; }
+.subnav-menu > button small { font-size: inherit; font-weight: 500; color: var(--muted); }
+.subnav-menu .caret { margin-left: 6px; font-size: 0.8em; opacity: 0.7; }
+.subnav-drop { position: absolute; left: 0; top: 100%; z-index: 20; min-width: 210px; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 0 0 12px 12px; box-shadow: 0 12px 28px var(--shadow); display: flex; flex-direction: column; animation: rise 0.12s ease-out; }
+.subnav-drop a { padding: 9px 12px; border: 0; border-radius: 8px; }
+.subnav-drop a.active { background: var(--brand-soft); border: 0; }
 .tiles.small .tile strong { font-size: 1.1rem; }
 .three-up { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-top: 8px; }
 td.actions { white-space: nowrap; }
@@ -513,9 +519,9 @@ td.wrap.wide { max-width: 640px; }
 .row.end { justify-content: flex-end; }
 
 /* Tablets and small laptops: the menu sits in its own row under the bar, always in view */
-/* With icons the menu needs a row of its own on all but the widest screens. */
-@media (min-width: 701px) and (max-width: 1439px) {
-  :root { --bar-h: 105px; }
+/* On a tablet the menu takes a row of its own. From a small laptop up, the header is one row. */
+@media (min-width: 701px) and (max-width: 1199px) {
+  :root { --bar-h: 102px; }
   .topbar { flex-wrap: wrap; height: auto; padding: 0 16px; row-gap: 0; }
   .topbar .brand { line-height: 50px; }
   .patient-search:not(.on-page) { width: min(300px, 34vw); margin-left: auto; }
@@ -1161,7 +1167,7 @@ td strong { font-weight: 650; }
 .pad-section { scroll-margin-top: calc(var(--bar-h) + 150px); }
 .pad-section:empty { display: none; }
 @media (max-width: 700px) {
-  :root { --bar-h: 55px; }
+  :root { --bar-h: 52px; }
   /* On a phone the header would take half the screen, so it scrolls away and only the jump bar stays. */
   .pad-head { display: contents; }
   .pad-jump { position: sticky; top: var(--bar-h); z-index: 6; background: var(--surface); margin: 0 -12px 10px; padding: 0 8px; border-bottom: 1px solid var(--border); box-shadow: 0 6px 10px -8px var(--shadow); }
@@ -1180,3 +1186,20 @@ td.status-cell .btn { margin-right: 8px; }
 small.waiting { color: var(--warn); font-weight: 600; }
 tbody tr.empty .link { font-weight: 600; }
 @media (max-width: 700px) { .dues-toggle { margin-left: 0; } }
+
+/* ---- One header row on laptops: the menu sits beside the name, with the person shown as a badge ---- */
+@media (min-width: 1200px) and (max-width: 1699px) {
+  .topbar { gap: 10px; padding: 0 14px; }
+  .topbar nav a { padding: 7px 9px; gap: 6px; font-size: 0.95rem; }
+  .brand-name span { display: none; }
+  .patient-search:not(.on-page) { width: 170px; }
+  .who-text, .signout span { display: none; }
+  .topbar .btn.signout { padding: 5px 9px; }
+}
+@media (max-width: 700px) {
+  .subnav { margin: -12px -12px 12px; padding: 0 6px; }
+  /* On a phone a group's list opens under the whole menu, as wide as the screen. */
+  .subnav.grouped { flex-wrap: wrap; position: relative; }
+  .subnav-menu { position: static; }
+  .subnav-drop { left: 8px; right: 8px; top: 100%; border-radius: 0 0 12px 12px; }
+}

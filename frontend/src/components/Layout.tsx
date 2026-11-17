@@ -90,10 +90,10 @@ export function Layout() {
         </nav>
         <PatientSearch />
         <div className="whoami">
-          <span className="avatar" aria-hidden="true">
+          <NavLink className="avatar" to="/account" title={`${user.name} · ${user.role_label}: my account`} aria-label="My account" onClick={(e) => !canLeave() && e.preventDefault()}>
             {initials(user.name)}
-          </span>
-          <div>
+          </NavLink>
+          <div className="who-text">
             <NavLink className="who-link" to="/account" title="My account: password, appearance, menu" onClick={(e) => !canLeave() && e.preventDefault()}>
               <strong>{user.name}</strong>
             </NavLink>
@@ -102,8 +102,11 @@ export function Layout() {
               {user.branch ? ` · ${user.branch.name}` : ''}
             </small>
           </div>
-          <button className="btn ghost" onClick={() => canLeave() && signOut()}>
-            Sign out
+          <button className="btn ghost signout" title="Sign out" onClick={() => canLeave() && signOut()}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M15 8l4 4-4 4M19 12H9" />
+            </svg>
+            <span>Sign out</span>
           </button>
         </div>
       </header>
