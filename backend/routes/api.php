@@ -73,6 +73,7 @@ Route::prefix('app')->middleware(['auth:sanctum', 'actor:patient'])->controller(
     Route::get('/family', 'family');
     Route::post('/family', 'addMember')->middleware('throttle:20,1');
     Route::delete('/family/{patient}', 'removeMember');
+    Route::post('/account/delete', 'deleteAccount')->middleware('throttle:10,1');
 });
 
 Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(function () {

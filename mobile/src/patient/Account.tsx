@@ -11,6 +11,22 @@ export function PatientAccount({ account, people, onPeople, onSignOut }: { accou
   const [form, setForm] = useState({ current: '', next: '', again: '' })
   const [message, setMessage] = useState<{ text: string; kind: 'ok' | 'error' }>({ text: '', kind: 'ok' })
   const [busy, setBusy] = useState(false)
+  const [closing, setClosing] = useState(false)
+  const [closePassword, setClosePassword] = useState('')
+  const [closeError, setCloseError] = useState('')
+
+  const closeAccount = async () => {
+    setBusy(true)
+    setCloseError('')
+    try {
+      await api.post('/app/account/delete', { password: closePassword })
+      onSignOut()
+    } catch (e) {
+      setCloseError((e as ApiError).message)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   useEffect(() => {
     api.get<Hospital>('/app/hospital').then(setHospital).catch(() => undefined)
@@ -96,6 +112,31 @@ export function PatientAccount({ account, people, onPeople, onSignOut }: { accou
       )}
 
       <Button label="Sign out" kind="ghost" onPress={onSignOut} />
+
+      <Card>
+        <Text style={text.h2}>Close my account</Text>
+        {closing ? (
+          <>
+            <Text style={text.body}>This removes your login, your family list and your monthly medicine lists from this app for good. Appointments already booked stay booked.</Text>
+            <Text style={text.muted}>The hospital keeps its own medical and billing records of your visits, as it is required to. To ask about those, call the hospital.</Text>
+            <Field label="Your password" value={closePassword} onChangeText={setClosePassword} secureTextEntry autoCapitalize="none" autoComplete="current-password" />
+            <Notice text={closeError} />
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Button label="Keep my account" kind="ghost" onPress={() => { setClosing(false); setClosePassword(''); setCloseError('') }} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button label="Close it for good" kind="danger" onPress={closeAccount} busy={busy} disabled={!closePassword} />
+              </View>
+            </View>
+          </>
+        ) : (
+          <>
+            <Text style={text.muted}>If you no longer want to use this app, you can remove your login from it.</Text>
+            <Button label="Close my account" kind="danger" small onPress={() => setClosing(true)} />
+          </>
+        )}
+      </Card>
     </>
   )
 }

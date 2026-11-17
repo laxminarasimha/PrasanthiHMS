@@ -139,4 +139,26 @@ class PatientAppFamilyTest extends TestCase
         Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
         $this->getJson('/api/doctor/abnormal-results')->assertForbidden();
     }
+
+    public function test_a_patient_can_close_their_own_account_and_the_hospital_record_stays(): void
+    {
+        $account = $this->account();
+        $patientId = $account->patient_id;
+        Sanctum::actingAs($account);
+        $this->postJson('/api/app/family', ['name' => 'Venkata Rao', 'gender' => 'male', 'date_of_birth' => '1945-02-10', 'relation' => 'Father'])->assertCreated();
+        $this->postJson('/api/app/subscriptions', ['title' => 'Sugar tablets', 'day_of_month' => 5, 'items' => [['name' => 'Metformin 500', 'quantity' => 60]]])->assertCreated();
+
+        $this->postJson('/api/app/account/delete', ['password' => 'wrong-one'])->assertStatus(422)->assertJsonValidationErrors('password');
+        $this->assertNotNull(PatientAccount::find($account->id));
+
+        $this->postJson('/api/app/account/delete', ['password' => 'Health2026'])->assertOk();
+        $this->assertNull(PatientAccount::find($account->id));
+        $this->assertSame(0, \App\Models\MedicineSubscription::count());
+        $this->assertSame(0, \App\Models\PatientAccountMember::count());
+        $this->assertNotNull(Patient::find($patientId)); // the hospital's own record is kept
+        $this->assertSame(1, \App\Models\AuditLog::where('action', 'app.deleted')->where('patient_id', $patientId)->count());
+
+        // The mobile number is free to register again.
+        $this->postJson('/api/app/register', ['name' => 'Lakshmi Devi', 'mobile' => '9876543210', 'gender' => 'female', 'date_of_birth' => '1970-05-01', 'password' => 'Health2026', 'password_confirmation' => 'Health2026'])->assertCreated();
+    }
 }
