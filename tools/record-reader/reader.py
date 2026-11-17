@@ -25,6 +25,7 @@ deleted straight after. Nothing about a patient is printed on the screen or writ
 from __future__ import annotations
 
 import argparse
+import base64
 import configparser
 import json
 import os
@@ -84,6 +85,8 @@ class Desk:
         request = urllib.request.Request(self.api + path, method="GET" if body is None else "POST")
         request.add_header("X-Reader-Key", self.key)
         request.add_header("Accept", "application/json")
+        # Shared web hosts turn away Python's default name as if it were a robot, so the reader says what it is.
+        request.add_header("User-Agent", "PrasanthiHMS-RecordReader/1.0")
         data = None
         if body is not None:
             # Always a body, even an empty one: some hosts refuse a POST that carries nothing.
@@ -95,6 +98,8 @@ class Desk:
         except urllib.error.HTTPError as error:
             if error.code == 401:
                 raise Stop("The web system did not accept this computer's key. Make a new key under Setup → Hospital → Reading scanned papers and put it in reader.ini.") from None
+            if error.code == 404 and path in ("/hello", "/next"):
+                raise Stop("The address in reader.ini is not the hospital's web system, or the system is older than this reader.") from None
             raise
 
     def hello(self) -> dict:
@@ -107,7 +112,9 @@ class Desk:
         return self._call(f"/pages/{page_id}", timeout=180)
 
     def done(self, record_id: int, text: str = "", error: str = "") -> None:
-        self._call(f"/records/{record_id}/done", {"text": text, "error": error[:480]})
+        # The text travels wrapped in base64: a shared host's firewall can mistake a page of medical text for an attack.
+        wrapped = base64.b64encode(text.encode("utf-8")).decode("ascii") if text else ""
+        self._call(f"/records/{record_id}/done", {"text_b64": wrapped, "error": error[:480]})
 
 
 class Marker:
@@ -169,10 +176,16 @@ def read_paper(desk: Desk, marker: Marker, paper: dict) -> None:
         return
 
     text = "\n\n".join(part for part in parts if part)
-    if not text:
-        desk.done(record_id, error="Nothing could be read from this scan. Check that it is not blank or upside down.")
-    else:
-        desk.done(record_id, text=text)
+    try:
+        if not text:
+            desk.done(record_id, error="Nothing could be read from this scan. Check that it is not blank or upside down.")
+        else:
+            desk.done(record_id, text=text)
+    except urllib.error.HTTPError as error:
+        # The web system refused the text itself. Say so, so the paper is typed in instead of waiting for ever.
+        say(f"Paper {record_id}: the web system would not take the text (error {error.code}).")
+        desk.done(record_id, error=f"The paper was read, but the web system would not take the text (error {error.code}). Type it in, or send it to AI reading.")
+        return
     say(f"Paper {record_id}: done in {time.time() - started:.0f} s.")
 
 
@@ -190,7 +203,14 @@ def main() -> int:
 
         desk = Desk(*settings())
         if args.check:
-            waiting = desk.hello().get("waiting", 0)
+            try:
+                waiting = desk.hello().get("waiting", 0)
+            except urllib.error.HTTPError as error:
+                say(f"The web system answered with error {error.code}. Check the address in reader.ini.")
+                return 1
+            except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
+                say(f"Could not reach the web system ({type(error).__name__}). Check the internet connection and the address in reader.ini.")
+                return 1
             say(f"The web system accepted this computer's key. Papers waiting to be read: {waiting}.")
             return 0
 
