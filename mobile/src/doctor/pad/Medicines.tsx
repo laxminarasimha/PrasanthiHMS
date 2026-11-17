@@ -10,27 +10,40 @@ const TIMINGS = ['After food', 'Before food', 'Empty stomach', 'At bedtime']
 const DURATIONS = ['3 days', '5 days', '7 days', '10 days', '15 days', '1 month', '3 months']
 
 export const emptyLine = (): RxLine => ({ medicine: '', dose: null, frequency: null, timing: null, duration: null, instructions: null })
+/** A medicine offered while typing: from the pharmacy's list, or a name this doctor has written before. */
+type Offer = { name: string; composition: string | null; type: string | null; in_stock: number; combination: boolean; before?: boolean }
+
 const summary = (m: RxLine) => [m.dose, m.frequency, m.timing, m.duration, m.instructions].filter(Boolean).join(' · ')
 
 /** The prescription: the medicines so far, and a small form to add or change one. */
 export function Medicines({ rows, onChange, library, readOnly }: { rows: RxLine[]; onChange: (rows: RxLine[]) => void; library: Library | null; readOnly?: boolean }) {
   const [editing, setEditing] = useState<number | 'new' | null>(null)
   const [line, setLine] = useState<RxLine>(emptyLine())
-  const [names, setNames] = useState<string[]>([])
+  const [offers, setOffers] = useState<Offer[]>([])
   const [groups, setGroups] = useState(false)
   const frequencies = library?.rx_settings.frequencies?.length ? library.rx_settings.frequencies : FREQUENCIES
   const timings = library?.rx_settings.timings?.length ? library.rx_settings.timings : TIMINGS
 
-  // Names to choose from while typing: the pharmacy's list first, then names prescribed before.
+  // What to choose from while typing. The pharmacy's list is searched by brand and by the drug inside, so
+  // single drugs and combinations both show, what is on the shelf first. Names written before follow.
   useEffect(() => {
     const q = line.medicine.trim()
     if (editing === null || q.length < 2) {
-      setNames([])
+      setOffers([])
       return
     }
     let current = true
     const timer = setTimeout(() => {
-      api.get<string[]>('/medicines/suggest', { q }).then((list) => current && setNames(list.filter((n) => n.toLowerCase() !== q.toLowerCase()).slice(0, 8))).catch(() => undefined)
+      Promise.all([
+        api.get<Offer[]>('/medicines/find', { q }).catch(() => [] as Offer[]),
+        api.get<string[]>('/medicines/suggest', { q }).catch(() => [] as string[]),
+      ]).then(([found, written]) => {
+        if (!current) return
+        const listed = new Set(found.map((f) => f.name.toLowerCase()))
+        const before = written.filter((n) => !listed.has(n.toLowerCase())).slice(0, 4).map((name) => ({ name, composition: null, type: null, in_stock: 0, combination: false, before: true }))
+        // Once the box holds exactly one of the names, there is nothing left to choose.
+        setOffers([...found.slice(0, 8), ...before].filter((o) => o.name.toLowerCase() !== q.toLowerCase()))
+      })
     }, 300)
     return () => {
       current = false
@@ -47,7 +60,7 @@ export function Medicines({ rows, onChange, library, readOnly }: { rows: RxLine[
   const pick = (name: string) => {
     const usual = library?.medicine_defaults.find((d) => d.medicine.toLowerCase() === name.toLowerCase())
     setLine((l) => ({ ...l, medicine: name, dose: l.dose ?? usual?.dose ?? null, frequency: l.frequency ?? usual?.frequency ?? null, timing: l.timing ?? usual?.timing ?? null, duration: l.duration ?? usual?.duration ?? null, instructions: l.instructions ?? usual?.instructions ?? null }))
-    setNames([])
+    setOffers([])
   }
 
   const done = () => {
@@ -75,13 +88,36 @@ export function Medicines({ rows, onChange, library, readOnly }: { rows: RxLine[
 
       {editing !== null && (
         <View style={{ gap: 10, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 }}>
-          <Field label="Medicine" value={line.medicine} onChangeText={(v) => setLine((l) => ({ ...l, medicine: v }))} autoCapitalize="words" autoCorrect={false} placeholder="Start typing the name" />
-          {names.length > 0 && (
-            <Chips>
-              {names.map((n) => (
-                <Chip key={n} label={n} onPress={() => pick(n)} />
+          <Field label="Medicine" value={line.medicine} onChangeText={(v) => setLine((l) => ({ ...l, medicine: v }))} autoCapitalize="words" autoCorrect={false} placeholder="Brand or drug name" />
+          {offers.length > 0 && (
+            <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, overflow: 'hidden' }}>
+              {offers.map((o, i) => (
+                <Pressable
+                  key={o.name}
+                  onPress={() => pick(o.name)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${o.name}${o.before ? '' : o.in_stock > 0 ? `, ${o.in_stock} in stock` : ', not in stock'}`}
+                  style={({ pressed }) => ({ paddingVertical: 9, paddingHorizontal: 12, backgroundColor: pressed ? colors.bg : colors.surface, borderTopWidth: i ? 1 : 0, borderTopColor: colors.border })}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={[text.strong, { flex: 1 }]}>{o.name}</Text>
+                    {o.before ? (
+                      <Text style={[text.muted, { fontSize: 12 }]}>written before</Text>
+                    ) : o.in_stock > 0 ? (
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: colors.ok, backgroundColor: colors.okSoft, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, overflow: 'hidden', flexShrink: 0 }}>In stock · {o.in_stock}</Text>
+                    ) : (
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: colors.muted, backgroundColor: colors.bg, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, overflow: 'hidden', flexShrink: 0 }}>Not in stock</Text>
+                    )}
+                  </View>
+                  {o.composition || o.type ? (
+                    <Text style={[text.muted, { fontSize: 13 }]}>
+                      {o.combination ? 'Combination: ' : ''}
+                      {[o.composition, o.type].filter(Boolean).join(' · ')}
+                    </Text>
+                  ) : null}
+                </Pressable>
               ))}
-            </Chips>
+            </View>
           )}
           <Field label="Dose" value={line.dose ?? ''} onChangeText={(v) => setLine((l) => ({ ...l, dose: v || null }))} placeholder="1 tablet, 5 ml" />
           <Text style={text.muted}>How often</Text>
