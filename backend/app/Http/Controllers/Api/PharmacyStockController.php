@@ -3,13 +3,17 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\Manufacturer;
 use App\Models\Medicine;
+use App\Models\Payment;
 use App\Models\PurchaseInvoice;
 use App\Models\PurchaseOrder;
 use App\Models\StockAdjustment;
 use App\Models\StockBatch;
 use App\Models\StockReturn;
+use App\Support\OpeningStockImport;
+use App\Support\OrderMatch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -98,7 +102,7 @@ class PharmacyStockController extends Controller
     public function importOpeningStock(Request $request): JsonResponse
     {
         $this->authorizePharmacy($request);
-        $max = \App\Support\OpeningStockImport::MAX_LINES;
+        $max = OpeningStockImport::MAX_LINES;
         $data = $request->validate([
             'rows' => ['required', 'array', 'min:1', "max:{$max}"],
             'rows.*' => ['array'],
@@ -111,7 +115,7 @@ class PharmacyStockController extends Controller
             'sheet_total' => ['nullable', 'numeric', 'min:0'],
         ], ['rows.required' => 'The sheet has no lines.', 'rows.max' => "A sheet can have at most {$max} lines. Split it into smaller sheets."]);
 
-        $result = \App\Support\OpeningStockImport::check($data['rows'], (bool) ($data['add_missing'] ?? false));
+        $result = OpeningStockImport::check($data['rows'], (bool) ($data['add_missing'] ?? false));
         if (! ($data['commit'] ?? false)) {
             return response()->json($result);
         }
@@ -127,8 +131,8 @@ class PharmacyStockController extends Controller
             throw ValidationException::withMessages(['sheet_total' => 'The total on your own sheet does not match the total of these lines. Nothing was added.']);
         }
 
-        $added = \App\Support\OpeningStockImport::save($result['rows']);
-        \App\Models\AuditLog::record('change', null, null, "Imported opening stock from a sheet · {$added} batches, {$totals['units']} units, ₹".number_format($totals['at_cost'], 2).' at cost'
+        $added = OpeningStockImport::save($result['rows']);
+        AuditLog::record('change', null, null, "Imported opening stock from a sheet · {$added} batches, {$totals['units']} units, ₹".number_format($totals['at_cost'], 2).' at cost'
             .($totals['new_medicines'] ? " · {$totals['new_medicines']} medicines added to the list" : ''));
 
         return response()->json(['added' => $added, 'totals' => $totals], 201);
@@ -145,18 +149,24 @@ class PharmacyStockController extends Controller
             ->withSum(['batches as units_in_stock' => fn ($q) => $q->whereDate('expiry', '>=', today())], 'units_in_stock')
             ->withSum(['batches as expiring_units' => fn ($q) => $q->where('units_in_stock', '>', 0)->whereDate('expiry', '<=', $soon)], 'units_in_stock')
             ->withMin(['batches as next_expiry' => fn ($q) => $q->where('units_in_stock', '>', 0)], 'expiry')
+            ->withSum('batches as on_shelf', 'units_in_stock')
             ->orderBy('name')->get(['id', 'name', 'type', 'manufacturer', 'reorder_level'])
             ->each(function (Medicine $m) {
                 $m->units_in_stock = (int) $m->units_in_stock;
                 $m->expiring_units = (int) $m->expiring_units;
+                $m->on_shelf = (int) $m->on_shelf;
             });
 
+        // The inventory is what is on the shelf. A medicine with nothing on the shelf is not stock;
+        // it stays in the medicines list, where its options for ordering are shown.
+        $stocked = $medicines->where('on_shelf', '>', 0)->values();
+
         return response()->json([
-            'all' => $medicines,
+            'all' => $stocked,
             'counts' => [
-                'expiring' => $medicines->where('expiring_units', '>', 0)->count(),
-                'low' => $medicines->filter(fn ($m) => $m->units_in_stock > 0 && $m->units_in_stock <= $m->reorder_level)->count(),
-                'zero' => $medicines->where('units_in_stock', 0)->count(),
+                'expiring' => $stocked->where('expiring_units', '>', 0)->count(),
+                'low' => $stocked->filter(fn ($m) => $m->units_in_stock > 0 && $m->units_in_stock <= $m->reorder_level)->count(),
+                'zero' => $medicines->count() - $stocked->count(),
             ],
         ]);
     }
@@ -194,7 +204,7 @@ class PharmacyStockController extends Controller
         $this->authorizePharmacy($request);
         $data = $request->validate([
             'amount' => ['required', 'numeric', 'gt:0'],
-            'mode' => ['nullable', Rule::in(\App\Models\Payment::MODES)],
+            'mode' => ['nullable', Rule::in(Payment::MODES)],
             'reference' => ['nullable', 'string', 'max:255'],
             'paid_on' => ['nullable', 'date', 'before_or_equal:today'],
             'remarks' => ['nullable', 'string', 'max:500'],
@@ -277,7 +287,7 @@ class PharmacyStockController extends Controller
 
     public function showPurchaseOrder(PurchaseOrder $order): JsonResponse
     {
-        return response()->json($order->load(['stockist', 'items'])->toArray() + ['match' => \App\Support\OrderMatch::forOrder($order)]);
+        return response()->json($order->load(['stockist', 'items'])->toArray() + ['match' => OrderMatch::forOrder($order)]);
     }
 
     public function storePurchaseOrder(Request $request): JsonResponse
@@ -343,7 +353,7 @@ class PharmacyStockController extends Controller
 
         $order = $order->fresh()->load(['stockist', 'items']);
 
-        return response()->json($order->toArray() + ['match' => \App\Support\OrderMatch::forOrder($order)]);
+        return response()->json($order->toArray() + ['match' => OrderMatch::forOrder($order)]);
     }
 
     private function authorizePharmacy(Request $request): void
