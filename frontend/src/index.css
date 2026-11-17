@@ -53,6 +53,7 @@
 }
 
 :root {
+  --bar-h: 63px;
   font: 15px/1.5 system-ui, 'Segoe UI', Roboto, sans-serif;
   color: var(--text);
   background: var(--bg);
@@ -112,7 +113,7 @@ h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color
 .split { display: flex; gap: 20px; align-items: flex-start; }
 .split > section { flex: 1; min-width: 0; }
 .panel { width: 460px; flex-shrink: 0; }
-@media (min-width: 1001px) { .split > .panel { position: sticky; top: 80px; max-height: calc(100vh - 100px); overflow-y: auto; box-shadow: 0 10px 34px var(--shadow-soft), var(--card-shadow); } }
+@media (min-width: 1001px) { .split > .panel { position: sticky; top: calc(var(--bar-h) + 16px); max-height: calc(100vh - var(--bar-h) - 36px); overflow-y: auto; box-shadow: 0 10px 34px var(--shadow-soft), var(--card-shadow); } }
 .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .panel-foot { margin-top: 20px; display: flex; justify-content: flex-end; }
 .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
@@ -514,6 +515,7 @@ td.wrap.wide { max-width: 640px; }
 /* Tablets and small laptops: the menu sits in its own row under the bar, always in view */
 /* With icons the menu needs a row of its own on all but the widest screens. */
 @media (min-width: 701px) and (max-width: 1439px) {
+  :root { --bar-h: 105px; }
   .topbar { flex-wrap: wrap; height: auto; padding: 0 16px; row-gap: 0; }
   .topbar .brand { line-height: 50px; }
   .patient-search:not(.on-page) { width: min(300px, 34vw); margin-left: auto; }
@@ -1142,3 +1144,26 @@ td strong { font-weight: 650; }
 .tile { background: var(--surface-2); transition: border-color 0.15s, box-shadow 0.15s; }
 .tile:hover { border-color: var(--brand-line); box-shadow: var(--card-shadow); }
 ::selection { background: var(--brand-soft); }
+
+/* ---- The doctor's visit pad: a header that stays put, and a bar to jump between its parts ---- */
+.pad-head { position: sticky; top: var(--bar-h); z-index: 6; margin: -20px -20px 14px; padding: 14px 20px 0; background: var(--surface); border-bottom: 1px solid var(--border); border-radius: 14px 14px 0 0; box-shadow: 0 6px 12px -8px var(--shadow); }
+.pad-head .toolbar { margin-bottom: 10px; gap: 10px; }
+.pad-head h1 small { font-size: 0.95rem; font-weight: 500; }
+.save-state { font-size: 0.85rem; color: var(--ok); white-space: nowrap; }
+.save-state.unsaved { color: var(--warn); font-weight: 600; }
+.pad-jump { position: relative; display: flex; gap: 1px; overflow-x: auto; scrollbar-width: none; padding-bottom: 0; }
+.pad-jump::-webkit-scrollbar { display: none; }
+.pad-jump button { font: inherit; font-size: 0.88rem; white-space: nowrap; background: none; border: 0; border-bottom: 3px solid transparent; padding: 7px 9px; color: var(--muted); cursor: pointer; border-radius: 6px 6px 0 0; transition: color 0.15s, background 0.15s, border-color 0.15s; }
+.pad-jump button:hover { background: var(--hover); color: var(--text); }
+.pad-jump button.filled { color: var(--text); font-weight: 600; }
+.pad-jump button.filled::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--ok); vertical-align: 2px; }
+.pad-jump button.here { color: var(--brand-dark); border-bottom-color: var(--brand); background: var(--brand-soft); }
+.pad-section { scroll-margin-top: calc(var(--bar-h) + 150px); }
+.pad-section:empty { display: none; }
+@media (max-width: 700px) {
+  :root { --bar-h: 55px; }
+  /* On a phone the header would take half the screen, so it scrolls away and only the jump bar stays. */
+  .pad-head { display: contents; }
+  .pad-jump { position: sticky; top: var(--bar-h); z-index: 6; background: var(--surface); margin: 0 -12px 10px; padding: 0 8px; border-bottom: 1px solid var(--border); box-shadow: 0 6px 10px -8px var(--shadow); }
+  .pad-section { scroll-margin-top: calc(var(--bar-h) + 56px); }
+}
