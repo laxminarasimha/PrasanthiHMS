@@ -4,18 +4,18 @@ import { api } from '../api'
 import { useAuth } from '../auth'
 import { AppointmentForm } from '../components/AppointmentForm'
 import { BillPanel } from '../components/BillPanel'
-import { LabOrderForm } from '../components/LabOrderForm'
+import { ChargePanel } from '../components/ChargePanel'
 import { AttachmentsPanel, EditAppointmentPanel, SummaryPanel, VitalsPanel } from '../components/FrontDeskPanels'
 import { PatientPicker } from '../components/PatientPicker'
 import { STATUS_LABELS, clock, longDate, rupees, settlement, stampTime, today } from '../format'
-import type { Appointment, AppointmentStatus, Bill, Doctor, FollowUp, LabCatalogueTest, LabPackage, Patient, Service, WalkInBill } from '../types'
+import type { Appointment, AppointmentStatus, Doctor, FollowUp, LabCatalogueTest, LabPackage, Patient, Service, WalkInBill } from '../types'
 
 type DayList = { data: Appointment[]; counts: Partial<Record<AppointmentStatus, number>> }
 type Department = 'all' | 'appointment' | 'lab' | 'other'
 type Panel =
   | { kind: 'new'; preset?: { patient: Appointment['patient']; doctorId: string; date: string } }
   | { kind: 'followups' }
-  | { kind: 'lab'; appointment: Appointment }
+  | { kind: 'charge'; patient: { id: number; name: string; uhid: string }; appointmentId?: number; doctor?: string; advised?: string }
   | { kind: 'bill'; billId: number }
   | { kind: 'walkin' }
   | { kind: 'vitals' | 'attachments' | 'edit'; appointment: Appointment }
@@ -117,12 +117,8 @@ export function FrontDesk() {
     load()
   }
 
-  // Starts an empty bill: for a visit that has none, or as one more bill for the same patient.
-  const newBill = async (patientId: number, appointmentId?: number) => {
-    const res = await api.post<Bill>('/bills', { patient_id: patientId, appointment_id: appointmentId ?? null })
-    open({ kind: 'bill', billId: res.data.id })
-    load()
-  }
+  // Billing for a visit: services and lab tests chosen in one place. With `advised`, the doctor's tests are put in ready.
+  const charge = (a: Appointment, advised?: string) => open({ kind: 'charge', patient: a.patient, appointmentId: a.id, doctor: a.doctor.name, advised })
 
   const total = list ? Object.values(list.counts).reduce((sum, n) => sum + (n ?? 0), 0) : 0
   const visits = (list?.data ?? []).filter((a) => department === 'all' || a.bills.some((b) => b.kind === department) || (department === 'appointment' && a.bills.length === 0))
@@ -155,8 +151,8 @@ export function FrontDesk() {
           <button className="btn primary" onClick={() => open({ kind: 'new' })}>
             + New appointment
           </button>
-          <button className="btn ghost" onClick={() => { setWalkInPatient(null); open({ kind: 'walkin' }) }}>
-            + Other bill
+          <button className="btn ghost" onClick={() => { setWalkInPatient(null); open({ kind: 'walkin' }) }} title="Bill a patient who has no appointment today: services, lab tests, or both">
+            + New bill
           </button>
         </div>
         <div className="toolbar minor">
@@ -240,11 +236,9 @@ export function FrontDesk() {
                         .map((b) => (
                           <BillChip key={b.id} label={b.lab_order ? `Lab ${b.lab_order.order_no}` : b.kind === 'other' ? 'Other' : undefined} total={b.total} due={b.due} movedToIpd={b.moved_to_ipd} onOpen={() => open({ kind: 'bill', billId: b.id })} />
                         ))}
-                      {a.bills.length === 0 && (
-                        <button className="link" onClick={() => newBill(a.patient.id, a.id)}>
-                          Create bill
-                        </button>
-                      )}
+                      <button className="bill-add" onClick={() => charge(a)} title={`Add services or lab tests for ${a.patient.name}, and collect payment`}>
+                        + Bill
+                      </button>
                     </td>
                     <td className="mono">
                       {clock(a.scheduled_at)}
@@ -271,7 +265,7 @@ export function FrontDesk() {
                         <button
                           className={`advice-chip tests ${a.bills.some((b) => b.lab_order) ? 'done' : ''}`}
                           title={`Tests advised: ${a.consultation.tests_advised}. ${a.bills.some((b) => b.lab_order) ? 'A lab order has already been made for this visit.' : 'Click to make the lab order.'}`}
-                          onClick={() => open({ kind: 'lab', appointment: a })}
+                          onClick={() => charge(a, a.consultation?.tests_advised ?? undefined)}
                         >
                           Tests{a.bills.some((b) => b.lab_order) ? ' ✓' : ''}
                         </button>
@@ -318,8 +312,8 @@ export function FrontDesk() {
                           <button role="menuitem" onClick={() => open({ kind: 'edit', appointment: a })}>
                             Edit appointment
                           </button>
-                          <button role="menuitem" onClick={() => { setMenu(null); newBill(a.patient.id, a.id) }}>
-                            Add another bill
+                          <button role="menuitem" onClick={() => charge(a)}>
+                            Add services or lab tests
                           </button>
                         </div>
                       )}
@@ -384,20 +378,29 @@ export function FrontDesk() {
           }}
         />
       )}
-      {panel?.kind === 'bill' && <BillPanel key={panel.billId} billId={panel.billId} services={services} onClose={() => setPanel(null)} onChange={load} onAnotherBill={(bill) => newBill(bill.patient.id, bill.appointment?.id)} />}
-      {panel?.kind === 'lab' && (
-        <LabOrderForm
-          key={panel.appointment.id}
+      {panel?.kind === 'bill' && (
+        <BillPanel
+          key={panel.billId}
+          billId={panel.billId}
+          services={services}
+          onClose={() => setPanel(null)}
+          onChange={load}
+          onAnotherBill={(bill) => open({ kind: 'charge', patient: bill.patient, appointmentId: bill.appointment?.id, doctor: bill.appointment?.doctor?.name })}
+        />
+      )}
+      {panel?.kind === 'charge' && (
+        <ChargePanel
+          key={`${panel.patient.id}-${panel.appointmentId ?? 0}-${panel.advised ?? ''}`}
+          patient={panel.patient}
+          appointmentId={panel.appointmentId}
+          doctor={panel.doctor}
+          advised={panel.advised}
+          services={services}
           tests={labTests.filter((t) => t.is_active !== false)}
           packages={labPackages.filter((p) => p.is_active !== false)}
-          visit={{ patient: panel.appointment.patient, appointmentId: panel.appointment.id, doctor: panel.appointment.doctor.name, advised: panel.appointment.consultation?.tests_advised ?? '' }}
           onClose={() => setPanel(null)}
-          onCreated={(order) => {
-            setNotice(`Lab order ${order.order_no} created for ${order.patient.name}.`)
-            // Go straight to the bill so payment can be collected before the sample is taken.
-            setPanel(order.bill ? { kind: 'bill', billId: order.bill.id } : null)
-            load()
-          }}
+          onChange={load}
+          onOpenBill={(billId) => open({ kind: 'bill', billId })}
         />
       )}
       {panel?.kind === 'followups' && (
@@ -435,16 +438,16 @@ export function FrontDesk() {
       {panel?.kind === 'walkin' && (
         <aside className="card panel">
           <div className="panel-head">
-            <h2>Bill for other services</h2>
+            <h2>New bill</h2>
             <button className="btn ghost" onClick={() => setPanel(null)}>
               Close
             </button>
           </div>
-          <p className="muted small">For someone who is not seeing a doctor today: a dressing, an ECG, an injection and the like.</p>
+          <p className="muted small">For someone who has no appointment today: a dressing, an ECG, an injection, lab tests, or all of them on one visit to the desk.</p>
           <PatientPicker patient={walkInPatient} onChange={setWalkInPatient} />
           <div className="panel-foot">
-            <button className="btn primary" disabled={!walkInPatient} onClick={() => walkInPatient && newBill(walkInPatient.id)}>
-              Start bill
+            <button className="btn primary" disabled={!walkInPatient} onClick={() => walkInPatient && open({ kind: 'charge', patient: walkInPatient })}>
+              Choose services and tests
             </button>
           </div>
         </aside>

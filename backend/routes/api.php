@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BackupController;
 use App\Http\Controllers\Api\BillController;
 use App\Http\Controllers\Api\CaseHistoryController;
+use App\Http\Controllers\Api\ChargeController;
 use App\Http\Controllers\Api\ConsultationController;
 use App\Http\Controllers\Api\DoctorLibraryController;
 use App\Http\Controllers\Api\FormController;
@@ -126,6 +127,13 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
     Route::post('/bills/{bill}/items', [BillController::class, 'addItem']);
     Route::delete('/bills/{bill}/items/{item}', [BillController::class, 'removeItem']);
     Route::post('/bills/{bill}/payments', [BillController::class, 'addPayment']);
+
+    // Billing from the front desk in one go: services and lab tests together, then one payment for all of it.
+    Route::middleware('ability:canWorkFrontDesk')->controller(ChargeController::class)->group(function () {
+        Route::get('/front-desk/due', 'due');
+        Route::post('/front-desk/charges', 'store');
+        Route::post('/front-desk/collect', 'collect');
+    });
 
     Route::controller(FrontDeskController::class)->group(function () {
         Route::get('/front-desk/bills', 'walkInBills');

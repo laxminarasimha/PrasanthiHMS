@@ -24,7 +24,7 @@ const SAME_TEST = [
 ]
 
 /** Every way a lab test may be written: its name, a short form in brackets such as "(TSH)", its initials, and common other names. */
-function namesOf(test: LabCatalogueTest) {
+export function namesOf(test: LabCatalogueTest) {
   const full = test.name.toLowerCase().trim()
   const short = [...full.matchAll(/\(([^)]+)\)/g)].map((m) => m[1].trim())
   const plain = full.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim()

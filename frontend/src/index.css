@@ -1077,3 +1077,15 @@ code.key { display: inline-block; padding: 2px 8px; background: var(--surface); 
   .scan-side { position: static; max-height: none; }
   .scan-pages { max-height: 60vh; }
 }
+
+/* ---- Front desk: one box to bill services and lab tests together ---- */
+.bill-add { font: inherit; font-size: 0.82rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px dashed var(--brand); background: transparent; color: var(--brand); cursor: pointer; white-space: nowrap; }
+.bill-add:hover { background: var(--brand-soft); }
+.charge-search input { width: 100%; font-size: 1.02rem; padding: 10px 12px; }
+.charge-search .picker { max-height: 340px; overflow-y: auto; }
+.charge-search .picker button.on { background: var(--brand-soft); }
+.charge-search .picker li.none { padding: 10px; }
+.charge-found { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.charge-typed { margin-top: 10px; }
+.charge-typed summary { cursor: pointer; color: var(--brand); font-weight: 600; font-size: 0.9rem; }
+.charge-due { display: flex; gap: 12px; align-items: baseline; flex-shrink: 0; }
