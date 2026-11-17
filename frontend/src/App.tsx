@@ -67,6 +67,8 @@ const LabSettings = page(() => import('./pages/LabSettings'), 'LabSettings')
 const LabTests = page(() => import('./pages/LabTests'), 'LabTests')
 const CaseHistory = page(() => import('./pages/CaseHistory'), 'CaseHistory')
 const DocumentPrint = page(() => import('./pages/DocumentPrint'), 'DocumentPrint')
+const PastRecordCheck = page(() => import('./pages/PastRecordCheck'), 'PastRecordCheck')
+const PastRecords = page(() => import('./pages/PastRecords'), 'PastRecords')
 const PatientDashboard = page(() => import('./pages/PatientDashboard'), 'PatientDashboard')
 const Patients = page(() => import('./pages/Patients'), 'Patients')
 const PharmacyBilling = page(() => import('./pages/pharmacy/Billing'), 'PharmacyBilling')
@@ -175,6 +177,8 @@ export default function App() {
             <Route path="/ipd/reports" element={<Only when="can_ipd"><IpdReports /></Only>} />
             <Route path="/ipd/setup" element={<Only when="can_manage_setup"><IpdSetup /></Only>} />
             <Route path="/ipd/:id" element={<Only when="can_ipd"><IpdCase /></Only>} />
+            <Route path="/past-records" element={<Only when="can_file_past_records"><PastRecords /></Only>} />
+            <Route path="/past-records/:id" element={<Only when="can_file_past_records"><PastRecordCheck /></Only>} />
             <Route path="/patients" element={<Patients />} />
             <Route path="/patients/:id" element={<PatientDashboard />} />
             <Route path="/patients/:id/history" element={<CaseHistory />} />

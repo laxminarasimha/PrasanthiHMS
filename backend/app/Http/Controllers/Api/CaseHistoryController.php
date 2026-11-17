@@ -8,6 +8,7 @@ use App\Models\Admission;
 use App\Models\Appointment;
 use App\Models\Consultation;
 use App\Models\LabOrder;
+use App\Models\PastRecord;
 use App\Models\Patient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -108,9 +109,27 @@ class CaseHistoryController extends Controller
                 ],
             ]);
 
+        // Old papers the patient brought, once a person has checked them. They are marked as such wherever they show.
+        $papers = PastRecord::where('patient_id', $patient->id)->where('status', 'filed')
+            ->with(['results', 'pages:id,past_record_id,original_name,mime', 'checker:id,name'])
+            ->latest('record_date')->limit(300)->get()
+            ->map(fn (PastRecord $r) => [
+                'kind' => 'past',
+                'key' => "p{$r->id}",
+                'at' => $r->record_date->format('Y-m-d').' 00:00',
+                'past' => [
+                    'id' => $r->id, 'kind' => $r->kind, 'kind_label' => PastRecord::KINDS[$r->kind] ?? $r->kind,
+                    'doctor_name' => $r->doctor_name, 'hospital_name' => $r->hospital_name, 'details' => $r->details,
+                    'results' => $r->results->map(fn ($x) => ['test' => $x->test_name, 'parameter' => $x->parameter, 'value' => $x->value, 'unit' => $x->unit, 'flag' => $x->flag])->values(),
+                    'pages' => $r->pages->map(fn ($a) => $a->only(['id', 'original_name', 'mime']))->values(),
+                    'checked_by' => $r->checker?->name, 'checked_at' => $r->checked_at?->format('Y-m-d H:i'),
+                ],
+            ]);
+
         return response()->json([
             'patient' => $patient,
-            'events' => $visits->concat($admissions)->concat($labs)->sortByDesc('at')->values(),
+            'events' => $visits->concat($admissions)->concat($labs)->concat($papers)->sortByDesc('at')->values(),
+            'papers_waiting' => PastRecord::where('patient_id', $patient->id)->where('status', 'to_check')->count(),
         ]);
     }
 
@@ -130,6 +149,19 @@ class CaseHistoryController extends Controller
             ->orderBy('i.reported_at')->orderBy('r.id')
             ->get(['r.parameter', 'r.unit', 'r.reference_range', 'r.value', 'r.flag', 'i.test_name', 'i.reported_at', 'o.id as order_id', 'o.order_no']);
 
+        // Values copied from old papers sit on the same lines, marked so nobody takes them for the hospital's own.
+        $past = DB::table('past_record_results as r')->join('past_records as p', 'p.id', '=', 'r.past_record_id')
+            ->where('r.patient_id', $patient->id)->where('p.status', 'filed')->orderBy('r.taken_on')->orderBy('r.id')
+            ->get(['r.parameter', 'r.unit', 'r.reference_range', 'r.value', 'r.flag', 'r.test_name', 'r.taken_on as reported_at', 'r.past_record_id', 'p.hospital_name'])
+            ->map(function ($r) {
+                $r->order_id = null;
+                $r->order_no = 'Old paper'.($r->hospital_name ? ' · '.$r->hospital_name : '');
+
+                return $r;
+            });
+        // In date order; on the same day the hospital's own result comes after the paper's, so its unit and range are the ones shown.
+        $rows = $past->concat($rows)->sortBy(fn ($r) => substr((string) $r->reported_at, 0, 10), SORT_STRING)->values();
+
         $tests = $rows->groupBy(fn ($r) => mb_strtolower(trim($r->test_name).'|'.trim($r->parameter)))->map(function ($group) {
             $last = $group->last();
 
@@ -146,6 +178,7 @@ class CaseHistoryController extends Controller
                     'flag' => $r->flag,
                     'order_id' => $r->order_id,
                     'order_no' => $r->order_no,
+                    'past_record_id' => $r->past_record_id ?? null,
                 ])->values(),
             ];
         })->sortBy([['test', 'asc']])->values();

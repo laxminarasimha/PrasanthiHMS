@@ -79,6 +79,12 @@ CACHE_STORE=file
 QUEUE_CONNECTION=sync
 ENV
 
+# AI reading of scanned papers is switched on by giving the server its key; without the line it stays off.
+AI_KEY="$(grep -E '^ANTHROPIC_API_KEY=' "$ROOT/backend/.env" | head -1 | cut -d= -f2- || true)"
+if [[ -n "$AI_KEY" ]]; then
+  printf '\nANTHROPIC_API_KEY=%s\n' "$AI_KEY" >> "$APP/.env"
+fi
+
 mkdir -p "$APP/storage/logs" "$APP/storage/framework/cache/data" "$APP/storage/framework/sessions" "$APP/storage/framework/views" "$APP/bootstrap/cache"
 touch "$APP/storage/logs/.gitkeep"
 

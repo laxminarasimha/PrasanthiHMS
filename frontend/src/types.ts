@@ -10,6 +10,8 @@ export type User = {
   can_run_pharmacy: boolean
   can_manage_setup: boolean
   can_front_desk: boolean
+  /** May scan a patient's old papers, check what was read from them and file them. */
+  can_file_past_records: boolean
   can_ipd: boolean
   can_view_reports: boolean
   can_approve_ipd: boolean

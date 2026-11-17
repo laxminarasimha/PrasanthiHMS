@@ -4,6 +4,7 @@ import { api } from '../api'
 import { useAuth } from '../auth'
 import { AppAccountBox } from '../components/AppAccountBox'
 import { DepositBox } from '../components/DepositBox'
+import { PastRecordsPanel } from '../components/PastRecords'
 import { PatientDocuments } from '../components/PatientDocuments'
 import { AttachmentsPanel } from '../components/FrontDeskPanels'
 import { ADMISSION_STATUS, STATUS_LABELS, clock, longDate, rupees, settlement, stampDate } from '../format'
@@ -20,6 +21,12 @@ export function PatientDashboard() {
   useEffect(() => {
     api.get<PatientOverview>(`/patients/${id}/overview`).then((res) => setData(res.data))
   }, [id])
+
+  // Coming from the old-papers list, the page opens at the scanning section.
+  const ready = data !== null
+  useEffect(() => {
+    if (ready && window.location.hash === '#old-papers') document.getElementById('old-papers')?.scrollIntoView()
+  }, [ready])
 
   if (!data) return <p className="loading">Loading patient…</p>
   const p = data.patient
@@ -199,6 +206,19 @@ export function PatientDashboard() {
         <h2>Certificates and letters</h2>
         <PatientDocuments patient={p} canIssue={Boolean(user?.can_approve_ipd)} />
       </section>
+
+      {user?.can_file_past_records && (
+        <section className="card" id="old-papers">
+          <div className="toolbar">
+            <h2>Old paper records</h2>
+            <span className="muted grow">Prescriptions, reports and summaries the patient brings from before. Scan them in; once checked, they join the case history.</span>
+            <Link className="btn ghost small-btn" to="/past-records">
+              All papers to check
+            </Link>
+          </div>
+          <PastRecordsPanel patient={p} />
+        </section>
+      )}
 
       <section className="card">
         <h2>Attachments</h2>

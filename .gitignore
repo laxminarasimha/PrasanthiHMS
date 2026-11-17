@@ -20,3 +20,7 @@ node_modules/
 .idea/
 .vscode/
 *.tsbuildinfo
+
+# The reading computer's own settings and its program folder (the key must never be committed)
+/tools/record-reader/reader.ini
+/tools/record-reader/venv/

@@ -8,7 +8,7 @@ import { AdminList } from './AdminLists'
 import { FormDesigner } from './FormDesigner'
 import type { BillingPreferences, Clinic, PatientMerge, ReferralDoctor } from '../types'
 
-type Tab = 'clinic' | 'billing' | 'forms' | 'department' | 'payer' | 'vendor' | 'by' | 'to' | 'merge' | 'backups'
+type Tab = 'clinic' | 'billing' | 'forms' | 'department' | 'payer' | 'vendor' | 'by' | 'to' | 'merge' | 'reading' | 'backups'
 const TABS: [Tab, string][] = [
   ['clinic', 'Clinic details'],
   ['billing', 'Billing preferences'],
@@ -19,6 +19,7 @@ const TABS: [Tab, string][] = [
   ['by', 'Doctors who refer to us'],
   ['to', 'Doctors we refer to'],
   ['merge', 'Merge patients'],
+  ['reading', 'Reading scanned papers'],
   ['backups', 'Backups'],
 ]
 
@@ -388,6 +389,84 @@ function MergePatients() {
   )
 }
 
+type ReadingState = { marker: { set_up: boolean; online: boolean; seen_at: string | null }; ai: { set_up: boolean }; waiting?: number; key?: string }
+
+/** How scanned old papers get read: the hospital's own reading computer, and the outside AI service for hard pages. */
+function ReadingSetup() {
+  const [state, setState] = useState<ReadingState | null>(null)
+  const [key, setKey] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    api.get<ReadingState>('/past-records/setup').then((res) => setState(res.data)).catch(() => setError('Could not load this page.'))
+  }, [])
+
+  const makeKey = async () => {
+    if (state?.marker.set_up && !window.confirm('Make a new key? The reading computer stops working until the new key is put into it.')) return
+    const res = await api.post<ReadingState>('/past-records/setup/reader-key', {})
+    setState(res.data)
+    setKey(res.data.key ?? '')
+  }
+  const switchOff = async () => {
+    if (!window.confirm('Switch the reading computer off? Its key stops working, and papers waiting to be read go back to being typed by hand.')) return
+    const res = await api.delete<ReadingState>('/past-records/setup/reader-key')
+    setState(res.data)
+    setKey('')
+  }
+
+  if (error) return <p className="form-error">{error}</p>
+  if (!state) return <p className="loading">Loading…</p>
+  const m = state.marker
+
+  return (
+    <div className="stack gap-top">
+      <p className="muted">
+        Old papers that patients bring are scanned on the patient’s page. A machine reads each scan into a draft, and a member of staff checks the draft against the scan before anything is filed. Two things can do the reading.
+      </p>
+      <div>
+        <h2>1. The reading computer (inside the hospital)</h2>
+        <p>
+          One ordinary computer in the hospital, left switched on, runs a free reading program called Marker. It reads printed papers well, and the scans never leave the hospital. It is not good at handwriting.
+        </p>
+        <p>
+          <span className={`pill ${m.set_up ? (m.online ? 'ok' : 'warn') : 'status-booked'}`}>{m.set_up ? (m.online ? 'Switched on and reading' : 'Set up, but not switched on just now') : 'Not set up'}</span>{' '}
+          {m.seen_at && <span className="muted">Last heard from on {longDate(m.seen_at)} at {clock(m.seen_at)}.</span>} {state.waiting ? <span className="muted">{state.waiting} waiting to be read.</span> : null}
+        </p>
+        {key && (
+          <p className="notice">
+            The key for the reading computer, shown this once: <code className="key">{key}</code>
+            <br />
+            Put it in the file <code>reader.ini</code> on the reading computer. Anyone holding it can fetch scans waiting to be read, so do not send it by message or email.
+          </p>
+        )}
+        <div className="foot-buttons">
+          <button className="btn ghost" onClick={makeKey}>
+            {m.set_up ? 'Make a new key' : 'Make a key for the reading computer'}
+          </button>
+          {m.set_up && (
+            <button className="link danger" onClick={switchOff}>
+              Switch the reading computer off
+            </button>
+          )}
+        </div>
+        <p className="muted small">Setting the computer up takes about half an hour once: the steps are in the file tools/record-reader/README.md that comes with this system.</p>
+      </div>
+      <div>
+        <h2>2. AI reading (outside the hospital, only when asked)</h2>
+        <p>
+          For handwriting and pages the reading computer cannot manage, staff can press “Send to AI reading” on one paper. That page is sent over the internet to Anthropic’s Claude service, read, and the draft comes back in about a minute. Nothing is sent
+          unless someone presses the button, and every send is written in the patient’s record log. Each page costs a few rupees.
+        </p>
+        <p>
+          <span className={`pill ${state.ai.set_up ? 'ok' : 'status-booked'}`}>{state.ai.set_up ? 'Switched on' : 'Not set up'}</span>{' '}
+          {!state.ai.set_up && <span className="muted">It is switched on by adding the service’s key to the server settings; the key is never typed into this screen.</span>}
+        </p>
+      </div>
+      <p className="muted small">With neither set up, scanning and filing still work: staff type what matters from the scan on the checking screen.</p>
+    </div>
+  )
+}
+
 type BackupList = { backups: { name: string; size: number; made_at: string }[]; keep: number; automatic: boolean }
 
 /** Copies of the whole database: made once a day by the app, and on demand here. */
@@ -515,6 +594,7 @@ export function Admin() {
       {(tab === 'department' || tab === 'payer' || tab === 'vendor') && <AdminList key={tab} kind={tab} />}
       {(tab === 'by' || tab === 'to') && <ReferralDoctors key={tab} direction={tab} />}
       {tab === 'merge' && <MergePatients />}
+      {tab === 'reading' && <ReadingSetup />}
       {tab === 'backups' && <Backups />}
     </section>
     </>

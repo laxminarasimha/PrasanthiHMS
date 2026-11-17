@@ -17,13 +17,31 @@ type AdmissionEvent = {
   discharged_at: string | null
   summary: { diagnosis: string | null; procedures: string | null; course: string | null; condition_at_discharge: string | null; advice: string | null; approved_at: string | null } | null
 }
-type HistoryEvent = { key: string; at: string; kind: 'visit' | 'admission' | 'lab'; appointment_id?: number; visit?: Consultation; admission?: AdmissionEvent; lab?: LabEvent }
-type Point = { date: string; value: string; number: number | null; flag: string | null; order_id: number; order_no: string }
+type PastEvent = {
+  id: number
+  kind: string
+  kind_label: string
+  doctor_name: string | null
+  hospital_name: string | null
+  details: { complaints?: string | null; diagnosis?: string | null; findings?: string | null; advice?: string | null; notes?: string | null; medicines?: { name: string; dose: string | null; frequency: string | null; duration: string | null; instructions: string | null }[] } | null
+  results: { test: string; parameter: string; value: string; unit: string | null; flag: string | null }[]
+  pages: { id: number; original_name: string; mime: string }[]
+  checked_by: string | null
+  checked_at: string | null
+}
+type HistoryEvent = { key: string; at: string; kind: 'visit' | 'admission' | 'lab' | 'past'; appointment_id?: number; visit?: Consultation; admission?: AdmissionEvent; lab?: LabEvent; past?: PastEvent }
+type Point = { date: string; value: string; number: number | null; flag: string | null; order_id: number | null; order_no: string; past_record_id: number | null }
 type TestTrend = { test: string; parameter: string; unit: string | null; reference_range: string | null; points: Point[] }
 type Vitals = { date: string; weight_kg: number | null; height_cm: number | null; bp_systolic: number | null; bp_diastolic: number | null; pulse: number | null; temperature_f: number | null; spo2: number | null; resp_rate: number | null }
 type Trends = { tests: TestTrend[]; vitals: Vitals[] }
 
-const KINDS = { all: 'Everything', visit: 'Visits', admission: 'Admissions', lab: 'Lab' } as const
+const KINDS = { all: 'Everything', visit: 'Visits', admission: 'Admissions', lab: 'Lab', past: 'Old papers' } as const
+
+/** A scan is private, so it is fetched with the signed-in session and opened from memory. */
+const openScan = async (pageId: number) => {
+  const res = await api.get<Blob>(`/attachments/${pageId}/download`, { responseType: 'blob' })
+  window.open(URL.createObjectURL(res.data), '_blank')
+}
 const shortDate = (date: string) => new Date(date.slice(0, 10) + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })
 
 /** A small line showing how the numbers moved; the last point is marked. */
@@ -148,7 +166,7 @@ export function CaseHistory() {
   const navigate = useNavigate()
   const [tab, setTab] = useState<'summary' | 'timeline' | 'tests' | 'vitals' | 'log'>('summary')
   const [kind, setKind] = useState<keyof typeof KINDS>('all')
-  const [data, setData] = useState<{ patient: Patient & { allergies?: string | null }; events: HistoryEvent[] } | null>(null)
+  const [data, setData] = useState<{ patient: Patient & { allergies?: string | null }; events: HistoryEvent[]; papers_waiting: number } | null>(null)
   const [trends, setTrends] = useState<Trends | null>(null)
   const [filter, setFilter] = useState('')
   const [error, setError] = useState('')
@@ -174,7 +192,7 @@ export function CaseHistory() {
   if (error && !data) return <p className="form-error">{error}</p>
   if (!data) return <p className="loading">Loading history…</p>
   const p = data.patient
-  const counts = { all: data.events.length, visit: 0, admission: 0, lab: 0 }
+  const counts = { all: data.events.length, visit: 0, admission: 0, lab: 0, past: 0 }
   data.events.forEach((e) => counts[e.kind]++)
   const events = data.events.filter((e) => kind === 'all' || e.kind === kind)
   const term = filter.trim().toLowerCase()
@@ -238,13 +256,20 @@ export function CaseHistory() {
               </button>
             ))}
           </div>
+          {data.papers_waiting > 0 && (
+            <p className="notice warn">
+              {data.papers_waiting} scanned old {data.papers_waiting === 1 ? 'paper is' : 'papers are'} waiting to be checked and {data.papers_waiting === 1 ? 'is' : 'are'} not shown here yet.{' '}
+              {user?.can_file_past_records && <Link to={`/patients/${p.id}#old-papers`}>See {data.papers_waiting === 1 ? 'it' : 'them'}</Link>}
+            </p>
+          )}
           {events.length === 0 && <p className="muted">Nothing recorded yet.</p>}
           <ol className="timeline">
             {events.map((e) => (
               <li key={e.key} className={`kind-${e.kind}`}>
                 <div className="when">
                   <strong>{longDate(e.at)}</strong>
-                  <small className="muted">{clock(e.at)}</small>
+                  {/* An old paper carries a date but no time of day. */}
+                  {e.kind !== 'past' && <small className="muted">{clock(e.at)}</small>}
                 </div>
                 <div className="what past">
                   {e.visit && (
@@ -279,6 +304,54 @@ export function CaseHistory() {
                       {e.admission.summary?.course && <p><b>Course in hospital:</b> {e.admission.summary.course}</p>}
                       {e.admission.summary?.condition_at_discharge && <p><b>Condition at discharge:</b> {e.admission.summary.condition_at_discharge}</p>}
                       {e.admission.summary?.advice && <p><b>Advice:</b> {e.admission.summary.advice}</p>}
+                    </>
+                  )}
+                  {e.past && (
+                    <>
+                      <div className="head">
+                        <span className="pill warn">Old paper</span>
+                        <strong>{e.past.details?.diagnosis?.split('\n')[0] || e.past.kind_label}</strong>
+                        <span className="muted">
+                          {[e.past.kind_label, e.past.doctor_name, e.past.hospital_name].filter(Boolean).join(' · ')}
+                        </span>
+                        <span className="push scan-links">
+                          {e.past.pages.map((page, i) => (
+                            <button key={page.id} type="button" className="link" onClick={() => openScan(page.id)}>
+                              {e.past!.pages.length > 1 ? `Scan ${i + 1}` : 'See the scan'}
+                            </button>
+                          ))}
+                        </span>
+                      </div>
+                      {e.past.details?.complaints && <p><b>Complaints:</b> {e.past.details.complaints}</p>}
+                      {e.past.details?.findings && <p><b>Findings:</b> {e.past.details.findings}</p>}
+                      {e.past.details?.diagnosis && <p><b>Diagnosis:</b> {e.past.details.diagnosis}</p>}
+                      {e.past.details?.advice && <p><b>Advice:</b> {e.past.details.advice}</p>}
+                      {e.past.details?.notes && <p><b>Notes:</b> {e.past.details.notes}</p>}
+                      {e.past.results.length > 0 && (
+                        <p>
+                          <b>Results:</b>{' '}
+                          {e.past.results.map((r, j) => (
+                            <span key={j} className={r.flag ? `value ${r.flag}` : 'value'}>
+                              {r.parameter} {r.value}
+                              {r.unit ? ` ${r.unit}` : ''}
+                              {j < e.past!.results.length - 1 ? '; ' : ''}
+                            </span>
+                          ))}
+                        </p>
+                      )}
+                      {(e.past.details?.medicines?.length ?? 0) > 0 && (
+                        <ul>
+                          {e.past.details!.medicines!.map((m, j) => (
+                            <li key={j}>
+                              {m.name} {[m.dose, m.frequency, m.duration, m.instructions].filter(Boolean).join(' · ')}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <p className="muted small">
+                        Typed from a paper the patient brought, not written in this hospital.
+                        {e.past.checked_by ? ` Checked against the scan by ${e.past.checked_by}${e.past.checked_at ? ` on ${longDate(e.past.checked_at)}` : ''}.` : ''}
+                      </p>
                     </>
                   )}
                   {e.lab && (
@@ -324,7 +397,7 @@ export function CaseHistory() {
           <div className="toolbar">
             <h2>Test results over time</h2>
             <input className="search" type="search" placeholder="Filter by test" value={filter} onChange={(e) => setFilter(e.target.value)} />
-            <span className="muted">Oldest on the left, newest on the right. Only reported results.</span>
+            <span className="muted">Oldest on the left, newest on the right. Only reported results. A dashed box is a value typed from an old paper.</span>
           </div>
           <div className="table-wrap">
             <table className="compact results-trend">
@@ -355,12 +428,19 @@ export function CaseHistory() {
                       <td>
                         <div className="points">
                           {t.points.length > shown.length && <small className="muted">{t.points.length - shown.length} older…</small>}
-                          {shown.map((pt, i) => (
-                            <a key={i} className={`point ${pt.flag ?? ''}`} href={`/lab/orders/${pt.order_id}/print`} target="_blank" rel="noreferrer" title={`${pt.order_no}: open the report`}>
-                              <strong>{pt.value}</strong>
-                              <small>{shortDate(pt.date)}</small>
-                            </a>
-                          ))}
+                          {shown.map((pt, i) =>
+                            pt.order_id ? (
+                              <a key={i} className={`point ${pt.flag ?? ''}`} href={`/lab/orders/${pt.order_id}/print`} target="_blank" rel="noreferrer" title={`${pt.order_no}: open the report`}>
+                                <strong>{pt.value}</strong>
+                                <small>{shortDate(pt.date)}</small>
+                              </a>
+                            ) : (
+                              <span key={i} className={`point outside ${pt.flag ?? ''}`} title={`${pt.order_no}: typed from a paper the patient brought`}>
+                                <strong>{pt.value}</strong>
+                                <small>{shortDate(pt.date)} · old paper</small>
+                              </span>
+                            ),
+                          )}
                         </div>
                       </td>
                     </tr>
