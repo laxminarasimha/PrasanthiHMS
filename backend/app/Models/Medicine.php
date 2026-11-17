@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable(['name', 'composition', 'type', 'manufacturer', 'category', 'sub_category', 'ved', 'sde', 'fsn', 'is_scheduled', 'hsn_code', 'gst_percent', 'units_per_pack', 'reorder_level', 'desired_stock', 'preferred_stockist_id', 'is_active'])]
@@ -15,6 +16,12 @@ class Medicine extends Model
     protected function casts(): array
     {
         return ['gst_percent' => 'float', 'is_active' => 'boolean', 'is_scheduled' => 'boolean'];
+    }
+
+    /** The individual drugs this medicine contains: one for a plain medicine, several for a combination. */
+    public function ingredients(): BelongsToMany
+    {
+        return $this->belongsToMany(DrugIngredient::class, 'medicine_ingredients')->withPivot(['strength', 'position'])->orderBy('medicine_ingredients.position');
     }
 
     public function batches(): HasMany

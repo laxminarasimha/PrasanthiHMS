@@ -11,6 +11,8 @@ type Option = {
   manufacturer: string | null
   units_per_pack: number
   on_shelf: number
+  /** The individual drugs inside: one for a plain medicine, several for a combination. */
+  drugs: { id: number; name: string; strength: string | null }[]
   usual_stockist_id: number | null
   usual_stockist: string | null
   suppliers: Supplier[]
@@ -29,6 +31,7 @@ const perUnit = (s: Supplier) => (s.units_per_pack > 0 ? s.last_rate / s.units_p
 export function MedicineOptions({ canEdit, startWith, onOpen }: { canEdit: boolean; startWith?: Show; onOpen: (name: string) => void }) {
   const [options, setOptions] = useState<Option[] | null>(null)
   const [compositions, setCompositions] = useState<string[]>([])
+  const [drugs, setDrugs] = useState<string[]>([])
   const [query, setQuery] = useState('')
   const [show, setShow] = useState<Show>(startWith ?? 'all')
   const [many, setMany] = useState(60)
@@ -36,10 +39,11 @@ export function MedicineOptions({ canEdit, startWith, onOpen }: { canEdit: boole
   const [error, setError] = useState('')
 
   useEffect(() => {
-    api.get<{ medicines: Option[]; compositions: string[] }>('/pharmacy/medicines/options').then(
+    api.get<{ medicines: Option[]; compositions: string[]; drugs: string[] }>('/pharmacy/medicines/options').then(
       (res) => {
         setOptions(res.data.medicines)
         setCompositions(res.data.compositions)
+        setDrugs(res.data.drugs)
       },
       () => setError('Could not load the medicines.'),
     )
@@ -73,10 +77,13 @@ export function MedicineOptions({ canEdit, startWith, onOpen }: { canEdit: boole
     if (!tagging) return
     setError('')
     try {
-      const res = await api.put<{ id: number; composition: string | null }>(`/pharmacy/medicines/${tagging.id}/composition`, { composition: tagging.text.trim() || null })
-      setOptions((list) => (list ?? []).map((o) => (o.id === res.data.id ? { ...o, composition: res.data.composition } : o)))
-      if (res.data.composition && !compositions.some((c) => same(c) === same(res.data.composition!))) setCompositions((list) => [...list, res.data.composition!].sort())
+      await api.put(`/pharmacy/medicines/${tagging.id}/composition`, { composition: tagging.text.trim() || null })
       setTagging(null)
+      // Fetched afresh, so the brand shows under its composition with its drugs linked.
+      const fresh = await api.get<{ medicines: Option[]; compositions: string[]; drugs: string[] }>('/pharmacy/medicines/options')
+      setOptions(fresh.data.medicines)
+      setCompositions(fresh.data.compositions)
+      setDrugs(fresh.data.drugs)
     } catch (err) {
       setError(Object.values(fieldErrors(err))[0])
     }
@@ -91,8 +98,22 @@ export function MedicineOptions({ canEdit, startWith, onOpen }: { canEdit: boole
         <input className="search" type="search" placeholder="Find by what it contains, brand, maker or supplier" value={query} onChange={(e) => { setQuery(e.target.value); setMany(60) }} />
       </div>
       <p className="muted small">
-        Brands that contain the same thing are listed together, so when one is out of stock you can see what else is on the shelf and where each was last bought. A brand joins others once its composition is filled in.
+        Brands that contain the same thing are listed together, so when one is out of stock you can see what else is on the shelf and where each was last bought. A brand joins others once its composition is filled in. For a
+        combination, put a plus between its drugs: “Paracetamol 325 mg + Aceclofenac 100 mg”.
       </p>
+      {drugs.length > 0 && (
+        <p className="small">
+          <span className="muted">Find by drug, alone or in a combination: </span>
+          <span className="drug-chips">
+            {drugs.slice(0, 40).map((d) => (
+              <button key={d} type="button" className="drug-chip" onClick={() => { setQuery(d); setMany(60) }}>
+                {d}
+              </button>
+            ))}
+            {drugs.length > 40 && <span className="muted">and {drugs.length - 40} more: type the name above</span>}
+          </span>
+        </p>
+      )}
       <div className="tabs flush gap-top" role="group" aria-label="Which medicines to show">
         {([['all', 'All medicines'], ['out', 'Out of stock'], ['untagged', 'Composition not set']] as [Show, string][]).map(([key, label]) => (
           <button key={key} className={show === key ? 'active' : ''} onClick={() => { setShow(key); setMany(60) }}>
@@ -118,7 +139,17 @@ export function MedicineOptions({ canEdit, startWith, onOpen }: { canEdit: boole
                 <strong>{g.composition ?? 'Composition not set'}</strong>
                 {g.composition && (
                   <span className="muted">
+                    {g.brands[0].drugs.length > 1 ? 'Combination · ' : ''}
                     {g.brands.length} {g.brands.length === 1 ? 'brand' : 'brands'} · {inStock ? `${inStock} in stock` : 'none in stock'}
+                  </span>
+                )}
+                {g.brands[0].drugs.length > 1 && (
+                  <span className="drug-chips">
+                    {g.brands[0].drugs.map((d) => (
+                      <button key={d.id} type="button" className="drug-chip" onClick={() => { setQuery(d.name); setMany(60) }} title={`Show everything that contains ${d.name}`}>
+                        {d.name}
+                      </button>
+                    ))}
                   </span>
                 )}
               </div>
@@ -136,7 +167,7 @@ export function MedicineOptions({ canEdit, startWith, onOpen }: { canEdit: boole
                         <input
                           autoFocus
                           list="known-compositions"
-                          placeholder="e.g. Paracetamol 650 mg"
+                          placeholder="Paracetamol 650 mg, or Drug A 5 mg + Drug B 10 mg"
                           value={tagging.text}
                           onChange={(e) => setTagging({ id: b.id, text: e.target.value })}
                           onKeyDown={(e) => {

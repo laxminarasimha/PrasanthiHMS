@@ -7,13 +7,17 @@ use App\Http\Controllers\Controller;
 use App\Models\Appointment;
 use App\Models\AuditLog;
 use App\Models\Consultation;
+use App\Models\IcdCode;
 use App\Models\Medicine;
 use App\Models\Patient;
 use App\Models\PrescriptionItem;
+use App\Models\User;
+use App\Support\PrescriptionSafety;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class ConsultationController extends Controller
 {
@@ -77,7 +81,7 @@ class ConsultationController extends Controller
         abort_unless($request->user()->allows('canConsult'), 403, 'You are not allowed to write consultation notes.');
         abort_if($appointment->status === 'cancelled', 422, 'This appointment was cancelled.');
         if ($appointment->consultation?->isLocked()) {
-            throw \Illuminate\Validation\ValidationException::withMessages(['visit' => 'This visit was finished on '.$appointment->consultation->completed_at->format('j M Y').' and is locked. Add an amendment instead.']);
+            throw ValidationException::withMessages(['visit' => 'This visit was finished on '.$appointment->consultation->completed_at->format('j M Y').' and is locked. Add an amendment instead.']);
         }
 
         $data = $request->validate([
@@ -139,7 +143,7 @@ class ConsultationController extends Controller
         }
         if (array_key_exists('diagnosis_codes', $data)) {
             // The names are taken from the list itself, never from what was sent.
-            $names = \App\Models\IcdCode::whereIn('code', array_column($data['diagnosis_codes'] ?? [], 'code'))->pluck('name', 'code');
+            $names = IcdCode::whereIn('code', array_column($data['diagnosis_codes'] ?? [], 'code'))->pluck('name', 'code');
             $data['diagnosis_codes'] = collect($data['diagnosis_codes'] ?? [])->map(fn ($row) => ['code' => $row['code'], 'name' => $names[$row['code']]])->values()->all() ?: null;
         }
         if (array_key_exists('investigations', $data)) {
@@ -216,7 +220,7 @@ class ConsultationController extends Controller
         $data = $request->validate(['medicines' => ['present', 'array', 'max:60'], 'medicines.*' => ['nullable', 'string', 'max:255'], 'allergies' => ['sometimes', 'nullable', 'string', 'max:1000']]);
 
         // The pad may hold allergies typed but not yet saved; those count too.
-        return response()->json(['warnings' => \App\Support\PrescriptionSafety::warnings(array_key_exists('allergies', $data) ? $data['allergies'] : $patient->allergies, $data['medicines'])]);
+        return response()->json(['warnings' => PrescriptionSafety::warnings(array_key_exists('allergies', $data) ? $data['allergies'] : $patient->allergies, $data['medicines'])]);
     }
 
     /** A patient's completed visits, newest first. */
@@ -242,7 +246,7 @@ class ConsultationController extends Controller
         $like = str_replace(['%', '_'], ['\%', '\_'], $term);
         $words = array_filter(explode(' ', $like));
 
-        $found = \App\Models\IcdCode::query()
+        $found = IcdCode::query()
             ->where(fn ($q) => $q->where('code', 'like', $like.'%')->orWhere(fn ($w) => collect($words)->each(fn ($word) => $w->where('name', 'like', '%'.$word.'%'))))
             ->limit(300)->get(['code', 'name']);
 
@@ -258,8 +262,9 @@ class ConsultationController extends Controller
     {
         $term = trim((string) $request->query('q'));
 
+        // A medicine is found by its own name or by a drug inside it.
         $stocked = Medicine::where('is_active', true)
-            ->when($term !== '', fn ($q) => $q->where('name', 'like', "%{$term}%"))
+            ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', "%{$term}%")->orWhere('composition', 'like', "%{$term}%")))
             ->orderBy('name')->limit(200)->pluck('name');
 
         $prescribed = PrescriptionItem::query()
@@ -271,6 +276,35 @@ class ConsultationController extends Controller
             ->pluck('medicine');
 
         return response()->json($stocked->merge($prescribed)->unique(fn ($name) => mb_strtolower($name))->values());
+    }
+
+    /**
+     * Medicines for the doctor to choose from while prescribing: found by brand name or by a drug
+     * inside, single drugs and combinations alike, with what the pharmacy has on its shelf first.
+     */
+    public function findMedicines(Request $request): JsonResponse
+    {
+        $term = trim((string) $request->query('q'));
+        if (mb_strlen($term) < 2) {
+            return response()->json([]);
+        }
+
+        $found = Medicine::where('is_active', true)
+            ->where(fn ($w) => $w->where('name', 'like', "%{$term}%")->orWhere('composition', 'like', "%{$term}%"))
+            ->withSum(['batches as in_stock' => fn ($q) => $q->where('units_in_stock', '>', 0)->whereDate('expiry', '>=', today())], 'units_in_stock')
+            ->withCount('ingredients')
+            ->limit(400)->get(['id', 'name', 'composition', 'type'])
+            ->map(fn (Medicine $m) => [
+                'name' => $m->name, 'composition' => $m->composition, 'type' => $m->type, 'in_stock' => (int) $m->in_stock,
+                'combination' => $m->ingredients_count > 1,
+                // Found by a drug inside it rather than by its own name.
+                'by_drug' => mb_stripos($m->name, $term) === false,
+            ])
+            // What can be handed over today comes first; among those, single drugs before combinations.
+            ->sortBy(fn ($m) => [$m['in_stock'] > 0 ? 0 : 1, $m['combination'] ? 1 : 0, mb_strtolower($m['name'])])
+            ->take(25)->values();
+
+        return response()->json($found);
     }
 
     /**
@@ -290,7 +324,7 @@ class ConsultationController extends Controller
             // Locked from the day after it was finished: corrections then go in as amendments.
             'locked' => (bool) $appointment->consultation?->isLocked(),
             // How this doctor wants prescriptions printed, for whoever prints it.
-            'rx_print' => array_intersect_key(\App\Models\User::find($appointment->doctor_id)?->rxSettings() ?? [], array_flip(['print_language', 'translations', 'capitalize_name', 'print'])),
+            'rx_print' => array_intersect_key(User::find($appointment->doctor_id)?->rxSettings() ?? [], array_flip(['print_language', 'translations', 'capitalize_name', 'print'])),
         ];
     }
 }

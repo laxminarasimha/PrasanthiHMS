@@ -1,0 +1,70 @@
+<?php
+
+namespace App\Support;
+
+use App\Models\DrugIngredient;
+use App\Models\Medicine;
+
+/**
+ * What a medicine contains, as individual drugs. A combination is written with a plus sign
+ * between its drugs: "Paracetamol 500 mg + Caffeine 30 mg". Each drug is kept as its own record
+ * and linked to the medicine, so a search for one drug finds it alone and inside combinations.
+ */
+class Composition
+{
+    private const UNIT = '(?:mcg|µg|mg|g|kg|ml|l|iu|units?|%|meq|mmol|million\s+iu|lakh\s+iu|billion\s+cfu|cfu)';
+
+    /**
+     * The drugs named in a composition as typed, each with its strength if one is written.
+     *
+     * @return list<array{name: string, strength: ?string}>
+     */
+    public static function parts(?string $text): array
+    {
+        $parts = [];
+        foreach (preg_split('/\s*\+\s*|\s+&\s+|\s+and\s+/iu', (string) $text) ?: [] as $piece) {
+            $piece = preg_replace('/\s+/u', ' ', trim($piece, " \t\n\r,;."));
+            if ($piece === '' || $piece === null) {
+                continue;
+            }
+            $strength = null;
+            // The strength is the number-and-unit at the end: "650 mg", "5 mg/5 ml", "0.1 % w/w".
+            if (preg_match('/^(.*?\D)\s*(\d[\d.,]*\s*'.self::UNIT.'(?:\s*\/\s*\d*[\d.,]*\s*'.self::UNIT.')?(?:\s*[wv]\/[wv])?)$/iu', $piece, $m) && trim($m[1]) !== '') {
+                $piece = trim($m[1], " \t-");
+                $strength = preg_replace('/\s+/', ' ', preg_replace('/(\d)\s*([a-zµ%])/iu', '$1 $2', strtolower(trim($m[2]))));
+            }
+            $key = mb_strtolower($piece);
+            // The same drug written twice in one composition is one drug.
+            if (! isset($parts[$key])) {
+                $parts[$key] = ['name' => mb_substr($piece, 0, 150), 'strength' => $strength ? mb_substr($strength, 0, 60) : null];
+            }
+        }
+
+        return array_values($parts);
+    }
+
+    /**
+     * Records what a medicine contains: links it to each of its drugs and writes the composition
+     * out in one standard way, so the same composition typed two ways is still one composition.
+     */
+    public static function apply(Medicine $medicine, ?string $text): void
+    {
+        $links = [];
+        $named = [];
+        foreach (self::parts($text) as $part) {
+            $drug = DrugIngredient::whereRaw('lower(name) = ?', [mb_strtolower($part['name'])])->first()
+                ?? DrugIngredient::create(['name' => mb_strtoupper(mb_substr($part['name'], 0, 1)).mb_substr($part['name'], 1)]);
+            $links[$drug->id] = ['strength' => $part['strength']];
+            $named[] = trim($drug->name.' '.($part['strength'] ?? ''));
+        }
+        // In A to Z order, so "A + B" and "B + A" are the same composition.
+        sort($named, SORT_NATURAL | SORT_FLAG_CASE);
+        $position = 0;
+        foreach (array_keys($links) as $id) {
+            $links[$id]['position'] = $position++;
+        }
+
+        $medicine->ingredients()->sync($links);
+        $medicine->forceFill(['composition' => $named ? mb_substr(implode(' + ', $named), 0, 255) : null])->saveQuietly();
+    }
+}

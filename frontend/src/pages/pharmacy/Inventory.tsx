@@ -24,7 +24,9 @@ export function PharmacyInventory() {
     api.get<Data>('/pharmacy/inventory').then((res) => setData(res.data))
   }, [])
 
-  const rows = (data?.all ?? []).filter(FILTERS[tab]).filter((m) => m.name.toLowerCase().includes(query.trim().toLowerCase()))
+  // Found by its own name or by a drug inside it.
+  const term = query.trim().toLowerCase()
+  const rows = (data?.all ?? []).filter(FILTERS[tab]).filter((m) => m.name.toLowerCase().includes(term) || (m.composition ?? '').toLowerCase().includes(term))
   const tabs: [Tab, string][] = [
     ['all', `In stock (${data?.all.length ?? 0})`],
     ['expiring', `Expiring in 90 days (${data?.counts.expiring ?? 0})`],
@@ -37,12 +39,12 @@ export function PharmacyInventory() {
       <section className="card">
         <div className="toolbar">
           <h1>Inventory</h1>
-          <input className="search" type="search" placeholder="Filter by medicine" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input className="search" type="search" placeholder="Filter by medicine or by the drug inside it" value={query} onChange={(e) => setQuery(e.target.value)} />
           <button
             className="btn ghost"
             onClick={() =>
-              downloadCsv(`inventory-${tab}-${today()}.csv`, ['Medicine', 'Type', 'Manufacturer', 'Units in stock', 'Low-stock level', 'Units expiring in 90 days', 'Next expiry'],
-                rows.map((m) => [m.name, m.type, m.manufacturer, m.units_in_stock, m.reorder_level, m.expiring_units, m.next_expiry]))
+              downloadCsv(`inventory-${tab}-${today()}.csv`, ['Medicine', 'Composition', 'Type', 'Manufacturer', 'Units in stock', 'Low-stock level', 'Units expiring in 90 days', 'Next expiry'],
+                rows.map((m) => [m.name, m.composition, m.type, m.manufacturer, m.units_in_stock, m.reorder_level, m.expiring_units, m.next_expiry]))
             }
           >
             Export
@@ -82,6 +84,7 @@ export function PharmacyInventory() {
                   <td>
                     <strong>{m.name}</strong>
                     {m.type && <small className="muted"> {m.type}</small>}
+                    {m.composition && <small className="muted block">{m.composition}</small>}
                   </td>
                   <td>{m.manufacturer ?? '—'}</td>
                   <td className="num">

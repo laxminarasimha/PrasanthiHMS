@@ -309,7 +309,7 @@ export function PharmacyMedicines() {
                         <option key={c} value={c ?? ''} />
                       ))}
                     </datalist>
-                    <small className="muted">Brands with the same composition are shown together under “Options to order”.</small>
+                    <small className="muted">For a combination, put a plus between its drugs: “Paracetamol 325 mg + Aceclofenac 100 mg”. Each drug is linked, so a search for one finds it alone and in combinations.</small>
                   </div>
                   <SelectField label="Type" value={medicine.type} onChange={setM('type')} options={TYPES} placeholder="Select" error={errors.type} />
                   <label className="field">

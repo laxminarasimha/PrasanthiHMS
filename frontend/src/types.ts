@@ -431,6 +431,7 @@ export type PurchaseInvoice = {
 export type SellableMedicine = {
   id: number
   name: string
+  composition?: string | null
   type: string | null
   sellable_batches: Pick<StockBatch, 'id' | 'batch_no' | 'expiry' | 'unit_mrp' | 'gst_percent' | 'units_in_stock' | 'rack_no'>[]
 }
@@ -639,6 +640,7 @@ export type PrescriptionOrder = {
 export type InventoryMedicine = {
   id: number
   name: string
+  composition?: string | null
   type: string | null
   manufacturer: string | null
   reorder_level: number
