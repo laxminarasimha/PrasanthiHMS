@@ -267,7 +267,7 @@ fieldset .field { margin-top: 12px; }
 fieldset .grid .field, fieldset .vitals .field { margin-top: 0; }
 .vitals { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
 .rx { display: flex; flex-direction: column; gap: 6px; overflow-x: auto; }
-.rx-row { display: grid; grid-template-columns: minmax(180px, 2.2fr) 0.9fr 0.9fr 1fr 0.9fr 1.4fr auto; gap: 6px; align-items: center; min-width: 760px; }
+.rx-row { display: grid; grid-template-columns: 24px minmax(180px, 2.2fr) 0.9fr 0.9fr 1fr 0.9fr 1.2fr auto; gap: 6px; align-items: start; min-width: 740px; }
 .rx-head { font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
 .add-medicine { margin-top: 8px; }
 .pill.status-booked { background: var(--neutral-soft); color: var(--muted); }
@@ -1016,8 +1016,12 @@ tbody tr.not-here { color: var(--muted); }
 /* Layout fixes for narrow screens: prescription rows stack instead of running off the side */
 @media (max-width: 860px) {
   .rx { overflow-x: visible; }
-  .rx-row { grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; padding-bottom: 10px; border-bottom: 1px dashed var(--border); }
-  .rx-row > :first-child { grid-column: 1 / -1; }
+  /* On a narrow screen each medicine is a small block: its number and name, then the boxes two by two. */
+  .rx-row { grid-template-columns: 24px repeat(2, minmax(0, 1fr)); min-width: 0; padding-bottom: 4px; }
+  .rx-med { grid-column: 2 / -1; }
+  .rx-row > .f-dose, .rx-row > .f-timing { grid-column: 2; }
+  .rx-row > .f-frequency, .rx-row > .f-duration { grid-column: 3; }
+  .rx-row > .f-instructions, .rx-row > .rx-acts { grid-column: 2 / -1; }
   .rx-row.rx-head { display: none; }
   .rx-row > button, .rx-row > .link { justify-self: start; }
 }
@@ -1259,3 +1263,24 @@ small.soon { color: var(--warn); font-weight: 600; }
 .option-row { grid-template-columns: minmax(220px, 1.2fr) 190px minmax(0, 2fr); }
 .order-bar { position: sticky; bottom: 12px; z-index: 5; margin-top: 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px; background: var(--surface); border: 1px solid var(--brand-line); border-radius: 12px; box-shadow: 0 10px 28px var(--shadow); }
 @media (max-width: 900px) { .option-row { grid-template-columns: 1fr; } }
+
+/* ---- The prescription as a numbered list, in the order the doctor wants it read ---- */
+.rx-line { padding: 6px 0; border-bottom: 1px dashed var(--border); }
+.rx-line:last-child { border-bottom: 0; }
+.rx-no { font-weight: 700; color: var(--brand-dark); padding-top: 8px; text-align: right; font-variant-numeric: tabular-nums; }
+.rx-head > span:first-child { text-align: right; }
+.rx-med { min-width: 0; }
+.rx-about { display: block; margin-top: 3px; color: var(--muted); font-size: 0.8rem; line-height: 1.3; }
+.rx-about .in { color: var(--ok); font-weight: 600; }
+.rx-about .out { color: var(--warn); font-weight: 600; }
+.rx-acts { display: flex; gap: 9px; align-items: center; padding-top: 7px; white-space: nowrap; }
+.rx-acts .link { font-size: 1rem; text-decoration: none; }
+.rx-acts .link:disabled { opacity: 0.3; cursor: default; }
+.rx-quick { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 6px 0 2px 32px; font-size: 0.85rem; }
+.rx-quick button { font: inherit; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--brand-line); background: var(--surface); color: var(--brand); cursor: pointer; }
+.rx-quick button:hover { background: var(--brand-soft); }
+.rx-quick button.on { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
+ol.rx-list { margin: 6px 0; padding-left: 26px; }
+ol.rx-list li { padding: 1px 0; }
+ol.rx-list li::marker { font-weight: 700; color: var(--brand-dark); }
+.receipt .rx-contains { font-style: italic; color: #444; }

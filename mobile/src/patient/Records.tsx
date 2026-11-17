@@ -64,7 +64,9 @@ export function PatientRecords({ people, first, section }: { people: Person[]; /
                   {v.diagnosis ? <Text style={text.body}><Text style={styles.label}>Diagnosis: </Text>{v.diagnosis}</Text> : null}
                   {v.medicines.map((m, i) => (
                     <View key={i} style={styles.medicine}>
-                      <Text style={text.strong}>{m.medicine}</Text>
+                      <Text style={text.strong}>
+                        {i + 1}. {m.medicine}
+                      </Text>
                       {m.directions ? <Text style={text.muted}>{m.directions}</Text> : null}
                     </View>
                   ))}

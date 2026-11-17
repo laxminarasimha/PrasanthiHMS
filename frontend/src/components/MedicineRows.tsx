@@ -4,6 +4,16 @@ import type { PrescribedMedicine as Medicine } from '../types'
 
 /** A medicine the pharmacy lists, as offered while prescribing. */
 type Found = { name: string; composition: string | null; type: string | null; in_stock: number; combination: boolean; by_drug: boolean; before?: boolean }
+/** What the pharmacy knows about a medicine named on the prescription. */
+type About = { name: string; listed: boolean; composition: string | null; in_stock: number; combination: boolean }
+type FieldKey = 'dose' | 'frequency' | 'timing' | 'duration'
+
+/** The amounts and lengths written most often, offered as one-click choices. */
+const DOSES = ['1 tablet', '½ tablet', '2 tablets', '1 capsule', '5 ml', '10 ml', '1 puff', 'Apply locally']
+const DURATIONS = ['3 days', '5 days', '7 days', '10 days', '15 days', '1 month', '3 months', 'To continue']
+const QUICK_LABEL: Record<FieldKey, string> = { dose: 'Dose', frequency: 'How often', timing: 'When', duration: 'For how long' }
+const NEXT: Record<FieldKey, string> = { dose: 'frequency', frequency: 'timing', timing: 'duration', duration: 'instructions' }
+
 type Offer = { row: number; at: number; left: number; top: number; width: number; up: boolean }
 
 /** Where the list of medicines sits: under the box, or above it when the box is near the bottom of the screen. */
@@ -48,6 +58,36 @@ export function MedicineRows({ rows, onChange, names = [], defaults = [], invali
       }),
     )
 
+  // What each named medicine contains and whether the pharmacy has it, shown under the name.
+  const [about, setAbout] = useState<Record<string, About>>({})
+  const wanted = rows.map((r) => r.medicine.trim().toLowerCase().replace(/\s+/g, ' ')).filter((n) => n.length >= 2 && !(n in about)).join('\n')
+  useEffect(() => {
+    if (!wanted) return
+    const wait = window.setTimeout(() => {
+      api.get<About[]>('/medicines/describe', { params: { names: wanted.split('\n') } }).then(
+        (res) => setAbout((known) => ({ ...known, ...Object.fromEntries(res.data.map((a) => [a.name, a])) })),
+        () => undefined,
+      )
+    }, 500)
+    return () => window.clearTimeout(wait)
+  }, [wanted])
+
+  // The box the cursor is in, so its usual choices can be offered beneath that line.
+  const [focus, setFocus] = useState<{ row: number; field: FieldKey } | null>(null)
+  const quick: Record<FieldKey, string[]> = { dose: DOSES, frequency: frequencies, timing: timings, duration: DURATIONS }
+  const goTo = (row: number, field: string) => window.setTimeout(() => document.querySelector<HTMLInputElement>(`[data-rx="${row}-${field}"]`)?.focus(), 0)
+  const move = (index: number, by: number) => {
+    const to = index + by
+    if (to < 0 || to >= rows.length) return
+    const next = [...rows]
+    ;[next[index], next[to]] = [next[to], next[index]]
+    onChange(next)
+  }
+  const addRow = () => {
+    onChange([...rows, emptyMedicine()])
+    goTo(rows.length, 'medicine')
+  }
+
   // While a medicine is being typed, the pharmacy's list is searched by brand and by the drug inside,
   // so the doctor sees the single drugs and the combinations on the shelf, not only a name that matches.
   const [offer, setOffer] = useState<Offer | null>(null)
@@ -77,6 +117,8 @@ export function MedicineRows({ rows, onChange, names = [], defaults = [], invali
   const choose = (index: number, name: string) => {
     set(index, 'medicine', name)
     setOffer(null)
+    // On to how much of it, without reaching for the mouse.
+    goTo(index, 'dose')
   }
   const onMedicineKey = (index: number, e: KeyboardEvent<HTMLInputElement>) => {
     if (!offer || offer.row !== index || found.length === 0) return
@@ -128,6 +170,7 @@ export function MedicineRows({ rows, onChange, names = [], defaults = [], invali
       </datalist>
       <div className="rx">
         <div className="rx-row rx-head">
+          <span>#</span>
           <span>Medicine</span>
           <span>Dose</span>
           <span>Frequency</span>
@@ -136,34 +179,99 @@ export function MedicineRows({ rows, onChange, names = [], defaults = [], invali
           <span>Instructions</span>
           <span />
         </div>
-        {rows.map((m, i) => (
-          <div className="rx-row" key={i}>
+        {rows.map((m, i) => {
+          const known = about[m.medicine.trim().toLowerCase().replace(/\s+/g, ' ')]
+          const box = (field: FieldKey | 'instructions', placeholder: string, label: string, list?: string) => (
             <input
-              placeholder="Brand or drug name"
-              value={m.medicine}
-              onChange={(e) => {
-                set(i, 'medicine', e.target.value)
-                look(i, e.target.value, e.target)
+              className={`f-${field}`}
+              data-rx={`${i}-${field}`}
+              list={list}
+              placeholder={placeholder}
+              value={m[field] ?? ''}
+              onChange={(e) => set(i, field, e.target.value)}
+              onFocus={() => setFocus(field === 'instructions' ? null : { row: i, field })}
+              onKeyDown={(e) => {
+                // Enter on the last box of the last line starts the next medicine.
+                if (e.key === 'Enter' && field === 'instructions' && i === rows.length - 1 && m.medicine.trim()) {
+                  e.preventDefault()
+                  addRow()
+                }
               }}
-              onKeyDown={(e) => onMedicineKey(i, e)}
-              onBlur={() => window.setTimeout(() => setOffer((o) => (o?.row === i ? null : o)), 180)}
-              aria-label={`Medicine ${i + 1}`}
-              aria-invalid={invalid?.(i) ?? false}
-              autoComplete="off"
-              role="combobox"
-              aria-expanded={offer?.row === i && found.length > 0}
-              aria-controls="rx-pick"
+              aria-label={`${label} of medicine ${i + 1}`}
             />
-            <input placeholder="1 tablet" value={m.dose ?? ''} onChange={(e) => set(i, 'dose', e.target.value)} aria-label="Dose" />
-            <input list="frequencies" placeholder="1-0-1" value={m.frequency ?? ''} onChange={(e) => set(i, 'frequency', e.target.value)} aria-label="Frequency" />
-            <input list="timings" placeholder="After food" value={m.timing ?? ''} onChange={(e) => set(i, 'timing', e.target.value)} aria-label="When to take" />
-            <input placeholder="5 days" value={m.duration ?? ''} onChange={(e) => set(i, 'duration', e.target.value)} aria-label="Duration" />
-            <input value={m.instructions ?? ''} onChange={(e) => set(i, 'instructions', e.target.value)} aria-label="Instructions" />
-            <button type="button" className="link danger" onClick={() => onChange(rows.length > 1 ? rows.filter((_, r) => r !== i) : [emptyMedicine()])}>
-              Remove
-            </button>
-          </div>
-        ))}
+          )
+          return (
+            <div key={i} className="rx-line">
+              <div className="rx-row">
+                <span className="rx-no" aria-hidden="true">
+                  {i + 1}.
+                </span>
+                <div className="rx-med">
+                  <input
+                    data-rx={`${i}-medicine`}
+                    placeholder="Brand or drug name"
+                    value={m.medicine}
+                    onChange={(e) => {
+                      set(i, 'medicine', e.target.value)
+                      look(i, e.target.value, e.target)
+                    }}
+                    onFocus={() => setFocus(null)}
+                    onKeyDown={(e) => onMedicineKey(i, e)}
+                    onBlur={() => window.setTimeout(() => setOffer((o) => (o?.row === i ? null : o)), 180)}
+                    aria-label={`Medicine ${i + 1}`}
+                    aria-invalid={invalid?.(i) ?? false}
+                    autoComplete="off"
+                    role="combobox"
+                    aria-expanded={offer?.row === i && found.length > 0}
+                    aria-controls="rx-pick"
+                  />
+                  {known?.listed && (
+                    <small className="rx-about">
+                      {known.composition ? `${known.combination ? 'Combination: ' : ''}${known.composition} · ` : ''}
+                      <span className={known.in_stock > 0 ? 'in' : 'out'}>{known.in_stock > 0 ? `In stock · ${known.in_stock}` : 'Not in our pharmacy’s stock'}</span>
+                    </small>
+                  )}
+                </div>
+                {box('dose', '1 tablet', 'Dose')}
+                {box('frequency', '1-0-1', 'Frequency', 'frequencies')}
+                {box('timing', 'After food', 'When to take', 'timings')}
+                {box('duration', '5 days', 'Duration')}
+                {box('instructions', 'Instructions', 'Instructions')}
+                <span className="rx-acts">
+                  <button type="button" className="link" onClick={() => move(i, -1)} disabled={i === 0} aria-label={`Move medicine ${i + 1} up`} title="Move up">
+                    ↑
+                  </button>
+                  <button type="button" className="link" onClick={() => move(i, 1)} disabled={i === rows.length - 1} aria-label={`Move medicine ${i + 1} down`} title="Move down">
+                    ↓
+                  </button>
+                  <button type="button" className="link danger" onClick={() => onChange(rows.length > 1 ? rows.filter((_, r) => r !== i) : [emptyMedicine()])} aria-label={`Remove medicine ${i + 1}`} title="Remove">
+                    ✕
+                  </button>
+                </span>
+              </div>
+              {focus?.row === i && (
+                <div className="rx-quick" role="group" aria-label={`${QUICK_LABEL[focus.field]} for medicine ${i + 1}`}>
+                  <span className="muted">{QUICK_LABEL[focus.field]}:</span>
+                  {quick[focus.field].map((choice) => (
+                    // Chosen on mouse-down, so the box keeps the cursor until the next box takes it.
+                    <button
+                      key={choice}
+                      type="button"
+                      className={m[focus.field] === choice ? 'on' : ''}
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        set(i, focus.field, choice)
+                        goTo(i, NEXT[focus.field])
+                      }}
+                    >
+                      {choice}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
       {offer && found.length > 0 && (
         <ul className={`rx-pick ${offer.up ? 'up' : ''}`} id="rx-pick" role="listbox" style={{ left: offer.left, top: offer.top, width: offer.width }}>
@@ -186,7 +294,7 @@ export function MedicineRows({ rows, onChange, names = [], defaults = [], invali
           ))}
         </ul>
       )}
-      <button type="button" className="link add-medicine" onClick={() => onChange([...rows, emptyMedicine()])}>
+      <button type="button" className="link add-medicine" onClick={addRow}>
         + Add medicine
       </button>
     </>

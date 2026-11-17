@@ -10,10 +10,19 @@ import type { Visit } from '../types'
 export function PrescriptionPrint() {
   const { id } = useParams()
   const [visit, setVisit] = useState<Visit | null>(null)
+  // What each medicine contains, printed under its name so any pharmacy can dispense it.
+  const [contains, setContains] = useState<Record<string, string>>({})
 
   useEffect(() => {
-    api.get<Visit>(`/appointments/${id}/consultation`).then((res) => {
+    api.get<Visit>(`/appointments/${id}/consultation`).then(async (res) => {
       setVisit(res.data)
+      const names = (res.data.consultation?.medicines ?? []).map((m) => m.medicine).filter(Boolean)
+      if (names.length) {
+        await api.get<{ name: string; composition: string | null }[]>('/medicines/describe', { params: { names } }).then(
+          (about) => setContains(Object.fromEntries(about.data.filter((a) => a.composition).map((a) => [a.name, a.composition as string]))),
+          () => undefined,
+        )
+      }
       // A moment for the signature picture to arrive before the print dialog opens.
       setTimeout(() => window.print(), 800)
     })
@@ -144,6 +153,7 @@ export function PrescriptionPrint() {
                   <td>{i + 1}</td>
                   <td>
                     <strong>{m.medicine}</strong>
+                    {contains[m.medicine.trim().toLowerCase().replace(/\s+/g, ' ')] && <small className="block rx-contains">{contains[m.medicine.trim().toLowerCase().replace(/\s+/g, ' ')]}</small>}
                     {column('instructions') && m.instructions && <small className="block">{tr(m.instructions)}</small>}
                   </td>
                   {column('dose') && <td>{tr(m.dose)}</td>}
