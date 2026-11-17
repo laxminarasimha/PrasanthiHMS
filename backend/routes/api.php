@@ -2,23 +2,32 @@
 
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AppointmentController;
+use App\Http\Controllers\Api\AuditController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BackupController;
 use App\Http\Controllers\Api\BillController;
 use App\Http\Controllers\Api\CaseHistoryController;
 use App\Http\Controllers\Api\ChargeController;
 use App\Http\Controllers\Api\ConsultationController;
+use App\Http\Controllers\Api\DayCloseController;
 use App\Http\Controllers\Api\DoctorLibraryController;
 use App\Http\Controllers\Api\FormController;
 use App\Http\Controllers\Api\FrontDeskController;
+use App\Http\Controllers\Api\HealthSummaryController;
 use App\Http\Controllers\Api\HospitalReportController;
+use App\Http\Controllers\Api\IpdChartController;
 use App\Http\Controllers\Api\IpdController;
 use App\Http\Controllers\Api\IpdRecordsController;
 use App\Http\Controllers\Api\LabController;
 use App\Http\Controllers\Api\PastRecordController;
+use App\Http\Controllers\Api\PatientAccountController;
+use App\Http\Controllers\Api\PatientAppController;
+use App\Http\Controllers\Api\PatientAppExtrasController;
 use App\Http\Controllers\Api\PatientController;
+use App\Http\Controllers\Api\PatientDocumentController;
 use App\Http\Controllers\Api\PharmacyController;
 use App\Http\Controllers\Api\PharmacyEditController;
+use App\Http\Controllers\Api\PharmacyManagerController;
 use App\Http\Controllers\Api\PharmacyReportController;
 use App\Http\Controllers\Api\PharmacySalesController;
 use App\Http\Controllers\Api\PharmacyStockController;
@@ -26,6 +35,7 @@ use App\Http\Controllers\Api\RecordReaderController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\StaffController;
+use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Middleware\EnsureCanManageStaff;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -48,7 +58,7 @@ Route::get('/health', function () {
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
 
 // ---- The patient's mobile app: its own logins, kept apart from staff ----
-Route::prefix('app')->controller(\App\Http\Controllers\Api\PatientAppController::class)->group(function () {
+Route::prefix('app')->controller(PatientAppController::class)->group(function () {
     Route::post('/register', 'register')->middleware('throttle:6,1');
     Route::post('/login', 'login')->middleware('throttle:10,1');
 
@@ -70,7 +80,7 @@ Route::prefix('app')->controller(\App\Http\Controllers\Api\PatientAppController:
         Route::delete('/subscriptions/{subscription}', 'cancelSubscription');
     });
 });
-Route::prefix('app')->middleware(['auth:sanctum', 'actor:patient'])->controller(\App\Http\Controllers\Api\PatientAppExtrasController::class)->group(function () {
+Route::prefix('app')->middleware(['auth:sanctum', 'actor:patient'])->controller(PatientAppExtrasController::class)->group(function () {
     Route::get('/home', 'home');
     Route::get('/bills', 'bills');
     Route::get('/family', 'family');
@@ -88,7 +98,7 @@ Route::prefix('reader')->middleware('throttle:240,1')->controller(RecordReaderCo
 });
 
 Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(function () {
-    Route::middleware('ability:canRunPharmacy')->controller(\App\Http\Controllers\Api\SubscriptionController::class)->group(function () {
+    Route::middleware('ability:canRunPharmacy')->controller(SubscriptionController::class)->group(function () {
         Route::get('/pharmacy/subscriptions', 'index');
         Route::post('/pharmacy/subscriptions/{subscription}/prepared', 'prepared');
     });
@@ -174,21 +184,21 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
     Route::get('/doctor/queue', [ConsultationController::class, 'queue']);
     Route::post('/doctor/visits', [CaseHistoryController::class, 'startVisit'])->middleware('ability:canConsult');
     Route::get('/doctor/abnormal-results', [CaseHistoryController::class, 'abnormalResults'])->middleware('ability:canConsult');
-    Route::controller(\App\Http\Controllers\Api\HealthSummaryController::class)->group(function () {
+    Route::controller(HealthSummaryController::class)->group(function () {
         Route::get('/patients/{patient}/health', 'show');
         Route::post('/patients/{patient}/health', 'store');
         Route::put('/patients/{patient}/health/allergies', 'allergies');
         Route::put('/health-items/{item}', 'update');
         Route::delete('/health-items/{item}', 'destroy');
     });
-    Route::controller(\App\Http\Controllers\Api\PatientDocumentController::class)->group(function () {
+    Route::controller(PatientDocumentController::class)->group(function () {
         Route::get('/patients/{patient}/documents', 'index');
         Route::get('/patients/{patient}/documents/draft', 'draft');
         Route::post('/patients/{patient}/documents', 'store');
         Route::get('/documents/{document}', 'show');
         Route::post('/documents/{document}/cancel', 'cancel');
     });
-    Route::controller(\App\Http\Controllers\Api\PatientAccountController::class)->middleware('ability:canWorkFrontDesk')->group(function () {
+    Route::controller(PatientAccountController::class)->middleware('ability:canWorkFrontDesk')->group(function () {
         Route::get('/patients/{patient}/app-account', 'show');
         Route::post('/patients/{patient}/app-account/verify', 'verify');
         Route::post('/patients/{patient}/app-account/password', 'resetPassword');
@@ -219,10 +229,11 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
     Route::put('/appointments/{appointment}/consultation', [ConsultationController::class, 'save']);
     Route::post('/appointments/{appointment}/consultation/amendments', [ConsultationController::class, 'amend']);
     Route::post('/patients/{patient}/prescription-check', [ConsultationController::class, 'checkPrescription']);
-    Route::get('/patients/{patient}/audit-log', [\App\Http\Controllers\Api\AuditController::class, 'forPatient']);
+    Route::get('/patients/{patient}/audit-log', [AuditController::class, 'forPatient']);
     Route::get('/patients/{patient}/consultations', [ConsultationController::class, 'history']);
     Route::get('/medicines/suggest', [ConsultationController::class, 'suggestMedicines']);
     Route::get('/medicines/find', [ConsultationController::class, 'findMedicines']);
+    Route::get('/medicines/describe', [ConsultationController::class, 'describeMedicines']);
     Route::get('/icd-codes', [ConsultationController::class, 'icdCodes']);
 
     Route::get('/lab/tests', [LabController::class, 'tests']);
@@ -275,7 +286,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
         Route::delete('/sales/{sale}', 'void');
     });
 
-    Route::prefix('pharmacy')->controller(\App\Http\Controllers\Api\PharmacyManagerController::class)->group(function () {
+    Route::prefix('pharmacy')->controller(PharmacyManagerController::class)->group(function () {
         Route::get('/manager', 'show');
         Route::post('/manager/orders', 'makeOrders');
         Route::get('/stockists/{stockist}/statement', 'statement');
@@ -306,7 +317,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
 
     Route::get('/pharmacy/reports/{type}', [PharmacyReportController::class, 'show']);
 
-    Route::prefix('ipd/admissions/{admission}/chart')->controller(\App\Http\Controllers\Api\IpdChartController::class)->group(function () {
+    Route::prefix('ipd/admissions/{admission}/chart')->controller(IpdChartController::class)->group(function () {
         Route::get('/', 'show');
         Route::post('/vitals', 'storeVitals');
         Route::delete('/vitals/{vital}', 'destroyVitals');
@@ -413,7 +424,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
     });
 
     Route::get('/reports/summary', [ReportController::class, 'summary']);
-    Route::controller(\App\Http\Controllers\Api\DayCloseController::class)->group(function () {
+    Route::controller(DayCloseController::class)->group(function () {
         Route::get('/day-close', 'show');
         Route::post('/day-close', 'close');
         Route::post('/day-close/{close}/reopen', 'reopen');

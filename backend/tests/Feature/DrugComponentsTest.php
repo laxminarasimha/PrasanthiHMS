@@ -113,6 +113,12 @@ class DrugComponentsTest extends TestCase
             array_map(fn ($m) => [$m['name'], $m['in_stock'], $m['combination'], $m['by_drug']], $found),
         );
         $this->assertSame('Aceclofenac 100 mg + Paracetamol 325 mg', $found[1]['composition']);
+        // A prescription's medicines are described in one go: what each contains, what is on the shelf, and what the pharmacy does not list.
+        $about = collect($this->getJson('/api/medicines/describe?'.http_build_query(['names' => ['calpol 650  tab', 'ZERODOL-P TAB', 'Something From Outside']]))->assertOk()->json())->keyBy('name');
+        $this->assertSame([true, 'Paracetamol 650 mg', 40, false], [$about['calpol 650 tab']['listed'], $about['calpol 650 tab']['composition'], $about['calpol 650 tab']['in_stock'], $about['calpol 650 tab']['combination']]);
+        $this->assertSame([true, 20, true], [$about['zerodol-p tab']['listed'], $about['zerodol-p tab']['in_stock'], $about['zerodol-p tab']['combination']]);
+        $this->assertSame([false, null], [$about['something from outside']['listed'], $about['something from outside']['composition']]);
+
         // By brand name it is found as before, and a single letter finds nothing.
         $this->getJson('/api/medicines/find?q=cetz')->assertOk()->assertJsonCount(1)->assertJsonPath('0.by_drug', false)->assertJsonPath('0.composition', null);
         $this->getJson('/api/medicines/find?q=p')->assertOk()->assertJsonCount(0);

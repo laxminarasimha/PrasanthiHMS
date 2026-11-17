@@ -79,7 +79,9 @@ export function Medicines({ rows, onChange, library, readOnly }: { rows: RxLine[
         editing === i ? null : (
           <Row key={i} onRemove={readOnly ? undefined : () => onChange(rows.filter((_, r) => r !== i))}>
             <Pressable onPress={readOnly ? undefined : () => open(i)} accessibilityRole="button">
-              <Text style={text.strong}>{m.medicine}</Text>
+              <Text style={text.strong}>
+                {i + 1}. {m.medicine}
+              </Text>
               {summary(m) ? <Text style={text.muted}>{summary(m)}</Text> : null}
             </Pressable>
           </Row>

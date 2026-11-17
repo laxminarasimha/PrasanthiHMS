@@ -308,6 +308,28 @@ class ConsultationController extends Controller
     }
 
     /**
+     * What the pharmacy knows about each medicine named on a prescription: what it contains and how
+     * much is on the shelf. A name the pharmacy does not list comes back as not listed.
+     */
+    public function describeMedicines(Request $request): JsonResponse
+    {
+        $data = $request->validate(['names' => ['required', 'array', 'max:80'], 'names.*' => ['string', 'max:255']]);
+        $key = fn (string $name) => mb_strtolower(preg_replace('/\s+/', ' ', trim($name)));
+        $asked = collect($data['names'])->map($key)->filter()->unique()->values();
+
+        $known = Medicine::where('is_active', true)
+            ->whereIn(DB::raw('lower(name)'), $asked->all())
+            ->withSum(['batches as in_stock' => fn ($q) => $q->where('units_in_stock', '>', 0)->whereDate('expiry', '>=', today())], 'units_in_stock')
+            ->withCount('ingredients')
+            ->get(['id', 'name', 'composition', 'type'])
+            ->keyBy(fn (Medicine $m) => $key($m->name));
+
+        return response()->json($asked->map(fn (string $name) => ($m = $known->get($name))
+            ? ['name' => $name, 'listed' => true, 'composition' => $m->composition, 'in_stock' => (int) $m->in_stock, 'combination' => $m->ingredients_count > 1]
+            : ['name' => $name, 'listed' => false, 'composition' => null, 'in_stock' => 0, 'combination' => false])->values());
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function present(Appointment $appointment): array

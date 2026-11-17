@@ -795,13 +795,13 @@ export function VisitPad() {
             {h.assessment_plan && <p><b>Plan:</b> {h.assessment_plan}</p>}
             {h.bp_systolic && <p><b>BP:</b> {h.bp_systolic}/{h.bp_diastolic}{h.weight_kg ? ` · ${h.weight_kg} kg` : ''}</p>}
             {h.medicines.length > 0 && (
-              <ul>
+              <ol className="rx-list">
                 {h.medicines.map((m) => (
                   <li key={m.id}>
-                    {m.medicine} {[m.dose, m.frequency, m.timing, m.duration].filter(Boolean).join(' · ')}
+                    <b>{m.medicine}</b> {[m.dose, m.frequency, m.timing, m.duration].filter(Boolean).join(' · ')}
                   </li>
                 ))}
-              </ul>
+              </ol>
             )}
             {h.diagnosis_codes?.length ? <p><b>Codes:</b> {h.diagnosis_codes.map((d) => `${d.code} ${d.name}`).join('; ')}</p> : null}
             {h.advice && <p><b>Advice:</b> {h.advice}</p>}

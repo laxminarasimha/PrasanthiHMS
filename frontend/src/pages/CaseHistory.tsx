@@ -95,13 +95,13 @@ function VisitNotes({ v }: { v: Consultation }) {
         </p>
       ) : null}
       {v.medicines.length > 0 && (
-        <ul>
+        <ol className="rx-list">
           {v.medicines.map((m) => (
             <li key={m.id}>
-              {m.medicine} {[m.dose, m.frequency, m.timing, m.duration].filter(Boolean).join(' · ')}
+              <b>{m.medicine}</b> {[m.dose, m.frequency, m.timing, m.duration, m.instructions].filter(Boolean).join(' · ')}
             </li>
           ))}
-        </ul>
+        </ol>
       )}
       {v.follow_up_on && <p className="muted">Next visit: {longDate(v.follow_up_on)}</p>}
       {v.amendments?.map((a) => (
