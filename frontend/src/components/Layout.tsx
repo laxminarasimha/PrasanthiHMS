@@ -5,6 +5,22 @@ import { useAuth } from '../auth'
 import { allowedTabs, menuTabs, onTab } from '../nav'
 import { canLeave } from '../unsaved'
 
+/** A small drawing beside each menu name, so a section is found by shape as well as by word. */
+const ICONS: Record<string, string> = {
+  'front-desk': 'M4 5h16v4H4zM6 9v10M18 9v10M9 13h6',
+  doctor: 'M6 3v6a4 4 0 0 0 8 0V3M10 13v3a5 5 0 0 0 10 0v-2M20 11a1.6 1.6 0 1 0 0 .01',
+  lab: 'M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3M8 15h8',
+  pharmacy: 'M4.5 12a5.3 5.3 0 0 1 7.5-7.5l7.5 7.5a5.3 5.3 0 0 1-7.5 7.5zM8.5 8.5l7 7',
+  ipd: 'M3 18V6M3 14h18v4M21 14v-2a3 3 0 0 0-3-3h-7v5M7 11.5a1.5 1.5 0 1 0 0 .01',
+  patients: 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM3 20a6 6 0 0 1 12 0M16.5 4.5a3.5 3.5 0 0 1 0 6.5M18 14.5a6 6 0 0 1 3 5.5',
+  reports: 'M4 20V4M4 20h16M8 16v-4M12 16V8M16 16v-6',
+  setup: 'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2.1-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2.1 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2.1 1.2L10 21h4l.5-2.6a7 7 0 0 0 2.1-1.2l2.3.9 2-3.4-2-1.5c.07-.4.1-.8.1-1.2z',
+}
+
+/** The first letters of a person's name, for the round badge beside it. */
+const initials = (name: string) =>
+  name.replace(/^(dr|mr|mrs|ms)\.?\s+/i, '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('')
+
 export function Layout() {
   const { user, signOut } = useAuth()
   const [open, setOpen] = useState(false)
@@ -27,7 +43,14 @@ export function Layout() {
           <span />
         </button>
         <div className="brand">
-          Prasanthi <span>HMS</span>
+          <span className="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M9.5 3h5v6.5H21v5h-6.5V21h-5v-6.5H3v-5h6.5z" />
+            </svg>
+          </span>
+          <span className="brand-name">
+            Prasanthi <span>HMS</span>
+          </span>
         </div>
         {/* On phones the menu covers the screen, so close it once a page is chosen. */}
         <nav
@@ -42,6 +65,11 @@ export function Layout() {
         >
           {menuTabs(user).map((t) => (
             <NavLink key={t.key} to={t.to} className={onTab(t, pathname) ? 'active' : ''}>
+              {ICONS[t.key] && (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d={ICONS[t.key]} />
+                </svg>
+              )}
               {t.label}
             </NavLink>
           ))}
@@ -62,6 +90,9 @@ export function Layout() {
         </nav>
         <PatientSearch />
         <div className="whoami">
+          <span className="avatar" aria-hidden="true">
+            {initials(user.name)}
+          </span>
           <div>
             <NavLink className="who-link" to="/account" title="My account: password, appearance, menu" onClick={(e) => !canLeave() && e.preventDefault()}>
               <strong>{user.name}</strong>
