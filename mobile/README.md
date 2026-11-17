@@ -14,6 +14,8 @@ It talks to the same server as the web system.
 
 **Doctors and hospital staff** sign in with their web-system email and password. What they see depends on what they may do on the web system:
 - doctors: their appointments for any day, their admitted patients, **lab results outside the normal range** from the last week, and **any patient found by name, mobile or ID**
+- doctors also have the **visit pad**: vitals, complaints, history and examination, diagnosis with ICD-10 codes, tests (and sending them to the hospital lab), the prescription with medicine names from the pharmacy list, advice and next visit; their own templates, phrases and medicine groups; saving, finishing, and amendments to a locked visit. It writes to the same record as the web pad.
+- a doctor can **start a visit** for any patient they find, and **add to the health summary**
 - for a patient: allergies, health summary, recent visits, recent lab results; for an inpatient also the latest bedside observations and **round notes, which can be added from the phone**
 - those who see reports (the owner, a manager): **Hospital today**: billed and collected by department, activity counts, whether the day is closed and what is holding it up, and the pharmacy's to-do list. Read-only.
 
@@ -39,6 +41,7 @@ EXPO_PUBLIC_API_URL=http://localhost:8000/api npx expo start --web
 - `src/ui.tsx`, `src/theme.ts`: shared buttons, fields and the hospital's colours
 - `src/patient/`: sign in and register, appointments, booking, monthly medicines
 - `src/doctor/`: staff sign in, the day's appointments, inpatients, abnormal results, patient search, and the owner's hospital day
+- `src/doctor/VisitPad.tsx` and `src/doctor/pad/`: the visit pad, its prescription editor, diagnosis-code search and lab ordering
 
 ## Building the apps
 

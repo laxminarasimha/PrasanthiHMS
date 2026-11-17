@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { api, ApiError, niceDate, niceTime, nowStamp, type BedsideVital, type HealthSummary, type PastVisit, type Trends, type WardNote } from '../api'
 import { colors, space } from '../theme'
-import { Button, Card, Empty, Field, Loading, Notice, Screen, text } from '../ui'
+import { Button, Card, Choice, Empty, Field, Loading, Notice, Screen, text } from '../ui'
 
 export type PatientRef = { id: number; uhid: string; name: string; title?: string | null; gender: string; age_label: string }
 
 /** What a doctor wants at a glance before seeing someone: lasting health facts, recent visits, recent results. */
-export function PatientView({ patient, admissionId, subtitle, onBack }: { patient: PatientRef; admissionId?: number; subtitle?: string; onBack: () => void }) {
+const KINDS: [string, string][] = [['condition', 'Condition'], ['medication', 'Regular medicine'], ['surgery', 'Surgery'], ['family', 'Family history'], ['habit', 'Habit'], ['immunisation', 'Vaccine']]
+
+export function PatientView({ patient, admissionId, subtitle, onBack, canWrite, onStartVisit }: { patient: PatientRef; admissionId?: number; subtitle?: string; onBack: () => void; /** May add to the health summary. */ canWrite?: boolean; /** Opens a visit pad for this patient today. */ onStartVisit?: (appointmentId: number) => void }) {
   const [health, setHealth] = useState<HealthSummary | null>(null)
   const [visits, setVisits] = useState<PastVisit[] | null>(null)
   const [trends, setTrends] = useState<Trends | null>(null)
@@ -15,6 +17,38 @@ export function PatientView({ patient, admissionId, subtitle, onBack }: { patien
   const [notes, setNotes] = useState<WardNote[] | null>(null)
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [item, setItem] = useState({ kind: 'condition', title: '', since: '' })
+  const [healthMessage, setHealthMessage] = useState('')
+  const [starting, setStarting] = useState(false)
+  const [startError, setStartError] = useState('')
+
+  const addItem = async () => {
+    setSaving(true)
+    setHealthMessage('')
+    try {
+      await api.post(`/patients/${patient.id}/health`, { kind: item.kind, title: item.title.trim(), since: item.since.trim() || null })
+      setHealth(await api.get<HealthSummary>(`/patients/${patient.id}/health`))
+      setItem({ kind: item.kind, title: '', since: '' })
+      setAdding(false)
+    } catch (e) {
+      setHealthMessage((e as ApiError).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const startVisit = async () => {
+    setStarting(true)
+    setStartError('')
+    try {
+      const made = await api.post<{ id: number }>('/doctor/visits', { patient_id: patient.id })
+      onStartVisit?.(made.id)
+    } catch (e) {
+      setStartError((e as ApiError).message)
+      setStarting(false)
+    }
+  }
   const [noteMessage, setNoteMessage] = useState<{ text: string; kind: 'ok' | 'error' }>({ text: '', kind: 'ok' })
 
   const saveNote = async () => {
@@ -50,6 +84,13 @@ export function PatientView({ patient, admissionId, subtitle, onBack }: { patien
         <View style={styles.allergy} accessibilityRole="alert">
           <Text style={styles.allergyText}>Allergic to {health.allergies}</Text>
         </View>
+      ) : null}
+
+      {onStartVisit && !admissionId ? (
+        <>
+          <Button label="Start a visit now" onPress={startVisit} busy={starting} />
+          <Notice text={startError} />
+        </>
       ) : null}
 
       {admissionId ? (
@@ -110,6 +151,25 @@ export function PatientView({ patient, admissionId, subtitle, onBack }: { patien
             ))}
           </View>
         ))}
+        {canWrite &&
+          (adding ? (
+            <>
+              <Choice value={item.kind} onChange={(kind) => setItem({ ...item, kind })} options={KINDS.map(([value, label]) => ({ value, label }))} />
+              <Field label="What to add" value={item.title} onChangeText={(title) => setItem({ ...item, title })} placeholder="Type 2 diabetes, Metformin 500, Appendicectomy" />
+              <Field label="Since (optional)" value={item.since} onChangeText={(since) => setItem({ ...item, since })} placeholder="2019, or 5 years" />
+              <Notice text={healthMessage} />
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <Button label="Cancel" kind="ghost" onPress={() => setAdding(false)} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Button label="Add" onPress={addItem} busy={saving} disabled={item.title.trim().length < 2} />
+                </View>
+              </View>
+            </>
+          ) : (
+            <Button label="+ Add to the health summary" kind="ghost" small onPress={() => setAdding(true)} />
+          ))}
       </Card>
 
       <Card>
@@ -150,7 +210,7 @@ export function PatientView({ patient, admissionId, subtitle, onBack }: { patien
           )
         })}
       </Card>
-      <Text style={[text.muted, { textAlign: 'center' }]}>To prescribe or write a visit pad, use the web system.</Text>
+      <Text style={[text.muted, { textAlign: 'center' }]}>To write notes and prescribe, open the patient's visit pad from Today, or start a visit above.</Text>
     </Screen>
   )
 }

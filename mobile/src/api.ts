@@ -167,3 +167,51 @@ export type DayBook = {
   recent: { day: string; closed: boolean }[]
 }
 export type PharmacyDesk = { actions: { key: string; tone: 'danger' | 'warn' | 'note'; count: number; text: string }[] }
+
+// ---- The doctor's visit pad ----
+
+export type RxLine = { medicine: string; dose: string | null; frequency: string | null; timing: string | null; duration: string | null; instructions: string | null }
+export type PadConsultation = {
+  id: number
+  weight_kg: number | null
+  height_cm: number | null
+  bp_systolic: number | null
+  bp_diastolic: number | null
+  pulse: number | null
+  temperature_f: number | null
+  spo2: number | null
+  resp_rate: number | null
+  quick_notes: string | null
+  complaints: string | null
+  history: string | null
+  past_medication: string | null
+  general_exam: Record<string, 'present' | 'absent'> | null
+  general_exam_notes: string | null
+  findings: string | null
+  diagnosis: string | null
+  diagnosis_codes?: { code: string; name: string }[] | null
+  assessment_plan: string | null
+  refer_to: string | null
+  tests_advised: string | null
+  investigations?: { name: string; result: string | null; date: string | null }[] | null
+  advice: string | null
+  follow_up_on: string | null
+  completed_at: string | null
+  medicines: (RxLine & { id: number })[]
+  amendments?: { id: number; body: string; created_at: string; author?: { name: string } | null }[]
+}
+export type Visit = {
+  appointment: { id: number; scheduled_at: string; status: Appointment['status']; notes: string | null }
+  patient: { id: number; uhid: string; title?: string | null; name: string; gender: string; age_label: string; allergies: string | null; mobile?: string | null }
+  doctor: { id: number; name: string } | null
+  consultation: PadConsultation | null
+  locked: boolean
+}
+export type Library = {
+  phrases: Partial<Record<'complaint' | 'diagnosis' | 'advice', { id: number; text: string }[]>> | []
+  rx_groups: { id: number; name: string; medicines: Partial<RxLine>[] }[]
+  templates: { id: number; name: string; content: Partial<Record<'complaints' | 'findings' | 'diagnosis' | 'assessment_plan' | 'tests_advised' | 'advice', string>> & { medicines?: Partial<RxLine>[] } }[]
+  medicine_defaults: (Partial<RxLine> & { medicine: string })[]
+  rx_settings: { frequencies?: string[]; timings?: string[] }
+}
+export type LabTestName = { id: number; name: string; price: number }
