@@ -19,18 +19,30 @@
         "foregroundImage": "./assets/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.prasanthihospitals.app"
+      "package": "com.prasanthihospitals.app",
+      "permissions": []
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220,
+          "resizeMode": "contain",
+          "backgroundColor": "#6b2c91"
+        }
+      ]
     ],
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#6b2c91"
+    "owner": "aditya.nucleux",
+    "description": "Book appointments, keep monthly medicines ready and see your records at Prasanthi Hospitals, Vijayawada.",
+    "extra": {
+      "eas": {
+        "projectId": "e70fc999-568e-4894-8c0e-261289267119"
+      }
     }
   }
 }

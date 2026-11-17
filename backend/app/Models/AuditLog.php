@@ -39,6 +39,7 @@ class AuditLog extends Model
         'app.unverified' => 'Withdrew verification of the mobile app account',
         'app.password' => 'Reset the mobile app password',
         'app.active' => 'Switched the mobile app account on or off',
+        'app.deleted' => 'Closed their own mobile app account',
         'bill.created' => 'Made a bill',
         'auth.login' => 'Signed in',
         'auth.failed' => 'Tried to sign in and failed',
@@ -71,6 +72,8 @@ class AuditLog extends Model
             if (! $user instanceof User && $actorName === null) {
                 return;
             }
+            // A patient acting from the app is not a staff member: the line carries their name only.
+            $user = $user instanceof User ? $user : null;
             self::$written = true;
             $subjectType = $subject ? class_basename($subject) : null;
 

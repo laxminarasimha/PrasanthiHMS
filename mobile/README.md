@@ -40,9 +40,40 @@ EXPO_PUBLIC_API_URL=http://localhost:8000/api npx expo start --web
 - `src/patient/`: sign in and register, appointments, booking, monthly medicines
 - `src/doctor/`: staff sign in, the day's appointments, inpatients, abnormal results, patient search, and the owner's hospital day
 
+## Building the apps
+
+Builds are made on Expo's build servers with EAS, from this folder. Only this folder is uploaded
+(see `.easignore` at the top of the repository).
+
+**Android, to install directly on phones (an APK file):**
+
+```bash
+npx eas-cli build -p android --profile preview
+```
+
+When it finishes it prints a link. Open the link on an Android phone to download and install the app.
+
+**Android, for the Play Store (an AAB file):**
+
+```bash
+npx eas-cli build -p android --profile production
+```
+
+**iPhone:** needs a paid Apple Developer account. The command asks for the Apple ID; type it yourself.
+
+```bash
+npx eas-cli build -p ios --profile production
+```
+
+After a build, `npx eas-cli submit -p android` or `-p ios` sends it to the store.
+
+The app talks to `https://hms.prasanthihospitals.com/api`. A change that only touches the screens
+needs a new build to reach phones; a change on the server reaches every phone at once.
+
 ## Before the app stores
 
+- Store page text is in `store/listing.md` and a draft privacy policy in `store/privacy-policy.md`. The policy must be read by the hospital and published at a public web address.
+- Google Play needs a Play developer account (one-time fee); Apple needs an Apple Developer account (yearly fee). Both must be in the hospital's name.
+- Store reviewers need a test patient login and a test staff login on the live system.
 - App icon and opening screen in `assets/` are a plain white cross on the hospital's purple. Replace `icon.png`, `android-icon-foreground.png` and `splash-icon.png` (1024×1024) with the hospital's own logo when it is ready.
-- Store builds are made with EAS (`npx eas build`), which needs an Expo account, a Google Play
-  developer account and an Apple developer account.
 - Patient sign-in is mobile number and password for now. OTP comes once an SMS provider is chosen. A patient who forgets the password gets a one-time one from the front desk (patient page, Mobile app account).

@@ -17,6 +17,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -72,6 +73,28 @@ class PatientAppExtrasController extends Controller
         $account->members()->where('patient_id', $patient->id)->delete();
 
         return response()->json(['people' => PatientAppController::people($account->fresh())]);
+    }
+
+    /**
+     * Closes the app login for good, at the person's own request: the login, its family links and its
+     * monthly medicine lists go. The hospital's medical and billing records of the patient are kept,
+     * as a hospital must keep them.
+     */
+    public function deleteAccount(Request $request): JsonResponse
+    {
+        $account = $request->user();
+        $data = $request->validate(['password' => ['required', 'string']], ['password.required' => 'Enter your password to close the account.']);
+        if (! Hash::check($data['password'], $account->password)) {
+            throw ValidationException::withMessages(['password' => 'That is not your password.']);
+        }
+
+        DB::transaction(function () use ($account) {
+            \App\Models\AuditLog::record('app.deleted', $account->patient_id, null, "Mobile {$account->mobile}", null, $account->name);
+            $account->tokens()->delete();
+            $account->delete();
+        });
+
+        return response()->json(['message' => 'Your account is closed.']);
     }
 
     // ---- Bills ----

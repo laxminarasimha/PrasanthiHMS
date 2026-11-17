@@ -1,0 +1,19 @@
+# What is sent to Expo's build servers when the phone app is built.
+# Only the phone app goes up: the hospital system, its data and the deploy scripts stay here.
+/*
+!/mobile
+
+# Inside the phone app, the usual things that are rebuilt on the server.
+node_modules/
+.expo/
+dist/
+web-build/
+.claude/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+.DS_Store
+.env
+.env.*
