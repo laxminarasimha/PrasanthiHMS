@@ -112,7 +112,9 @@ class PastRecordTest extends TestCase
         $this->get("/api/reader/pages/{$pageId}", $reader)->assertOk();
         $this->getJson('/api/past-records/setup')->assertForbidden();
 
-        $this->postJson("/api/reader/records/{$id}/done", ['text' => self::LAB_REPORT], $reader)->assertOk()->assertJsonPath('kept', true);
+        // The text comes wrapped, so the web host's firewall does not mistake a page of medical text for an attack.
+        $this->postJson("/api/reader/records/{$id}/done", ['text_b64' => 'not base64 !!'], $reader)->assertStatus(422);
+        $this->postJson("/api/reader/records/{$id}/done", ['text_b64' => base64_encode(self::LAB_REPORT)], $reader)->assertOk()->assertJsonPath('kept', true);
         $this->get("/api/reader/pages/{$pageId}", $reader)->assertNotFound();
 
         $paper = $this->getJson("/api/past-records/{$id}")->assertOk()->assertJsonPath('read_state', 'done')->assertJsonPath('read_engine', 'marker')

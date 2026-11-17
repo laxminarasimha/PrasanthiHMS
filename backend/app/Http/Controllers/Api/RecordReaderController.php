@@ -68,8 +68,16 @@ class RecordReaderController extends Controller
         $this->knock($request);
         $data = $request->validate([
             'text' => ['nullable', 'string', 'max:400000'],
+            // The same text wrapped in base64. A shared host's firewall can take a page of medical text,
+            // with its tables and symbols, for an attack and refuse it; wrapped, it passes untouched.
+            'text_b64' => ['nullable', 'string', 'max:1600000'],
             'error' => ['nullable', 'string', 'max:500'],
         ]);
+        if (filled($data['text_b64'] ?? null)) {
+            $unwrapped = base64_decode($data['text_b64'], true);
+            abort_if($unwrapped === false || ! mb_check_encoding($unwrapped, 'UTF-8'), 422, 'The text could not be unwrapped.');
+            $data['text'] = mb_substr($unwrapped, 0, 400000);
+        }
 
         // If a person had it read another way in the meantime, or filed it, the late answer is set aside.
         if ($record->read_state !== 'reading' || $record->status !== 'to_check') {
