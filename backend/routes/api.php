@@ -246,6 +246,8 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
     Route::put('/lab/orders/{order}/items/{item}', [LabController::class, 'saveResults']);
     Route::put('/lab/orders/{order}/items/{item}/collect', [LabController::class, 'collectSample']);
     Route::put('/lab/orders/{order}/items/{item}/approve', [LabController::class, 'approve']);
+    Route::put('/lab/orders/{order}/collect', [LabController::class, 'collectAll']);
+    Route::put('/lab/orders/{order}/approve', [LabController::class, 'approveAll']);
     Route::get('/lab/packages', [LabController::class, 'packages']);
     Route::post('/lab/packages', [LabController::class, 'storePackage']);
     Route::put('/lab/packages/{package}', [LabController::class, 'updatePackage']);

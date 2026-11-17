@@ -8,15 +8,16 @@ use App\Models\LabOrder;
 use App\Models\LabOrderFile;
 use App\Models\LabOrderItem;
 use App\Models\LabPackage;
+use App\Models\LabResult;
 use App\Models\LabTest;
 use App\Models\Setting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class LabController extends Controller
 {
@@ -445,6 +446,30 @@ class LabController extends Controller
     // ---- Result files ----
 
     /** Attaches a file to an order: a report from an outside lab, an ECG strip, a scanned sheet. */
+    /** Marks the sample taken for every test on the order that is still waiting for one. */
+    public function collectAll(Request $request, LabOrder $order): JsonResponse
+    {
+        $this->authorizeLab($request);
+
+        $order->items()->whereNull('collected_at')->update(['collected_at' => now(), 'collected_by' => $request->user()->id]);
+
+        return response()->json($this->present($order));
+    }
+
+    /** Approves every reported test on the order in one step. */
+    public function approveAll(Request $request, LabOrder $order): JsonResponse
+    {
+        $this->authorizeLab($request);
+
+        $waiting = $order->items()->whereNotNull('reported_at')->whereNull('approved_at');
+        if (! $waiting->exists()) {
+            throw ValidationException::withMessages(['approved' => 'Nothing on this order is waiting for approval.']);
+        }
+        $waiting->update(['approved_at' => now(), 'approved_by' => $request->user()->id]);
+
+        return response()->json($this->present($order));
+    }
+
     public function storeFile(Request $request, LabOrder $order): JsonResponse
     {
         $this->authorizeLab($request);
@@ -491,9 +516,36 @@ class LabController extends Controller
 
     private function present(LabOrder $order): LabOrder
     {
-        return $order->fresh()->load([
+        return $this->withPrevious($order->fresh()->load([
             'patient:id,uhid,title,name,gender,date_of_birth,mobile', 'items.results', 'items.reporter:id,name,signature_text', 'items.approver:id,name,signature_text',
             'bill:id,bill_no,total,paid', 'files.uploader:id,name',
-        ]);
+        ]));
+    }
+
+    /**
+     * Puts the patient's last reported value beside each result, so a change stands out while the new one is typed.
+     * Only earlier orders of the same test count, matched parameter by parameter.
+     */
+    private function withPrevious(LabOrder $order): LabOrder
+    {
+        $testIds = $order->items->pluck('lab_test_id')->filter()->unique();
+        $earlier = $testIds->isEmpty() ? collect() : LabOrderItem::query()
+            ->whereIn('lab_test_id', $testIds)
+            ->whereNotNull('reported_at')
+            ->whereIn('lab_order_id', LabOrder::where('patient_id', $order->patient_id)->where('id', '<', $order->id)->select('id'))
+            ->with('results')
+            ->latest('reported_at')->latest('id')
+            ->get()->unique('lab_test_id')->keyBy('lab_test_id');
+
+        foreach ($order->items as $item) {
+            $last = $earlier->get($item->lab_test_id);
+            $values = $last?->results->filter(fn (LabResult $r) => filled($r->value))->keyBy('parameter');
+            foreach ($item->results as $result) {
+                $before = $values?->get($result->parameter);
+                $result->setAttribute('previous', $before ? ['value' => $before->value, 'flag' => $before->flag, 'on' => $last->reported_at->format('Y-m-d')] : null);
+            }
+        }
+
+        return $order;
     }
 }
