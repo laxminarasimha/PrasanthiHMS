@@ -355,6 +355,8 @@ export type LabOrder = {
 export type Medicine = {
   id: number
   name: string
+  /** What it contains, with strengths. Brands with the same composition are options for one another. */
+  composition?: string | null
   type: string | null
   manufacturer: string | null
   category: string | null

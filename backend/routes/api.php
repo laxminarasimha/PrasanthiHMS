@@ -247,8 +247,10 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
 
     Route::prefix('pharmacy')->controller(PharmacyController::class)->group(function () {
         Route::get('/medicines', 'medicines');
+        Route::get('/medicines/options', 'medicineOptions');
         Route::post('/medicines', 'storeMedicine');
         Route::put('/medicines/{medicine}', 'updateMedicine');
+        Route::put('/medicines/{medicine}/composition', 'setComposition');
         Route::get('/stockists', 'stockists');
         Route::post('/stockists', 'storeStockist');
         Route::put('/stockists/{stockist}', 'updateStockist');

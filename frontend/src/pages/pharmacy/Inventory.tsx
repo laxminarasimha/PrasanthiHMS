@@ -1,20 +1,20 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../../api'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { downloadCsv, expiryLabel, today } from '../../format'
 import type { InventoryMedicine } from '../../types'
 
-type Tab = 'all' | 'expiring' | 'low' | 'zero'
+type Tab = 'all' | 'expiring' | 'low'
 type Data = { all: InventoryMedicine[]; counts: Record<'expiring' | 'low' | 'zero', number> }
 
 const FILTERS: Record<Tab, (m: InventoryMedicine) => boolean> = {
   all: () => true,
   expiring: (m) => m.expiring_units > 0,
   low: (m) => m.units_in_stock > 0 && m.units_in_stock <= m.reorder_level,
-  zero: (m) => m.units_in_stock === 0,
 }
 
-/** Units left per medicine, with the lists a pharmacist checks before ordering. */
+/** What is on the shelf, medicine by medicine, with the lists a pharmacist checks before ordering. */
 export function PharmacyInventory() {
   const [data, setData] = useState<Data | null>(null)
   const [tab, setTab] = useState<Tab>('all')
@@ -26,10 +26,9 @@ export function PharmacyInventory() {
 
   const rows = (data?.all ?? []).filter(FILTERS[tab]).filter((m) => m.name.toLowerCase().includes(query.trim().toLowerCase()))
   const tabs: [Tab, string][] = [
-    ['all', `All medicines (${data?.all.length ?? 0})`],
+    ['all', `In stock (${data?.all.length ?? 0})`],
     ['expiring', `Expiring in 90 days (${data?.counts.expiring ?? 0})`],
     ['low', `Low stock (${data?.counts.low ?? 0})`],
-    ['zero', `Out of stock (${data?.counts.zero ?? 0})`],
   ]
 
   return (
@@ -49,6 +48,15 @@ export function PharmacyInventory() {
             Export
           </button>
         </div>
+        {/* What is not on the shelf is not inventory: it lives in the medicines list, with where to order it. */}
+        {data && data.counts.zero > 0 && (
+          <p className="muted small">
+            {data.counts.zero} {data.counts.zero === 1 ? 'medicine has' : 'medicines have'} nothing on the shelf and {data.counts.zero === 1 ? 'is' : 'are'} not listed here.{' '}
+            <Link className="link" to="/pharmacy/medicines?view=options&show=out">
+              See them, with where each can be ordered
+            </Link>
+          </p>
+        )}
         <div className="tabs">
           {tabs.map(([key, label]) => (
             <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>

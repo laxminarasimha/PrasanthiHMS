@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../../api'
 import { useAuth } from '../../auth'
 import { SelectField, TextField } from '../../components/Field'
+import { useSearchParams } from 'react-router-dom'
+import { MedicineOptions } from '../../components/MedicineOptions'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { downloadCsv, rupees, today } from '../../format'
 import type { Manufacturer, Medicine, Stockist } from '../../types'
@@ -13,7 +15,7 @@ const SDE = [{ value: 'S', label: 'Scarce' }, { value: 'D', label: 'Difficult to
 const FSN = [{ value: 'F', label: 'Fast moving' }, { value: 'S', label: 'Slow moving' }, { value: 'N', label: 'Non-moving' }]
 const classLabel = (list: { value: string; label: string }[], value?: string | null) => list.find((o) => o.value === value)?.label
 
-const blankMedicine = { name: '', type: 'Tablet', manufacturer: '', category: '', sub_category: '', ved: '', sde: '', fsn: '', hsn_code: '', gst_percent: '12', units_per_pack: '10', reorder_level: '0', desired_stock: '', preferred_stockist_id: '', is_active: true, is_scheduled: false }
+const blankMedicine = { name: '', composition: '', type: 'Tablet', manufacturer: '', category: '', sub_category: '', ved: '', sde: '', fsn: '', hsn_code: '', gst_percent: '12', units_per_pack: '10', reorder_level: '0', desired_stock: '', preferred_stockist_id: '', is_active: true, is_scheduled: false }
 const blankStockist = { name: '', phone: '', email: '', gstin: '', address: '', lead_days: '2', credit_days: '0' }
 
 type Editing = { kind: 'medicine' | 'stockist' | 'manufacturer'; id: number | null } | null
@@ -33,6 +35,9 @@ export function PharmacyMedicines() {
   const [errors, setErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
+  // Two ways of looking at the same list: every medicine in a table, or brands grouped by what they contain.
+  const [params, setParams] = useSearchParams()
+  const view = params.get('view') === 'options' ? 'options' : 'list'
 
   const load = useCallback(() => {
     api.get<Medicine[]>('/pharmacy/medicines', { params: { all: 1, q: query.trim() || undefined, category: filter.category || undefined, ved: filter.ved || undefined, sde: filter.sde || undefined, fsn: filter.fsn || undefined } }).then((res) => setMedicines(res.data))
@@ -56,7 +61,7 @@ export function PharmacyMedicines() {
     setMedicine(
       m
         ? {
-            name: m.name, type: m.type ?? '', manufacturer: m.manufacturer ?? '', category: m.category ?? '', sub_category: m.sub_category ?? '', ved: m.ved ?? '', sde: m.sde ?? '', fsn: m.fsn ?? '', hsn_code: m.hsn_code ?? '',
+            name: m.name, composition: m.composition ?? '', type: m.type ?? '', manufacturer: m.manufacturer ?? '', category: m.category ?? '', sub_category: m.sub_category ?? '', ved: m.ved ?? '', sde: m.sde ?? '', fsn: m.fsn ?? '', hsn_code: m.hsn_code ?? '',
             gst_percent: String(m.gst_percent), units_per_pack: String(m.units_per_pack), reorder_level: String(m.reorder_level), desired_stock: m.desired_stock ? String(m.desired_stock) : '', preferred_stockist_id: m.preferred_stockist_id ? String(m.preferred_stockist_id) : '', is_active: m.is_active,
             is_scheduled: m.is_scheduled,
           }
@@ -104,12 +109,30 @@ export function PharmacyMedicines() {
   return (
     <>
       <PharmacyTabs />
-      <div className="split">
+      <div className="tabs" role="group" aria-label="How to look at the medicines">
+        <button className={view === 'list' ? 'active' : ''} onClick={() => setParams({})}>
+          Medicines list
+        </button>
+        <button className={view === 'options' ? 'active' : ''} onClick={() => setParams({ view: 'options' })}>
+          Options to order
+        </button>
+      </div>
+      {view === 'options' && (
+        <MedicineOptions
+          canEdit={canEdit}
+          startWith={params.get('show') === 'out' ? 'out' : undefined}
+          onOpen={(name) => {
+            setQuery(name)
+            setParams({})
+          }}
+        />
+      )}
+      <div className="split" hidden={view === 'options'}>
         <div className="stack grow">
           <section className="card">
             <div className="toolbar">
               <h1>Medicines</h1>
-              <input className="search" type="search" placeholder="Filter by name or manufacturer" value={query} onChange={(e) => setQuery(e.target.value)} />
+              <input className="search" type="search" placeholder="Filter by name, composition or manufacturer" value={query} onChange={(e) => setQuery(e.target.value)} />
               <select className="narrow" value={filter.category} onChange={(e) => setFilter({ ...filter, category: e.target.value })} aria-label="Category">
                 <option value="">Any category</option>
                 {CATEGORIES.map((c) => (
@@ -152,6 +175,7 @@ export function PharmacyMedicines() {
                     <tr key={m.id} onClick={() => openMedicine(m)} className={editing?.kind === 'medicine' && editing.id === m.id ? 'selected' : ''}>
                       <td>
                         <strong>{m.name}</strong> {m.is_scheduled && <span className="pill status-ongoing">Scheduled</span>}
+                        {m.composition && <small className="muted block">{m.composition}</small>}
                       </td>
                       <td>{m.type ?? '—'}</td>
                       <td>{m.manufacturer ?? '—'}</td>
@@ -277,6 +301,15 @@ export function PharmacyMedicines() {
                 <div className="grid">
                   <div className="span-2">
                     <TextField label="Name and strength" required placeholder="Paracetamol 650mg Tablet" value={medicine.name} onChange={setM('name')} error={errors.name} autoFocus />
+                  </div>
+                  <div className="span-2">
+                    <TextField label="What it contains (composition)" placeholder="Paracetamol 650 mg" list="form-compositions" value={medicine.composition} onChange={setM('composition')} error={errors.composition} />
+                    <datalist id="form-compositions">
+                      {[...new Set(medicines.map((m) => m.composition).filter(Boolean))].map((c) => (
+                        <option key={c} value={c ?? ''} />
+                      ))}
+                    </datalist>
+                    <small className="muted">Brands with the same composition are shown together under “Options to order”.</small>
                   </div>
                   <SelectField label="Type" value={medicine.type} onChange={setM('type')} options={TYPES} placeholder="Select" error={errors.type} />
                   <label className="field">

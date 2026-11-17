@@ -135,7 +135,8 @@ class PharmacyCompleteTest extends TestCase
         $inventory = $this->getJson('/api/pharmacy/inventory')->assertOk()
             ->assertJsonPath('counts.expiring', 1)->assertJsonPath('counts.low', 1)->assertJsonPath('counts.zero', 1)->json('all');
         $this->assertSame(30, collect($inventory)->firstWhere('id', $other->id)['units_in_stock']);
-        $this->assertSame(0, collect($inventory)->firstWhere('id', $empty->id)['units_in_stock']);
+        // A medicine with nothing on the shelf is counted, but it is not in the inventory list.
+        $this->assertNull(collect($inventory)->firstWhere('id', $empty->id));
 
         $this->postJson("/api/pharmacy/stock/{$this->batch->id}/adjust", ['units_in_stock' => 96])->assertStatus(422)->assertJsonValidationErrors('reason');
         $this->postJson("/api/pharmacy/stock/{$this->batch->id}/adjust", ['units_in_stock' => 96, 'reason' => '4 tablets damaged'])

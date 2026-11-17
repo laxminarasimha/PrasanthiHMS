@@ -4,12 +4,16 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Consultation;
+use App\Models\Manufacturer;
 use App\Models\Medicine;
 use App\Models\Payment;
+use App\Models\PharmacyChange;
 use App\Models\PharmacySale;
 use App\Models\PurchaseInvoice;
 use App\Models\StockBatch;
 use App\Models\Stockist;
+use App\Models\StockReturn;
+use App\Support\OrderMatch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -27,7 +31,7 @@ class PharmacyController extends Controller
 
         return response()->json(
             Medicine::query()
-                ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', "%{$term}%")->orWhere('manufacturer', 'like', "%{$term}%")))
+                ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', "%{$term}%")->orWhere('manufacturer', 'like', "%{$term}%")->orWhere('composition', 'like', "%{$term}%")))
                 ->when(! $request->boolean('all'), fn ($q) => $q->where('is_active', true))
                 ->when($request->query('category'), fn ($q, $v) => $q->where('category', $v))
                 ->when($request->query('ved'), fn ($q, $v) => $q->where('ved', $v))
@@ -39,6 +43,66 @@ class PharmacyController extends Controller
                 ->get()
                 ->each(fn (Medicine $m) => $m->units_in_stock = (int) $m->units_in_stock)
         );
+    }
+
+    /**
+     * Every medicine in use with what is needed to choose where to order it: what it contains, how
+     * much is on the shelf, and each supplier it has been bought from, with the last rate and date.
+     * Brands that contain the same thing are options for one another; the screen groups them.
+     */
+    public function medicineOptions(): JsonResponse
+    {
+        // Each purchase of each medicine, newest first, so the first one seen per supplier is the latest.
+        $bought = DB::table('stock_batches as b')
+            ->join('purchase_invoices as i', 'i.id', '=', 'b.purchase_invoice_id')
+            ->join('stockists as s', 's.id', '=', 'i.stockist_id')
+            ->orderByDesc('i.invoice_date')->orderByDesc('b.id')
+            ->get(['b.medicine_id', 'i.id as invoice_id', 'i.stockist_id', 's.name as stockist', 'i.invoice_date', 'b.pack_price', 'b.pack_mrp', 'b.units_per_pack'])
+            ->groupBy('medicine_id');
+        $stockists = Stockist::pluck('name', 'id');
+
+        $medicines = Medicine::where('is_active', true)
+            ->withSum('batches as on_shelf', 'units_in_stock')
+            ->orderBy('name')->limit(5000)
+            ->get(['id', 'name', 'composition', 'type', 'manufacturer', 'units_per_pack', 'preferred_stockist_id'])
+            ->map(function (Medicine $m) use ($bought, $stockists) {
+                $suppliers = ($bought[$m->id] ?? collect())->groupBy('stockist_id')->map(function ($rows) {
+                    $last = $rows->first();
+
+                    return [
+                        'stockist_id' => (int) $last->stockist_id, 'name' => $last->stockist, 'times' => $rows->unique('invoice_id')->count(),
+                        'last_on' => substr((string) $last->invoice_date, 0, 10), 'last_rate' => (float) $last->pack_price, 'last_mrp' => (float) $last->pack_mrp, 'units_per_pack' => (int) $last->units_per_pack,
+                    ];
+                })->sortByDesc(fn ($s) => [$s['times'], $s['last_on']])->values();
+                // Where it is usually ordered from: the supplier named on the medicine, else the one used most.
+                $usual = $m->preferred_stockist_id ?: ($suppliers->first()['stockist_id'] ?? null);
+
+                return [
+                    'id' => $m->id, 'name' => $m->name, 'composition' => $m->composition, 'type' => $m->type, 'manufacturer' => $m->manufacturer,
+                    'units_per_pack' => $m->units_per_pack, 'on_shelf' => (int) $m->on_shelf,
+                    'usual_stockist_id' => $usual ? (int) $usual : null, 'usual_stockist' => $usual ? ($stockists[$usual] ?? null) : null,
+                    'suppliers' => $suppliers,
+                ];
+            });
+
+        return response()->json([
+            'medicines' => $medicines,
+            'compositions' => Medicine::whereNotNull('composition')->where('composition', '!=', '')->distinct()->orderBy('composition')->pluck('composition'),
+        ]);
+    }
+
+    /** Says what a medicine contains, without opening its whole form: used to tag the list quickly. */
+    public function setComposition(Request $request, Medicine $medicine): JsonResponse
+    {
+        $this->authorizePharmacy($request);
+        $data = $request->validate(['composition' => ['present', 'nullable', 'string', 'max:255']]);
+        $was = $medicine->composition;
+        $medicine->update(['composition' => filled($data['composition']) ? preg_replace('/\s+/', ' ', trim($data['composition'])) : null]);
+        if ($was !== $medicine->composition) {
+            PharmacyChange::create(['kind' => 'medicine', 'subject_id' => $medicine->id, 'label' => $medicine->name, 'summary' => 'Composition: '.($was ?? '—').' → '.($medicine->composition ?? '—'), 'created_by' => $request->user()->id]);
+        }
+
+        return response()->json($medicine->only(['id', 'name', 'composition']));
     }
 
     public function storeMedicine(Request $request): JsonResponse
@@ -58,13 +122,13 @@ class PharmacyController extends Controller
         $this->rememberManufacturer($data['manufacturer'] ?? null);
 
         // Keep a note of what was changed, for the "medicine data updated" report.
-        $labels = ['name' => 'Name', 'type' => 'Type', 'manufacturer' => 'Manufacturer', 'category' => 'Category', 'sub_category' => 'Sub category', 'ved' => 'VED class', 'sde' => 'SDE class', 'fsn' => 'FSN class', 'is_scheduled' => 'Scheduled drug', 'hsn_code' => 'HSN code', 'gst_percent' => 'GST %', 'units_per_pack' => 'Units per pack', 'reorder_level' => 'Reorder level', 'is_active' => 'In use'];
+        $labels = ['name' => 'Name', 'composition' => 'Composition', 'type' => 'Type', 'manufacturer' => 'Manufacturer', 'category' => 'Category', 'sub_category' => 'Sub category', 'ved' => 'VED class', 'sde' => 'SDE class', 'fsn' => 'FSN class', 'is_scheduled' => 'Scheduled drug', 'hsn_code' => 'HSN code', 'gst_percent' => 'GST %', 'units_per_pack' => 'Units per pack', 'reorder_level' => 'Reorder level', 'is_active' => 'In use'];
         $before = $medicine->only(array_keys($labels));
         $label = $medicine->name;
         $medicine->update($data);
-        $changes = \App\Models\PharmacyChange::differences($labels, $before, $medicine->only(array_keys($labels)));
+        $changes = PharmacyChange::differences($labels, $before, $medicine->only(array_keys($labels)));
         if ($changes) {
-            \App\Models\PharmacyChange::create(['kind' => 'medicine', 'subject_id' => $medicine->id, 'label' => $label, 'summary' => implode("\n", $changes), 'created_by' => $request->user()->id]);
+            PharmacyChange::create(['kind' => 'medicine', 'subject_id' => $medicine->id, 'label' => $label, 'summary' => implode("\n", $changes), 'created_by' => $request->user()->id]);
         }
 
         return response()->json($medicine);
@@ -77,6 +141,7 @@ class PharmacyController extends Controller
     {
         return $request->validate([
             'name' => ['required', 'string', 'max:255', Rule::unique('medicines')->ignore($medicine)],
+            'composition' => ['nullable', 'string', 'max:255'],
             'type' => ['nullable', 'string', 'max:30'],
             'manufacturer' => ['nullable', 'string', 'max:255'],
             'category' => ['nullable', 'string', 'max:255'],
@@ -98,7 +163,7 @@ class PharmacyController extends Controller
     private function rememberManufacturer(?string $name): void
     {
         if (filled($name)) {
-            \App\Models\Manufacturer::firstOrCreate(['name' => trim($name)]);
+            Manufacturer::firstOrCreate(['name' => trim($name)]);
         }
     }
 
@@ -107,8 +172,8 @@ class PharmacyController extends Controller
     public function stockists(): JsonResponse
     {
         // What each supplier has billed, been paid and been sent back, so the amount still owed is plain.
-        $billed = \App\Models\PurchaseInvoice::selectRaw('stockist_id, sum(total) as billed, sum(paid) as paid, count(*) as invoices')->groupBy('stockist_id')->get()->keyBy('stockist_id');
-        $returned = \App\Models\StockReturn::selectRaw('stockist_id, sum(total) as returned')->groupBy('stockist_id')->pluck('returned', 'stockist_id');
+        $billed = PurchaseInvoice::selectRaw('stockist_id, sum(total) as billed, sum(paid) as paid, count(*) as invoices')->groupBy('stockist_id')->get()->keyBy('stockist_id');
+        $returned = StockReturn::selectRaw('stockist_id, sum(total) as returned')->groupBy('stockist_id')->pluck('returned', 'stockist_id');
 
         return response()->json(Stockist::orderBy('name')->get()->map(function (Stockist $s) use ($billed, $returned) {
             $b = round((float) ($billed[$s->id]->billed ?? 0), 2);
@@ -259,7 +324,7 @@ class PharmacyController extends Controller
             }
             $invoice->update($figures);
             // An order whose every line has now come in full is closed as received; one that is short stays open.
-            \App\Support\OrderMatch::settle($invoice->order);
+            OrderMatch::settle($invoice->order);
 
             return $invoice;
         });
@@ -348,8 +413,8 @@ class PharmacyController extends Controller
             'q' => ['nullable', 'string', 'max:100'],
         ]);
         $term = trim((string) ($filters['q'] ?? ''));
-        $from = \Illuminate\Support\Carbon::parse($filters['from'] ?? $filters['date'] ?? today())->startOfDay();
-        $to = \Illuminate\Support\Carbon::parse($filters['to'] ?? $filters['from'] ?? $filters['date'] ?? today())->endOfDay();
+        $from = Carbon::parse($filters['from'] ?? $filters['date'] ?? today())->startOfDay();
+        $to = Carbon::parse($filters['to'] ?? $filters['from'] ?? $filters['date'] ?? today())->endOfDay();
 
         return response()->json(
             PharmacySale::query()
