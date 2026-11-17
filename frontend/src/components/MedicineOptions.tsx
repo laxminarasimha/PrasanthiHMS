@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api, fieldErrors } from '../api'
+import { CompositionImport } from './CompositionImport'
 import { longDate, rupees } from '../format'
 
 type Supplier = { stockist_id: number; name: string; times: number; last_on: string; last_rate: number; last_mrp: number; units_per_pack: number }
@@ -18,6 +20,7 @@ type Option = {
   suppliers: Supplier[]
 }
 type Show = 'all' | 'out' | 'untagged'
+type Made = { id: number; order_no: string; stockist: string; items: number }
 
 /** Two ways of typing the same composition are one composition. */
 const same = (composition: string) => composition.toLowerCase().replace(/\s+/g, ' ').trim()
@@ -37,8 +40,21 @@ export function MedicineOptions({ canEdit, startWith, onOpen }: { canEdit: boole
   const [many, setMany] = useState(60)
   const [tagging, setTagging] = useState<{ id: number; text: string } | null>(null)
   const [error, setError] = useState('')
+  // What has been chosen to order: for each brand, how many packs and from whom.
+  const [basket, setBasket] = useState<Record<number, { packs: string; stockist: string }>>({})
+  const [stockists, setStockists] = useState<{ id: number; name: string }[]>([])
+  const [made, setMade] = useState<Made[] | null>(null)
+  const [ordering, setOrdering] = useState(false)
+
+  const reload = () =>
+    api.get<{ medicines: Option[]; compositions: string[]; drugs: string[] }>('/pharmacy/medicines/options').then((res) => {
+      setOptions(res.data.medicines)
+      setCompositions(res.data.compositions)
+      setDrugs(res.data.drugs)
+    })
 
   useEffect(() => {
+    api.get<{ id: number; name: string }[]>('/pharmacy/stockists').then((res) => setStockists(res.data))
     api.get<{ medicines: Option[]; compositions: string[]; drugs: string[] }>('/pharmacy/medicines/options').then(
       (res) => {
         setOptions(res.data.medicines)
@@ -80,12 +96,25 @@ export function MedicineOptions({ canEdit, startWith, onOpen }: { canEdit: boole
       await api.put(`/pharmacy/medicines/${tagging.id}/composition`, { composition: tagging.text.trim() || null })
       setTagging(null)
       // Fetched afresh, so the brand shows under its composition with its drugs linked.
-      const fresh = await api.get<{ medicines: Option[]; compositions: string[]; drugs: string[] }>('/pharmacy/medicines/options')
-      setOptions(fresh.data.medicines)
-      setCompositions(fresh.data.compositions)
-      setDrugs(fresh.data.drugs)
+      await reload()
     } catch (err) {
       setError(Object.values(fieldErrors(err))[0])
+    }
+  }
+
+  const chosen = Object.entries(basket)
+  const ready = chosen.length > 0 && chosen.every(([, line]) => Number(line.packs) >= 1 && line.stockist)
+  const order = async () => {
+    setOrdering(true)
+    setError('')
+    try {
+      const res = await api.post<{ orders: Made[] }>('/pharmacy/manager/orders', { from: 'options', lines: chosen.map(([id, line]) => ({ medicine_id: Number(id), stockist_id: Number(line.stockist), packs: Number(line.packs) })) })
+      setMade(res.data.orders)
+      setBasket({})
+    } catch (err) {
+      setError(Object.values(fieldErrors(err))[0])
+    } finally {
+      setOrdering(false)
     }
   }
 
@@ -121,7 +150,14 @@ export function MedicineOptions({ canEdit, startWith, onOpen }: { canEdit: boole
           </button>
         ))}
       </div>
+      {canEdit && <CompositionImport medicines={options} onSaved={() => void reload()} />}
       {error && <p className="form-error">{error}</p>}
+      {made && (
+        <p className="notice gap-top">
+          {made.length === 1 ? 'A draft order was made: ' : `${made.length} draft orders were made, one for each supplier: `}
+          {made.map((o) => `${o.order_no} to ${o.stockist} (${o.items} ${o.items === 1 ? 'medicine' : 'medicines'})`).join('; ')}. <Link to="/pharmacy/purchase-orders">Open purchase orders</Link> to check and send them.
+        </p>
+      )}
       <datalist id="known-compositions">
         {compositions.map((c) => (
           <option key={c} value={c} />
@@ -191,7 +227,32 @@ export function MedicineOptions({ canEdit, startWith, onOpen }: { canEdit: boole
                       )
                     )}
                   </div>
-                  <div className="option-stock">{b.on_shelf > 0 ? <span className="pill ok">{b.on_shelf} on the shelf</span> : <span className="pill off">Out of stock</span>}</div>
+                  <div className="option-stock">
+                    {b.on_shelf > 0 ? <span className="pill ok">{b.on_shelf} on the shelf</span> : <span className="pill off">Out of stock</span>}
+                    {canEdit &&
+                      (basket[b.id] ? (
+                        <span className="option-order">
+                          <input type="number" min={1} value={basket[b.id].packs} onChange={(e) => setBasket({ ...basket, [b.id]: { ...basket[b.id], packs: e.target.value } })} aria-label={`Packs of ${b.name} to order`} />
+                          <small className="muted">packs from</small>
+                          <select value={basket[b.id].stockist} onChange={(e) => setBasket({ ...basket, [b.id]: { ...basket[b.id], stockist: e.target.value } })} aria-label={`Supplier for ${b.name}`}>
+                            <option value="">Choose a supplier</option>
+                            {stockists.map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.name}
+                                {s.id === b.usual_stockist_id ? ' (usual)' : ''}
+                              </option>
+                            ))}
+                          </select>
+                          <button type="button" className="link danger" onClick={() => setBasket(Object.fromEntries(Object.entries(basket).filter(([id]) => Number(id) !== b.id)))}>
+                            Not this one
+                          </button>
+                        </span>
+                      ) : (
+                        <button type="button" className="link small block" onClick={() => { setMade(null); setBasket({ ...basket, [b.id]: { packs: '1', stockist: b.usual_stockist_id ? String(b.usual_stockist_id) : '' } }) }}>
+                          + Order this
+                        </button>
+                      ))}
+                  </div>
                   <div className="option-suppliers">
                     {b.suppliers.map((s) => (
                       <span key={s.stockist_id} className={`supplier ${s.stockist_id === b.usual_stockist_id ? 'usual' : ''}`}>
@@ -212,6 +273,22 @@ export function MedicineOptions({ canEdit, startWith, onOpen }: { canEdit: boole
         })}
         {groups.length === 0 && <p className="muted gap-top">No medicine matches.</p>}
       </div>
+      {chosen.length > 0 && (
+        <div className="order-bar">
+          <span>
+            <b>{chosen.length}</b> {chosen.length === 1 ? 'medicine' : 'medicines'} chosen to order
+            {!ready && <small className="due"> · give each one its packs and a supplier</small>}
+          </span>
+          <span className="foot-buttons">
+            <button type="button" className="link" onClick={() => setBasket({})}>
+              Clear
+            </button>
+            <button type="button" className="btn primary" disabled={!ready || ordering} onClick={order}>
+              {ordering ? 'Making…' : 'Make draft orders'}
+            </button>
+          </span>
+        </div>
+      )}
       {groups.length > many && (
         <div className="panel-foot">
           <button type="button" className="btn ghost" onClick={() => setMany(many + 120)}>

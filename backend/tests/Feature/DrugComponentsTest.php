@@ -27,6 +27,45 @@ class DrugComponentsTest extends TestCase
         $this->assertSame([], Composition::parts('  '));
     }
 
+    public function test_compositions_are_filled_from_a_sheet_after_a_check(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $add = fn (string $name, ?string $composition = null) => $this->postJson('/api/pharmacy/medicines', ['name' => $name, 'composition' => $composition, 'gst_percent' => 12, 'units_per_pack' => 10])->assertCreated()->json('id');
+        $dolo = $add('DOLO 650 TAB');
+        $calpol = $add('CALPOL 650 TAB', 'Paracetamol 650 mg');
+        $zerodol = $add('ZERODOL-P TAB');
+        $cetzine = $add('CETZINE TAB', 'Cetirizine 10 mg');
+
+        $rows = [
+            ['medicine' => ' dolo  650 tab ', 'composition' => 'paracetamol 650mg'],
+            ['medicine' => 'CALPOL 650 TAB', 'composition' => 'Paracetamol 650 mg'],
+            ['medicine' => 'ZERODOL-P TAB', 'composition' => 'Paracetamol 325mg + Aceclofenac 100mg'],
+            ['medicine' => 'CETZINE TAB', 'composition' => ''],
+            ['medicine' => 'NOT IN THE LIST', 'composition' => 'Something 5 mg'],
+            ['medicine' => 'Dolo 650 Tab', 'composition' => 'Paracetamol 500 mg'],
+            ['medicine' => '', 'composition' => ''],
+        ];
+
+        // The check says what each line would do, and saves nothing.
+        $check = $this->postJson('/api/pharmacy/medicines/compositions/import', ['rows' => $rows])->assertOk()->assertJsonPath('saved', 0)->json();
+        $this->assertSame(['lines' => 6, 'change' => 2, 'same' => 1, 'skip' => 1, 'error' => 2], $check['totals']);
+        $this->assertSame(['change', 'same', 'change', 'skip', 'error', 'error'], array_column($check['lines'], 'state'));
+        $this->assertSame(['Paracetamol 650 mg', ['paracetamol 650 mg']], [$check['lines'][0]['composition'], $check['lines'][0]['drugs']]);
+        $this->assertSame('Aceclofenac 100 mg + Paracetamol 325 mg', $check['lines'][2]['composition']);
+        $this->assertStringContainsString('also on line 2', $check['lines'][5]['note']);
+        $this->assertNull(Medicine::find($dolo)->composition);
+
+        // Saving changes the two that differ, leaves an empty box alone, and links the drugs.
+        $this->postJson('/api/pharmacy/medicines/compositions/import', ['rows' => $rows, 'commit' => true])->assertOk()->assertJsonPath('saved', 2);
+        $this->assertSame(['Paracetamol 650 mg', 'Paracetamol 650 mg', 'Aceclofenac 100 mg + Paracetamol 325 mg', 'Cetirizine 10 mg'], array_map(fn ($id) => Medicine::find($id)->composition, [$dolo, $calpol, $zerodol, $cetzine]));
+        $this->assertSame(3, DrugIngredient::where('name', 'Paracetamol')->first()->medicines()->count());
+        // The same sheet again changes nothing.
+        $this->postJson('/api/pharmacy/medicines/compositions/import', ['rows' => $rows, 'commit' => true])->assertOk()->assertJsonPath('saved', 0)->assertJsonPath('totals.change', 0);
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->postJson('/api/pharmacy/medicines/compositions/import', ['rows' => $rows])->assertForbidden();
+    }
+
     public function test_a_drug_is_found_alone_and_inside_combinations_wherever_medicines_are_searched(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));

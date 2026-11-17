@@ -14,8 +14,8 @@ use App\Models\PurchaseInvoice;
 use App\Models\StockBatch;
 use App\Models\Stockist;
 use App\Models\StockReturn;
-use App\Support\OrderMatch;
 use App\Support\Composition;
+use App\Support\OrderMatch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -108,6 +108,74 @@ class PharmacyController extends Controller
         }
 
         return response()->json($medicine->only(['id', 'name', 'composition']));
+    }
+
+    /**
+     * Fills in compositions from a sheet of medicine names and what each contains. With `commit`
+     * left off it only reports what it would do, line by line, so the sheet can be put right first.
+     */
+    public function importCompositions(Request $request): JsonResponse
+    {
+        $this->authorizePharmacy($request);
+        $data = $request->validate([
+            'rows' => ['required', 'array', 'min:1', 'max:5000'],
+            'rows.*.medicine' => ['nullable', 'string', 'max:255'],
+            'rows.*.composition' => ['nullable', 'string', 'max:255'],
+            'commit' => ['sometimes', 'boolean'],
+        ], ['rows.required' => 'The sheet has no lines.', 'rows.max' => 'A sheet can have up to 5,000 lines. Split it into smaller sheets.']);
+
+        $key = fn (?string $name) => mb_strtolower(preg_replace('/\s+/', ' ', trim((string) $name)));
+        $medicines = Medicine::get(['id', 'name', 'composition'])->keyBy(fn (Medicine $m) => $key($m->name));
+        $seen = [];
+        $lines = [];
+        foreach (array_values($data['rows']) as $index => $row) {
+            $name = preg_replace('/\s+/', ' ', trim((string) ($row['medicine'] ?? '')));
+            $typed = trim((string) ($row['composition'] ?? ''));
+            $medicine = $medicines->get($key($name));
+            $line = ['line' => $index + 2, 'medicine' => $medicine?->name ?? $name, 'typed' => $typed, 'composition' => null, 'drugs' => [], 'was' => $medicine?->composition, 'state' => 'change', 'note' => null];
+            if ($name === '' && $typed === '') {
+                continue;
+            } elseif ($name === '') {
+                $line = ['state' => 'error', 'note' => 'The medicine name is missing.'] + $line;
+            } elseif (! $medicine) {
+                $line = ['state' => 'error', 'note' => 'This medicine is not in the medicines list. Check the spelling against the list.'] + $line;
+            } elseif (isset($seen[$medicine->id])) {
+                $line = ['state' => 'error', 'note' => 'The same medicine is also on line '.$seen[$medicine->id].'.'] + $line;
+            } elseif ($typed === '') {
+                // An empty box is "not filled in yet", never "wipe what is there".
+                $line = ['state' => 'skip', 'note' => 'No composition given: left as it is.'] + $line;
+            } else {
+                $seen[$medicine->id] = $index + 2;
+                $line['composition'] = Composition::standard($typed);
+                $line['drugs'] = array_map(fn ($p) => trim($p['name'].' '.($p['strength'] ?? '')), Composition::parts($typed));
+                $line['id'] = $medicine->id;
+                if ($line['composition'] === null) {
+                    $line = ['state' => 'error', 'note' => 'This composition could not be read.'] + $line;
+                } elseif ($line['composition'] === $medicine->composition) {
+                    $line = ['state' => 'same', 'note' => 'Already set to this.'] + $line;
+                }
+            }
+            $lines[] = $line;
+        }
+
+        $count = fn (string $state) => count(array_filter($lines, fn ($l) => $l['state'] === $state));
+        $totals = ['lines' => count($lines), 'change' => $count('change'), 'same' => $count('same'), 'skip' => $count('skip'), 'error' => $count('error')];
+        $saved = 0;
+        if (($data['commit'] ?? false) && $totals['change'] > 0) {
+            DB::transaction(function () use ($lines, $request, &$saved) {
+                foreach ($lines as $line) {
+                    if ($line['state'] !== 'change') {
+                        continue;
+                    }
+                    $medicine = Medicine::find($line['id']);
+                    Composition::apply($medicine, $line['typed']);
+                    PharmacyChange::create(['kind' => 'medicine', 'subject_id' => $medicine->id, 'label' => $medicine->name, 'summary' => 'Composition: '.($line['was'] ?? '—').' → '.$medicine->composition.' (from a sheet)', 'created_by' => $request->user()->id]);
+                    $saved++;
+                }
+            });
+        }
+
+        return response()->json(['lines' => $lines, 'totals' => $totals, 'saved' => $saved]);
     }
 
     public function storeMedicine(Request $request): JsonResponse
