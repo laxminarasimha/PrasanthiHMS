@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { canLeave, setUnsaved } from '../unsaved'
 import { PatientDocuments } from '../components/PatientDocuments'
 import { IcdPicker, type IcdCode } from '../components/IcdPicker'
@@ -26,6 +26,12 @@ const VITALS = [
 ] as const
 
 /** The standard order of the pad, used until the doctor's own order has loaded. */
+/** Each part of the pad as the jump bar names it: short enough to sit in one row. */
+const PAD_LABELS: Record<string, string> = {
+  quick_notes: 'Notes', vitals: 'Vitals', complaints: 'Complaints', history: 'History', past_medication: 'Past meds', general_exam: 'General',
+  systemic_exam: 'Systemic', diagnosis: 'Diagnosis', assessment_plan: 'Plan', tests: 'Tests', results: 'Results', prescription: 'Prescription', advice: 'Advice', follow_up: 'Next visit',
+}
+
 const PAD_ORDER = ['quick_notes', 'vitals', 'complaints', 'history', 'past_medication', 'general_exam', 'systemic_exam', 'diagnosis', 'assessment_plan', 'tests', 'results', 'prescription', 'advice', 'follow_up']
 
 /** The general examination checklist, in the order doctors recite it. */
@@ -79,6 +85,9 @@ export function VisitPad() {
   const [errors, setErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
+  // Which part of the pad is on screen, for the jump bar.
+  const [here, setHere] = useState('')
+  const saveNow = useRef<() => void>(() => {})
   const [labOrders, setLabOrders] = useState<LabOrder[]>([])
   const [labTests, setLabTests] = useState<LabCatalogueTest[]>([])
   const [picking, setPicking] = useState(false)
@@ -145,6 +154,51 @@ export function VisitPad() {
       clearTimeout(timer)
     }
   }, [names, allergyText, patientId, checkable])
+
+  // The jump bar follows the page: the part nearest the top of the screen is the one marked.
+  const padReady = Boolean(visit) && Boolean(library)
+  useEffect(() => {
+    if (!padReady) return
+    const parts = [...document.querySelectorAll<HTMLElement>('.pad-section')]
+    // A part counts as "here" from just below where a jump lands it: under the top bar and the pad's own header.
+    const barHeight = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--bar-h')) || 63
+    const landing = barHeight + (window.innerWidth <= 700 ? 56 : 150)
+    // The watcher only reports parts that have just come or gone, so the ones on screen are kept count of here.
+    const onScreen = new Set<string>()
+    const watcher = new IntersectionObserver(
+      (changed) => {
+        for (const entry of changed) {
+          const key = (entry.target as HTMLElement).dataset.pad ?? ''
+          if (entry.isIntersecting) onScreen.add(key)
+          else onScreen.delete(key)
+        }
+        const first = parts.find((part) => onScreen.has(part.dataset.pad ?? ''))
+        if (first) setHere(first.dataset.pad ?? '')
+      },
+      { rootMargin: `-${landing + 7}px 0px -45% 0px` },
+    )
+    parts.forEach((part) => watcher.observe(part))
+    return () => watcher.disconnect()
+  }, [padReady])
+
+  // The marked part is kept in view in the jump bar itself, which scrolls sideways when the screen is narrow.
+  useEffect(() => {
+    const chip = document.querySelector<HTMLElement>('.pad-jump .here')
+    const bar = chip?.parentElement
+    if (chip && bar) bar.scrollTo({ left: chip.offsetLeft - bar.clientWidth / 2 + chip.clientWidth / 2, behavior: 'smooth' })
+  }, [here])
+
+  // Ctrl+S (or ⌘S) saves the draft, as doctors' hands expect from any editor.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        saveNow.current()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   if (!visit) return <p className="loading">Loading visit…</p>
 
@@ -215,6 +269,10 @@ export function VisitPad() {
     }
   }
 
+  saveNow.current = () => {
+    if (canWrite && !saving) void save(false)
+  }
+
   const orderTests = async () => {
     setErrors({})
     try {
@@ -232,6 +290,18 @@ export function VisitPad() {
       setErrors(fieldErrors(err))
     }
   }
+
+  // The jump bar: the parts showing on this doctor's pad, which of them have something written, and which is on screen.
+  const has = (value: unknown) => (typeof value === 'string' ? value.trim() !== '' : Boolean(value))
+  const written: Record<string, boolean> = {
+    quick_notes: has(form.quick_notes), vitals: VITALS.some((v) => has(form[v.key])), complaints: has(form.complaints), history: has(form.history), past_medication: has(form.past_medication),
+    general_exam: has(form.general_exam_notes) || SIGNS.some((sign) => has(exam[sign.key])), systemic_exam: has(form.findings), diagnosis: has(form.diagnosis) || codes.length > 0,
+    assessment_plan: has(form.assessment_plan), tests: has(form.tests_advised), results: investigations.some((row) => row.name.trim()), prescription: medicines.some((m) => m.medicine.trim()),
+    advice: has(form.advice), follow_up: has(form.follow_up_on) || has(form.refer_to),
+  }
+  const padOrder = library?.pad_section_order ?? PAD_ORDER
+  const jump = padOrder.filter((key) => PAD_LABELS[key] && (!library?.pad_hidden_sections.includes(key) || written[key]))
+  const jumpTo = (key: string) => document.getElementById(`pad-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
   const height = Number(form.height_cm) / 100
   const bmi = height > 0 && Number(form.weight_kg) > 0 ? (Number(form.weight_kg) / (height * height)).toFixed(1) : null
@@ -492,25 +562,53 @@ export function VisitPad() {
   return (
     <div className="split main-first">
       <section className="card">
-        <div className="toolbar">
-          <Link className="btn ghost" to="/doctor" onClick={(e) => !canLeave() && e.preventDefault()}>
-            ← Queue
-          </Link>
-          <div className="grow">
-            <h1>{visit.patient.name}</h1>
-            <span className="muted">
-              {visit.patient.uhid} · {visit.patient.age_label} / {visit.patient.gender.charAt(0).toUpperCase()} · {visit.patient.mobile}
-              {visit.patient.blood_group ? ` · ${visit.patient.blood_group}` : ''}
-              {visit.patient.allergies ? <strong className="due"> · Allergic to {visit.patient.allergies}</strong> : null} · {visit.service?.name ?? 'Visit'} with {visit.doctor.name},{' '}
-              {longDate(visit.appointment.scheduled_at)} {clock(visit.appointment.scheduled_at)}
-            </span>
+        {/* Stays at the top while the pad scrolls: who the patient is, saving, and a way to jump to any part. */}
+        <div className="pad-head">
+          <div className="toolbar">
+            <Link className="btn ghost" to="/doctor" onClick={(e) => !canLeave() && e.preventDefault()}>
+              ← Queue
+            </Link>
+            <div className="grow">
+              <h1>
+                {visit.patient.name}{' '}
+                <small className="muted">
+                  {visit.patient.age_label} / {visit.patient.gender.charAt(0).toUpperCase()}
+                </small>
+              </h1>
+              <span className="muted">
+                {visit.patient.uhid} · {visit.patient.mobile}
+                {visit.patient.blood_group ? ` · ${visit.patient.blood_group}` : ''} · {visit.service?.name ?? 'Visit'} with {visit.doctor.name}, {longDate(visit.appointment.scheduled_at)}{' '}
+                {clock(visit.appointment.scheduled_at)}
+              </span>
+            </div>
+            {visit.patient.allergies && <span className="pill off">Allergic to {visit.patient.allergies}</span>}
+            {completed && <span className="pill ok">Completed</span>}
+            {canWrite && <span className={`save-state ${unsaved ? 'unsaved' : ''}`}>{saving ? 'Saving…' : unsaved ? 'Not saved yet' : visit.consultation ? 'All saved' : ''}</span>}
+            {visit.consultation && (
+              <a className="btn ghost" href={`/visits/${visit.appointment.id}/print`} target="_blank" rel="noreferrer">
+                Print
+              </a>
+            )}
+            {canWrite && (
+              <>
+                <button type="button" className="btn ghost" disabled={saving} onClick={() => save(false)} title="Ctrl + S">
+                  {completed ? 'Save changes' : 'Save draft'}
+                </button>
+                {!completed && (
+                  <button type="button" className="btn primary" disabled={saving} onClick={() => save(true)}>
+                    Complete visit
+                  </button>
+                )}
+              </>
+            )}
           </div>
-          {completed && <span className="pill ok">Completed</span>}
-          {visit.consultation && (
-            <a className="btn ghost" href={`/visits/${visit.appointment.id}/print`} target="_blank" rel="noreferrer">
-              Print prescription
-            </a>
-          )}
+          <nav className="pad-jump" aria-label="Parts of the visit pad">
+            {jump.map((key) => (
+              <button key={key} type="button" className={`${here === key ? 'here' : ''} ${written[key] ? 'filled' : ''}`} onClick={() => jumpTo(key)} title={written[key] ? 'Something is written here' : 'Nothing written yet'}>
+                {PAD_LABELS[key]}
+              </button>
+            ))}
+          </nav>
         </div>
 
         {notice && <p className="notice">{notice}</p>}
@@ -566,8 +664,10 @@ export function VisitPad() {
               )}
             </div>
           )}
-          {(library?.pad_section_order ?? PAD_ORDER).map((key) => (
-            <Fragment key={key}>{sections[key]}</Fragment>
+          {padOrder.map((key) => (
+            <div key={key} id={`pad-${key}`} className="pad-section" data-pad={key}>
+              {sections[key]}
+            </div>
           ))}
         </fieldset>
 
