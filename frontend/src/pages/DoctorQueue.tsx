@@ -115,7 +115,7 @@ export function DoctorQueue() {
           </thead>
           <tbody>
             {shown?.map((q) => (
-              <tr key={q.id} className={`static ${q.status === 'booked' ? 'not-here' : ''}`}>
+              <tr key={q.id} className={`static ${q.status === 'booked' ? 'not-here' : ''} ${q.status === 'reviewed' ? 'done' : ''}`}>
                 <td className="mono">
                   {clock(q.scheduled_at)}
                   {q.token_no && <small className="muted block">Token {q.token_no}</small>}

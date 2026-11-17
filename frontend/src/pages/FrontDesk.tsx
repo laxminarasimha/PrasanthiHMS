@@ -218,7 +218,7 @@ export function FrontDesk() {
             <tbody>
               {!hideVisits &&
                 visits.map((a) => (
-                  <tr key={`a${a.id}`} className={`static ${a.status === 'cancelled' ? 'faded' : ''}`}>
+                  <tr key={`a${a.id}`} className={`static ${a.status === 'cancelled' ? 'faded' : ''} ${a.status === 'reviewed' ? 'done' : ''}`}>
                     <td className="mono">
                       <Link className="link" to={`/patients/${a.patient.id}`} title="View patient dashboard">
                         {a.patient.uhid}
