@@ -1,11 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
 import { useAuth } from '../../auth'
 import { SelectField, TextField } from '../../components/Field'
 import { PatientPicker } from '../../components/PatientPicker'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
-import { PAYMENT_MODES, expiryLabel, longDate, rupees } from '../../format'
+import { PAYMENT_MODES, daysUntil, expiryLabel, longDate, rupees } from '../../format'
 import type { Patient, PharmacySale, PrescriptionForPharmacy, SellableMedicine } from '../../types'
 
 type Line = {
@@ -40,6 +40,12 @@ export function PharmacyBilling() {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState<PharmacySale | null>(null)
+  // The counter is worked from the keyboard: which match is highlighted, and which line's quantity to jump to next.
+  const [at, setAt] = useState(0)
+  const jumpTo = useRef<number | null>(null)
+  const [given, setGiven] = useState('')
+  const searchBox = useRef<HTMLInputElement>(null)
+  const quantityBoxes = useRef<Record<number, HTMLInputElement | null>>({})
   const [prescriptions, setPrescriptions] = useState<PrescriptionForPharmacy[]>([])
 
   // Choosing a registered patient brings up what the doctor prescribed recently.
@@ -61,6 +67,29 @@ export function PharmacyBilling() {
     }, 200)
     return () => clearTimeout(timer)
   }, [search])
+
+  // Once a newly added line is on the screen, the cursor goes to its quantity, with the 1 selected so a number replaces it.
+  useEffect(() => {
+    if (jumpTo.current === null) return
+    const box = quantityBoxes.current[jumpTo.current]
+    jumpTo.current = null
+    box?.focus()
+    box?.select()
+  }, [lines])
+
+  // Ctrl+S (or ⌘S) saves the bill from wherever the cursor is.
+  const saveKey = useRef<() => void>(() => {})
+  useEffect(() => {
+    searchBox.current?.focus()
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        saveKey.current()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const [params, setParams] = useSearchParams()
   const presetPatient = params.get('patient')
@@ -92,6 +121,41 @@ export function PharmacyBilling() {
         : [...rows, { batchId: batch.id, medicine: m.name, batchNo: batch.batch_no, expiry: batch.expiry, unitPrice: batch.unit_mrp, available: batch.units_in_stock, quantity: '1', discount: '' }],
     )
     setSearch('')
+    setAt(0)
+    // Straight to the quantity of that line: at once if it is on the bill already, otherwise as soon as it appears.
+    const there = quantityBoxes.current[batch.id]
+    if (there && lines.some((r) => r.batchId === batch.id)) {
+      there.focus()
+      there.select()
+    } else {
+      jumpTo.current = batch.id
+    }
+  }
+
+  // Every batch on offer for what was typed, in the order shown, so the arrow keys can walk through them.
+  const offers = (search.trim().length >= 2 ? matches : []).flatMap((m) => m.sellable_batches.map((b, i) => ({ m, b, first: i === 0 && m.sellable_batches.length > 1 })))
+  const onSearchKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setAt((i) => Math.min(i + 1, offers.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setAt((i) => Math.max(i - 1, 0))
+    } else if (e.key === 'Enter') {
+      // Enter here chooses a medicine. It must never save the bill by accident.
+      e.preventDefault()
+      const pick = offers[Math.min(at, offers.length - 1)]
+      if (pick) add(pick.m, pick.b)
+    } else if (e.key === 'Escape') {
+      setSearch('')
+    }
+  }
+  /** Enter in a quantity or discount box goes back to the search box for the next medicine, instead of saving. */
+  const backToSearch = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      searchBox.current?.focus()
+    }
   }
 
   const setLine = (batchId: number, key: 'quantity' | 'discount', value: string) =>
@@ -118,10 +182,12 @@ export function PharmacyBilling() {
     setPaidTouched(false)
     setReference('')
     setError('')
+    setGiven('')
+    searchBox.current?.focus()
   }
 
-  const save = async (e: FormEvent) => {
-    e.preventDefault()
+  const save = async (e?: FormEvent, print = false) => {
+    e?.preventDefault()
     const customer = walkIn ? name.trim() : patient?.name
     if (!customer) {
       setError(walkIn ? 'Enter the customer name.' : 'Choose a patient.')
@@ -129,6 +195,8 @@ export function PharmacyBilling() {
     }
     setSaving(true)
     setError('')
+    // The print page is opened at the click itself; a window opened after the wait would be blocked as a pop-up.
+    const printTab = print ? window.open('', '_blank') : null
     try {
       const res = await api.post<PharmacySale>('/pharmacy/sales', {
         patient_id: walkIn ? null : patient?.id,
@@ -143,12 +211,19 @@ export function PharmacyBilling() {
       })
       reset()
       setDone(res.data)
+      if (printTab) printTab.location.href = `/pharmacy/bills/${res.data.id}/print`
     } catch (err) {
+      printTab?.close()
       setError(Object.values(fieldErrors(err))[0])
     } finally {
       setSaving(false)
     }
   }
+
+  saveKey.current = () => {
+    if (!saving && lines.length > 0 && canSell) void save()
+  }
+  const change = mode === 'cash' && Number(given) > 0 ? Math.round((Number(given) - Number(paidValue || 0)) * 100) / 100 : 0
 
   return (
     <>
@@ -229,25 +304,38 @@ export function PharmacyBilling() {
 
           <h3>Medicines</h3>
           <div className="medicine-search">
-            <input type="search" placeholder="Type a medicine name to add it" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search medicine" />
-            {shown.length > 0 && (
-              <ul className="picker floating">
-                {shown.flatMap((m) =>
-                  m.sellable_batches.map((b, i) => (
-                    <li key={b.id}>
-                      <button type="button" onClick={() => add(m, b)}>
-                        <strong>{m.name}</strong>
-                        <small className="muted">
-                          Batch {b.batch_no} · exp {expiryLabel(b.expiry)} · {b.units_in_stock} in stock · {rupees(b.unit_mrp)} each
-                          {i === 0 && m.sellable_batches.length > 1 ? ' · sell this first' : ''}
-                        </small>
-                      </button>
-                    </li>
-                  )),
-                )}
+            <input
+              ref={searchBox}
+              type="search"
+              placeholder="Type a medicine name"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value)
+                setAt(0)
+              }}
+              onKeyDown={onSearchKey}
+              aria-label="Search medicine"
+              role="combobox"
+              aria-expanded={offers.length > 0}
+              aria-controls="medicine-offers"
+            />
+            {offers.length > 0 && (
+              <ul className="picker floating" id="medicine-offers" role="listbox">
+                {offers.map(({ m, b, first }, i) => (
+                  <li key={b.id} role="option" aria-selected={i === at}>
+                    <button type="button" className={i === at ? 'on' : ''} onClick={() => add(m, b)} onMouseEnter={() => setAt(i)}>
+                      <strong>{m.name}</strong>
+                      <small className="muted">
+                        Batch {b.batch_no} · exp {expiryLabel(b.expiry)} · {b.units_in_stock} in stock · {rupees(b.unit_mrp)} each
+                        {first ? ' · sell this first' : ''}
+                      </small>
+                    </button>
+                  </li>
+                ))}
               </ul>
             )}
             {search.trim().length >= 2 && shown.length === 0 && <small className="muted">No medicine in stock matches "{search.trim()}".</small>}
+            <small className="muted key-hint">↑ ↓ to choose · Enter to add · type the quantity · Enter for the next medicine · Ctrl+S to save</small>
           </div>
 
           <div className="table-wrap gap-top">
@@ -271,7 +359,10 @@ export function PharmacyBilling() {
                       <strong>{l.medicine}</strong>
                     </td>
                     <td>{l.batchNo}</td>
-                    <td>{expiryLabel(l.expiry)}</td>
+                    <td>
+                      {expiryLabel(l.expiry)}
+                      {daysUntil(l.expiry) <= 90 && <small className="soon block">expires soon</small>}
+                    </td>
                     <td className="num">{rupees(l.unitPrice)}</td>
                     <td className="num">
                       <input
@@ -280,6 +371,10 @@ export function PharmacyBilling() {
                         min={1}
                         max={l.available}
                         value={l.quantity}
+                        ref={(box) => {
+                          quantityBoxes.current[l.batchId] = box
+                        }}
+                        onKeyDown={backToSearch}
                         onChange={(e) => setLine(l.batchId, 'quantity', e.target.value)}
                         aria-label={`Quantity of ${l.medicine}`}
                         aria-invalid={Number(l.quantity) > l.available}
@@ -287,7 +382,7 @@ export function PharmacyBilling() {
                       <small className={`block ${Number(l.quantity) > l.available ? 'due' : 'muted'}`}>of {l.available}</small>
                     </td>
                     <td className="num">
-                      <input className="qty" type="number" min={0} max={100} value={l.discount} onChange={(e) => setLine(l.batchId, 'discount', e.target.value)} aria-label={`Discount for ${l.medicine}`} />
+                      <input className="qty" type="number" min={0} max={100} value={l.discount} onKeyDown={backToSearch} onChange={(e) => setLine(l.batchId, 'discount', e.target.value)} aria-label={`Discount for ${l.medicine}`} />
                     </td>
                     <td className="num">{rupees(lineAmount(l))}</td>
                     <td className="num">
@@ -299,7 +394,7 @@ export function PharmacyBilling() {
                 ))}
                 {lines.length === 0 && (
                   <tr className="empty">
-                    <td colSpan={8}>Search for a medicine above to start the bill.</td>
+                    <td colSpan={8}>Type a medicine name above to start the bill.</td>
                   </tr>
                 )}
               </tbody>
@@ -319,7 +414,7 @@ export function PharmacyBilling() {
               <input className="qty" type="number" min={0} step="0.01" value={discount} onChange={(e) => setDiscount(e.target.value)} aria-label="Bill discount" />
             </dd>
             <dt className="strong">Bill amount</dt>
-            <dd className="strong">{rupees(total)}</dd>
+            <dd className="strong bill-total">{rupees(total)}</dd>
           </dl>
           <p className="muted small">Prices include GST. The bill is rounded to the nearest rupee.</p>
 
@@ -336,24 +431,37 @@ export function PharmacyBilling() {
               }}
             />
             <SelectField label="Mode" value={mode} onChange={setMode} options={PAYMENT_MODES} />
-            <div className="span-2">
-              <TextField label="Reference (optional)" value={reference} onChange={setReference} />
-            </div>
+            {mode === 'cash' ? (
+              <>
+                <TextField label="Cash given (optional)" type="number" min={0} step="1" value={given} onChange={setGiven} />
+                <div className="field">
+                  <span className="field-label">To return</span>
+                  <strong className={`change ${change > 0 ? 'has' : ''}`}>{change > 0 ? rupees(change) : '—'}</strong>
+                </div>
+              </>
+            ) : (
+              <div className="span-2">
+                <TextField label="Reference (optional)" value={reference} onChange={setReference} />
+              </div>
+            )}
           </div>
 
           {error && <p className="form-error">{error}</p>}
           {!canSell && <p className="muted gap-top">Only pharmacy staff can save bills.</p>}
-          <div className="panel-foot between">
-            <span className="row">
-              <button type="button" className="link" onClick={reset}>
-                Clear bill
-              </button>
-              <button type="button" className="link" onClick={printPrevious}>
-                Print previous bill
-              </button>
-            </span>
-            <button className="btn primary" disabled={saving || lines.length === 0 || !canSell}>
-              {saving ? 'Saving…' : 'Save bill'}
+          <div className="bill-actions">
+            <button className="btn ghost" disabled={saving || lines.length === 0 || !canSell} title="Ctrl + S">
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button type="button" className="btn primary" disabled={saving || lines.length === 0 || !canSell} onClick={() => save(undefined, true)}>
+              Save and print
+            </button>
+          </div>
+          <div className="bill-links">
+            <button type="button" className="link" onClick={reset}>
+              Clear bill
+            </button>
+            <button type="button" className="link" onClick={printPrevious}>
+              Print previous bill
             </button>
           </div>
         </aside>
