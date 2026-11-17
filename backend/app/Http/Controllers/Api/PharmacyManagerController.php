@@ -12,6 +12,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 /** The pharmacy manager's daily screen: what to order, what expires, what is owed, and what does not match. */
 class PharmacyManagerController extends Controller
@@ -84,16 +85,18 @@ class PharmacyManagerController extends Controller
             'lines.*.medicine_id' => ['required', 'integer', 'distinct', 'exists:medicines,id'],
             'lines.*.stockist_id' => ['required', 'integer', 'exists:stockists,id'],
             'lines.*.packs' => ['required', 'integer', 'min:1', 'max:100000'],
+            // Where the order was put together, for the note on the order: the reorder list or the options list.
+            'from' => ['sometimes', Rule::in(['reorder', 'options'])],
         ], ['lines.required' => 'Tick at least one medicine.', 'lines.*.stockist_id.required' => 'Choose a supplier for every ticked medicine.']);
 
         $medicines = Medicine::whereIn('id', array_column($data['lines'], 'medicine_id'))->get(['id', 'name', 'units_per_pack'])->keyBy('id');
         $stockists = Stockist::whereIn('id', array_column($data['lines'], 'stockist_id'))->get(['id', 'name', 'lead_days'])->keyBy('id');
 
-        $orders = DB::transaction(fn () => collect($data['lines'])->groupBy('stockist_id')->map(function ($lines, $stockistId) use ($medicines, $stockists, $request) {
+        $orders = DB::transaction(fn () => collect($data['lines'])->groupBy('stockist_id')->map(function ($lines, $stockistId) use ($medicines, $stockists, $request, $data) {
             $order = PurchaseOrder::create([
                 'stockist_id' => $stockistId, 'order_date' => today()->toDateString(), 'status' => 'draft',
                 'expected_on' => today()->addDays((int) $stockists[$stockistId]->lead_days)->toDateString(),
-                'remarks' => 'Suggested from stock levels and recent sales', 'created_by' => $request->user()->id,
+                'remarks' => ($data['from'] ?? 'reorder') === 'options' ? 'Chosen from the options list' : 'Suggested from stock levels and recent sales', 'created_by' => $request->user()->id,
             ]);
             foreach ($lines as $line) {
                 $medicine = $medicines[$line['medicine_id']];

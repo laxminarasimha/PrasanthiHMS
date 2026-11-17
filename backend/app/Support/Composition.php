@@ -44,6 +44,22 @@ class Composition
     }
 
     /**
+     * A composition written out the standard way, without saving anything: each drug under the
+     * spelling already on record if there is one, strengths spaced, drugs in A to Z order.
+     */
+    public static function standard(?string $text): ?string
+    {
+        $named = [];
+        foreach (self::parts($text) as $part) {
+            $known = DrugIngredient::whereRaw('lower(name) = ?', [mb_strtolower($part['name'])])->value('name');
+            $named[] = trim(($known ?? mb_strtoupper(mb_substr($part['name'], 0, 1)).mb_substr($part['name'], 1)).' '.($part['strength'] ?? ''));
+        }
+        sort($named, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $named ? mb_substr(implode(' + ', $named), 0, 255) : null;
+    }
+
+    /**
      * Records what a medicine contains: links it to each of its drugs and writes the composition
      * out in one standard way, so the same composition typed two ways is still one composition.
      */
