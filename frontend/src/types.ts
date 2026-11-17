@@ -294,6 +294,8 @@ export type LabResult = {
   method: string | null
   value: string | null
   flag: 'high' | 'low' | null
+  /** The patient's last reported value for the same test, when there is one. */
+  previous?: { value: string; flag: 'high' | 'low' | null; on: string } | null
 }
 
 export type LabOrderItem = {

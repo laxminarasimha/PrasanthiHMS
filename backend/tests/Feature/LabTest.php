@@ -107,4 +107,50 @@ class LabTest extends TestCase
         $this->getJson('/api/lab/orders?q='.$order['patient']['uhid'])->assertOk()->assertJsonCount(1)->assertJsonPath('0.id', $order['id']);
         $this->getJson('/api/lab/orders?q='.$order['order_no'])->assertOk()->assertJsonCount(1);
     }
+
+    public function test_whole_order_is_collected_and_approved_in_one_step(): void
+    {
+        $rbs = $this->catalogue(['name' => 'RBS', 'price' => 80, 'parameters' => [['name' => 'Random Blood Sugar']]]);
+        $order = $this->order([$this->catalogue()['id'], $rbs['id']]);
+        [$first, $second] = $order['items'];
+
+        $this->putJson("/api/lab/orders/{$order['id']}/approve", ['all' => true])->assertStatus(422);
+
+        $this->putJson("/api/lab/orders/{$order['id']}/collect", ['all' => true])->assertOk()
+            ->assertJsonPath('items.0.stage', 'collected')->assertJsonPath('items.1.stage', 'collected');
+
+        // Only what has been reported is approved; the other test stays where it is.
+        $this->putJson("/api/lab/orders/{$order['id']}/items/{$first['id']}", ['complete' => true, 'results' => []])->assertOk();
+        $this->putJson("/api/lab/orders/{$order['id']}/approve", ['all' => true])->assertOk()
+            ->assertJsonPath('items.0.stage', 'approved')->assertJsonPath('items.1.stage', 'collected');
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->putJson("/api/lab/orders/{$order['id']}/collect", ['all' => true])->assertForbidden();
+        $this->putJson("/api/lab/orders/{$order['id']}/approve", ['all' => true])->assertForbidden();
+    }
+
+    public function test_last_reported_value_is_shown_beside_a_new_result(): void
+    {
+        $test = $this->catalogue();
+        $patient = Patient::factory()->create();
+        $place = fn () => $this->postJson('/api/lab/orders', ['patient_id' => $patient->id, 'test_ids' => [$test['id']]])->assertCreated()->json();
+
+        $old = $place();
+        $this->assertNull($old['items'][0]['results'][0]['previous']);
+        $this->putJson("/api/lab/orders/{$old['id']}/items/{$old['items'][0]['id']}", ['complete' => true, 'results' => [
+            ['id' => $old['items'][0]['results'][0]['id'], 'value' => '232', 'flag' => 'high'],
+        ]])->assertOk();
+
+        // The next order of the same test for the same patient shows it; a value never entered shows nothing.
+        $new = $place();
+        $this->getJson("/api/lab/orders/{$new['id']}")->assertOk()
+            ->assertJsonPath('items.0.results.0.previous.value', '232')
+            ->assertJsonPath('items.0.results.0.previous.flag', 'high')
+            ->assertJsonPath('items.0.results.0.previous.on', now()->toDateString())
+            ->assertJsonPath('items.0.results.1.previous', null);
+
+        // Another patient's result is never shown.
+        $other = $this->order([$test['id']]);
+        $this->assertNull($other['items'][0]['results'][0]['previous']);
+    }
 }

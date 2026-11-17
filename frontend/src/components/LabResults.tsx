@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { api, fieldErrors } from '../api'
 import { useAuth } from '../auth'
 import { clock, longDate, STAGE_CLASS, STAGE_LABEL } from '../format'
@@ -28,6 +28,21 @@ const draftOf = (item: LabOrderItem): Draft => ({
   text: item.report_text ?? '',
 })
 
+/** An arrow when the new value has gone up or down from the last one; nothing when either is not a plain number. */
+const change = (now: string, before: string) => {
+  const [a, b] = [Number(now), Number(before)]
+  if (now.trim() === '' || before.trim() === '' || Number.isNaN(a) || Number.isNaN(b) || a === b) return null
+  return (
+    <span className="lab-change" title={a > b ? 'Higher than last time' : 'Lower than last time'}>
+      {a > b ? ' ↑' : ' ↓'}
+    </span>
+  )
+}
+
+/** "2026-11-12" -> "12 Nov", with the year only when it is not this year. */
+const shortDay = (day: string) =>
+  new Date(`${day}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', ...(day.slice(0, 4) === String(new Date().getFullYear()) ? {} : { year: 'numeric' }) })
+
 const stamp = (at: string) => `${longDate(at)} ${clock(at)}`
 
 export function LabResults({ orderId, onClose, onChange }: Props) {
@@ -52,12 +67,21 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
     setDrafts((current) => Object.fromEntries(next.items.map((item) => [item.id, reset === 'all' || reset === item.id || !current[item.id] ? draftOf(item) : current[item.id]])))
   }
 
+  const panel = useRef<HTMLElement>(null)
+
   useEffect(() => {
-    api.get<LabOrder>(`/lab/orders/${orderId}`).then((res) => apply(res.data, 'all'))
+    api.get<LabOrder>(`/lab/orders/${orderId}`).then((res) => {
+      apply(res.data, 'all')
+      // Ready to type: the first result still waiting for a value.
+      setTimeout(() => [...(panel.current?.querySelectorAll<HTMLInputElement>('input.result:not(:disabled)') ?? [])].find((box) => box.value === '')?.focus({ preventScroll: false }), 0)
+    })
     api.get<LabSettings>('/lab/settings').then((res) => setSettings(res.data))
   }, [orderId])
 
   if (!order) return <aside className="card panel wide">Loading results…</aside>
+
+  const toCollect = order.items.filter((item) => item.stage === 'booked').length
+  const toApprove = order.items.filter((item) => item.stage === 'reported').length
 
   const send = async (url: string, body: object, reset: number | null = null) => {
     setSaving(true)
@@ -69,6 +93,33 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
       setError(Object.values(fieldErrors(err))[0])
     } finally {
       setSaving(false)
+    }
+  }
+
+  /** One step for every test on the order that is ready for it. */
+  const sendAll = async (step: 'collect' | 'approve') => {
+    setSaving(true)
+    setError('')
+    try {
+      apply((await api.put<LabOrder>(`/lab/orders/${order.id}/${step}`, { all: true })).data, null)
+      onChange()
+    } catch (err) {
+      setError(Object.values(fieldErrors(err))[0])
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  /** Enter and the arrow keys move down and up the result boxes, so a whole sheet is typed without the mouse. */
+  const onResultKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    const by = e.key === 'Enter' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0
+    if (!by) return
+    e.preventDefault()
+    const boxes = [...(panel.current?.querySelectorAll<HTMLInputElement>('input.result:not(:disabled)') ?? [])]
+    const next = boxes[boxes.indexOf(e.currentTarget) + by]
+    if (next) {
+      next.focus()
+      next.select()
     }
   }
 
@@ -122,7 +173,7 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
   const printUrl = `/lab/orders/${order.id}/print${printQuery ? `?${printQuery}` : ''}`
 
   return (
-    <aside className="card panel wide">
+    <aside className="card panel wide" ref={panel}>
       <div className="panel-head">
         <div>
           <h2>Results · {order.order_no}</h2>
@@ -164,6 +215,21 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
         )}
       </div>
 
+      {canEdit && (toCollect > 0 || toApprove > 1) && (
+        <div className="lab-bulk">
+          {toCollect > 0 && (
+            <button className="btn" disabled={saving} onClick={() => sendAll('collect')}>
+              {order.items.length === 1 ? 'Sample collected' : `Sample collected for all ${toCollect === order.items.length ? order.items.length : `${toCollect} remaining`} tests`}
+            </button>
+          )}
+          {toApprove > 1 && (
+            <button className="btn" disabled={saving} onClick={() => sendAll('approve')}>
+              Approve all {toApprove} reported tests
+            </button>
+          )}
+        </div>
+      )}
+
       {error && <p className="form-error">{error}</p>}
       {!canEdit && <p className="muted">You can view results but not change them.</p>}
 
@@ -171,6 +237,9 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
         const draft = drafts[item.id]
         const reported = Boolean(item.reported_at)
         const locked = !canEdit || reported
+        const boxes = (item.results ?? []).filter((r) => !r.is_heading)
+        const entered = boxes.filter((r) => (draft.values[r.id] ?? '').trim() !== '').length
+        const showLast = boxes.some((r) => r.previous)
         return (
           <section key={item.id} className="lab-test">
             <header>
@@ -187,6 +256,12 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
               <strong>{item.test_name}</strong>
               {item.sample_type && <small className="muted"> · {item.sample_type}</small>}
               {item.package_name && <small className="muted"> · {item.package_name}</small>}
+              {item.kind !== 'text' && !reported && boxes.length > 1 && (
+                <small className={entered === boxes.length ? 'settled' : 'muted'}>
+                  {' '}
+                  · {entered} of {boxes.length} entered
+                </small>
+              )}
               <span className={`pill ${STAGE_CLASS[item.stage]}`}>{STAGE_LABEL[item.stage]}</span>
             </header>
 
@@ -213,8 +288,9 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
                   <tr>
                     <th>Parameter</th>
                     <th>Result</th>
-                    <th>Unit</th>
+                    <th className="col-unit">Unit</th>
                     <th>Reference range</th>
+                    {showLast && <th>Last time</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -222,7 +298,7 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
                     if (r.is_heading) {
                       return (
                         <tr key={r.id} className="static lab-heading">
-                          <td colSpan={4}>{r.parameter}</td>
+                          <td colSpan={showLast ? 5 : 4}>{r.parameter}</td>
                         </tr>
                       )
                     }
@@ -237,13 +313,27 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
                               value={draft.values[r.id] ?? ''}
                               disabled={locked}
                               onChange={(e) => setDraft(item.id, { values: { ...draft.values, [r.id]: e.target.value } })}
+                              onKeyDown={onResultKey}
+                              inputMode="decimal"
                               aria-label={`Result for ${r.parameter}`}
                             />
+                            {r.unit && <small className="muted unit-inline">{r.unit}</small>}
                             {flag && <span className={`pill ${flag === 'high' ? 'off' : 'status-ongoing'}`}>{flag === 'high' ? 'High' : 'Low'}</span>}
                           </div>
                         </td>
-                        <td>{r.unit ?? ''}</td>
+                        <td className="col-unit">{r.unit ?? ''}</td>
                         <td>{r.reference_range ?? ''}</td>
+                        {showLast && (
+                          <td className="lab-last">
+                            {r.previous && (
+                              <>
+                                <span className={r.previous.flag ?? ''}>{r.previous.value}</span>
+                                {change(draft.values[r.id] ?? '', r.previous.value)}
+                                <small className="muted block">{shortDay(r.previous.on)}</small>
+                              </>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     )
                   })}
