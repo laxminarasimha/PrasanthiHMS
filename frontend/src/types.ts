@@ -102,6 +102,8 @@ export type Appointment = {
   duration_minutes: number
   status: AppointmentStatus
   token_no: number | null
+  /** When the front desk marked the patient as here. */
+  arrived_at?: string | null
   notes: string | null
   patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'age_label' | 'title' | 'mobile'>
   doctor: { id: number; name: string }

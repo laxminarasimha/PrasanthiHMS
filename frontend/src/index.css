@@ -1167,3 +1167,16 @@ td strong { font-weight: 650; }
   .pad-jump { position: sticky; top: var(--bar-h); z-index: 6; background: var(--surface); margin: 0 -12px 10px; padding: 0 8px; border-bottom: 1px solid var(--border); box-shadow: 0 6px 10px -8px var(--shadow); }
   .pad-section { scroll-margin-top: calc(var(--bar-h) + 56px); }
 }
+
+/* ---- Front desk: filters in labelled groups, money due at a glance, one-click arrival ---- */
+.desk-filters { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 14px; }
+.dues-toggle { font: inherit; font-size: 0.9rem; font-weight: 700; padding: 6px 13px; border-radius: 999px; border: 1px solid var(--danger-line); background: var(--danger-soft); color: var(--danger); cursor: pointer; margin-left: auto; transition: background 0.15s, color 0.15s; }
+.dues-toggle:hover { border-color: var(--danger); }
+.dues-toggle.on { background: var(--danger); border-color: var(--danger); color: #fff; }
+.status-cell { display: flex; gap: 8px; align-items: center; }
+td.status-cell { display: table-cell; }
+td.status-cell > * { vertical-align: middle; }
+td.status-cell .btn { margin-right: 8px; }
+small.waiting { color: var(--warn); font-weight: 600; }
+tbody tr.empty .link { font-weight: 600; }
+@media (max-width: 700px) { .dues-toggle { margin-left: 0; } }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
@@ -54,11 +54,19 @@ export function FrontDesk() {
   const [menuAt, setMenuAt] = useState({ top: 0, left: 0 })
   const [notice, setNotice] = useState('')
   const [walkInPatient, setWalkInPatient] = useState<Patient | null>(null)
+  // Show only the people who still owe money.
+  const [duesOnly, setDuesOnly] = useState(false)
+  // The time the list was last fetched: waiting times are counted up to it.
+  const [asOf, setAsOf] = useState(0)
+  const filterBox = useRef<HTMLInputElement>(null)
 
   const load = useCallback(() => {
     api
       .get<DayList>('/appointments', { params: { date, status: status || undefined, doctor_id: doctorId || undefined, q: query || undefined } })
-      .then((res) => setList(res.data))
+      .then((res) => {
+        setList(res.data)
+        setAsOf(Date.now())
+      })
     api.get<WalkInBill[]>('/front-desk/bills', { params: { date, q: query || undefined } }).then((res) => setWalkIns(res.data))
     api.get<FollowUp[]>('/front-desk/follow-ups', { params: { date } }).then((res) => setFollowUps(res.data))
   }, [date, status, doctorId, query])
@@ -78,6 +86,18 @@ export function FrontDesk() {
     api.get<Service[]>('/services').then((res) => setServices(res.data))
     api.get<LabCatalogueTest[]>('/lab/tests', { params: { brief: 1 } }).then((res) => setLabTests(res.data))
     api.get<LabPackage[]>('/lab/packages').then((res) => setLabPackages(res.data))
+  }, [])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const typing = e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]')
+      if (e.key === '/' && !typing && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault()
+        filterBox.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [])
 
   // The menu floats over the page, clear of the table's scrolling edge. It opens upward when
@@ -126,6 +146,24 @@ export function FrontDesk() {
   const walkInRows = status || doctorId ? [] : walkIns.filter((b) => department === 'all' || b.kind === department)
   const hideVisits = department === 'other'
 
+  // Money still to collect on this day's list, and a way to see only those people.
+  const owes = (bills: { due: number }[]) => bills.reduce((sum, b) => sum + b.due, 0)
+  const owingVisits = hideVisits ? [] : visits.filter((a) => owes(a.bills) > 0)
+  const owingWalkIns = walkInRows.filter((b) => b.due > 0)
+  const owing = owingVisits.length + owingWalkIns.length
+  const owed = owingVisits.reduce((sum, a) => sum + owes(a.bills), 0) + owingWalkIns.reduce((sum, b) => sum + b.due, 0)
+  const showDues = duesOnly && owing > 0
+  const shownVisits = showDues ? owingVisits : visits
+  const shownWalkIns = showDues ? owingWalkIns : walkInRows
+  const isToday = date === today()
+
+  /** How long someone who has arrived has been waiting, in words short enough for a table cell. */
+  const waited = (arrivedAt: string | null | undefined) => {
+    if (!arrivedAt || !asOf) return null
+    const minutes = Math.max(0, Math.round((asOf - new Date(arrivedAt.replace(' ', 'T')).getTime()) / 60000))
+    return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`
+  }
+
   return (
     <div className="split">
       <section className="card">
@@ -137,7 +175,7 @@ export function FrontDesk() {
               Today
             </button>
           )}
-          <input className="search" type="search" placeholder="Filter by patient name, mobile or ID" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input ref={filterBox} className="search" type="search" placeholder="Filter by patient name, mobile or ID (press / )" value={query} onChange={(e) => setQuery(e.target.value)} />
           {doctors.length > 1 && (
             <select className="narrow" value={doctorId} onChange={(e) => setDoctorId(e.target.value)} aria-label="Doctor">
               <option value="">All doctors</option>
@@ -181,21 +219,30 @@ export function FrontDesk() {
           )}
         </div>
 
-        <div className="tabs">
-          {DEPARTMENTS.map(([key, label]) => (
-            <button key={key} className={`square ${department === key ? 'active' : ''}`} onClick={() => setDepartment(key)}>
-              {label}
+        <div className="desk-filters">
+          <div className="tabs flush" role="group" aria-label="Kind of bill">
+            {DEPARTMENTS.map(([key, label]) => (
+              <button key={key} className={department === key ? 'active' : ''} onClick={() => setDepartment(key)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="tabs flush" role="group" aria-label="Status of the visit">
+            <button className={status === '' ? 'active' : ''} onClick={() => setStatus('')}>
+              All <span>{total}</span>
             </button>
-          ))}
-          <span className="tab-gap" />
-          <button className={status === '' ? 'active' : ''} onClick={() => setStatus('')}>
-            All <span>{total}</span>
-          </button>
-          {STATUSES.map((s) => (
-            <button key={s} className={status === s ? 'active' : ''} onClick={() => setStatus(s)}>
-              {STATUS_LABELS[s]} <span>{list?.counts[s] ?? 0}</span>
+            {STATUSES.map((s) => (
+              <button key={s} className={status === s ? 'active' : ''} onClick={() => setStatus(s)}>
+                {STATUS_LABELS[s]} <span>{list?.counts[s] ?? 0}</span>
+              </button>
+            ))}
+          </div>
+          {owing > 0 && (
+            <button className={`dues-toggle ${showDues ? 'on' : ''}`} onClick={() => setDuesOnly(!showDues)} aria-pressed={showDues} title={showDues ? 'Show everyone again' : 'Show only the people who still owe money'}>
+              {rupees(owed)} due from {owing} {owing === 1 ? 'patient' : 'patients'}
+              {showDues ? ' · show all' : ''}
             </button>
-          ))}
+          )}
         </div>
 
         {notice && <p className="notice">{notice}</p>}
@@ -217,7 +264,7 @@ export function FrontDesk() {
             </thead>
             <tbody>
               {!hideVisits &&
-                visits.map((a) => (
+                shownVisits.map((a) => (
                   <tr key={`a${a.id}`} className={`static ${a.status === 'cancelled' ? 'faded' : ''} ${a.status === 'reviewed' ? 'done' : ''}`}>
                     <td className="mono">
                       <Link className="link" to={`/patients/${a.patient.id}`} title="View patient dashboard">
@@ -243,8 +290,15 @@ export function FrontDesk() {
                     <td className="mono">
                       {clock(a.scheduled_at)}
                       {a.token_no && <small className="muted block">Token {a.token_no}</small>}
+                      {isToday && a.status === 'arrived' && waited(a.arrived_at) && <small className="waiting block">Waiting {waited(a.arrived_at)}</small>}
                     </td>
-                    <td>
+                    <td className="status-cell">
+                      {/* The commonest thing the desk does to a booked patient is mark them as here: one click. */}
+                      {isToday && a.status === 'booked' && (
+                        <button className="btn primary small-btn" onClick={() => changeStatus(a, 'arrived')} title={`Mark ${a.patient.name} as arrived`}>
+                          Arrived
+                        </button>
+                      )}
                       <select className={`status ${a.status}`} value={a.status} onChange={(e) => changeStatus(a, e.target.value as AppointmentStatus)} aria-label={`Status for ${a.patient.name}`}>
                         {STATUSES.map((s) => (
                           <option key={s} value={s}>
@@ -320,7 +374,7 @@ export function FrontDesk() {
                     </td>
                   </tr>
                 ))}
-              {walkInRows.map((b) => (
+              {shownWalkIns.map((b) => (
                 <tr key={`b${b.id}`} className="static walkin">
                   <td className="mono">
                     <Link className="link" to={`/patients/${b.patient.id}`} title="View patient dashboard">
@@ -343,9 +397,25 @@ export function FrontDesk() {
                   <td />
                 </tr>
               ))}
-              {list && (hideVisits ? 0 : visits.length) + walkInRows.length === 0 && (
+              {list && (hideVisits ? 0 : shownVisits.length) + shownWalkIns.length === 0 && (
                 <tr className="empty">
-                  <td colSpan={9}>Nothing to show for this day and filter.</td>
+                  <td colSpan={9}>
+                    {query || status || doctorId || department !== 'all' ? (
+                      <>
+                        Nobody matches this filter on {longDate(date)}.{' '}
+                        <button className="link" onClick={() => { setQuery(''); setStatus(''); setDoctorId(''); setDepartment('all') }}>
+                          Clear the filter
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        No appointments or bills on {longDate(date)} yet.{' '}
+                        <button className="link" onClick={() => open({ kind: 'new' })}>
+                          Book the first appointment
+                        </button>
+                      </>
+                    )}
+                  </td>
                 </tr>
               )}
             </tbody>
