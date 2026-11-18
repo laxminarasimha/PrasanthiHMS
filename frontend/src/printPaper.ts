@@ -2,10 +2,20 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from './api'
 import type { BillingPreferences } from './types'
 
-const PREFS_KEY = 'hms_bill_print'
 const CHOICE_KEY = 'hms_bill_paper'
 
-type Prefs = Pick<BillingPreferences, 'print_on_letterhead' | 'letterhead_top_mm' | 'letterhead_bottom_mm'>
+type Prefs = Pick<BillingPreferences, 'print_on_letterhead' | 'letterhead_top_mm' | 'letterhead_bottom_mm' | 'bill_heading' | 'bill_heading_size' | 'bill_logo_size'>
+
+/** What the print pages keep of the billing preferences, with the usual values filled in. Also written by Setup when they are saved. */
+export const printPrefs = (from: BillingPreferences): Required<Prefs> => ({
+  print_on_letterhead: Boolean(from.print_on_letterhead),
+  letterhead_top_mm: from.letterhead_top_mm ?? 40,
+  letterhead_bottom_mm: from.letterhead_bottom_mm ?? 20,
+  bill_heading: from.bill_heading ?? 'side',
+  bill_heading_size: from.bill_heading_size ?? 'small',
+  bill_logo_size: from.bill_logo_size ?? 'medium',
+})
+export const PRINT_PREFS_KEY = 'hms_bill_print'
 type Choice = 'plain' | 'letterhead' | null
 
 export type Paper = {
@@ -16,6 +26,10 @@ export type Paper = {
   /** False only on the very first print on a computer, for the moment it takes to learn the hospital's setting. */
   ready: boolean
   choose: (letterhead: boolean) => void
+  /** On plain paper: how the hospital's heading is laid out and sized. */
+  heading: 'side' | 'centre'
+  headingSize: 'small' | 'medium' | 'large'
+  logoSize: 'small' | 'medium' | 'large'
 }
 
 const read = <T,>(key: string): T | null => {
@@ -31,7 +45,7 @@ const read = <T,>(key: string): T | null => {
  * that uses the other kind changes it on the print page, and that computer remembers its own choice.
  */
 export function usePrintPaper(): Paper {
-  const [prefs, setPrefs] = useState<Prefs | null>(() => read<Prefs>(PREFS_KEY))
+  const [prefs, setPrefs] = useState<Prefs | null>(() => read<Prefs>(PRINT_PREFS_KEY))
   const [asked, setAsked] = useState(false)
   const [choice, setChoice] = useState<Choice>(() => read<Choice>(CHOICE_KEY))
 
@@ -39,10 +53,10 @@ export function usePrintPaper(): Paper {
     api
       .get<BillingPreferences>('/billing-preferences')
       .then((res) => {
-        const next = { print_on_letterhead: Boolean(res.data.print_on_letterhead), letterhead_top_mm: res.data.letterhead_top_mm ?? 40, letterhead_bottom_mm: res.data.letterhead_bottom_mm ?? 20 }
+        const next = printPrefs(res.data)
         setPrefs(next)
         try {
-          localStorage.setItem(PREFS_KEY, JSON.stringify(next))
+          localStorage.setItem(PRINT_PREFS_KEY, JSON.stringify(next))
         } catch {
           // A full or blocked store only means the next print asks again.
         }
@@ -56,6 +70,9 @@ export function usePrintPaper(): Paper {
     top: prefs?.letterhead_top_mm ?? 40,
     bottom: prefs?.letterhead_bottom_mm ?? 20,
     ready: prefs !== null || asked,
+    heading: prefs?.bill_heading ?? 'side',
+    headingSize: prefs?.bill_heading_size ?? 'small',
+    logoSize: prefs?.bill_logo_size ?? 'medium',
     choose: (letterhead) => {
       const next: Choice = letterhead ? 'letterhead' : 'plain'
       setChoice(next)

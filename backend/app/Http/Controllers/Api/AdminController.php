@@ -130,6 +130,9 @@ class AdminController extends Controller
         // Bills printed on the hospital's own letterhead paper leave out the hospital details and logo, and leave
         // this much room at the top and bottom of the page for what is already printed on the paper.
         'print_on_letterhead' => false, 'letterhead_top_mm' => 40, 'letterhead_bottom_mm' => 20,
+        // How the hospital's heading sits at the top of a bill on plain paper: the logo on the left with the name and
+        // address beside it, or everything centred with the logo on top; and how large the words and the logo are.
+        'bill_heading' => 'side', 'bill_heading_size' => 'small', 'bill_logo_size' => 'medium',
     ];
 
     public function billingPreferences(): JsonResponse
@@ -146,6 +149,9 @@ class AdminController extends Controller
             'print_on_letterhead' => ['sometimes', 'boolean'],
             'letterhead_top_mm' => ['sometimes', 'integer', 'between:0,150'],
             'letterhead_bottom_mm' => ['sometimes', 'integer', 'between:0,100'],
+            'bill_heading' => ['sometimes', Rule::in(['side', 'centre'])],
+            'bill_heading_size' => ['sometimes', Rule::in(['small', 'medium', 'large'])],
+            'bill_logo_size' => ['sometimes', Rule::in(['small', 'medium', 'large'])],
             // Put before the running number of each new IPD case, e.g. IP00012.
             'ipd_prefix' => ['sometimes', 'string', 'regex:/^[A-Za-z0-9\/-]{1,8}$/'],
             'ipd_bill_prefix' => ['sometimes', 'string', 'regex:/^[A-Za-z0-9\/-]{1,8}$/'],
