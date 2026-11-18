@@ -363,7 +363,6 @@ tr.added-line td { background: var(--ok-soft); }
   .expense-list tbody tr.empty { display: block; }
   .expense-list tbody tr.empty td { text-align: center; padding: 18px 0; }
 }
-}
 /* Bed history on an IPD case, and the plain-language rules under a setup switch. */
 .bed-history li { align-items: flex-start; gap: 12px; }
 .plain-rules { margin: 8px 0 0; padding-left: 18px; }
