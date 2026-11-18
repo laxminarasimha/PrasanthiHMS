@@ -5,14 +5,21 @@ namespace App\Http\Controllers\Api;
 use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\Admission;
+use App\Models\AdmissionBill;
 use App\Models\AdmissionCharge;
+use App\Models\AdmissionPayment;
 use App\Models\Bed;
 use App\Models\Bill;
+use App\Models\IpdBillTemplate;
 use App\Models\IpdService;
+use App\Models\LabOrder;
+use App\Models\LabOrderItem;
 use App\Models\Payment;
 use App\Models\PharmacySale;
+use App\Models\Setting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -69,6 +76,32 @@ class IpdController extends Controller
     }
 
     // ---- IPD services (price list) ----
+
+    // ---- Medicine rounds ----
+
+    /** When the wards give once, twice, three and four times a day medicines. */
+    public function roundTimes(): JsonResponse
+    {
+        return response()->json(Setting::group('ipd_rounds', Setting::ROUND_DEFAULTS));
+    }
+
+    public function saveRoundTimes(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'od' => ['required', 'array', 'size:1'],
+            'bd' => ['required', 'array', 'size:2'],
+            'tds' => ['required', 'array', 'size:3'],
+            'qid' => ['required', 'array', 'size:4'],
+            'od.*' => ['date_format:H:i'],
+            'bd.*' => ['date_format:H:i', 'distinct'],
+            'tds.*' => ['date_format:H:i', 'distinct'],
+            'qid.*' => ['date_format:H:i', 'distinct'],
+        ], ['*.*.distinct' => 'Two rounds cannot be at the same time.', '*.*.date_format' => 'Give each round a time.']);
+
+        Setting::updateOrCreate(['key' => 'ipd_rounds'], ['value' => $data]);
+
+        return $this->roundTimes();
+    }
 
     public function services(Request $request): JsonResponse
     {
@@ -396,7 +429,7 @@ class IpdController extends Controller
         $payment = $admission->payments()->create($data + ['received_by' => $request->user()->id]);
         if ($paidOn && $paidOn !== today()->toDateString()) {
             // Reports count money on the day it was received, so a back-dated entry carries that day.
-            $payment->created_at = \Illuminate\Support\Carbon::parse($paidOn)->setTimeFrom(now());
+            $payment->created_at = Carbon::parse($paidOn)->setTimeFrom(now());
             $payment->save();
         }
         $admission->recalculate();
@@ -405,7 +438,7 @@ class IpdController extends Controller
     }
 
     /** Removes a payment entered by mistake. Money actually handed back is a refund, not a deletion. */
-    public function removePayment(Request $request, Admission $admission, \App\Models\AdmissionPayment $payment): JsonResponse
+    public function removePayment(Request $request, Admission $admission, AdmissionPayment $payment): JsonResponse
     {
         abort_unless($payment->admission_id === $admission->id, 404);
         abort_unless($request->user()->allows('canApproveIpd'), 403, 'You are not allowed to delete IPD payments.');
@@ -428,7 +461,7 @@ class IpdController extends Controller
     {
         $from = $admission->admitted_at->copy()->startOfDay();
         $to = ($admission->discharged_at ?? now())->copy()->endOfDay();
-        $items = \App\Models\LabOrderItem::whereIn('lab_order_id', \App\Models\LabOrder::where('patient_id', $admission->patient_id)->whereBetween('ordered_at', [$from, $to])->select('id'))
+        $items = LabOrderItem::whereIn('lab_order_id', LabOrder::where('patient_id', $admission->patient_id)->whereBetween('ordered_at', [$from, $to])->select('id'))
             ->whereNotNull('reported_at')->with('results')->orderBy('reported_at')->get();
 
         $dates = [];
@@ -527,7 +560,7 @@ class IpdController extends Controller
     }
 
     /** Cancels a numbered bill: its charges become unbilled again and its number is not reused. */
-    public function cancelBill(Request $request, Admission $admission, \App\Models\AdmissionBill $bill): JsonResponse
+    public function cancelBill(Request $request, Admission $admission, AdmissionBill $bill): JsonResponse
     {
         abort_unless($bill->admission_id === $admission->id, 404);
         $this->refuseIfBillApproved($admission);
@@ -554,7 +587,7 @@ class IpdController extends Controller
     }
 
     /** Adds every service in a bill template as a charge dated today, at the current price list rates. */
-    public function applyTemplate(Request $request, Admission $admission, \App\Models\IpdBillTemplate $template): JsonResponse
+    public function applyTemplate(Request $request, Admission $admission, IpdBillTemplate $template): JsonResponse
     {
         $this->refuseIfBillApproved($admission);
         $services = IpdService::whereIn('id', array_column($template->items, 'ipd_service_id'))->where('is_active', true)->get()->keyBy('id');

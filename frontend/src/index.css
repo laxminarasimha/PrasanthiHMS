@@ -1401,3 +1401,10 @@ table.compact td.lab-last { white-space: nowrap; font-variant-numeric: tabular-n
 .note.ot { border-left-color: var(--warn); }
 .note header .pill { font-size: 0.7rem; padding: 2px 8px; }
 @media (max-width: 700px) { .order-head > .grow { flex-basis: 100%; } .obs-latest { grid-template-columns: repeat(3, minmax(0, 1fr)); } .obs-latest strong { font-size: 1.05rem; } .tabs.sub { gap: 2px 14px; } }
+
+/* Ward round times in IPD setup */
+.round-times { display: grid; gap: 12px; }
+.round-row { display: grid; grid-template-columns: minmax(180px, 220px) auto 1fr; gap: 8px 16px; align-items: center; }
+.round-row .row { flex-wrap: wrap; gap: 8px; }
+.round-row input[type='time'] { width: 128px; }
+@media (max-width: 700px) { .round-row { grid-template-columns: minmax(0, 1fr); gap: 4px; } .round-row input[type='time'] { width: calc(50% - 4px); } }
