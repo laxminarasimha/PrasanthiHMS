@@ -1325,3 +1325,40 @@ table.compact td.lab-last { white-space: nowrap; font-variant-numeric: tabular-n
   .lab-list tbody td:nth-child(6) .btn { width: 100%; }
   .lab-list tbody tr.empty td { grid-area: auto; text-align: center; padding: 18px 0; }
 }
+
+/* IPD bed board */
+.view-switch { margin-left: auto; }
+.ipd-stats { margin-bottom: 16px; }
+@media (min-width: 701px) { .ipd-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.ipd-stats .tile strong small { font-size: 0.85rem; font-weight: 500; }
+.bed-board section + section { margin-top: 18px; }
+.bed-board h3 { margin: 0 0 10px; }
+.bed-board h3 small { font-weight: 500; margin-left: 6px; text-transform: none; letter-spacing: 0; }
+.beds { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.bed { font: inherit; text-align: left; display: flex; flex-direction: column; gap: 3px; min-height: 124px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s; }
+.bed:hover { border-color: var(--brand); box-shadow: var(--card-shadow); transform: translateY(-1px); }
+.bed:focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; }
+.bed .bed-no { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.bed .bed-no small { font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--info); background: var(--info-soft); padding: 1px 8px; border-radius: 999px; }
+.bed strong { font-size: 1rem; overflow-wrap: anywhere; }
+.bed small { font-size: 0.82rem; }
+.bed.taken { border-left: 4px solid var(--brand); }
+.bed.taken small.due, .bed.taken small.settled { margin-top: auto; font-weight: 700; }
+.bed.free { border-style: dashed; background: var(--surface-2); }
+.bed.free strong { color: var(--ok); }
+.bed.free .admit-here { margin-top: auto; color: var(--brand); font-weight: 700; }
+@media (max-width: 700px) {
+  .view-switch { margin-left: 0; }
+  .beds { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .bed { min-height: 112px; padding: 10px; }
+}
+
+/* IPD case header: the facts staff ask for first, in one strip */
+.case-facts { display: flex; flex-wrap: wrap; gap: 10px 26px; margin: -4px 0 16px; padding: 12px 16px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; }
+.case-facts > div { min-width: 0; }
+.case-facts dt { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.case-facts dd { margin: 2px 0 0; font-weight: 600; overflow-wrap: anywhere; }
+.case-facts dd small { font-weight: 500; }
+.case-facts .money { margin-left: auto; text-align: right; }
+.case-facts .money dd { font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+@media (max-width: 700px) { .case-facts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 14px; padding: 10px 12px; } .case-facts .money { margin-left: 0; text-align: left; } }
