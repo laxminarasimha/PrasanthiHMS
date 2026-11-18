@@ -25,6 +25,12 @@ const PAYMENT_TYPES = [
   { value: 'refund', label: 'Refund' },
 ]
 
+/** How long one bed was occupied, in days and hours. */
+const stayLength = (from: string, to: string | null) => {
+  const hours = Math.max(0, Math.round(((to ? new Date(to.replace(' ', 'T')) : new Date()).getTime() - new Date(from.replace(' ', 'T')).getTime()) / 3600000))
+  return hours >= 24 ? `${Math.floor(hours / 24)}d ${hours % 24}h` : `${hours}h`
+}
+
 /** Days the bed has been used so far, counting part of a day as a full day. */
 const stayDays = (a: Admission) => {
   const end = a.discharged_at ? new Date(a.discharged_at.replace(' ', 'T')) : new Date()
@@ -290,9 +296,9 @@ export function IpdCase() {
                   <td className="num">{rupees(c.unit_price)}</td>
                   <td className="num">{c.discount > 0 ? rupees(c.discount) : '—'}</td>
                   <td className="num">{rupees(c.amount)}</td>
-                  <td>{c.creator?.name ?? '—'}</td>
+                  <td>{c.creator?.name ?? (c.source_type === 'bed' ? 'Automatic' : '—')}</td>
                   <td className="num actions">
-                    {!billLocked && !c.source_type && !c.admission_bill_id && (
+                    {!billLocked && (!c.source_type || c.source_type === 'bed') && !c.admission_bill_id && (
                       <button
                         className="link"
                         onClick={() => {
@@ -366,7 +372,8 @@ export function IpdCase() {
             </button>
           )}
         </form>
-        {admission.bed && (admission.bed.daily_charge ?? 0) > 0 && (
+        {/* With automatic bed charges on for this patient, each day's line is already there; filling them in by hand would bill twice. */}
+        {admission.bed && (admission.bed.daily_charge ?? 0) > 0 && !(admission.bed_charges_auto && admission.auto_bed_charge) && (
           <button type="button" className="link add-medicine" onClick={addBedCharge}>
             Fill in bed charges for {stayDays(admission)} day(s) at {rupees(admission.bed.daily_charge!)} a day
           </button>
@@ -705,6 +712,41 @@ export function IpdCase() {
             </form>
           ) : (
             <p className="muted">{admission.bed ? `Was in ${admission.bed.ward}, bed ${admission.bed.bed_no}. The bed is free again.` : 'No bed was assigned.'}</p>
+          )}
+          {open && admission.bed_charges_auto && (
+            <label className="check two-line">
+              <input
+                type="checkbox"
+                checked={admission.auto_bed_charge ?? true}
+                disabled={busy || billLocked}
+                onChange={(e) => run(api.put(url, { auto_bed_charge: e.target.checked }), e.target.checked ? 'The bed charge will be added each day from the next day of stay.' : 'No more bed charges will be added for this patient. Lines already on the bill stay.')}
+              />
+              <span>
+                Add the bed charge to the bill each day
+                <small className="muted block">Untick for a package, or when the bed is charged some other way.</small>
+              </span>
+            </label>
+          )}
+          {(admission.bed_stays?.length ?? 0) > 0 && (
+            <>
+              <h3 className="gap-top">Beds during this stay</h3>
+              <ul className="history bed-history">
+                {admission.bed_stays!.map((s) => (
+                  <li key={s.id}>
+                    <span>
+                      <strong>
+                        {s.ward} · Bed {s.bed_no}
+                      </strong>
+                      <small className="muted block">
+                        {longDate(s.from_at)} {clock(s.from_at)} → {s.to_at ? `${longDate(s.to_at)} ${clock(s.to_at)}` : 'still there'}
+                        {s.mover ? ` · by ${s.mover.name}` : ''}
+                      </small>
+                    </span>
+                    <span className="muted">{stayLength(s.from_at, s.to_at)}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </div>
 

@@ -55,6 +55,7 @@ class AuditLog extends Model
         'bill.payment_mode' => 'Changed how a bill was paid',
         'ipd.payment_mode' => 'Changed how an IPD payment was taken',
         'ipd.reopened' => 'Reopened a closed IPD case',
+        'ipd.bed_charging' => 'Changed automatic bed charges',
         'bill.discount' => 'Changed a bill’s discount',
         'day.closed' => 'Closed the day',
         'day.reopened' => 'Reopened a closed day',

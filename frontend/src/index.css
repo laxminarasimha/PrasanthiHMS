@@ -345,6 +345,12 @@ tr.added-line td { background: var(--ok-soft); }
 .purchase-row input, .purchase-row select { padding: 6px 8px; }
 .narrow-totals { max-width: 320px; margin-left: auto; }
 .notice a { color: inherit; font-weight: 700; }
+/* Bed history on an IPD case, and the plain-language rules under a setup switch. */
+.bed-history li { align-items: flex-start; gap: 12px; }
+.plain-rules { margin: 8px 0 0; padding-left: 18px; }
+.plain-rules li { margin: 4px 0; }
+.check.two-line { align-items: flex-start; gap: 10px; cursor: pointer; }
+.check.two-line input { margin-top: 3px; flex: none; width: auto; }
 /* A refusal or a failed load, pinned to the bottom of the window so it is seen from anywhere on a long page. */
 .floating-alert { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 60; width: max-content; max-width: min(620px, calc(100vw - 32px)); margin: 0; font: inherit; text-align: left; cursor: pointer; border-top: 0; border-right: 0; border-bottom: 0; box-shadow: 0 8px 28px var(--shadow); }
 .floating-alert.top { bottom: auto; top: 76px; cursor: default; }
