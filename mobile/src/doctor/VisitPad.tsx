@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { addDays, api, ApiError, niceDate, niceTime, todayIso, type Library, type RxLine, type Visit } from '../api'
@@ -26,7 +26,7 @@ const FOLLOW_UPS: [string, number][] = [['3 days', 3], ['1 week', 7], ['2 weeks'
 
 type Form = Record<string, string>
 type Exam = Record<string, 'present' | 'absent' | ''>
-type Investigation = { name: string; result: string }
+type Investigation = { name: string; result: string; date?: string | null }
 
 const tall = { minHeight: 76, paddingTop: 12, textAlignVertical: 'top' as const }
 
@@ -50,6 +50,10 @@ export function VisitPad({ appointmentId, onBack, onHistory }: { appointmentId: 
   const [busy, setBusy] = useState<'save' | 'finish' | 'amend' | null>(null)
   const [amendment, setAmendment] = useState('')
 
+  // The vitals as the server last gave them. The desk may enter vitals while this pad is open, so only the ones
+  // changed here are sent when saving; a blank box on the phone must not wipe what the nurse has typed since.
+  const loadedVitals = useRef<Record<string, string>>({})
+
   /** Puts a visit as the server holds it onto the screen. */
   const show = useCallback((v: Visit) => {
     const c = v.consultation
@@ -57,11 +61,12 @@ export function VisitPad({ appointmentId, onBack, onHistory }: { appointmentId: 
     for (const [key] of VITALS) next[key] = c?.[key] === null || c?.[key] === undefined ? '' : String(c[key])
     for (const key of TEXTS) next[key] = c?.[key] ?? ''
     setVisit(v)
+    loadedVitals.current = Object.fromEntries(VITALS.map(([key]) => [key, next[key]]))
     setForm(next)
     setExam(Object.fromEntries(SIGNS.map((s) => [s, c?.general_exam?.[s] ?? ''])))
     setCodes(c?.diagnosis_codes ?? [])
     setMedicines((c?.medicines ?? []).map(({ medicine, dose, frequency, timing, duration, instructions }) => ({ medicine, dose, frequency, timing, duration, instructions })))
-    setResults((c?.investigations ?? []).map((i) => ({ name: i.name, result: i.result ?? '' })))
+    setResults((c?.investigations ?? []).map((i) => ({ name: i.name, result: i.result ?? '', date: i.date ?? null })))
     // More sections open by themselves when the visit already has something in them.
     setMore(Boolean(c?.history || c?.past_medication || c?.general_exam || c?.general_exam_notes || c?.findings || c?.assessment_plan || c?.refer_to || c?.quick_notes || c?.investigations?.length))
   }, [])
@@ -81,7 +86,8 @@ export function VisitPad({ appointmentId, onBack, onHistory }: { appointmentId: 
       allergies: words('allergies'),
       general_exam: Object.keys(marked).length ? marked : null,
       diagnosis_codes: codes.map((c) => ({ code: c.code })),
-      investigations: results.filter((r) => r.name.trim()).map((r) => ({ name: r.name.trim(), result: r.result.trim() || null, date: null })),
+      // The date of a result is typed on the computer; it is carried through here so saving from the phone does not erase it.
+      investigations: results.filter((r) => r.name.trim()).map((r) => ({ name: r.name.trim(), result: r.result.trim() || null, date: r.date ?? null })),
       follow_up_on: form.follow_up_on || null,
       medicines: medicines.filter((m) => m.medicine.trim()),
     }
@@ -115,7 +121,13 @@ export function VisitPad({ appointmentId, onBack, onHistory }: { appointmentId: 
     }
     setBusy(complete ? 'finish' : 'save')
     try {
-      const next = await api.put<Visit>(`/appointments/${appointmentId}/consultation`, { ...body, ...(complete ? { complete: true } : {}) })
+      const changed = (key: string) => (form[key] ?? '').trim() !== (loadedVitals.current[key] ?? '').trim()
+      const bpChanged = changed('bp_systolic') || changed('bp_diastolic')
+      const sending: Record<string, unknown> = { ...body, ...(complete ? { complete: true } : {}) }
+      for (const [key] of VITALS) {
+        if (!(key.startsWith('bp_') ? bpChanged : changed(key))) delete sending[key]
+      }
+      const next = await api.put<Visit>(`/appointments/${appointmentId}/consultation`, sending)
       show(next)
       setWarnings(null)
       setMessage({ text: complete ? 'The visit is finished. The prescription can be printed at the front desk, and the patient sees it in the app.' : 'Saved.', kind: 'ok' })

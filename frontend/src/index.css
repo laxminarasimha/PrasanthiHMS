@@ -345,6 +345,11 @@ tr.added-line td { background: var(--ok-soft); }
 .purchase-row input, .purchase-row select { padding: 6px 8px; }
 .narrow-totals { max-width: 320px; margin-left: auto; }
 .notice a { color: inherit; font-weight: 700; }
+/* A refusal or a failed load, pinned to the bottom of the window so it is seen from anywhere on a long page. */
+.floating-alert { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 60; width: max-content; max-width: min(620px, calc(100vw - 32px)); margin: 0; font: inherit; text-align: left; cursor: pointer; border-top: 0; border-right: 0; border-bottom: 0; box-shadow: 0 8px 28px var(--shadow); }
+.floating-alert.top { bottom: auto; top: 76px; cursor: default; }
+.floating-alert.quiet { color: var(--text); background: var(--surface); border-left-color: var(--accent); }
+@media print { .floating-alert { display: none; } }
 /* The reminder an admin sees on every screen while the backups need attention. */
 .backup-alert { display: block; margin: 0 0 14px; padding: 10px 14px; border-radius: 8px; border-left: 4px solid var(--accent); background: var(--surface); color: var(--text); text-decoration: none; box-shadow: 0 1px 3px var(--shadow); }
 .backup-alert:hover { background: var(--brand-soft); }

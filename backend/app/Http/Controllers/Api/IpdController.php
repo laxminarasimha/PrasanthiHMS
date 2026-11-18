@@ -561,6 +561,34 @@ class IpdController extends Controller
     }
 
     /**
+     * Opens a closed case again: one closed by mistake, or under the wrong outcome. Only those who approve IPD bills may,
+     * and the reason is kept in the record. The patient goes back to their bed if it is still free.
+     */
+    public function reopen(Request $request, Admission $admission): JsonResponse
+    {
+        abort_unless($request->user()->allows('canApproveIpd'), 403, 'Only those who approve IPD bills can reopen a case.');
+        $data = $request->validate(['reason' => ['required', 'string', 'min:3', 'max:255']], ['reason.required' => 'Say why the case is being reopened.']);
+
+        if ($admission->status === 'admitted') {
+            throw ValidationException::withMessages(['reason' => 'This case is already open.']);
+        }
+        if (Admission::where('patient_id', $admission->patient_id)->where('status', 'admitted')->exists()) {
+            throw ValidationException::withMessages(['reason' => 'This patient has another case open. Close that one first.']);
+        }
+
+        $was = $admission->status;
+        DB::transaction(function () use ($admission) {
+            // The bed may have been given to someone else since; the case then opens without a bed, to be given one.
+            $bed = $admission->bed_id ? Bed::whereKey($admission->bed_id)->lockForUpdate()->first() : null;
+            $taken = $bed && Admission::where('bed_id', $bed->id)->where('status', 'admitted')->exists();
+            $admission->update(['status' => 'admitted', 'discharged_at' => null] + ($taken ? ['bed_id' => null] : []));
+        });
+        AuditLog::record('ipd.reopened', $admission->patient_id, $admission, 'IPD '.$admission->ipd_no.': reopened (was closed as '.$was.'). Reason: '.$data['reason']);
+
+        return response()->json($this->present($admission));
+    }
+
+    /**
      * @return array<string, array<int, mixed>>
      */
     private function detailRules(): array

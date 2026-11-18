@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { api, fieldErrors } from '../api'
+import { useUnsaved } from '../unsaved'
 import { useAuth } from '../auth'
 import { clock, longDate, STAGE_CLASS, STAGE_LABEL } from '../format'
 import type { LabOrder, LabOrderFile, LabOrderItem, LabResult, LabSettings } from '../types'
@@ -66,6 +67,10 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
     setOrder(next)
     setDrafts((current) => Object.fromEntries(next.items.map((item) => [item.id, reset === 'all' || reset === item.id || !current[item.id] ? draftOf(item) : current[item.id]])))
   }
+
+  // Values typed but not yet sent. Opening another order, or leaving, would drop them, so that asks first.
+  const typed = Boolean(order?.items.some((item) => drafts[item.id] && JSON.stringify(drafts[item.id]) !== JSON.stringify(draftOf(item))))
+  useUnsaved(typed, 'Results typed for this order are not saved yet. Leave without saving them?')
 
   const panel = useRef<HTMLElement>(null)
 

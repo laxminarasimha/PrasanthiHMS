@@ -34,6 +34,8 @@ export function PharmacyStock() {
   const expired = batches?.filter((b) => b.units_in_stock > 0 && daysUntil(b.expiry) < 0).length ?? 0
   const expiring = batches?.filter((b) => b.units_in_stock > 0 && daysUntil(b.expiry) >= 0 && daysUntil(b.expiry) <= 90).length ?? 0
   const value = batches?.reduce((sum, b) => sum + b.units_in_stock * b.unit_mrp, 0) ?? 0
+  // The list stops at 3,000 batches. Beyond that the total and the export would be short, and the page says so.
+  const cut = (batches?.length ?? 0) >= 3000
 
   const startAdjust = (batch: StockBatch) => {
     setAdjusting(batch)
@@ -104,6 +106,7 @@ export function PharmacyStock() {
             {expiring > 0 && <> · <span className="pill status-arrived">{expiring} expiring in 90 days</span></>}
             {expired > 0 && <> · <span className="pill off">{expired} expired</span></>}
           </p>
+          {cut && <p className="form-error">Only the first 3,000 batches are shown, so this total and the export are not the whole stock. Type a medicine name to narrow the list.</p>}
           {notice && <p className="notice">{notice}</p>}
           <div className="table-wrap">
             <table>

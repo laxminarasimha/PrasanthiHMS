@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { AGE_UNITS, TITLES } from '../format'
 import type { Patient } from '../types'
@@ -21,12 +21,29 @@ export function PatientPicker({ patient, onChange, error }: Props) {
   const [form, setForm] = useState({ title: '', name: '', gender: '', age: '', age_unit: 'years', mobile: '' })
   const [errors, setErrors] = useState<FieldErrors>({})
 
+  // The words the matches were found for. An answer to an earlier search is never shown against a later one, and
+  // "no match found" is only said once the search for what is in the box now has really come back empty.
+  const [foundFor, setFoundFor] = useState('')
+  const [at, setAt] = useState(0)
   useEffect(() => {
-    if (search.trim().length < 2) return
+    const q = search.trim()
+    if (q.length < 2) return
+    let stale = false
     const timer = setTimeout(() => {
-      api.get<{ data: Patient[] }>('/patients', { params: { q: search.trim() } }).then((res) => setMatches(res.data.data.slice(0, 6)))
+      api
+        .get<{ data: Patient[] }>('/patients', { params: { q } })
+        .then((res) => {
+          if (stale) return
+          setMatches(res.data.data.slice(0, 6))
+          setFoundFor(q)
+          setAt(0)
+        })
+        .catch(() => undefined)
     }, 250)
-    return () => clearTimeout(timer)
+    return () => {
+      stale = true
+      clearTimeout(timer)
+    }
   }, [search])
 
   if (patient) {
@@ -137,16 +154,32 @@ export function PatientPicker({ patient, onChange, error }: Props) {
     )
   }
 
-  const shown = search.trim().length >= 2 ? matches : []
+  const ready = search.trim().length >= 2 && foundFor === search.trim()
+  const shown = ready ? matches : []
+  // The arrow keys walk the matches and Enter takes the highlighted one, as in the other search boxes.
+  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setAt((i) => Math.min(i + 1, shown.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setAt((i) => Math.max(i - 1, 0))
+    } else if (e.key === 'Enter') {
+      // Never the form around it: Enter here chooses a patient, or does nothing while the search is still running.
+      e.preventDefault()
+      const chosen = shown[Math.min(at, shown.length - 1)]
+      if (chosen) onChange(chosen)
+    }
+  }
 
   return (
     <Field label="Patient" required error={error}>
-      <input type="search" autoFocus placeholder="Search by name, mobile or patient ID" value={search} onChange={(e) => setSearch(e.target.value)} />
+      <input type="search" autoFocus placeholder="Search by name, mobile or patient ID" value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={onKey} />
       {shown.length > 0 && (
         <ul className="picker">
-          {shown.map((p) => (
+          {shown.map((p, i) => (
             <li key={p.id}>
-              <button type="button" onClick={() => onChange(p)}>
+              <button type="button" className={i === at ? 'on' : ''} onClick={() => onChange(p)} onMouseEnter={() => setAt(i)}>
                 <strong>{p.name}</strong>
                 <small className="muted">{summary(p)}</small>
               </button>
@@ -164,7 +197,7 @@ export function PatientPicker({ patient, onChange, error }: Props) {
           setAdding(true)
         }}
       >
-        + Add new patient{search.trim().length >= 2 && shown.length === 0 ? ' (no match found)' : ''}
+        + Add new patient{ready && shown.length === 0 ? ' (no match found)' : ''}
       </button>
     </Field>
   )

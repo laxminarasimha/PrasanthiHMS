@@ -33,7 +33,7 @@ export function PharmacyPurchaseOrders() {
 
   const start = () => {
     api.get<Stockist[]>('/pharmacy/stockists').then((res) => setStockists(res.data))
-    api.get<Medicine[]>('/pharmacy/medicines').then((res) => setMedicines(res.data))
+    api.get<Medicine[]>('/pharmacy/medicines', { params: { list: 1 } }).then((res) => setMedicines(res.data))
     setAdding(true)
     setViewing(null)
     setLines([emptyLine()])

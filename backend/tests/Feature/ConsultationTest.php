@@ -105,6 +105,20 @@ class ConsultationTest extends TestCase
             ->assertStatus(422)->assertJsonValidationErrors(['general_exam']);
     }
 
+    public function test_vitals_the_desk_entered_survive_a_save_from_a_pad_that_did_not_touch_them(): void
+    {
+        // The nurse enters vitals after the doctor's pad was already open and blank.
+        $this->putJson("/api/appointments/{$this->appointment->id}/vitals", ['weight_kg' => 62, 'bp_systolic' => 130, 'bp_diastolic' => 84, 'pulse' => 78])->assertOk();
+
+        // The pad sends only what the doctor changed: notes, and no vitals at all. The nurse's figures stay.
+        $this->putJson($this->url(), ['complaints' => 'Fever for 3 days'])->assertOk()
+            ->assertJsonPath('consultation.complaints', 'Fever for 3 days')->assertJsonPath('consultation.pulse', 78)->assertJsonPath('consultation.bp_systolic', 130);
+
+        // A vital the doctor did change, or cleared on purpose, is taken as sent.
+        $this->putJson($this->url(), ['pulse' => 92, 'weight_kg' => null])->assertOk()
+            ->assertJsonPath('consultation.pulse', 92)->assertJsonPath('consultation.weight_kg', null)->assertJsonPath('consultation.bp_diastolic', 84);
+    }
+
     public function test_invalid_vitals_and_empty_medicine_rows_are_rejected(): void
     {
         $this->putJson($this->url(), ['bp_systolic' => 120, 'spo2' => 140, 'medicines' => [['medicine' => '']]])

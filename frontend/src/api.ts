@@ -46,14 +46,36 @@ api.defaults.adapter = (config) => {
   return sent
 }
 
-api.interceptors.response.use(undefined, (error: AxiosError) => {
-  // An expired or revoked token sends the user back to the sign-in page.
-  if (error.response?.status === 401 && getToken()) {
-    setToken(null)
-    window.location.assign('/login')
+// Most screens simply stay empty when the list they asked for does not arrive, which looks the same as "nothing here".
+// So every failed load is also reported here, and the app says so in one place until a load works again.
+type TroubleListener = (failing: boolean) => void
+const troubleListeners = new Set<TroubleListener>()
+export const onLoadTrouble = (listener: TroubleListener) => {
+  troubleListeners.add(listener)
+  return () => {
+    troubleListeners.delete(listener)
   }
-  return Promise.reject(error)
-})
+}
+const isRead = (method?: string) => (method ?? 'get').toLowerCase() === 'get'
+
+api.interceptors.response.use(
+  (response) => {
+    if (isRead(response.config.method)) troubleListeners.forEach((tell) => tell(false))
+    return response
+  },
+  (error: AxiosError) => {
+    // An expired or revoked token sends the user back to the sign-in page.
+    if (error.response?.status === 401 && getToken()) {
+      setToken(null)
+      window.location.assign('/login')
+    }
+    // No answer at all, or the server itself failing. A refusal (not allowed, not found) is the screen's own business.
+    if (!axios.isCancel(error) && isRead(error.config?.method) && (!error.response || error.response.status >= 500)) {
+      troubleListeners.forEach((tell) => tell(true))
+    }
+    return Promise.reject(error)
+  },
+)
 
 export type FieldErrors = Record<string, string>
 

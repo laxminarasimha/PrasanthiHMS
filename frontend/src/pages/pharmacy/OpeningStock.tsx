@@ -31,7 +31,7 @@ export function PharmacyOpeningStock() {
   const [way, setWay] = useState<'type' | 'sheet'>('type')
 
   useEffect(() => {
-    api.get<Medicine[]>('/pharmacy/medicines').then((res) => setMedicines(res.data))
+    api.get<Medicine[]>('/pharmacy/medicines', { params: { list: 1 } }).then((res) => setMedicines(res.data))
   }, [])
 
   const setLine = (index: number, key: keyof Line, value: string) =>

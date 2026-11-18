@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, fieldErrors } from '../../api'
+import { useUnsaved } from '../../unsaved'
 import { MedicineRows, emptyMedicine, filledMedicines } from '../../components/MedicineRows'
 import { clock, longDate, today } from '../../format'
 import type { DischargeSummary, PrescribedMedicine } from '../../types'
@@ -134,13 +135,8 @@ export function IpdSummary({ admissionId, canEdit, canApprove, dischargedOn }: P
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  // Leaving the page with unsaved writing asks first.
-  useEffect(() => {
-    if (!dirty) return
-    const warn = (e: BeforeUnloadEvent) => e.preventDefault()
-    window.addEventListener('beforeunload', warn)
-    return () => window.removeEventListener('beforeunload', warn)
-  }, [dirty])
+  // Leaving with unsaved writing asks first: another tab of the case, another page, Back, or closing the window.
+  useUnsaved(dirty, 'The discharge summary has changes that are not saved yet. Leave without saving them?')
 
   if (!summary) return <p className="loading">Loading summary…</p>
 
