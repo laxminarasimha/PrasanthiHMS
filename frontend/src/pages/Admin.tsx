@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { rememberBrand } from '../brand'
+import { ClinicHeader } from '../components/ClinicHeader'
+import { PRINT_PREFS_KEY, printPrefs } from '../printPaper'
 import { SetupTabs } from '../components/SetupTabs'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { TextField } from '../components/Field'
@@ -143,7 +145,7 @@ function BillingPrefs() {
       try {
         localStorage.setItem('hms_billing', JSON.stringify(res.data))
         // The print pages read this copy, so the next bill printed on this computer already follows the new setting.
-        localStorage.setItem('hms_bill_print', JSON.stringify({ print_on_letterhead: Boolean(res.data.print_on_letterhead), letterhead_top_mm: res.data.letterhead_top_mm ?? 40, letterhead_bottom_mm: res.data.letterhead_bottom_mm ?? 20 }))
+        localStorage.setItem(PRINT_PREFS_KEY, JSON.stringify(printPrefs(res.data)))
       } catch {
         // The booking form fetches it again if it cannot be stored.
       }
@@ -188,6 +190,47 @@ function BillingPrefs() {
       <h3>IPD bill numbers</h3>
       <p className="muted small">The letters placed before the running number of each numbered IPD bill, for example {form.ipd_bill_prefix || 'IPB'}00012.</p>
       <input className="narrow" maxLength={8} value={form.ipd_bill_prefix ?? 'IPB'} onChange={(e) => setForm({ ...form, ipd_bill_prefix: e.target.value })} aria-label="IPD bill number prefix" />
+
+      <h3>Heading of bills</h3>
+      <p className="muted small">How the hospital's logo, name and address sit at the top of front desk, pharmacy and IPD bills and receipts printed on plain paper. The picture below changes as you choose; nothing is saved until you press Save.</p>
+      {(
+        [
+          ['side', 'Logo on the left', 'The logo sits on the left, with the hospital name, address and phone beside it on the right.'],
+          ['centre', 'Centred', 'The logo sits on top, with the name, address and phone centred under it.'],
+        ] as const
+      ).map(([value, label, hint]) => (
+        <label className="check top" key={value}>
+          <input type="radio" name="bill_heading" checked={(form.bill_heading ?? 'side') === value} onChange={() => setForm({ ...form, bill_heading: value })} />
+          <span>
+            {label}
+            <small className="muted block">{hint}</small>
+          </span>
+        </label>
+      ))}
+      <div className="row gap-top">
+        <label className="field">
+          <span className="field-label">Size of the name and address</span>
+          <select value={form.bill_heading_size ?? 'small'} onChange={(e) => setForm({ ...form, bill_heading_size: e.target.value as BillingPreferences['bill_heading_size'] })}>
+            <option value="small">Small</option>
+            <option value="medium">Medium</option>
+            <option value="large">Large</option>
+          </select>
+        </label>
+        <label className="field">
+          <span className="field-label">Size of the logo</span>
+          <select value={form.bill_logo_size ?? 'medium'} onChange={(e) => setForm({ ...form, bill_logo_size: e.target.value as BillingPreferences['bill_logo_size'] })}>
+            <option value="small">Small</option>
+            <option value="medium">Medium</option>
+            <option value="large">Large</option>
+          </select>
+        </label>
+      </div>
+      <div className="receipt heading-preview" aria-label="How the heading of a bill will look">
+        <ClinicHeader layout={form.bill_heading ?? 'side'} size={form.bill_heading_size ?? 'small'} logoSize={form.bill_logo_size ?? 'medium'}>
+          <h2>Bill / Receipt</h2>
+        </ClinicHeader>
+      </div>
+      <p className="muted small">The logo and the words themselves come from Clinic details. With no logo uploaded, only the name and address are printed.</p>
 
       <h3>Paper for bills</h3>
       <p className="muted small">Front desk, pharmacy and IPD bills and receipts. A counter that uses the other kind can change it on the print page, and that computer remembers its choice.</p>

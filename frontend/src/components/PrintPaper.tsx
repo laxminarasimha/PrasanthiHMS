@@ -25,7 +25,13 @@ export function PaperBar({ paper }: { paper: Paper }) {
 
 /** The top of a bill: the hospital's heading on plain paper, or room for the printed letterhead and just the title. */
 export function PaperHeader({ paper, suffix, children }: { paper: Paper; suffix?: string; children: ReactNode }) {
-  if (!paper.letterhead) return <ClinicHeader suffix={suffix}>{children}</ClinicHeader>
+  if (!paper.letterhead) {
+    return (
+      <ClinicHeader suffix={suffix} layout={paper.heading} size={paper.headingSize} logoSize={paper.logoSize}>
+        {children}
+      </ClinicHeader>
+    )
+  }
   return (
     <>
       <style>{`@media print { @page { margin: ${paper.top}mm 12mm ${paper.bottom}mm; } }`}</style>

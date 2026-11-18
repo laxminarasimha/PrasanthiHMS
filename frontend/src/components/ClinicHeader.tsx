@@ -38,23 +38,32 @@ type Props = {
   address?: string | null
   /** The document's title line and anything else under the heading. */
   children?: ReactNode
+  /** Where the logo sits: above the name with everything centred (the usual way), or on the left with the name and address beside it. */
+  layout?: 'side' | 'centre'
+  /** How large the name and address are, and the logo. Left out, they are as they have always been. */
+  size?: 'small' | 'medium' | 'large'
+  logoSize?: 'small' | 'medium' | 'large'
 }
 
 /** The heading of every printed document: logo, hospital name, address and phone numbers. */
-export function ClinicHeader({ suffix, name, address, children }: Props) {
+export function ClinicHeader({ suffix, name, address, children, layout = 'centre', size = 'medium', logoSize = 'medium' }: Props) {
   const clinic = useClinic()
   const phones = [clinic?.phone, clinic?.phone_alt].filter(Boolean).join(', ')
 
   return (
-    <header>
-      {clinic?.logo && <img className="clinic-logo" src={clinic.logo} alt="" />}
-      <h1>
-        {name || clinic?.name || 'Prasanthi Hospitals'}
-        {suffix ? ` ${suffix}` : ''}
-      </h1>
-      {!name && clinic?.tagline && <p>{clinic.tagline}</p>}
-      {(address || clinic?.address) && <p>{address || clinic?.address}</p>}
-      {(phones || clinic?.email) && <p>{[phones && `Phone: ${phones}`, clinic?.email].filter(Boolean).join(' · ')}</p>}
+    <header className={`clinic-head ${layout === 'side' ? 'side' : 'centred'} text-${size} logo-${logoSize}`}>
+      <div className="clinic-brand">
+        {clinic?.logo && <img className="clinic-logo" src={clinic.logo} alt="" />}
+        <div className="clinic-text">
+          <h1>
+            {name || clinic?.name || 'Prasanthi Hospitals'}
+            {suffix ? ` ${suffix}` : ''}
+          </h1>
+          {!name && clinic?.tagline && <p>{clinic.tagline}</p>}
+          {(address || clinic?.address) && <p>{address || clinic?.address}</p>}
+          {(phones || clinic?.email) && <p>{[phones && `Phone: ${phones}`, clinic?.email].filter(Boolean).join(' · ')}</p>}
+        </div>
+      </div>
       {children}
     </header>
   )

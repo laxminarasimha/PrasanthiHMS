@@ -512,6 +512,10 @@ export type BillingPreferences = {
   print_on_letterhead?: boolean
   letterhead_top_mm?: number
   letterhead_bottom_mm?: number
+  /** The heading of bills on plain paper: logo on the left with the details beside it, or everything centred. */
+  bill_heading?: 'side' | 'centre'
+  bill_heading_size?: 'small' | 'medium' | 'large'
+  bill_logo_size?: 'small' | 'medium' | 'large'
 }
 
 /** A row of a hospital-wide list: a department, a vendor, or a payer. */

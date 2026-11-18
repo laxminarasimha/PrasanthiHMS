@@ -250,6 +250,18 @@ table.compact th, table.compact td { padding: 6px 6px; white-space: normal; }
 .receipt header .clinic-logo { display: block; max-height: 70px; max-width: 220px; margin: 0 auto 6px; }
 .clinic-footer { margin-top: 24px; padding-top: 8px; border-top: 1px solid var(--border); text-align: center; font-size: 0.85rem; color: var(--muted); }
 .receipt header p { margin: 2px 0; }
+/* The heading with the logo on the left and the name and address beside it, and the three sizes of words and logo. */
+.receipt header.side .clinic-brand { display: flex; align-items: center; gap: 16px; text-align: left; }
+.receipt header.side .clinic-logo { margin: 0; flex: none; }
+.receipt header.side .clinic-text { min-width: 0; }
+.receipt header.text-small h1 { font-size: 1.15rem; }
+.receipt header.text-small p { font-size: 0.82rem; }
+.receipt header.text-large h1 { font-size: 1.85rem; }
+.receipt header.text-large p { font-size: 1.05rem; }
+.receipt header.logo-small .clinic-logo { max-height: 46px; max-width: 150px; }
+.receipt header.logo-large .clinic-logo { max-height: 100px; max-width: 280px; }
+.receipt.heading-preview { border: 1px dashed var(--border); border-radius: 10px; padding: 16px 18px 4px; margin: 10px 0; min-height: 0; background: #fff; color: #1a1a1a; max-width: 640px; }
+.heading-preview header { margin-bottom: 8px; }
 .receipt header h2 { margin-top: 10px; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.08em; }
 .receipt-meta { display: flex; justify-content: space-between; gap: 24px; margin-bottom: 16px; line-height: 1.6; }
 .receipt-meta .right { text-align: right; }

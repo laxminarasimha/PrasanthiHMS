@@ -146,6 +146,21 @@ class AdminExtrasTest extends TestCase
         $this->putJson('/api/billing-preferences', $prefs)->assertOk()->assertJsonPath('print_on_letterhead', true)->assertJsonPath('letterhead_top_mm', 55);
     }
 
+    public function test_the_heading_of_bills_can_be_laid_out_and_sized(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        // To begin with: the logo on the left, the name and address beside it, a little smaller.
+        $this->getJson('/api/billing-preferences')->assertOk()->assertJsonPath('bill_heading', 'side')->assertJsonPath('bill_heading_size', 'small')->assertJsonPath('bill_logo_size', 'medium');
+
+        $prefs = ['default_payment_mode' => 'cash', 'pay_timing' => 'before'];
+        $this->putJson('/api/billing-preferences', $prefs + ['bill_heading' => 'diagonal', 'bill_heading_size' => 'huge', 'bill_logo_size' => 'tiny'])
+            ->assertStatus(422)->assertJsonValidationErrors(['bill_heading', 'bill_heading_size', 'bill_logo_size']);
+        $this->putJson('/api/billing-preferences', $prefs + ['bill_heading' => 'centre', 'bill_heading_size' => 'large', 'bill_logo_size' => 'small'])->assertOk()
+            ->assertJsonPath('bill_heading', 'centre')->assertJsonPath('bill_heading_size', 'large')->assertJsonPath('bill_logo_size', 'small');
+        // Saving the other preferences without these keeps them.
+        $this->putJson('/api/billing-preferences', $prefs)->assertOk()->assertJsonPath('bill_heading', 'centre')->assertJsonPath('bill_logo_size', 'small');
+    }
+
     public function test_new_ipd_cases_take_the_chosen_prefix(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
