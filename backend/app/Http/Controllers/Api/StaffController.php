@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\SignInGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -143,6 +144,10 @@ class StaffController extends Controller
         // Switched off, or given a new password by someone else: every device signed in as this person is signed out.
         if ($staff->is_active === false || $newPassword) {
             $staff->tokens()->delete();
+        }
+        // A fresh password from the hospital opens a login that was closed after too many wrong ones.
+        if ($newPassword) {
+            SignInGuard::clear('staff', $staff->email);
         }
 
         return response()->json($staff->append(self::EXTRA));

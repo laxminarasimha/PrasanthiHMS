@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -148,13 +149,78 @@ class DatabaseBackup
             Cache::lock('backup_running', 600)->get(function () use ($today) {
                 $newest = self::all()[0]['made_at'] ?? '';
                 if (! str_starts_with($newest, $today)) {
+                    // A run that the host cut short dies without a word. It leaves a half-written file behind, and that
+                    // is how the next visit knows. After three tries the day is given up, and the admin is told.
+                    $tries = (int) Cache::get("backup_tries_{$today}", 0);
+                    $cutShort = self::clearUnfinished();
+                    if ($tries >= 3) {
+                        Cache::put('backup_error', 'The daily backup did not finish on '.now()->format('j M Y').($cutShort ? ': the server stopped it part-way, three times.' : '.'), now()->addDays(14));
+                        Cache::put('backup_day', $today, now()->addDay());
+                        Cache::forget('backup_alert');
+
+                        return;
+                    }
+                    Cache::put("backup_tries_{$today}", $tries + 1, now()->addDay());
+                    // The page has already gone out, so this may take the time it needs.
+                    @set_time_limit(600);
+                    @ignore_user_abort(true);
                     self::run();
+                    Cache::forget('backup_error');
+                    Cache::forget('backup_alert');
                 }
                 Cache::put('backup_day', $today, now()->addDay());
             });
         } catch (Throwable $e) {
             // A failed backup must never break the page that happened to trigger it.
+            Cache::put('backup_error', 'The daily backup failed on '.now()->format('j M Y').': '.mb_substr($e->getMessage(), 0, 200), now()->addDays(14));
+            Cache::forget('backup_alert');
             report($e);
         }
+    }
+
+    /** Removes half-written backups left by a run that was cut short, and says whether there were any. */
+    public static function clearUnfinished(?string $folder = null): bool
+    {
+        $found = false;
+        foreach (glob(($folder ?? self::folder()).'/hms-*.sql.gz.part') ?: [] as $part) {
+            // One being written this very minute belongs to a run still going.
+            if (filemtime($part) < time() - 120) {
+                @unlink($part);
+                $found = true;
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * What an admin needs to be told about the backups, if anything: the daily one not being made, or no copy
+     * having left the server for a while. A backup that sits beside the data it protects is lost with it.
+     */
+    public static function alert(): ?string
+    {
+        return Cache::remember('backup_alert', 600, function () {
+            $newest = self::all()[0]['made_at'] ?? null;
+            if (config('app.auto_backup') && (! $newest || $newest < now()->subHours(36)->format('Y-m-d H:i'))) {
+                return (Cache::get('backup_error') ?: ($newest ? 'No backup has been made since '.date('j M', strtotime($newest)).'.' : 'No backup has been made yet.')).' Make one under Setup → Backups.';
+            }
+            $marks = FileBackup::marks();
+            $copied = $marks['db_downloaded_at'];
+            if (! $copied) {
+                return 'No backup has been copied off the server yet. Download one under Setup → Backups.';
+            }
+            $days = (int) floor(Carbon::parse($copied)->diffInDays(now()));
+            if ($days >= 7) {
+                return "The last backup copied off the server is {$days} days old. Download a new one under Setup → Backups.";
+            }
+            $files = FileBackup::summary();
+            $filesCopied = $marks['files_downloaded_at'];
+            if ($files['waiting'] > 0 && (! $filesCopied || Carbon::parse($filesCopied)->lt(now()->subDays(7)))) {
+                return ($files['waiting'] === 1 ? '1 uploaded file (a scan, attachment or signature) has' : "{$files['waiting']} uploaded files (scans, attachments, signatures) have")
+                    .' not been copied off the server. Download under Setup → Backups.';
+            }
+
+            return null;
+        }) ?: null;
     }
 }

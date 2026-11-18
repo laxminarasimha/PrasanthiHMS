@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
     'branch_id', 'patient_id', 'doctor_id', 'payer_id', 'bed_id', 'admitted_at', 'discharged_at', 'status', 'reason',
@@ -16,6 +17,9 @@ class Admission extends Model
     public const CLOSED_STATUSES = ['discharged', 'lama', 'dama', 'absconded', 'died'];
 
     protected $appends = ['net', 'due'];
+
+    /** An Aadhaar number is not sent out with lists of cases; only the case screen shows it, to IPD staff. */
+    protected $hidden = ['aadhaar_no'];
 
     /**
      * @return array<string, string>
@@ -74,7 +78,7 @@ class Admission extends Model
         return $this->hasMany(AdmissionNote::class)->orderByDesc('noted_at')->orderByDesc('id');
     }
 
-    public function summary(): \Illuminate\Database\Eloquent\Relations\HasOne
+    public function summary(): HasOne
     {
         return $this->hasOne(DischargeSummary::class);
     }

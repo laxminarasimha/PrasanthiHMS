@@ -43,6 +43,17 @@ mkdir -p "$SITE/app"
 rsync -a --exclude public "$ROOT/deploy/package/prasanthihms/" "$SITE/app/"
 rsync -a "$ROOT/deploy/package/prasanthihms/public/" "$SITE/"
 printf 'Require all denied\n' > "$SITE/app/.htaccess"
+# A second lock, in case that one file is ever lost or overruled: the storage folder (scanned papers, backups, logs)
+# refuses the web by itself, and the web folder's own rules never serve a settings file, a backup or a log from anywhere below it.
+mkdir -p "$SITE/app/storage"
+printf 'Require all denied\n' > "$SITE/app/storage/.htaccess"
+cat >> "$SITE/.htaccess" <<'HTACCESS'
+
+# Never served, wherever they sit: settings files, database backups and logs.
+<FilesMatch "(^\.env|\.sql\.gz$|\.sql\.gz\.part$|\.zip\.tmp$|\.log$)">
+    Require all denied
+</FilesMatch>
+HTACCESS
 printf 'User-agent: *\nDisallow: /\n' > "$SITE/robots.txt"
 # The entry file finds the app in ./app and tells Laravel the public files are beside it.
 sed -i.bak \
@@ -106,4 +117,5 @@ echo "==> Checking"
 echo "site:      $(curl -s -m 30 -o /dev/null -w '%{http_code}' "$APP_URL/")"
 echo "api:       $(curl -s -m 30 "$APP_URL/api/health")"
 echo "app/.env:  $(curl -s -m 30 -o /dev/null -w '%{http_code}' "$APP_URL/app/.env") (must be 403)"
+echo "storage:   $(curl -s -m 30 -o /dev/null -w '%{http_code}' "$APP_URL/app/storage/framework/.gitignore") (must be 403)"
 echo "Remember: cd backend && php artisan db:sync-remote   (if this release adds tables)"

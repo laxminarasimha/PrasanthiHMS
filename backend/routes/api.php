@@ -56,12 +56,12 @@ Route::get('/health', function () {
     ]);
 });
 
-Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1,staff-login');
 
 // ---- The patient's mobile app: its own logins, kept apart from staff ----
 Route::prefix('app')->controller(PatientAppController::class)->group(function () {
-    Route::post('/register', 'register')->middleware('throttle:6,1');
-    Route::post('/login', 'login')->middleware('throttle:10,1');
+    Route::post('/register', 'register')->middleware('throttle:6,1,app-register');
+    Route::post('/login', 'login')->middleware('throttle:10,1,app-login');
 
     Route::middleware(['auth:sanctum', 'actor:patient'])->group(function () {
         Route::get('/me', 'me');
@@ -91,7 +91,7 @@ Route::prefix('app')->middleware(['auth:sanctum', 'actor:patient'])->controller(
 });
 
 // The hospital's reading computer, which signs in with its own key and can only fetch and return scans to read.
-Route::prefix('reader')->middleware('throttle:240,1')->controller(RecordReaderController::class)->group(function () {
+Route::prefix('reader')->middleware('throttle:240,1,reader')->controller(RecordReaderController::class)->group(function () {
     Route::post('/hello', 'hello');
     Route::post('/next', 'next');
     Route::get('/pages/{attachment}', 'page');
@@ -107,6 +107,8 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/backups', [BackupController::class, 'index']);
     Route::post('/backups', [BackupController::class, 'store'])->middleware('throttle:6,1');
+    Route::get('/backups/files', [BackupController::class, 'files'])->middleware('throttle:20,1');
+    Route::post('/backups/files/done', [BackupController::class, 'filesDone']);
     Route::get('/backups/{name}/download', [BackupController::class, 'download']);
     Route::put('/me/tabs', [AuthController::class, 'saveTabs']);
     Route::put('/me/appearance', [AuthController::class, 'saveAppearance']);

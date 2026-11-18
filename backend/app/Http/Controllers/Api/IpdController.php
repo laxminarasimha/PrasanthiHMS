@@ -690,6 +690,9 @@ class IpdController extends Controller
             'bed:id,ward,bed_no,daily_charge', 'charges.creator:id,name', 'payments.receiver:id,name', 'billApprover:id,name', 'payer:id,name,details', 'bills.creator:id,name', 'bills.charges:id,admission_bill_id,amount',
         ]);
         $admission->bills->each->makeHidden('charges');
+        if (request()->user()?->allows('canWorkIpd')) {
+            $admission->makeVisible('aadhaar_no');
+        }
         // Lines taken off the bill, kept so there is a record of what was removed and by whom.
         $admission->setRelation('deleted_charges', AdmissionCharge::onlyTrashed()->where('admission_id', $admission->id)->with('deleter:id,name')->orderByDesc('deleted_at')->get());
 
