@@ -1,17 +1,27 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { useAuth } from '../auth'
 import { TextField } from '../components/Field'
 import { LabTabs } from '../components/LabTabs'
 import type { LabSettings as Settings } from '../types'
 
-const TOGGLES: [keyof Settings, string, string][] = [
+type Toggle = [keyof Settings, string, string]
+
+const RULES: Toggle[] = [
   ['approval_required', 'Only approved results can be printed', 'A second check: a reported result has to be approved before it appears on the printed report.'],
   ['allow_print_without_payment', 'Allow printing before the bill is paid', 'Untick to hold back the report until the lab bill has no balance.'],
+]
+
+const LAYOUT: Toggle[] = [
+  ['group_by_department', 'Group the tests under their departments', 'A heading such as HAEMATOLOGY or BIOCHEMISTRY above each set of tests, in the order of the list above.'],
+  ['department_on_new_page', 'Start each department on a new page', 'A separate sheet for haematology, another for biochemistry, each with the patient details at the top.'],
   ['each_test_on_new_page', 'Print each test on a separate page', ''],
+  ['tabular_print', 'Print in compact layout', 'Everything in one table without page breaks, to save paper. It can still be changed when printing.'],
+  ['print_method', 'Print the method under each parameter', 'Only where a method has been typed for the parameter.'],
   ['print_sample_date', 'Print the sample collection date', ''],
   ['print_approved_date', 'Print the approval date', ''],
-  ['tabular_print', 'Print in tabular layout', 'All tests in one table instead of a section for each test. It can still be changed when printing.'],
+  ['print_end_mark', 'Print "End of report" after the last result', ''],
 ]
 
 export function LabSettings() {
@@ -21,6 +31,7 @@ export function LabSettings() {
   const [errors, setErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
+  const [newDepartment, setNewDepartment] = useState('')
 
   useEffect(() => {
     api.get<Settings>('/lab/settings').then((res) => setForm(res.data))
@@ -38,6 +49,32 @@ export function LabSettings() {
     onChange: (value: string) => setForm({ ...form, [key]: value === '' ? 0 : Number(value) }),
     error: errors[key],
   })
+
+  // The lab's departments, in the order they are printed.
+  const departments = form.departments ?? []
+  const setDepartments = (next: string[]) => setForm({ ...form, departments: next })
+  const moveDepartment = (index: number, to: number) => {
+    if (to < 0 || to >= departments.length) return
+    const next = [...departments]
+    next.splice(to, 0, next.splice(index, 1)[0])
+    setDepartments(next)
+  }
+  const addDepartment = () => {
+    const name = newDepartment.trim()
+    if (!name || departments.some((d) => d.toLowerCase() === name.toLowerCase())) return
+    setDepartments([...departments, name])
+    setNewDepartment('')
+  }
+  const toggles = (rows: Toggle[]) =>
+    rows.map(([key, label, hint]) => (
+      <label className="check top" key={key}>
+        <input type="checkbox" checked={Boolean(form[key])} onChange={(e) => setForm({ ...form, [key]: e.target.checked })} />
+        <span>
+          {label}
+          {hint && <small className="muted block">{hint}</small>}
+        </span>
+      </label>
+    ))
 
   // Signature pictures are saved straight away, apart from the rest of the form.
   const signature = async (slot: 1 | 2, file?: File) => {
@@ -132,16 +169,61 @@ export function LabSettings() {
             <TextField label="Space at the bottom (mm)" type="number" min={0} max={100} {...number('letterhead_bottom_mm')} />
           </div>
 
+          <h3>Departments</h3>
+          <p className="muted small">
+            The sections of the lab. Each test is filed under one on the <Link to="/lab/tests">Report templates</Link> screen, and the printed report shows them in this order.
+          </p>
+          <ol className="pad-order">
+            {departments.map((d, i) => (
+              <li key={d}>
+                <span className="muted mono">{i + 1}</span>
+                <span className="grow">{d}</span>
+                <button type="button" className="btn ghost small-btn" disabled={i === 0} onClick={() => moveDepartment(i, i - 1)} aria-label={`Move ${d} up`}>
+                  ↑
+                </button>
+                <button type="button" className="btn ghost small-btn" disabled={i === departments.length - 1} onClick={() => moveDepartment(i, i + 1)} aria-label={`Move ${d} down`}>
+                  ↓
+                </button>
+                <button type="button" className="link danger" onClick={() => setDepartments(departments.filter((x) => x !== d))} aria-label={`Remove ${d}`}>
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ol>
+          <div className="row">
+            <input
+              placeholder="Add a department, e.g. Molecular Biology"
+              value={newDepartment}
+              onChange={(e) => setNewDepartment(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  addDepartment()
+                }
+              }}
+              aria-label="New department"
+            />
+            <button type="button" className="btn ghost" onClick={addDepartment} disabled={!newDepartment.trim()}>
+              Add
+            </button>
+          </div>
+          <p className="muted small">Removing a department here does not change the tests filed under it; they print after the listed ones until they are moved.</p>
+          {errors['departments.0'] && <p className="form-error">{errors['departments.0']}</p>}
+
+          <h3>Layout of the printed report</h3>
+          {toggles(LAYOUT)}
+          <label className="field gap-top">
+            <span className="field-label">A line at the foot of every report (optional)</span>
+            <input
+              placeholder="e.g. Results relate only to the sample tested. Please correlate clinically."
+              maxLength={500}
+              value={form.report_note ?? ''}
+              onChange={(e) => setForm({ ...form, report_note: e.target.value })}
+            />
+          </label>
+
           <h3>Rules</h3>
-          {TOGGLES.map(([key, label, hint]) => (
-            <label className="check top" key={key}>
-              <input type="checkbox" checked={Boolean(form[key])} onChange={(e) => setForm({ ...form, [key]: e.target.checked })} />
-              <span>
-                {label}
-                {hint && <small className="muted block">{hint}</small>}
-              </span>
-            </label>
-          ))}
+          {toggles(RULES)}
         </fieldset>
         {errors._ && <p className="form-error">{errors._}</p>}
         {canEdit && (

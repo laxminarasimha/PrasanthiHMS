@@ -342,6 +342,18 @@ export type LabSettings = {
   approval_required: boolean
   /** One table for the whole report instead of a section per test. */
   tabular_print: boolean
+  /** The lab's sections, in the order they are printed. Each test is filed under one. */
+  departments: string[]
+  /** A heading for each section on the printed report. */
+  group_by_department: boolean
+  /** Each section starts on a fresh page. */
+  department_on_new_page: boolean
+  /** The method under each parameter, where one is set. */
+  print_method: boolean
+  /** "End of report" after the last result. */
+  print_end_mark: boolean
+  /** A line of the lab's own at the foot of every report. */
+  report_note: string
   /** Signature pictures, sent as embedded images; null when none is uploaded. */
   technician_1_signature: string | null
   technician_2_signature: string | null

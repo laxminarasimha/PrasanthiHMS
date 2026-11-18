@@ -4,7 +4,7 @@ import { useAuth } from '../auth'
 import { TextField } from '../components/Field'
 import { LabTabs } from '../components/LabTabs'
 import { rupees } from '../format'
-import type { LabCatalogueTest, LabParameter } from '../types'
+import type { LabCatalogueTest, LabParameter, LabSettings } from '../types'
 
 const emptyParameter = (is_heading = false): LabParameter => ({ name: '', is_heading, unit: '', reference_range: '', method: '' })
 const blank = { code: '', name: '', kind: 'values' as 'values' | 'text', default_comment: '', department: '', sample_type: 'Blood', price: '', print_order: '', is_active: true }
@@ -23,6 +23,13 @@ export function LabTests() {
   const [notice, setNotice] = useState('')
   /** The tests in the order being arranged, while re-ordering; null otherwise. */
   const [ordering, setOrdering] = useState<LabCatalogueTest[] | null>(null)
+  // The lab's departments, which test list is shown ('' all, '-' those with none), and the tests being filed in one go.
+  const [departments, setDepartments] = useState<string[]>([])
+  const [showing, setShowing] = useState('')
+  const [sorting, setSorting] = useState<{ id: number; name: string; is_active: boolean; department: string; suggested: string | null }[] | null>(null)
+  useEffect(() => {
+    api.get<LabSettings>('/lab/settings').then((res) => setDepartments(res.data.departments ?? [])).catch(() => undefined)
+  }, [])
 
   const load = useCallback(() => {
     api.get<LabCatalogueTest[]>('/lab/tests', { params: { all: 1 } }).then((res) => setTests(res.data))
@@ -104,7 +111,32 @@ export function LabTests() {
       return next
     })
 
-  const visible = tests.filter((t) => t.name.toLowerCase().includes(filter.trim().toLowerCase()))
+  const unfiled = tests.filter((t) => !t.department?.trim())
+  // Departments in the lab's order, then any a test carries that the lab has not listed.
+  const inUse = [...departments, ...[...new Set(tests.map((t) => t.department?.trim() ?? '').filter((d) => d && !departments.some((x) => x.toLowerCase() === d.toLowerCase())))].sort()]
+  const visible = tests
+    .filter((t) => t.name.toLowerCase().includes(filter.trim().toLowerCase()))
+    .filter((t) => showing === '' || (showing === '-' ? !t.department?.trim() : (t.department ?? '').trim().toLowerCase() === showing.toLowerCase()))
+
+  /** Opens the list of tests with no department, each with the one its name suggests, to look over before saving. */
+  const startSorting = async () => {
+    setEditing(null)
+    setNotice('')
+    const res = await api.get<{ id: number; name: string; is_active: boolean; suggested: string | null }[]>('/lab/tests/department-suggestions')
+    setSorting(res.data.map((t) => ({ ...t, department: t.suggested ?? '' })))
+  }
+  const saveSorting = async () => {
+    const chosen = (sorting ?? []).filter((t) => t.department)
+    if (chosen.length === 0) return setSorting(null)
+    try {
+      await api.put('/lab/tests/departments', { tests: chosen.map((t) => ({ id: t.id, department: t.department })) })
+      setNotice(`${chosen.length} ${chosen.length === 1 ? 'test' : 'tests'} filed under ${chosen.length === 1 ? 'its department' : 'their departments'}. Reports print them under those headings from now on.`)
+      setSorting(null)
+      load()
+    } catch (err) {
+      setErrors(fieldErrors(err))
+    }
+  }
   const errorList = Object.entries(errors).filter(([field]) => field.startsWith('parameters') || field === '_' || field === 'kind' || field === 'default_comment')
 
   return (
@@ -115,7 +147,21 @@ export function LabTests() {
         <div className="toolbar">
           <h1>Report templates</h1>
           <input className="search" type="search" placeholder="Filter tests" value={filter} onChange={(e) => setFilter(e.target.value)} />
-          {canEdit && !ordering && tests.length > 1 && (
+          <select className="dept-filter" value={showing} onChange={(e) => setShowing(e.target.value)} aria-label="Department">
+            <option value="">All departments ({tests.length})</option>
+            {inUse.map((d) => (
+              <option key={d} value={d}>
+                {d} ({tests.filter((t) => (t.department ?? '').trim().toLowerCase() === d.toLowerCase()).length})
+              </option>
+            ))}
+            <option value="-">No department ({unfiled.length})</option>
+          </select>
+          {canEdit && !ordering && !sorting && unfiled.length > 0 && (
+            <button className="btn ghost" onClick={startSorting} title="File the tests that have no department">
+              Sort into departments ({unfiled.length})
+            </button>
+          )}
+          {canEdit && !ordering && !sorting && tests.length > 1 && (
             <button
               className="btn ghost"
               onClick={() => {
@@ -127,7 +173,7 @@ export function LabTests() {
               Re-order tests
             </button>
           )}
-          {canEdit && !ordering && (
+          {canEdit && !ordering && !sorting && (
             <>
               <button className="btn ghost" onClick={() => open('new', 'text')}>
                 + New written report
@@ -178,7 +224,58 @@ export function LabTests() {
           </div>
         )}
 
-        {!ordering && (
+        {sorting && (
+          <div>
+            <p className="muted small">
+              These tests have no department yet. Each one shows the department its name suggests: check it, change it where it is wrong, and leave it empty to decide later. Nothing is saved until you press the button.
+            </p>
+            <div className="table-wrap">
+              <table className="compact">
+                <thead>
+                  <tr>
+                    <th>Test / report</th>
+                    <th>Department</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorting.map((t) => (
+                    <tr key={t.id} className={`static ${t.is_active ? '' : 'faded'}`}>
+                      <td>
+                        {t.name}
+                        {!t.suggested && <small className="muted block">No suggestion: the name does not say</small>}
+                      </td>
+                      <td>
+                        <select value={t.department} onChange={(e) => setSorting((rows) => rows && rows.map((r) => (r.id === t.id ? { ...r, department: e.target.value } : r)))} aria-label={`Department of ${t.name}`}>
+                          <option value="">Leave for later</option>
+                          {departments.map((d) => (
+                            <option key={d} value={d}>
+                              {d}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                  {sorting.length === 0 && (
+                    <tr className="empty">
+                      <td colSpan={2}>Every test already has a department.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="panel-foot row">
+              <button className="btn ghost" onClick={() => setSorting(null)}>
+                Cancel
+              </button>
+              <button className="btn primary" onClick={saveSorting} disabled={!sorting.some((t) => t.department)}>
+                File {sorting.filter((t) => t.department).length} under their departments
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!ordering && !sorting && (
         <div className="table-wrap">
           <table>
             <thead>
@@ -231,7 +328,14 @@ export function LabTests() {
               <div className="span-2">
                 <TextField label="Test / report name" required value={form.name} onChange={set('name')} error={errors.name} autoFocus />
               </div>
-              <TextField label="Department" placeholder="Biochemistry" value={form.department} onChange={set('department')} error={errors.department} />
+              <div>
+                <TextField label="Department" placeholder="Choose, or type your own" list="lab-departments" value={form.department} onChange={set('department')} error={errors.department} />
+                <datalist id="lab-departments">
+                  {inUse.map((d) => (
+                    <option key={d} value={d} />
+                  ))}
+                </datalist>
+              </div>
               <TextField label="Sample type" placeholder="Blood" value={form.sample_type} onChange={set('sample_type')} error={errors.sample_type} />
               <TextField label="Price (₹)" required type="number" min={0} step="0.01" value={form.price} onChange={set('price')} error={errors.price} />
               <TextField label="Print order" type="number" min={0} value={form.print_order} onChange={set('print_order')} error={errors.print_order} />

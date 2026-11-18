@@ -11,6 +11,7 @@ use App\Models\LabPackage;
 use App\Models\LabResult;
 use App\Models\LabTest;
 use App\Models\Setting;
+use App\Support\LabDepartments;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -48,6 +49,44 @@ class LabController extends Controller
         $this->authorizeLab($request);
 
         return response()->json($this->saveTest($test, $request));
+    }
+
+    /**
+     * Tests not yet filed under a department, each with the department its name suggests, for a person to look
+     * over and correct before anything is saved.
+     */
+    public function departmentSuggestions(Request $request): JsonResponse
+    {
+        $this->authorizeLab($request);
+        $listed = Setting::group('lab', Setting::LAB_DEFAULTS)['departments'];
+
+        return response()->json(
+            LabTest::where(fn ($q) => $q->whereNull('department')->orWhere('department', ''))->orderBy('print_order')->orderBy('name')->get(['id', 'name', 'kind', 'is_active'])
+                ->map(function (LabTest $test) use ($listed) {
+                    $guess = LabDepartments::guess($test->name);
+
+                    // Only a department the hospital actually keeps is suggested.
+                    return ['id' => $test->id, 'name' => $test->name, 'is_active' => $test->is_active, 'suggested' => in_array($guess, $listed, true) ? $guess : null];
+                })
+        );
+    }
+
+    /** Files many tests under their departments in one go. Orders already made keep what they were printed with. */
+    public function assignDepartments(Request $request): JsonResponse
+    {
+        $this->authorizeLab($request);
+        $data = $request->validate([
+            'tests' => ['required', 'array', 'min:1', 'max:2000'],
+            'tests.*.id' => ['required', 'integer', 'distinct', 'exists:lab_tests,id'],
+            'tests.*.department' => ['nullable', 'string', 'max:255'],
+        ]);
+        DB::transaction(function () use ($data) {
+            foreach ($data['tests'] as $row) {
+                LabTest::whereKey($row['id'])->update(['department' => filled($row['department'] ?? null) ? trim($row['department']) : null]);
+            }
+        });
+
+        return response()->json(['updated' => count($data['tests'])]);
     }
 
     /** Sets the order tests appear in pick lists and on printed reports: the ids given, first to last. */
@@ -225,7 +264,20 @@ class LabController extends Controller
             'print_approved_date' => ['required', 'boolean'],
             'approval_required' => ['required', 'boolean'],
             'tabular_print' => ['sometimes', 'boolean'],
-        ]);
+            'departments' => ['sometimes', 'array', 'max:40'],
+            'departments.*' => ['required', 'string', 'max:60', 'distinct:ignore_case'],
+            'group_by_department' => ['sometimes', 'boolean'],
+            'department_on_new_page' => ['sometimes', 'boolean'],
+            'print_method' => ['sometimes', 'boolean'],
+            'print_end_mark' => ['sometimes', 'boolean'],
+            'report_note' => ['sometimes', 'nullable', 'string', 'max:500'],
+        ], ['departments.*.distinct' => 'The same department is in the list twice.']);
+        if (array_key_exists('departments', $data)) {
+            $data['departments'] = array_values(array_map('trim', $data['departments']));
+        }
+        if (array_key_exists('report_note', $data)) {
+            $data['report_note'] = (string) $data['report_note'];
+        }
 
         // Keep what this form does not send, such as the signature pictures.
         Setting::updateOrCreate(['key' => 'lab'], ['value' => array_merge(Setting::group('lab', Setting::LAB_DEFAULTS), $data)]);
@@ -516,10 +568,18 @@ class LabController extends Controller
 
     private function present(LabOrder $order): LabOrder
     {
-        return $this->withPrevious($order->fresh()->load([
+        $order = $this->withPrevious($order->fresh()->load([
             'patient:id,uhid,title,name,gender,date_of_birth,mobile', 'items.results', 'items.reporter:id,name,signature_text', 'items.approver:id,name,signature_text',
             'bill:id,bill_no,total,paid', 'files.uploader:id,name',
         ]));
+        // A test ordered before it was filed under a department is shown under the one it has now.
+        $missing = $order->items->filter(fn (LabOrderItem $item) => blank($item->department) && $item->lab_test_id);
+        if ($missing->isNotEmpty()) {
+            $now = LabTest::whereIn('id', $missing->pluck('lab_test_id'))->pluck('department', 'id');
+            $missing->each(fn (LabOrderItem $item) => $item->department = $now[$item->lab_test_id] ?? null);
+        }
+
+        return $order;
     }
 
     /**
