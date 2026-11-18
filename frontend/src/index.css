@@ -1505,3 +1505,8 @@ h2 .count { display: inline-block; min-width: 1.6em; margin-left: 6px; padding: 
   .count-sheet input.count-box { border: 1px solid #000; background: #fff; color: #000; }
   .count-sheet td, .count-sheet th { border-bottom: 1px solid #999; padding: 6px 8px; }
 }
+
+/* Payments on a pharmacy bill: the mode can be corrected from the line itself */
+.payments-list li { align-items: baseline; }
+.payments-list li > span:first-child { flex: 1; }
+.payments-list li .link { font-size: 0.86rem; white-space: nowrap; }

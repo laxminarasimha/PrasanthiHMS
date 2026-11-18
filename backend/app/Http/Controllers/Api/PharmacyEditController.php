@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Payment;
 use App\Models\PharmacyChange;
+use App\Models\PharmacyPayment;
 use App\Models\PharmacySale;
 use App\Models\PurchaseInvoice;
 use App\Models\StockBatch;
@@ -24,6 +25,50 @@ use Illuminate\Validation\ValidationException;
 class PharmacyEditController extends Controller
 {
     private const REASON = ['required', 'string', 'min:3', 'max:255'];
+
+    /**
+     * Corrects how a payment or refund on a bill was taken, when it was entered under the wrong mode:
+     * cash put down as UPI, and the like. The amount and the day stay as they are; the change is kept in the
+     * Bill modified report with who made it and why.
+     */
+    public function updatePayment(Request $request, PharmacySale $sale, PharmacyPayment $payment): JsonResponse
+    {
+        $this->authorizePharmacy($request);
+        abort_unless($payment->pharmacy_sale_id === $sale->id, 404);
+
+        $data = $request->validate([
+            'mode' => ['required', Rule::in(Payment::MODES)],
+            'reference' => ['nullable', 'string', 'max:255'],
+            'reason' => self::REASON,
+        ], ['reason.required' => 'Say why the payment mode is being changed.']);
+
+        if ($sale->voided_at) {
+            throw ValidationException::withMessages(['mode' => 'This bill has been deleted.']);
+        }
+        if (! in_array($payment->mode, Payment::MODES, true)) {
+            throw ValidationException::withMessages(['mode' => 'This entry is not money taken at the counter, so its mode cannot be changed.']);
+        }
+        $reference = $data['reference'] ?? null;
+        if ($payment->mode === $data['mode'] && ($payment->reference ?? null) === $reference) {
+            throw ValidationException::withMessages(['mode' => 'That is already how this payment is recorded.']);
+        }
+
+        DB::transaction(function () use ($sale, $payment, $data, $reference, $request) {
+            $what = ($payment->type === 'refund' ? 'Refund' : 'Payment').' of ₹'.rtrim(rtrim(number_format($payment->amount, 2, '.', ''), '0'), '.').' on '.$payment->created_at->format('j M Y');
+            $changes = PharmacyChange::differences(['mode' => 'mode', 'reference' => 'reference'], ['mode' => $payment->mode, 'reference' => $payment->reference], ['mode' => $data['mode'], 'reference' => $reference], "{$what} ");
+
+            $payment->update(['mode' => $data['mode'], 'reference' => $reference]);
+            // The bill itself carries the mode of the first money taken on it, which is what its print shows.
+            $first = $sale->payments()->where('type', 'payment')->first();
+            if ($first && $sale->payment_mode !== $first->mode) {
+                $sale->update(['payment_mode' => $first->mode, 'reference' => $first->reference]);
+            }
+
+            $this->log('sale', $sale->id, $sale->bill_no, $changes, $data['reason'], $request);
+        });
+
+        return response()->json($sale->fresh()->load(['items', 'patient:id,uhid,title,name', 'seller:id,name', 'payments.receiver:id,name', 'returns']));
+    }
 
     /**
      * Corrects a saved bill: customer details, the bill discount, and the quantity or discount of each line

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Appointment;
+use App\Models\DayClose;
 use App\Models\Medicine;
 use App\Models\Patient;
 use App\Models\PharmacySale;
@@ -106,6 +107,43 @@ class PharmacyCompleteTest extends TestCase
 
         $this->getJson('/api/pharmacy/reports/deleted-bills')->assertOk()->assertJsonCount(1, 'rows')->assertJsonPath('rows.0.reason', 'Billed to the wrong customer');
         $this->getJson('/api/pharmacy/dashboard')->assertOk()->assertJsonPath('sales', 0)->assertJsonPath('billed', 0)->assertJsonPath('collected', 0);
+    }
+
+    public function test_a_payment_entered_under_the_wrong_mode_can_be_corrected_with_a_reason(): void
+    {
+        $sale = $this->sell(10, 20); // 28 billed, 20 paid in cash
+        $later = $this->postJson("/api/pharmacy/sales/{$sale['id']}/payments", ['amount' => 8, 'mode' => 'cash'])->assertCreated()->json();
+        [$first, $second] = $later['payments'];
+        $url = "/api/pharmacy/sales/{$sale['id']}/payments";
+
+        $this->putJson("{$url}/{$first['id']}", ['mode' => 'upi'])->assertStatus(422)->assertJsonValidationErrors('reason');
+        $this->putJson("{$url}/{$first['id']}", ['mode' => 'gold', 'reason' => 'Wrong mode'])->assertStatus(422)->assertJsonValidationErrors('mode');
+        $this->putJson("{$url}/{$first['id']}", ['mode' => 'cash', 'reason' => 'Wrong mode'])->assertStatus(422)->assertJsonValidationErrors('mode'); // nothing to change
+
+        // The first payment was really by UPI: the bill follows it, and nothing else about the money moves.
+        $this->putJson("{$url}/{$first['id']}", ['mode' => 'upi', 'reference' => 'UPI 4411', 'reason' => 'Paid by PhonePe, entered as cash'])->assertOk()
+            ->assertJsonPath('payments.0.mode', 'upi')->assertJsonPath('payments.0.reference', 'UPI 4411')->assertJsonPath('payments.0.amount', 20)
+            ->assertJsonPath('payments.1.mode', 'cash')->assertJsonPath('payment_mode', 'upi')->assertJsonPath('paid', 28)->assertJsonPath('due', 0);
+        // A later payment changes only itself.
+        $this->putJson("{$url}/{$second['id']}", ['mode' => 'card', 'reason' => 'Swiped, not cash'])->assertOk()->assertJsonPath('payments.1.mode', 'card')->assertJsonPath('payment_mode', 'upi');
+        $this->getJson('/api/pharmacy/dashboard')->assertOk()->assertJsonPath('collected', 28)->assertJsonPath('collected_cash', 0)->assertJsonPath('collected_card', 8)->assertJsonPath('collected_other', 20);
+
+        // Both changes are in the Bill modified report, with the reason.
+        $changes = $this->getJson('/api/pharmacy/reports/bills-modified')->assertOk()->json('rows');
+        $this->assertCount(2, $changes);
+        $this->assertStringContainsString('mode: cash → upi', json_encode($changes, JSON_UNESCAPED_UNICODE));
+        $this->assertStringContainsString('Paid by PhonePe, entered as cash', json_encode($changes, JSON_UNESCAPED_UNICODE));
+
+        // A payment that belongs to another bill cannot be reached through this one.
+        $other = $this->sell(10, 28);
+        $this->putJson("/api/pharmacy/sales/{$other['id']}/payments/{$first['id']}", ['mode' => 'cash', 'reason' => 'Wrong bill'])->assertNotFound();
+
+        // Once the day's accounts are closed its cash and bank totals cannot be moved; a deleted bill is left alone too.
+        DayClose::create(['day' => today()->toDateString(), 'closed_by_name' => 'Admin', 'closed_at' => now(), 'expected_cash' => 0, 'counted_cash' => 0, 'variance' => 0, 'snapshot' => []]);
+        $this->putJson("{$url}/{$second['id']}", ['mode' => 'cash', 'reason' => 'Back to cash'])->assertStatus(423);
+        DayClose::query()->delete();
+        $this->deleteJson("/api/pharmacy/sales/{$sale['id']}", ['reason' => 'Billed twice'])->assertSuccessful();
+        $this->putJson("{$url}/{$second['id']}", ['mode' => 'cash', 'reason' => 'Back to cash'])->assertStatus(422);
     }
 
     public function test_dashboard_shows_sales_money_by_mode_inventory_and_fast_movers(): void
