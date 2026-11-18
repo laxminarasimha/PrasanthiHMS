@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Appointment;
+use App\Models\AuditLog;
 use App\Models\Patient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -41,6 +43,10 @@ class PatientController extends Controller
             // Exact match, for the "this number is already registered" check.
             ->when($request->string('mobile')->trim()->value(), fn ($query, $mobile) => $query
                 ->where(fn ($w) => $w->where('mobile', $mobile)->orWhere('mobile_alt', $mobile)))
+            // When each patient was last seen, for the patients list: a visit they came for, not one only booked.
+            ->select('patients.*')
+            ->addSelect(['last_visit_at' => Appointment::selectRaw('max(scheduled_at)')->whereColumn('patient_id', 'patients.id')
+                ->whereIn('status', ['arrived', 'ongoing', 'reviewed'])])
             ->latest('id')
             ->paginate(20);
 
@@ -73,7 +79,7 @@ class PatientController extends Controller
         $data['created_by'] = $request->user()->id;
 
         $patient = Patient::create($data)->refresh();
-        \App\Models\AuditLog::record('patient.registered', $patient->id, $patient);
+        AuditLog::record('patient.registered', $patient->id, $patient);
 
         return response()->json($patient, 201);
     }
@@ -89,8 +95,8 @@ class PatientController extends Controller
         $labels = ['title' => 'Title', 'name' => 'Name', 'gender' => 'Gender', 'date_of_birth' => 'Date of birth', 'mobile' => 'Mobile', 'mobile_alt' => 'Other mobile', 'email' => 'Email', 'blood_group' => 'Blood group', 'allergies' => 'Allergies', 'address' => 'Address', 'city' => 'City', 'pincode' => 'PIN code', 'care_of' => 'Care of', 'occupation' => 'Occupation', 'referred_by' => 'Referred by'];
         $before = $patient->only(array_keys($labels));
         $patient->update($this->validated($request) + ['is_temporary' => false]);
-        if ($summary = \App\Models\AuditLog::changed($labels, array_map(fn ($v) => $v instanceof \DateTimeInterface ? $v->format('Y-m-d') : $v, $before), array_map(fn ($v) => $v instanceof \DateTimeInterface ? $v->format('Y-m-d') : $v, $patient->only(array_keys($labels))))) {
-            \App\Models\AuditLog::record('patient.updated', $patient->id, $patient, $summary);
+        if ($summary = AuditLog::changed($labels, array_map(fn ($v) => $v instanceof \DateTimeInterface ? $v->format('Y-m-d') : $v, $before), array_map(fn ($v) => $v instanceof \DateTimeInterface ? $v->format('Y-m-d') : $v, $patient->only(array_keys($labels))))) {
+            AuditLog::record('patient.updated', $patient->id, $patient, $summary);
         }
 
         return response()->json($patient);
