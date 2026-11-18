@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuditLog;
 use App\Models\Bed;
+use App\Models\DayClose;
 use App\Models\IpdService;
 use App\Models\Patient;
 use App\Models\User;
@@ -35,6 +37,35 @@ class IpdTest extends TestCase
             'admitted_at' => now()->subDays(2)->format('Y-m-d H:i'),
             'reason' => 'Fever for evaluation',
         ]);
+    }
+
+    public function test_an_ipd_payment_entered_under_the_wrong_mode_can_be_corrected_with_a_reason(): void
+    {
+        $case = $this->admit()->assertCreated()->json();
+        $url = "/api/ipd/admissions/{$case['id']}/payments";
+        $payment = $this->postJson($url, ['type' => 'advance', 'amount' => 5000, 'mode' => 'cash'])->assertCreated()->json('payments.0.id');
+
+        $this->putJson("{$url}/{$payment}", ['mode' => 'upi'])->assertStatus(422)->assertJsonValidationErrors('reason');
+        $this->putJson("{$url}/{$payment}", ['mode' => 'cash', 'reason' => 'Wrong mode'])->assertStatus(422)->assertJsonValidationErrors('mode'); // nothing to change
+
+        // Only the mode moves: the amount and what has been received stay as they were.
+        $this->putJson("{$url}/{$payment}", ['mode' => 'upi', 'reference' => 'UPI 9911', 'reason' => 'Advance came by PhonePe, entered as cash'])->assertOk()
+            ->assertJsonPath('payments.0.mode', 'upi')->assertJsonPath('payments.0.reference', 'UPI 9911')->assertJsonPath('payments.0.amount', 5000)
+            ->assertJsonPath('payments.0.type', 'advance')->assertJsonPath('paid', 5000);
+        $log = AuditLog::where('action', 'ipd.payment_mode')->sole();
+        $this->assertStringContainsString('advance of ₹5000', $log->summary);
+        $this->assertStringContainsString('changed from cash to upi (UPI 9911). Reason: Advance came by PhonePe, entered as cash', $log->summary);
+
+        // Not through another case, and not by someone who does not work in IPD.
+        $other = $this->admit(['bed_id' => null])->assertCreated()->json('id');
+        $this->putJson("/api/ipd/admissions/{$other}/payments/{$payment}", ['mode' => 'card', 'reason' => 'Wrong case'])->assertNotFound();
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $this->putJson("{$url}/{$payment}", ['mode' => 'cash', 'reason' => 'Not my desk'])->assertForbidden();
+
+        // Once the day's accounts are closed, its cash and bank totals cannot be moved.
+        Sanctum::actingAs(User::factory()->create(['role' => 'nurse']));
+        DayClose::create(['day' => today()->toDateString(), 'closed_by_name' => 'Admin', 'closed_at' => now(), 'expected_cash' => 0, 'counted_cash' => 0, 'variance' => 0, 'snapshot' => []]);
+        $this->putJson("{$url}/{$payment}", ['mode' => 'cash', 'reason' => 'Back to cash'])->assertStatus(423);
     }
 
     public function test_beds_and_services_can_be_set_up_and_duplicate_beds_are_refused(): void

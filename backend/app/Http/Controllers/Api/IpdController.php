@@ -8,6 +8,7 @@ use App\Models\Admission;
 use App\Models\AdmissionBill;
 use App\Models\AdmissionCharge;
 use App\Models\AdmissionPayment;
+use App\Models\AuditLog;
 use App\Models\Bed;
 use App\Models\Bill;
 use App\Models\IpdBillTemplate;
@@ -438,6 +439,38 @@ class IpdController extends Controller
     }
 
     /** Removes a payment entered by mistake. Money actually handed back is a refund, not a deletion. */
+    /**
+     * Corrects how an advance, payment or refund was taken when it was entered under the wrong mode:
+     * cash put down as UPI, and the like. The amount and the day stay as they are, and the change is
+     * kept in the record with who made it and why.
+     */
+    public function updatePayment(Request $request, Admission $admission, AdmissionPayment $payment): JsonResponse
+    {
+        abort_unless($payment->admission_id === $admission->id, 404);
+
+        $data = $request->validate([
+            'mode' => ['required', Rule::in(Payment::MODES)],
+            'reference' => ['nullable', 'string', 'max:255'],
+            'reason' => ['required', 'string', 'min:3', 'max:255'],
+        ], ['reason.required' => 'Say why the payment mode is being changed.']);
+
+        // An entry that is not money taken at the counter, such as one moved from another bill, keeps its mode.
+        if (! in_array($payment->mode, Payment::MODES, true)) {
+            throw ValidationException::withMessages(['mode' => 'This entry is not money taken at the counter, so its mode cannot be changed.']);
+        }
+        $reference = $data['reference'] ?? null;
+        if ($payment->mode === $data['mode'] && $payment->reference === $reference) {
+            throw ValidationException::withMessages(['mode' => 'That is already how this payment is recorded.']);
+        }
+
+        $was = $payment->mode;
+        $payment->update(['mode' => $data['mode'], 'reference' => $reference]);
+        AuditLog::record('ipd.payment_mode', $admission->patient_id, $admission, 'IPD '.$admission->ipd_no.': '.$payment->type.' of ₹'.(float) $payment->amount
+            .' on '.$payment->created_at->format('j M Y').' changed from '.$was.' to '.$data['mode'].($reference ? " ({$reference})" : '').'. Reason: '.$data['reason']);
+
+        return response()->json($this->present($admission));
+    }
+
     public function removePayment(Request $request, Admission $admission, AdmissionPayment $payment): JsonResponse
     {
         abort_unless($payment->admission_id === $admission->id, 404);
