@@ -37,6 +37,8 @@ export function IpdCase() {
   const [beds, setBeds] = useState<Bed[]>([])
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  /** True while something is being saved, so the money buttons cannot be pressed a second time meanwhile. */
+  const [busy, setBusy] = useState(false)
   const [charge, setCharge] = useState({ ipd_service_id: '', description: '', charged_on: today(), quantity: '1', unit_price: '', discount: '', remarks: '' })
   /** The charge being corrected, when the form is editing one instead of adding. */
   const [editingCharge, setEditingCharge] = useState<number | null>(null)
@@ -85,6 +87,7 @@ export function IpdCase() {
   // Sends one change, then shows the updated case or the reason it was refused.
   const run = async (request: Promise<{ data: Admission }>, done?: string) => {
     setNotice('')
+    setBusy(true)
     try {
       apply((await request).data)
       if (done) setNotice(done)
@@ -92,6 +95,8 @@ export function IpdCase() {
     } catch (err) {
       setError(Object.values(fieldErrors(err))[0])
       return false
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -296,7 +301,8 @@ export function IpdCase() {
                         Edit
                       </button>
                     )}
-                    {!billLocked && !c.admission_bill_id && (
+                    {/* A line for medicines taken back at the pharmacy leaves with the pharmacy bill's own line, not by itself. */}
+                    {!billLocked && !c.admission_bill_id && c.source_type !== 'pharmacy_return' && (
                       <button className="link danger" onClick={() => window.confirm(`Remove "${c.description}" from the bill?`) && run(api.delete(`${url}/charges/${c.id}`))}>
                         Remove
                       </button>
@@ -342,7 +348,7 @@ export function IpdCase() {
           <input type="number" min={0} step="0.01" placeholder="Rate ₹" value={charge.unit_price} onChange={(e) => setCharge((c) => ({ ...c, unit_price: e.target.value }))} aria-label="Rate" />
           <input type="number" min={0} step="0.01" placeholder="Disc. ₹" value={charge.discount} onChange={(e) => setCharge((c) => ({ ...c, discount: e.target.value }))} aria-label="Discount on this charge" />
           <input placeholder="Remarks (optional)" value={charge.remarks} onChange={(e) => setCharge((c) => ({ ...c, remarks: e.target.value }))} aria-label="Remarks" />
-          <button className="btn primary" disabled={!charge.description || charge.unit_price === ''}>
+          <button className="btn primary" disabled={busy || !charge.description || charge.unit_price === ''}>
             {editingCharge ? 'Save charge' : 'Add charge'}
           </button>
           {editingCharge && (
@@ -397,7 +403,7 @@ export function IpdCase() {
                     <small className="muted"> · {longDate(o.date)}</small>
                   </span>
                   <span className="mono">{rupees(o.due)} due</span>
-                  <button type="button" className="link" onClick={() => run(api.post(`${url}/transfer`, { type: o.type, id: o.id }), `${o.label} was added to the IPD bill.`)}>
+                  <button type="button" className="link" disabled={busy} onClick={() => run(api.post(`${url}/transfer`, { type: o.type, id: o.id }), `${o.label} was added to the IPD bill.`)}>
                     Add to IPD bill
                   </button>
                 </li>
@@ -608,8 +614,8 @@ export function IpdCase() {
           <input placeholder="Reference (optional)" value={pay.reference} onChange={(e) => setPay((p) => ({ ...p, reference: e.target.value }))} aria-label="Reference" />
           <input type="date" value={pay.paid_on} max={today()} min={admission.admitted_at.slice(0, 10)} onChange={(e) => setPay((p) => ({ ...p, paid_on: e.target.value || today() }))} aria-label="Date received" title="Date the money was received" />
           <input placeholder="Remarks (optional)" value={pay.remarks} onChange={(e) => setPay((p) => ({ ...p, remarks: e.target.value }))} aria-label="Payment remarks" />
-          <button className="btn primary" disabled={!pay.amount || Number(pay.amount) <= 0}>
-            Record
+          <button className="btn primary" disabled={busy || !pay.amount || Number(pay.amount) <= 0}>
+            {busy ? 'Saving…' : 'Record'}
           </button>
         </form>
         </>

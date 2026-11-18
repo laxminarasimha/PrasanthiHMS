@@ -1,4 +1,4 @@
-import axios, { AxiosError } from 'axios'
+import axios, { AxiosError, type AxiosResponse } from 'axios'
 
 const TOKEN_KEY = 'hms_token'
 
@@ -18,13 +18,33 @@ export const USER_KEY = 'hms_user'
 export const api = axios.create({
   baseURL: '/api',
   headers: { Accept: 'application/json' },
+  // A request that gets no answer gives up after a minute, so a screen is never left on "Saving…" for good.
+  timeout: 60_000,
 })
 
 api.interceptors.request.use((config) => {
   const token = getToken()
   if (token) config.headers.Authorization = `Bearer ${token}`
+  // Sending a scanned paper or writing a backup can honestly take longer on a slow line.
+  if (config.data instanceof FormData || config.url?.startsWith('/backups')) config.timeout = 300_000
   return config
 })
+
+// A button pressed twice sends the same thing twice. While the first is still on its way, the second is not sent:
+// it waits for the first one's answer and gets that. So a double click on "Record" or "Save" can never enter anything twice,
+// on any screen, whether or not the button greys out.
+const send = axios.getAdapter(api.defaults.adapter)
+const onTheWay = new Map<string, Promise<AxiosResponse>>()
+api.defaults.adapter = (config) => {
+  const method = (config.method ?? 'get').toLowerCase()
+  if (method === 'get' || typeof config.data !== 'string') return send(config)
+  const key = `${method} ${config.url} ${config.data}`
+  const first = onTheWay.get(key)
+  if (first) return first
+  const sent = send(config).finally(() => onTheWay.delete(key))
+  onTheWay.set(key, sent)
+  return sent
+}
 
 api.interceptors.response.use(undefined, (error: AxiosError) => {
   // An expired or revoked token sends the user back to the sign-in page.
@@ -43,9 +63,15 @@ export function fieldErrors(error: unknown): FieldErrors {
   if (data?.errors) {
     return Object.fromEntries(Object.entries(data.errors).map(([field, messages]) => [field, messages[0]]))
   }
-  // No reply at all means the request never arrived: the internet or the server is down, not the entry.
+  // No reply at all: the internet or the server is down, or the answer was lost on the way back.
+  // For something being saved that is not the same as "not saved", so the message does not claim it.
   if (!(error as AxiosError).response) {
-    return { _: 'Could not reach the server. Check the internet connection and try again; nothing was saved.' }
+    const reading = ((error as AxiosError).config?.method ?? 'get').toLowerCase() === 'get'
+    return {
+      _: reading
+        ? 'Could not reach the server. Check the internet connection and try again.'
+        : 'No reply came back from the server, so this may or may not have been saved. Check the internet connection, then look whether it is there before entering it again.',
+    }
   }
   return { _: data?.message ?? 'Something went wrong. Please try again.' }
 }

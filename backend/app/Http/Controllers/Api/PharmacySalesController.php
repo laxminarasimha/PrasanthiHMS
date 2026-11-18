@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Admission;
+use App\Models\AdmissionCharge;
 use App\Models\Consultation;
 use App\Models\Manufacturer;
 use App\Models\Medicine;
@@ -90,6 +92,7 @@ class PharmacySalesController extends Controller
     public function collect(Request $request, PharmacySale $sale): JsonResponse
     {
         $this->authorizePharmacy($request);
+        $sale = $this->held($sale);
         $this->refuseIfVoided($sale);
 
         $data = $request->validate([
@@ -115,6 +118,7 @@ class PharmacySalesController extends Controller
     public function returnMedicines(Request $request, PharmacySale $sale): JsonResponse
     {
         $this->authorizePharmacy($request);
+        $sale = $this->held($sale);
         $this->refuseIfVoided($sale);
 
         $data = $request->validate([
@@ -152,6 +156,11 @@ class PharmacySalesController extends Controller
             $value = round($value * $share, 2);
 
             $sale->returned = round($sale->returned + $value, 2);
+            // What has been settled beyond what the bill is now worth. The part that was put on an IPD bill was never
+            // paid at the counter, so it comes off the IPD bill first; only what is left over is handed back as money.
+            $over = round($sale->paid + $sale->ipd_transfer - ($sale->total - $sale->returned), 2);
+            $offIpd = $over > 0 && $sale->ipd_transfer > 0 ? $this->takeOffIpdBill($sale, min($over, (float) $sale->ipd_transfer), $request->user()->id) : 0.0;
+            $sale->ipd_transfer = round($sale->ipd_transfer - $offIpd, 2);
             $worth = max(0, $sale->total - $sale->returned - $sale->ipd_transfer);
             $refund = round(max(0, $sale->paid - $worth), 2);
             $sale->save();
@@ -172,6 +181,7 @@ class PharmacySalesController extends Controller
     {
         $this->authorizePharmacy($request);
         abort_unless($request->user()->allows('canDeleteBills'), 403, 'You are not allowed to delete bills.');
+        $sale = $this->held($sale);
         $this->refuseIfVoided($sale);
 
         $data = $request->validate([
@@ -204,6 +214,50 @@ class PharmacySalesController extends Controller
         });
 
         return response()->json($sale->fresh()->load(self::SALE_WITH));
+    }
+
+    /**
+     * The bill as it stands this instant, held until the request is saved, so two requests arriving together
+     * (a double click, or two counters) are taken one after the other and the second sees what the first did.
+     */
+    private function held(PharmacySale $sale): PharmacySale
+    {
+        return PharmacySale::whereKey($sale->id)->lockForUpdate()->firstOrFail();
+    }
+
+    /**
+     * Medicines taken back from a bill that was moved onto an inpatient's bill: the IPD bill gets a line
+     * taking the amount off again, dated today, so earlier printed bills and closed days stay as they were.
+     * Returns how much came off.
+     */
+    private function takeOffIpdBill(PharmacySale $sale, float $amount, int $userId): float
+    {
+        $charge = AdmissionCharge::where('source_type', 'pharmacy')->where('source_id', $sale->id)->latest('id')->lockForUpdate()->first();
+        $admission = $charge ? Admission::whereKey($charge->admission_id)->lockForUpdate()->first() : null;
+        if (! $admission) {
+            return 0.0;
+        }
+        if ($admission->bill_approved_at) {
+            throw ValidationException::withMessages(['items' => "This bill is on IPD bill {$admission->ipd_no}, which has been approved. Withdraw the approval there first, then take the medicines back."]);
+        }
+        if ($admission->total - $amount < $admission->discount) {
+            throw ValidationException::withMessages(['items' => "This bill is on IPD bill {$admission->ipd_no}. Reduce the discount on that bill first; it would be more than the remaining charges."]);
+        }
+
+        $admission->charges()->create([
+            'description' => "Medicines returned (pharmacy bill {$sale->bill_no})",
+            'category' => $charge->category,
+            'charged_on' => today(),
+            'quantity' => 1,
+            'unit_price' => -$amount,
+            'amount' => -$amount,
+            'created_by' => $userId,
+            'source_type' => 'pharmacy_return',
+            'source_id' => $sale->id,
+        ]);
+        $admission->recalculate();
+
+        return $amount;
     }
 
     private function refuseIfVoided(PharmacySale $sale): void

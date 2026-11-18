@@ -51,7 +51,10 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
   }, [billId])
 
   // Runs one change against the API, then shows the updated bill or the reason it was refused.
+  /** True while something is being saved, so the money buttons cannot be pressed a second time meanwhile. */
+  const [busy, setBusy] = useState(false)
   const run = async (request: Promise<{ data: Bill }>) => {
+    setBusy(true)
     try {
       apply((await request).data)
       onChange()
@@ -59,6 +62,8 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
     } catch (err) {
       setError(Object.values(fieldErrors(err))[0])
       return false
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -178,7 +183,7 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
           <input type="number" min={0} step="0.01" placeholder="Price ₹" value={line.unit_price} disabled={Boolean(line.service_id) && !user?.can_change_price} onChange={(e) => setLine((l) => ({ ...l, unit_price: e.target.value }))} aria-label="Price" />
           <input type="number" min={1} placeholder="Qty" value={line.quantity} onChange={(e) => setLine((l) => ({ ...l, quantity: e.target.value }))} aria-label="Quantity" />
           <input type="number" min={0} step="0.01" placeholder="Disc. ₹" value={line.line_discount} onChange={(e) => setLine((l) => ({ ...l, line_discount: e.target.value }))} aria-label="Line discount" />
-          <button className="btn ghost" disabled={(!line.service_id && !line.description.trim()) || line.unit_price === ''}>
+          <button className="btn ghost" disabled={busy || (!line.service_id && !line.description.trim()) || line.unit_price === ''}>
             Add
           </button>
         </form>
@@ -203,7 +208,7 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
             }}
           >
             <input className="qty" type="number" min={0} step="0.01" value={discount} onChange={(e) => setDiscount(e.target.value)} aria-label="Discount amount" />
-            <button className="btn ghost" disabled={Number(discount || 0) === bill.discount}>
+            <button className="btn ghost" disabled={busy || Number(discount || 0) === bill.discount}>
               {excess > 0 ? `Apply and refund ${rupees(excess)}` : 'Apply'}
             </button>
           </form>
@@ -230,7 +235,7 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
 
       <DepositBox patientId={bill.patient.id} balance={bill.deposit_balance ?? 0} onChange={(balance) => setBill((b) => (b ? { ...b, deposit_balance: balance } : b))} />
       {(bill.deposit_balance ?? 0) > 0 && bill.due > 0 && (
-        <button type="button" className="btn ghost gap-top" onClick={() => run(api.post(`/bills/${billId}/use-deposit`, { amount: Math.min(bill.deposit_balance ?? 0, bill.due) }))}>
+        <button type="button" className="btn ghost gap-top" disabled={busy} onClick={() => run(api.post(`/bills/${billId}/use-deposit`, { amount: Math.min(bill.deposit_balance ?? 0, bill.due) }))}>
           Pay {rupees(Math.min(bill.deposit_balance ?? 0, bill.due))} from the deposit
         </button>
       )}
@@ -255,7 +260,7 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
           >
             {payType === 'payment' ? 'Give a refund instead' : 'Back to collecting payment'}
           </button>
-          <button className="btn primary" disabled={!amount || Number(amount) <= 0}>
+          <button className="btn primary" disabled={busy || !amount || Number(amount) <= 0}>
             {payType === 'payment' ? 'Collect payment' : 'Refund'}
           </button>
         </div>

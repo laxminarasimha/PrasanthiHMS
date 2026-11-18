@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AdmissionPayment;
 use App\Models\AuditLog;
 use App\Models\Bed;
 use App\Models\DayClose;
@@ -66,6 +67,29 @@ class IpdTest extends TestCase
         Sanctum::actingAs(User::factory()->create(['role' => 'nurse']));
         DayClose::create(['day' => today()->toDateString(), 'closed_by_name' => 'Admin', 'closed_at' => now(), 'expected_cash' => 0, 'counted_cash' => 0, 'variance' => 0, 'snapshot' => []]);
         $this->putJson("{$url}/{$payment}", ['mode' => 'cash', 'reason' => 'Back to cash'])->assertStatus(423);
+    }
+
+    public function test_a_back_dated_payment_cannot_land_in_a_closed_day_and_a_repeat_entry_is_caught(): void
+    {
+        $case = $this->admit()->assertCreated()->json();
+        $url = "/api/ipd/admissions/{$case['id']}/payments";
+        $yesterday = now()->subDay()->toDateString();
+
+        // Entered late for yesterday while yesterday is still open: it carries yesterday's date.
+        $this->postJson($url, ['type' => 'advance', 'amount' => 2000, 'mode' => 'cash', 'paid_on' => $yesterday])->assertCreated()->assertJsonPath('paid', 2000);
+        $this->assertSame($yesterday, AdmissionPayment::sole()->created_at->toDateString());
+
+        // Once yesterday's accounts are closed, nothing more can be dated into it.
+        DayClose::create(['day' => $yesterday, 'closed_by_name' => 'Admin', 'closed_at' => now(), 'expected_cash' => 2000, 'counted_cash' => 2000, 'variance' => 0, 'snapshot' => []]);
+        $this->postJson($url, ['type' => 'advance', 'amount' => 5000, 'mode' => 'cash', 'paid_on' => $yesterday])->assertStatus(423);
+        $this->assertSame(1, AdmissionPayment::count());
+
+        // The same entry sent twice in a row (a double click) is recorded once; a different amount goes through.
+        $this->postJson($url, ['type' => 'advance', 'amount' => 5000, 'mode' => 'cash'])->assertCreated()->assertJsonPath('paid', 7000);
+        $this->postJson($url, ['type' => 'advance', 'amount' => 5000, 'mode' => 'cash'])->assertStatus(422)->assertJsonValidationErrors('amount');
+        $this->postJson($url, ['type' => 'advance', 'amount' => 1000, 'mode' => 'cash'])->assertCreated()->assertJsonPath('paid', 8000);
+        $this->travel(10)->seconds();
+        $this->postJson($url, ['type' => 'advance', 'amount' => 1000, 'mode' => 'cash'])->assertCreated()->assertJsonPath('paid', 9000);
     }
 
     public function test_beds_and_services_can_be_set_up_and_duplicate_beds_are_refused(): void

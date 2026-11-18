@@ -290,10 +290,12 @@ class PharmacyAuditController extends Controller
     public function approve(Request $request, StockCount $count): JsonResponse
     {
         $this->mustAudit($request);
-        $this->mustBe($count, 'submitted', 'Only a count that has been handed in can be approved.');
-        $this->saveReview($request, $count);
 
         DB::transaction(function () use ($count, $request) {
+            // Held while it is applied, so approving twice at once (a double click) cannot put the differences into stock twice.
+            $count = StockCount::whereKey($count->id)->lockForUpdate()->firstOrFail();
+            $this->mustBe($count, 'submitted', 'Only a count that has been handed in can be approved.');
+            $this->saveReview($request, $count);
             $lines = $count->lines()->whereNotNull('counted_units')->get();
             $unexplained = $lines->filter(fn (StockCountLine $l) => $l->difference() !== 0 && ! isset(StockCount::REASONS[$l->reason]));
             if ($unexplained->isNotEmpty()) {

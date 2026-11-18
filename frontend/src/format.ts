@@ -1,7 +1,7 @@
 import type { AppointmentStatus } from './types'
 
 export const rupees = (amount: number) =>
-  '₹' + amount.toLocaleString('en-IN', { minimumFractionDigits: amount % 1 ? 2 : 0, maximumFractionDigits: 2 })
+  (amount < 0 ? '-₹' : '₹') + Math.abs(amount).toLocaleString('en-IN', { minimumFractionDigits: amount % 1 ? 2 : 0, maximumFractionDigits: 2 })
 
 /** Today's date as YYYY-MM-DD in the browser's own time zone. */
 export const today = () => {

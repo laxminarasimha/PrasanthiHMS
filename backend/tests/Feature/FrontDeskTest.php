@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\AuditLog;
+use App\Models\Bill;
 use App\Models\DayClose;
+use App\Models\LabTest;
 use App\Models\Patient;
 use App\Models\Payment;
 use App\Models\Service;
@@ -140,6 +142,32 @@ class FrontDeskTest extends TestCase
         Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
         DayClose::create(['day' => today()->toDateString(), 'closed_by_name' => 'Admin', 'closed_at' => now(), 'expected_cash' => 0, 'counted_cash' => 0, 'variance' => 0, 'snapshot' => []]);
         $this->putJson($url, ['mode' => 'cash', 'reason' => 'Back to cash'])->assertStatus(423);
+    }
+
+    public function test_only_front_desk_staff_change_bills_and_lab_staff_only_lab_bills(): void
+    {
+        $bill = $this->book()['bills'][0];
+        $url = "/api/bills/{$bill['id']}";
+        $this->postJson("{$url}/payments", ['type' => 'payment', 'amount' => 200, 'mode' => 'cash'])->assertCreated();
+        $item = $this->getJson($url)->json('items.0.id');
+        $labTest = LabTest::create(['name' => 'CBP', 'price' => 300]);
+        $labBill = $this->postJson('/api/lab/orders', ['patient_id' => $this->patient->id, 'test_ids' => [$labTest->id]])->assertCreated()->json('bill.id');
+
+        // A pharmacist is signed in, but bills are not their work: nothing on the bill moves.
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $this->postJson('/api/bills', ['patient_id' => $this->patient->id, 'description' => 'Dressing', 'unit_price' => 100])->assertForbidden();
+        $this->postJson("{$url}/payments", ['type' => 'refund', 'amount' => 200, 'mode' => 'cash'])->assertForbidden();
+        $this->putJson($url, ['discount' => 200, 'refund_excess' => true, 'refund_mode' => 'cash'])->assertForbidden();
+        $this->postJson("{$url}/items", ['description' => 'Dressing', 'unit_price' => 100])->assertForbidden();
+        $this->deleteJson("{$url}/items/{$item}")->assertForbidden();
+        $this->postJson("/api/bills/{$labBill}/payments", ['type' => 'payment', 'amount' => 300, 'mode' => 'cash'])->assertForbidden();
+        $this->assertEquals(200, Bill::find($bill['id'])->paid);
+        $this->assertEquals(0, Bill::find($bill['id'])->discount);
+
+        // Lab staff take money on lab bills, and leave front desk bills alone.
+        Sanctum::actingAs(User::factory()->create(['role' => 'lab_tech']));
+        $this->postJson("/api/bills/{$labBill}/payments", ['type' => 'payment', 'amount' => 300, 'mode' => 'cash'])->assertCreated()->assertJsonPath('due', 0);
+        $this->postJson("{$url}/payments", ['type' => 'refund', 'amount' => 200, 'mode' => 'cash'])->assertForbidden();
     }
 
     public function test_overpayment_and_excess_refund_and_discount_are_rejected(): void
