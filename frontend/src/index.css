@@ -80,6 +80,9 @@ h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color
 .brand { font-weight: 700; font-size: 1.12rem; letter-spacing: 0.01em; white-space: nowrap; display: flex; align-items: center; gap: 9px; }
 .brand-mark { width: 30px; height: 30px; flex: none; border-radius: 9px; background: #fff; display: grid; place-items: center; }
 .brand-mark svg { width: 18px; height: 18px; fill: var(--bar); }
+/* The hospital's own logo in place of the cross. It sits on white so any logo reads against the coloured bar. */
+.brand-logo { height: 34px; max-width: 132px; flex: none; object-fit: contain; background: #fff; border-radius: 8px; padding: 3px 5px; }
+.brand-logo.large { height: auto; max-height: 84px; max-width: 220px; align-self: flex-start; padding: 0; border-radius: 0; background: none; }
 .brand-name span, .brand.large span { font-weight: 400; opacity: 0.8; }
 .brand.large { font-size: 1.6rem; color: var(--brand-dark); }
 .topbar nav { display: flex; gap: 2px; flex: 1; }
@@ -253,6 +256,12 @@ table.compact th, table.compact td { padding: 6px 6px; white-space: normal; }
 .receipt tbody tr { cursor: default; }
 .receipt .totals { max-width: 280px; margin-left: auto; }
 .receipt-payments { margin-top: 16px; color: var(--muted); }
+/* The strip above a bill on screen: which paper it is going on. Never printed. */
+.print-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0 0 16px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.print-bar .tabs { margin: 0; }
+/* On letterhead paper the hospital's heading is already on the sheet; only the title of the document is printed. */
+.receipt header.on-letterhead { border-bottom: 1px solid var(--text); padding-bottom: 8px; }
+.receipt header.on-letterhead h2 { margin-top: 0; }
 .receipt footer { margin-top: 40px; padding-top: 10px; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.85rem; text-align: center; }
 @media print {
   body { background: #fff; }

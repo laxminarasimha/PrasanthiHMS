@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { rememberBrand } from '../brand'
 import { SetupTabs } from '../components/SetupTabs'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { TextField } from '../components/Field'
@@ -46,6 +47,8 @@ function ClinicDetails() {
     } catch {
       // Not being able to store it only means the next print fetches it.
     }
+    // And the top of the app wears the logo from this moment.
+    rememberBrand({ name: clinic.name, logo: clinic.logo ?? null })
   }
   const save = async (e: FormEvent) => {
     e.preventDefault()
@@ -60,7 +63,7 @@ function ClinicDetails() {
       if (file) {
         const body = new FormData()
         body.append('file', file)
-        done((await api.post<Clinic>('/clinic/logo', body)).data, 'Logo saved.')
+        done((await api.post<Clinic>('/clinic/logo', body)).data, 'Logo saved. It now shows at the top of the app, on the sign-in page and on prints.')
       } else {
         done((await api.delete<Clinic>('/clinic/logo')).data, 'Logo removed.')
       }
@@ -86,8 +89,9 @@ function ClinicDetails() {
       </div>
 
       <h3>Logo</h3>
+      <p className="muted small">Shown at the top of the app, on the sign-in page and the browser tab, and printed at the top of bills, prescriptions and reports. A PNG or JPG up to 500 KB; a square or wide picture on a white or clear background looks best.</p>
       <div className="signature-box">
-        {form.logo ? <img src={form.logo} alt="Hospital logo" /> : <span className="muted small">No logo. The hospital name is printed on its own.</span>}
+        {form.logo ? <img src={form.logo} alt="Hospital logo" /> : <span className="muted small">No logo yet. The hospital name is printed on its own, and the app shows a plain cross.</span>}
         <div className="row">
           <label className="btn ghost small-btn">
             {form.logo ? 'Replace' : 'Upload'}
@@ -138,6 +142,8 @@ function BillingPrefs() {
       setError('')
       try {
         localStorage.setItem('hms_billing', JSON.stringify(res.data))
+        // The print pages read this copy, so the next bill printed on this computer already follows the new setting.
+        localStorage.setItem('hms_bill_print', JSON.stringify({ print_on_letterhead: Boolean(res.data.print_on_letterhead), letterhead_top_mm: res.data.letterhead_top_mm ?? 40, letterhead_bottom_mm: res.data.letterhead_bottom_mm ?? 20 }))
       } catch {
         // The booking form fetches it again if it cannot be stored.
       }
@@ -182,6 +188,34 @@ function BillingPrefs() {
       <h3>IPD bill numbers</h3>
       <p className="muted small">The letters placed before the running number of each numbered IPD bill, for example {form.ipd_bill_prefix || 'IPB'}00012.</p>
       <input className="narrow" maxLength={8} value={form.ipd_bill_prefix ?? 'IPB'} onChange={(e) => setForm({ ...form, ipd_bill_prefix: e.target.value })} aria-label="IPD bill number prefix" />
+
+      <h3>Paper for bills</h3>
+      <p className="muted small">Front desk, pharmacy and IPD bills and receipts. A counter that uses the other kind can change it on the print page, and that computer remembers its choice.</p>
+      {(
+        [
+          [false, 'Plain paper', 'The hospital name, address, phone numbers and logo are printed at the top of each bill.'],
+          [true, 'Letterhead paper', 'Nothing of the hospital is printed: the letterhead already has it. Room is left at the top and bottom of the page.'],
+        ] as const
+      ).map(([value, label, hint]) => (
+        <label className="check top" key={label}>
+          <input type="radio" name="bill_paper" checked={Boolean(form.print_on_letterhead) === value} onChange={() => setForm({ ...form, print_on_letterhead: value })} />
+          <span>
+            {label}
+            <small className="muted block">{hint}</small>
+          </span>
+        </label>
+      ))}
+      <div className="row gap-top">
+        <label className="field">
+          <span className="field-label">Room for the letterhead at the top (mm)</span>
+          <input className="narrow" type="number" min={0} max={150} value={form.letterhead_top_mm ?? 40} onChange={(e) => setForm({ ...form, letterhead_top_mm: Number(e.target.value) })} />
+        </label>
+        <label className="field">
+          <span className="field-label">Room at the bottom (mm)</span>
+          <input className="narrow" type="number" min={0} max={100} value={form.letterhead_bottom_mm ?? 20} onChange={(e) => setForm({ ...form, letterhead_bottom_mm: Number(e.target.value) })} />
+        </label>
+      </div>
+      <p className="muted small">Measure the printed part of your letterhead with a ruler. Lab reports have their own letterhead setting under Lab → Preferences.</p>
 
       {error && <p className="form-error">{error}</p>}
       <div className="panel-foot">

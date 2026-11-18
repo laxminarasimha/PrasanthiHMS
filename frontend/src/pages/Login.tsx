@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom'
 import { fieldErrors } from '../api'
 import { homeFor } from '../access'
 import { useAuth } from '../auth'
+import { BrandMark } from '../components/Brand'
 import { TextField } from '../components/Field'
 
 export function Login() {
@@ -31,6 +32,7 @@ export function Login() {
   return (
     <div className="login">
       <form className="card login-card" onSubmit={submit}>
+        <BrandMark large />
         <span className="eyebrow">Prasanthi Hospitals · Vijayawada</span>
         <div className="brand large">
           Prasanthi <span>HMS</span>

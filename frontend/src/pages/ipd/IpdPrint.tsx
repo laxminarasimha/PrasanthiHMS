@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../../api'
-import { ClinicFooter, ClinicHeader } from '../../components/ClinicHeader'
+import { PaperBar, PaperFooter, PaperHeader } from '../../components/PrintPaper'
+import { useAutoPrint, usePrintPaper } from '../../printPaper'
 import { ADMISSION_STATUS, clock, longDate, modeLabel, rupees, fullName } from '../../format'
 import type { Admission } from '../../types'
 
@@ -9,13 +10,12 @@ import type { Admission } from '../../types'
 export function IpdPrint() {
   const { id, billId } = useParams()
   const [a, setA] = useState<Admission | null>(null)
+  const paper = usePrintPaper()
 
   useEffect(() => {
-    api.get<Admission>(`/ipd/admissions/${id}`).then((res) => {
-      setA(res.data)
-      setTimeout(() => window.print(), 300)
-    })
+    api.get<Admission>(`/ipd/admissions/${id}`).then((res) => setA(res.data))
   }, [id])
+  useAutoPrint(Boolean(a) && paper.ready)
 
   if (!a) return <p className="loading">Loading bill…</p>
 
@@ -26,9 +26,10 @@ export function IpdPrint() {
 
   return (
     <div className="receipt prescription">
-      <ClinicHeader>
+      <PaperBar paper={paper} />
+      <PaperHeader paper={paper}>
         <h2>{bill ? 'Inpatient bill' : `Inpatient ${a.status === 'admitted' ? 'interim bill' : 'final bill'}`}</h2>
-      </ClinicHeader>
+      </PaperHeader>
 
       <div className="receipt-meta">
         <div>
@@ -147,7 +148,7 @@ export function IpdPrint() {
       <div className="signature">
         <strong>{a.doctor.signature_text || a.doctor.name}</strong>
       </div>
-      <ClinicFooter />
+      <PaperFooter paper={paper} />
     </div>
   )
 }

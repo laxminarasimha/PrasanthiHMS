@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../../api'
-import { ClinicFooter, ClinicHeader } from '../../components/ClinicHeader'
+import { PaperBar, PaperFooter, PaperHeader } from '../../components/PrintPaper'
+import { useAutoPrint, usePrintPaper } from '../../printPaper'
 import { clock, expiryLabel, longDate, modeLabel, rupees } from '../../format'
 import type { PharmacySale } from '../../types'
 
@@ -9,21 +10,21 @@ import type { PharmacySale } from '../../types'
 export function PharmacySalePrint() {
   const { id } = useParams()
   const [sale, setSale] = useState<PharmacySale | null>(null)
+  const paper = usePrintPaper()
 
   useEffect(() => {
-    api.get<PharmacySale>(`/pharmacy/sales/${id}`).then((res) => {
-      setSale(res.data)
-      setTimeout(() => window.print(), 300)
-    })
+    api.get<PharmacySale>(`/pharmacy/sales/${id}`).then((res) => setSale(res.data))
   }, [id])
+  useAutoPrint(Boolean(sale) && paper.ready)
 
   if (!sale) return <p className="loading">Loading bill…</p>
 
   return (
     <div className="receipt">
-      <ClinicHeader suffix="Pharmacy">
+      <PaperBar paper={paper} />
+      <PaperHeader paper={paper} suffix="Pharmacy">
         <h2>Pharmacy bill{sale.voided_at ? ' (deleted)' : ''}</h2>
-      </ClinicHeader>
+      </PaperHeader>
 
       <div className="receipt-meta">
         <div>
@@ -124,8 +125,7 @@ export function PharmacySalePrint() {
         Includes GST of {rupees(sale.tax)} (CGST {rupees(Math.round(sale.tax * 50) / 100)} + SGST {rupees(Math.round(sale.tax * 50) / 100)}).
       </p>
 
-      <footer>Billed by {sale.seller?.name}. Medicines once sold are taken back only as per pharmacy policy.</footer>
-      <ClinicFooter />
+      <PaperFooter paper={paper} />
     </div>
   )
 }

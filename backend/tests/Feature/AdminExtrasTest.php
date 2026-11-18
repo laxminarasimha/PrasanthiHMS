@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Appointment;
 use App\Models\Patient;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -70,7 +71,7 @@ class AdminExtrasTest extends TestCase
             ->assertJsonPath('moved.appointments', 1)->assertJsonPath('from_name', 'Ravi Kumar K')->assertJsonPath('to_uhid', $keep->uhid);
 
         $this->assertDatabaseMissing('appointments', ['patient_id' => $duplicate->id]);
-        $this->assertSame(2, \App\Models\Appointment::where('patient_id', $keep->id)->count());
+        $this->assertSame(2, Appointment::where('patient_id', $keep->id)->count());
         $kept = $keep->fresh();
         $this->assertSame(['Penicillin', 'sample@example.test', '9000000002'], [$kept->allergies, $kept->email, $kept->mobile_alt]);
 
@@ -111,6 +112,38 @@ class AdminExtrasTest extends TestCase
         Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
         $this->getJson('/api/admin-lists/payer')->assertOk()->assertJsonCount(1);
         $this->postJson('/api/admin-lists/payer', ['name' => 'Another'])->assertForbidden();
+    }
+
+    public function test_the_sign_in_page_gets_the_hospital_name_and_logo_without_signing_in(): void
+    {
+        Storage::fake('local');
+        // Before anything is set up, and before anyone has signed in.
+        $this->getJson('/api/brand')->assertOk()->assertJsonPath('logo', null)->assertJsonStructure(['name', 'logo']);
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $this->putJson('/api/clinic', ['name' => 'Sample Hospital'])->assertOk();
+        $logo = $this->post('/api/clinic/logo', ['file' => UploadedFile::fake()->image('logo.png', 200, 200)], ['Accept' => 'application/json'])->assertOk()->json('logo');
+
+        $this->app['auth']->forgetGuards();
+        $brand = $this->getJson('/api/brand')->assertOk()->assertJsonPath('name', 'Sample Hospital')->assertJsonPath('logo', $logo)->json();
+        // Only the name and the picture: nothing else of the hospital's details goes out unasked.
+        $this->assertSame(['name', 'logo'], array_keys($brand));
+    }
+
+    public function test_bills_can_be_set_to_print_on_letterhead_paper(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        // Plain paper with the hospital's details until someone says otherwise.
+        $this->getJson('/api/billing-preferences')->assertOk()->assertJsonPath('print_on_letterhead', false)->assertJsonPath('letterhead_top_mm', 40)->assertJsonPath('letterhead_bottom_mm', 20);
+        $prefs = ['default_payment_mode' => 'cash', 'pay_timing' => 'before'];
+        $this->putJson('/api/billing-preferences', $prefs + ['print_on_letterhead' => true])->assertForbidden();
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $this->putJson('/api/billing-preferences', $prefs + ['letterhead_top_mm' => 400])->assertStatus(422)->assertJsonValidationErrors('letterhead_top_mm');
+        $this->putJson('/api/billing-preferences', $prefs + ['print_on_letterhead' => true, 'letterhead_top_mm' => 55, 'letterhead_bottom_mm' => 25])->assertOk()
+            ->assertJsonPath('print_on_letterhead', true)->assertJsonPath('letterhead_top_mm', 55)->assertJsonPath('letterhead_bottom_mm', 25);
+        // Saving the other preferences without these keeps them.
+        $this->putJson('/api/billing-preferences', $prefs)->assertOk()->assertJsonPath('print_on_letterhead', true)->assertJsonPath('letterhead_top_mm', 55);
     }
 
     public function test_new_ipd_cases_take_the_chosen_prefix(): void

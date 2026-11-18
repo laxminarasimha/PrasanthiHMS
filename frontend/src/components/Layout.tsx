@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { BrandMark } from './Brand'
 import { ErrorBoundary } from './ErrorBoundary'
 import { PatientSearch } from './PatientSearch'
 import { onLoadTrouble } from '../api'
@@ -48,11 +49,7 @@ export function Layout() {
           <span />
         </button>
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24">
-              <path d="M9.5 3h5v6.5H21v5h-6.5V21h-5v-6.5H3v-5h6.5z" />
-            </svg>
-          </span>
+          <BrandMark />
           <span className="brand-name">
             Prasanthi <span>HMS</span>
           </span>
