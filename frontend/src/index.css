@@ -269,8 +269,9 @@ table.compact th, table.compact td { padding: 6px 6px; white-space: normal; }
 .receipt .totals { max-width: 280px; margin-left: auto; }
 .receipt-payments { margin-top: 16px; color: var(--muted); }
 /* The strip above a bill on screen: which paper it is going on. Never printed. */
-.print-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0 0 16px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
-.print-bar .tabs { margin: 0; }
+.paper-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0 0 16px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+.paper-bar .tabs { margin: 0; }
+@media (max-width: 640px) { .paper-bar .grow { flex-basis: 100%; } }
 /* On letterhead paper the hospital's heading is already on the sheet; only the title of the document is printed. */
 .receipt header.on-letterhead { border-bottom: 1px solid var(--text); padding-bottom: 8px; }
 .receipt header.on-letterhead h2 { margin-top: 0; }
@@ -578,6 +579,55 @@ h3.flush { margin-top: 0; }
 .lab-signatures .right { margin-left: auto; text-align: right; }
 .letterhead-gap { border: 1px dashed var(--border); color: var(--muted); display: flex; align-items: center; justify-content: center; margin-bottom: 16px; font-size: 0.85rem; }
 @media print { .lab-report section.new-page { break-before: page; } }
+
+.toolbar select.dept-filter { width: auto; max-width: 250px; flex: none; }
+/* ---- The printed lab report ---- */
+/* Whose report it is, in a ruled box: two columns of label and value. */
+.lab-report .lab-patient { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 28px; margin: 0 0 14px; padding: 10px 14px; border: 1px solid var(--text); border-radius: 4px; font-size: 0.88rem; }
+.lab-report .lab-patient div { display: flex; gap: 8px; min-width: 0; }
+.lab-report .lab-patient dt { flex: none; width: 86px; color: var(--muted); }
+.lab-report .lab-patient dt:not(:empty)::after { content: ':'; }
+.lab-report .lab-patient dd { margin: 0; min-width: 0; }
+.lab-report h2.lab-title { text-align: center; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 12px; }
+/* The department a set of tests belongs to: a band across the page. */
+.lab-report .lab-dept { margin: 16px 0 2px; padding: 5px 0; border-top: 1.5px solid var(--text); border-bottom: 1.5px solid var(--text); text-align: center; text-transform: uppercase; letter-spacing: 0.16em; font-size: 0.9rem; font-weight: 700; color: var(--text); }
+.lab-report section:first-of-type .lab-dept { margin-top: 4px; }
+/* The results: one table per department, with no boxes, only a rule under the column names and under each test's name. */
+.lab-report table.lab-values { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.lab-report .lab-values thead th { background: none; color: var(--muted); text-align: left; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; padding: 6px 8px 4px; border: 0; border-bottom: 1px solid var(--text); }
+.lab-report .lab-values td { padding: 3px 8px; border: 0; vertical-align: top; }
+.lab-report .lab-values th:nth-child(1), .lab-report .lab-values td:nth-child(1) { width: 42%; }
+.lab-report .lab-values th:nth-child(2), .lab-report .lab-values td:nth-child(2) { width: 18%; }
+.lab-report .lab-values th:nth-child(3), .lab-report .lab-values td:nth-child(3) { width: 14%; }
+.lab-report .lab-values tr.lab-test-name td { width: auto; padding-top: 12px; padding-bottom: 3px; font-weight: 700; font-size: 0.93rem; border-bottom: 1px solid var(--border); }
+.lab-report .lab-values tr.lab-test-name small { float: right; font-weight: 400; font-size: 0.75rem; color: var(--muted); }
+.lab-report .lab-values tr.lab-test-dates td { width: auto; padding-top: 2px; font-size: 0.74rem; color: var(--muted); }
+.lab-report .lab-values tr.lab-test-dates span + span::before { content: ' · '; }
+.lab-report .lab-values td.result { font-variant-numeric: tabular-nums; }
+.lab-report .lab-values td.abnormal { font-weight: 700; }
+.lab-report .lab-values .flag { display: inline-block; margin-left: 6px; padding: 0 4px; border: 1px solid currentColor; border-radius: 3px; font-size: 0.68rem; line-height: 1.35; vertical-align: 1px; }
+.lab-report .lab-values small.method { display: block; font-size: 0.72rem; font-style: italic; color: var(--muted); }
+.lab-report .lab-values tr.lab-heading td { width: auto; background: none; padding-top: 7px; font-size: 0.74rem; }
+.lab-report .lab-values td.report-text, .lab-report .lab-values td.lab-comment { width: auto; padding-top: 6px; line-height: 1.5; }
+.lab-report .lab-values td.lab-comment { font-size: 0.84rem; }
+.lab-report .lab-values tr.lab-dept-row td { width: auto; padding: 5px 8px; text-align: center; text-transform: uppercase; letter-spacing: 0.16em; font-weight: 700; border-top: 1.5px solid var(--text); border-bottom: 1.5px solid var(--text); }
+.lab-report .lab-values tbody + tbody tr.lab-dept-row td { border-top-width: 1.5px; }
+.lab-report .lab-pending, .lab-report .lab-legend, .lab-report .lab-note { margin: 10px 0 0; font-size: 0.78rem; color: var(--muted); }
+.lab-report .lab-note { text-align: center; font-style: italic; }
+.lab-report .lab-end { margin: 18px 0 0; text-align: center; text-transform: uppercase; letter-spacing: 0.3em; font-size: 0.72rem; color: var(--muted); }
+.lab-report .lab-end::before, .lab-report .lab-end::after { content: ' — '; }
+.lab-report .lab-signatures { margin-top: 40px; }
+.lab-report .lab-signatures small { color: var(--muted); }
+@media print {
+  /* A test is not split across two pages, the column names repeat at the top of each page, and the signatures stay together. */
+  .lab-report .lab-values tbody.lab-test { break-inside: avoid; }
+  .lab-report .lab-values thead { display: table-header-group; }
+  .lab-report .lab-signatures, .lab-report .lab-dept { break-inside: avoid; break-after: avoid; }
+  .lab-report .lab-signatures { break-after: auto; }
+}
+@media (max-width: 640px) {
+  .lab-report .lab-patient { grid-template-columns: 1fr; }
+}
 
 /* Doctor library */
 .pad-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 4px 0 10px; }

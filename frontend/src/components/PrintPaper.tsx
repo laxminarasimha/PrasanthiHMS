@@ -5,7 +5,7 @@ import { ClinicFooter, ClinicHeader } from './ClinicHeader'
 /** The strip above a bill on screen (never printed): which paper it is going on, and a button to print again. */
 export function PaperBar({ paper }: { paper: Paper }) {
   return (
-    <div className="print-bar no-print">
+    <div className="paper-bar no-print">
       <span className="muted">Printing on</span>
       <div className="tabs flush">
         <button type="button" className={paper.letterhead ? '' : 'active'} onClick={() => paper.choose(false)}>

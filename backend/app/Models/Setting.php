@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\LabDepartments;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
@@ -27,6 +28,13 @@ class Setting extends Model
         'print_approved_date' => true,
         'approval_required' => false,
         'tabular_print' => false, // one table for the whole report instead of a section per test
+        // The lab's sections, in the order they are printed. Each test is filed under one.
+        'departments' => LabDepartments::STANDARD,
+        'group_by_department' => true, // a heading for each section on the printed report
+        'department_on_new_page' => false, // each section starts on a fresh page
+        'print_method' => true, // the method under each parameter, where one is set
+        'print_end_mark' => true, // "End of report" after the last result
+        'report_note' => '', // a line of the lab's own at the foot of every report
     ];
 
     /** OPD hours and slot length for the appointment calendar. */
