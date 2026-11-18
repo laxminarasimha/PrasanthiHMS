@@ -239,7 +239,7 @@ export function IpdCase() {
             <IpdNotes admissionId={admission.id} canEdit={canEdit} />
           </>
         )}
-        {tab === 'summary' && <IpdSummary admissionId={admission.id} canEdit={canEdit} canApprove={Boolean(user?.can_approve_ipd)} />}
+        {tab === 'summary' && <IpdSummary admissionId={admission.id} canEdit={canEdit} canApprove={Boolean(user?.can_approve_ipd)} dischargedOn={admission.discharged_at?.slice(0, 10)} />}
         {tab === 'bill' && (
         <>
         {notice && <p className="notice">{notice}</p>}

@@ -380,6 +380,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
             Route::post('/admissions/{admission}/notes', 'storeNote');
             Route::put('/admissions/{admission}/notes/{note}', 'updateNote');
             Route::delete('/admissions/{admission}/notes/{note}', 'destroyNote');
+            Route::get('/admissions/{admission}/summary/from-stay', 'summaryFromStay');
             Route::put('/admissions/{admission}/summary', 'saveSummary');
         });
         Route::middleware('ability:canManageSetup')->group(function () {
