@@ -92,9 +92,10 @@ export function IpdCase() {
     }
   }
 
-  const pickService = (value: string) => {
-    const service = services.find((s) => String(s.id) === value)
-    setCharge((c) => ({ ...c, ipd_service_id: value, description: service?.name ?? c.description, unit_price: service ? String(service.price) : c.unit_price }))
+  /** Typing a service's name picks it and fills its rate; anything else is a charge described by hand. */
+  const pickCharge = (text: string) => {
+    const service = services.find((s) => s.name.toLowerCase() === text.trim().toLowerCase())
+    setCharge((c) => ({ ...c, description: service?.name ?? text, ipd_service_id: service ? String(service.id) : '', unit_price: service ? String(service.price) : c.unit_price }))
   }
 
   const addCharge = async (e: FormEvent) => {
@@ -135,13 +136,10 @@ export function IpdCase() {
           </Link>
           <div className="grow">
             <h1>
-              {admission.patient.name} · {admission.ipd_no}
+              {admission.patient.name} <small className="muted mono">{admission.ipd_no}</small>
             </h1>
             <span className="muted">
-              {admission.patient.uhid} · {admission.patient.age_label} / {admission.patient.gender.charAt(0).toUpperCase()} · {admission.patient.mobile} · {admission.doctor.name} ·
-              admitted {longDate(admission.admitted_at)} {clock(admission.admitted_at)} ({stayDays(admission)} day{stayDays(admission) === 1 ? '' : 's'})
-              {admission.reason ? ` · ${admission.reason}` : ''}
-              {admission.payer ? ` · Bill to: ${admission.payer.name}` : ''}
+              {admission.patient.uhid} · {admission.patient.age_label} / {admission.patient.gender.charAt(0).toUpperCase()} · {admission.patient.mobile}
             </span>
           </div>
           <span className={`pill ${open ? 'status-ongoing' : admission.status === 'discharged' ? 'ok' : 'off'}`}>{ADMISSION_STATUS[admission.status]}</span>
@@ -149,6 +147,49 @@ export function IpdCase() {
             Print bill
           </a>
         </div>
+
+        <dl className="case-facts">
+          <div>
+            <dt>Bed</dt>
+            <dd>{admission.bed ? `${admission.bed.ward} · Bed ${admission.bed.bed_no}` : open ? 'Not assigned' : '—'}</dd>
+          </div>
+          <div>
+            <dt>Doctor</dt>
+            <dd>{admission.doctor.name}</dd>
+          </div>
+          <div>
+            <dt>Stay</dt>
+            <dd>
+              {open ? `Day ${stayDays(admission)}` : `${stayDays(admission)} day${stayDays(admission) === 1 ? '' : 's'}`}{' '}
+              <small className="muted">
+                {open ? 'since' : ''} {longDate(admission.admitted_at)}, {clock(admission.admitted_at)}
+                {admission.discharged_at ? ` to ${longDate(admission.discharged_at)}, ${clock(admission.discharged_at)}` : ''}
+              </small>
+            </dd>
+          </div>
+          {admission.reason && (
+            <div>
+              <dt>Reason</dt>
+              <dd>{admission.reason}</dd>
+            </div>
+          )}
+          {admission.payer && (
+            <div>
+              <dt>Bill to</dt>
+              <dd>{admission.payer.name}</dd>
+            </div>
+          )}
+          {(admission.attendant_name || admission.attendant_phone) && (
+            <div>
+              <dt>Attendant</dt>
+              <dd>{[admission.attendant_name, admission.attendant_phone].filter(Boolean).join(' · ')}</dd>
+            </div>
+          )}
+          <div className="money">
+            <dt>{admission.due < 0 ? 'Advance left' : 'Due'}</dt>
+            <dd className={admission.due > 0 ? 'due' : 'settled'}>{rupees(Math.abs(admission.due))}</dd>
+          </div>
+        </dl>
 
         <div className="tabs flush gap-bottom">
           <button className={tab === 'bill' ? 'active' : ''} onClick={() => setTab('bill')}>
@@ -266,22 +307,33 @@ export function IpdCase() {
                 </tr>
               )}
             </tbody>
+            {(admission.charges?.length ?? 0) > 1 && (
+              <tfoot>
+                <tr className="static">
+                  <td colSpan={6}>
+                    <strong>Total of {admission.charges!.length} charges</strong>
+                  </td>
+                  <td className="num">
+                    <strong>{rupees(admission.total)}</strong>
+                  </td>
+                  <td colSpan={2} />
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
 
         {!billLocked && (
         <>
         <form className="charge-row" onSubmit={addCharge}>
-          <select value={charge.ipd_service_id} disabled={Boolean(editingCharge)} onChange={(e) => pickService(e.target.value)} aria-label="IPD service">
-            <option value="">Choose a service…</option>
+          <input className="span-2" list="ipd-services" placeholder="Service or charge: type to search" value={charge.description} disabled={Boolean(editingCharge)} onChange={(e) => pickCharge(e.target.value)} aria-label="Service or charge" />
+          <datalist id="ipd-services">
             {services.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-                {s.category ? ` (${s.category})` : ''}
+              <option key={s.id} value={s.name}>
+                {[s.category, rupees(s.price)].filter(Boolean).join(' · ')}
               </option>
             ))}
-          </select>
-          <input placeholder="or describe the charge" value={charge.description} disabled={Boolean(editingCharge)} onChange={(e) => setCharge((c) => ({ ...c, description: e.target.value }))} aria-label="Charge description" />
+          </datalist>
           <input type="date" value={charge.charged_on} max={today()} onChange={(e) => setCharge((c) => ({ ...c, charged_on: e.target.value }))} aria-label="Charge date" />
           <input type="number" min={0} step="0.5" placeholder="Qty" value={charge.quantity} onChange={(e) => setCharge((c) => ({ ...c, quantity: e.target.value }))} aria-label="Quantity" />
           <input type="number" min={0} step="0.01" placeholder="Rate ₹" value={charge.unit_price} onChange={(e) => setCharge((c) => ({ ...c, unit_price: e.target.value }))} aria-label="Rate" />
@@ -478,6 +530,16 @@ export function IpdCase() {
           ))}
           {admission.payments?.length === 0 && <li className="muted">Nothing received yet.</li>}
         </ul>
+        {admission.due > 0 && Number(pay.amount || 0) !== admission.due && (
+          <button type="button" className="link add-medicine" onClick={() => setPay((p) => ({ ...p, type: 'payment', amount: String(admission.due) }))}>
+            Fill in the full due of {rupees(admission.due)}
+          </button>
+        )}
+        {admission.due < 0 && !open && Number(pay.amount || 0) !== -admission.due && (
+          <button type="button" className="link add-medicine" onClick={() => setPay((p) => ({ ...p, type: 'refund', amount: String(-admission.due) }))}>
+            Fill in a refund of the {rupees(-admission.due)} advance left
+          </button>
+        )}
         <form className="charge-row pay" onSubmit={addPayment}>
           <select value={pay.type} onChange={(e) => setPay((p) => ({ ...p, type: e.target.value }))} aria-label="Type">
             {PAYMENT_TYPES.map((t) => (

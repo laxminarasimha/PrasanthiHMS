@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../../api'
 import { useAuth } from '../../auth'
@@ -8,6 +8,22 @@ import { ADMISSION_STATUS, clock, longDate, nowLocal, rupees } from '../../forma
 import type { AdminEntry, Admission, Bed, Doctor, Patient } from '../../types'
 
 const FILTERS = ['admitted', 'discharged', 'lama', 'dama', 'absconded', 'died', 'all']
+
+/** Days the bed has been used so far, counting part of a day as a full day. */
+const stayDays = (from: string, to?: string | null) =>
+  Math.max(1, Math.ceil(((to ? new Date(to.replace(' ', 'T')) : new Date()).getTime() - new Date(from.replace(' ', 'T')).getTime()) / 86400000))
+
+/** What is owed, or what is held in advance, in a few words. */
+const money = (due: number) => (due > 0 ? `${rupees(due)} due` : due < 0 ? `${rupees(-due)} advance` : 'Nothing due')
+
+type View = 'beds' | 'list'
+const savedView = (): View => {
+  try {
+    return localStorage.getItem('ipd_view') === 'list' ? 'list' : 'beds'
+  } catch {
+    return 'beds'
+  }
+}
 
 export function Ipd() {
   const navigate = useNavigate()
@@ -23,8 +39,12 @@ export function Ipd() {
   const [errors, setErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
 
+  const [view, setView] = useState<View>(savedView)
+  const searchBox = useRef<HTMLInputElement>(null)
+
   const load = useCallback(() => {
     api.get<Admission[]>('/ipd/admissions', { params: { status, q: query.trim() || undefined } }).then((res) => setCases(res.data))
+    api.get<Bed[]>('/ipd/beds').then((res) => setBeds(res.data))
   }, [status, query])
 
   useEffect(() => {
@@ -32,7 +52,28 @@ export function Ipd() {
     return () => clearTimeout(timer)
   }, [load])
 
-  const startAdmitting = () => {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const typing = e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]')
+      if (e.key === '/' && !typing && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault()
+        searchBox.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const choose = (next: View) => {
+    setView(next)
+    try {
+      localStorage.setItem('ipd_view', next)
+    } catch {
+      // The choice simply is not remembered.
+    }
+  }
+
+  const startAdmitting = (bedId = '') => {
     api.get<Bed[]>('/ipd/beds').then((res) => setBeds(res.data))
     api.get<AdminEntry[]>('/admin-lists/payer').then((res) => setPayers(res.data))
     api.get<Doctor[]>('/doctors').then((res) => {
@@ -41,7 +82,7 @@ export function Ipd() {
     })
     setPatient(null)
     setErrors({})
-    setForm((f) => ({ ...f, admitted_at: nowLocal(), bed_id: '', reason: '', attendant_name: '', attendant_phone: '' }))
+    setForm((f) => ({ ...f, admitted_at: nowLocal(), bed_id: bedId, reason: '', attendant_name: '', attendant_phone: '' }))
     setAdmitting(true)
   }
 
@@ -76,91 +117,203 @@ export function Ipd() {
   }
 
   const dueTotal = cases?.reduce((sum, c) => sum + Math.max(0, c.due), 0) ?? 0
+  const advanceTotal = cases?.reduce((sum, c) => sum + Math.max(0, -c.due), 0) ?? 0
+  const inUse = beds.filter((b) => b.is_active || b.current_admission)
+  const occupied = inUse.filter((b) => b.current_admission).length
+  // The board is the wards as they stand now, so it only goes with the list of people still admitted.
+  const board = status === 'admitted' && view === 'beds' && query.trim() === ''
+  const byId = new Map((cases ?? []).map((c) => [c.id, c]))
+  const wards = [...new Set(inUse.map((b) => b.ward))]
+  const noBed = status === 'admitted' ? (cases ?? []).filter((c) => !c.bed) : []
 
   return (
     <div className="split">
       <section className="card">
         <div className="toolbar">
           <h1>IPD cases</h1>
-          <input className="search" type="search" placeholder="Find by patient name, mobile, ID or IPD no." value={query} onChange={(e) => setQuery(e.target.value)} />
-          <Link className="btn ghost" to="/ipd/reports">
-            Reports
-          </Link>
-          {user?.can_manage_setup && (
-            <Link className="btn ghost" to="/ipd/setup">
-              Beds, services &amp; templates
-            </Link>
-          )}
-          <button className="btn primary" onClick={startAdmitting}>
+          <input ref={searchBox} className="search" type="search" placeholder="Find by patient name, mobile, ID or IPD no. — press /" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <button className="btn primary" onClick={() => startAdmitting()}>
             + Admit patient
           </button>
         </div>
-
-        <div className="tabs">
-          {FILTERS.map((f) => (
-            <button key={f} className={status === f ? 'active' : ''} onClick={() => setStatus(f)}>
-              {f === 'all' ? 'All' : ADMISSION_STATUS[f]}
-            </button>
-          ))}
-          <span className="muted push">
-            {cases?.length ?? 0} case(s) · {rupees(dueTotal)} due
-          </span>
+        <div className="toolbar minor">
+          <Link className="btn" to="/ipd/reports">
+            Reports
+          </Link>
+          {user?.can_manage_setup && (
+            <Link className="btn" to="/ipd/setup">
+              Beds, services &amp; templates
+            </Link>
+          )}
         </div>
 
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>IPD no.</th>
-                <th>Patient</th>
-                <th>Bed</th>
-                <th>Doctor</th>
-                <th>Admitted</th>
-                <th>Discharged</th>
-                <th className="num">Bill</th>
-                <th className="num">Paid</th>
-                <th className="num">Due</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cases?.map((c) => (
-                <tr key={c.id} onClick={() => navigate(`/ipd/${c.id}`)}>
-                  <td className="mono">
-                    <strong>{c.ipd_no}</strong>
-                  </td>
-                  <td>
-                    <strong>{c.patient.name}</strong>
-                    <small className="muted block">
-                      {c.patient.uhid} · {c.patient.age_label} / {c.patient.gender.charAt(0).toUpperCase()}
-                    </small>
-                  </td>
-                  <td>{c.bed ? `${c.bed.ward} · ${c.bed.bed_no}` : '—'}</td>
-                  <td>
-                    {c.doctor.name}
-                    {c.payer && <small className="muted block">{c.payer.name}</small>}
-                  </td>
-                  <td>
-                    {longDate(c.admitted_at)}
-                    <small className="muted block">{clock(c.admitted_at)}</small>
-                  </td>
-                  <td>{c.discharged_at ? longDate(c.discharged_at) : '—'}</td>
-                  <td className="num">{rupees(c.net)}</td>
-                  <td className="num">{rupees(c.paid)}</td>
-                  <td className={`num ${c.due > 0 ? 'due' : ''}`}>{c.due < 0 ? `${rupees(-c.due)} advance` : rupees(c.due)}</td>
-                  <td>
-                    <span className={`pill ${c.status === 'admitted' ? 'status-ongoing' : c.status === 'discharged' ? 'ok' : 'off'}`}>{ADMISSION_STATUS[c.status]}</span>
-                  </td>
-                </tr>
-              ))}
-              {cases && cases.length === 0 && (
-                <tr className="empty">
-                  <td colSpan={10}>{status === 'admitted' ? 'No patients are admitted right now.' : 'No cases found.'}</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="desk-filters">
+          <div className="tabs flush" role="group" aria-label="Which cases to show">
+            {FILTERS.map((f) => (
+              <button key={f} className={status === f ? 'active' : ''} onClick={() => setStatus(f)}>
+                {f === 'all' ? 'All' : ADMISSION_STATUS[f]}
+                {status === f && cases && <span>{cases.length}</span>}
+              </button>
+            ))}
+          </div>
+          {status === 'admitted' && query.trim() === '' && (
+            <div className="tabs flush view-switch" role="group" aria-label="How to show the admitted patients">
+              <button className={view === 'beds' ? 'active' : ''} onClick={() => choose('beds')}>
+                Beds
+              </button>
+              <button className={view === 'list' ? 'active' : ''} onClick={() => choose('list')}>
+                List
+              </button>
+            </div>
+          )}
         </div>
+
+        {status === 'admitted' && query.trim() === '' && (
+          <div className="tiles small ipd-stats">
+            <div className="tile">
+              <span>Admitted now</span>
+              <strong>{cases?.length ?? '—'}</strong>
+            </div>
+            <div className="tile">
+              <span>Beds free</span>
+              <strong>
+                {inUse.length - occupied} <small className="muted">of {inUse.length}</small>
+              </strong>
+            </div>
+            <div className="tile">
+              <span>Due from admitted patients</span>
+              <strong className={dueTotal > 0 ? 'due' : ''}>{rupees(dueTotal)}</strong>
+            </div>
+            <div className="tile">
+              <span>Advances held</span>
+              <strong>{rupees(advanceTotal)}</strong>
+            </div>
+          </div>
+        )}
+
+        {board ? (
+          <div className="bed-board">
+            {wards.map((ward) => {
+              const wardBeds = inUse.filter((b) => b.ward === ward)
+              const taken = wardBeds.filter((b) => b.current_admission).length
+              return (
+                <section key={ward}>
+                  <h3>
+                    {ward} <small className="muted">{taken} of {wardBeds.length} occupied</small>
+                  </h3>
+                  <div className="beds">
+                    {wardBeds.map((b) => {
+                      const stay = b.current_admission
+                      const c = stay ? byId.get(stay.id) : undefined
+                      return stay ? (
+                        <button key={b.id} className="bed taken" onClick={() => navigate(`/ipd/${stay.id}`)} title={`Open ${stay.ipd_no}`}>
+                          <span className="bed-no">
+                            Bed {b.bed_no} <small>Day {stayDays(stay.admitted_at)}</small>
+                          </span>
+                          <strong>{stay.patient.name}</strong>
+                          <small className="muted">
+                            {stay.ipd_no}
+                            {c ? ` · ${c.patient.age_label} / ${c.patient.gender.charAt(0).toUpperCase()}` : ''}
+                          </small>
+                          {c && <small className="muted">{c.doctor.name}</small>}
+                          {c && <small className={c.due > 0 ? 'due' : 'settled'}>{money(c.due)}</small>}
+                        </button>
+                      ) : (
+                        <button key={b.id} className="bed free" onClick={() => startAdmitting(String(b.id))} title={`Admit a patient to bed ${b.bed_no}`}>
+                          <span className="bed-no">Bed {b.bed_no}</span>
+                          <strong>Free</strong>
+                          {b.daily_charge > 0 && <small className="muted">{rupees(b.daily_charge)} a day</small>}
+                          <small className="admit-here">+ Admit here</small>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </section>
+              )
+            })}
+            {noBed.length > 0 && (
+              <section>
+                <h3>
+                  No bed assigned <small className="muted">{noBed.length} admitted</small>
+                </h3>
+                <div className="beds">
+                  {noBed.map((c) => (
+                    <button key={c.id} className="bed taken" onClick={() => navigate(`/ipd/${c.id}`)}>
+                      <span className="bed-no">
+                        No bed <small>Day {stayDays(c.admitted_at)}</small>
+                      </span>
+                      <strong>{c.patient.name}</strong>
+                      <small className="muted">
+                        {c.ipd_no} · {c.patient.age_label} / {c.patient.gender.charAt(0).toUpperCase()}
+                      </small>
+                      <small className="muted">{c.doctor.name}</small>
+                      <small className={c.due > 0 ? 'due' : 'settled'}>{money(c.due)}</small>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+            {inUse.length === 0 && noBed.length === 0 && <p className="muted">No beds are set up yet. Add them under Beds, services &amp; templates.</p>}
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>IPD no.</th>
+                  <th>Patient</th>
+                  <th>Bed</th>
+                  <th>Doctor</th>
+                  <th>Stay</th>
+                  <th className="num">Bill</th>
+                  <th className="num">Due</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cases?.map((c) => (
+                  <tr key={c.id} className={c.status === 'admitted' ? '' : 'done'} onClick={() => navigate(`/ipd/${c.id}`)}>
+                    <td className="mono">
+                      <strong>{c.ipd_no}</strong>
+                    </td>
+                    <td>
+                      <strong>{c.patient.name}</strong>
+                      <small className="muted block">
+                        {c.patient.uhid} · {c.patient.age_label} / {c.patient.gender.charAt(0).toUpperCase()}
+                      </small>
+                    </td>
+                    <td>{c.bed ? `${c.bed.ward} · ${c.bed.bed_no}` : '—'}</td>
+                    <td>
+                      {c.doctor.name}
+                      {c.payer && <small className="muted block">{c.payer.name}</small>}
+                    </td>
+                    <td>
+                      {longDate(c.admitted_at)} <span className="muted">{clock(c.admitted_at)}</span>
+                      <small className="muted block">
+                        {c.discharged_at ? `to ${longDate(c.discharged_at)} · ` : 'Day '}
+                        {stayDays(c.admitted_at, c.discharged_at)}
+                        {c.discharged_at ? ` day${stayDays(c.admitted_at, c.discharged_at) === 1 ? '' : 's'}` : ''}
+                      </small>
+                    </td>
+                    <td className="num">
+                      {rupees(c.net)}
+                      <small className="muted block">{rupees(c.paid)} paid</small>
+                    </td>
+                    <td className={`num ${c.due > 0 ? 'due' : ''}`}>{c.due < 0 ? `${rupees(-c.due)} advance` : rupees(c.due)}</td>
+                    <td>
+                      <span className={`pill ${c.status === 'admitted' ? 'status-ongoing' : c.status === 'discharged' ? 'ok' : 'off'}`}>{ADMISSION_STATUS[c.status]}</span>
+                    </td>
+                  </tr>
+                ))}
+                {cases && cases.length === 0 && (
+                  <tr className="empty">
+                    <td colSpan={8}>{status === 'admitted' ? 'No patients are admitted right now.' : 'No cases found.'}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       {admitting && (
