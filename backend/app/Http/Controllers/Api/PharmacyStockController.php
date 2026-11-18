@@ -9,8 +9,8 @@ use App\Models\Medicine;
 use App\Models\Payment;
 use App\Models\PurchaseInvoice;
 use App\Models\PurchaseOrder;
-use App\Models\StockAdjustment;
 use App\Models\StockBatch;
+use App\Models\StockMovement;
 use App\Models\StockReturn;
 use App\Support\OpeningStockImport;
 use App\Support\OrderMatch;
@@ -82,13 +82,13 @@ class PharmacyStockController extends Controller
             }
 
             // Quantity is in single units; MRP and cost are per pack, as printed on the strip and the bill.
-            return StockBatch::create([
+            return tap(StockBatch::create([
                 'medicine_id' => $item['medicine_id'], 'batch_no' => $item['batch_no'], 'expiry' => $expiry->toDateString(),
                 'units_per_pack' => $item['units_per_pack'], 'packs' => (int) ceil($item['quantity'] / $item['units_per_pack']),
                 'pack_price' => $item['cost_price'], 'pack_mrp' => $item['mrp'], 'unit_mrp' => round($item['mrp'] / $item['units_per_pack'], 2),
                 'gst_percent' => $item['gst_percent'], 'units_received' => $item['quantity'], 'units_in_stock' => $item['quantity'],
                 'rack_no' => $item['rack_no'] ?? null, 'box_no' => $item['box_no'] ?? null, 'hsn_code' => $item['hsn_code'] ?? null,
-            ]);
+            ]), fn (StockBatch $made) => StockMovement::record($made, $made->units_in_stock, 'opening'));
         }));
 
         return response()->json(['added' => $batches->count()], 201);
@@ -171,32 +171,6 @@ class PharmacyStockController extends Controller
         ]);
     }
 
-    /** Corrects the count of a batch after a physical check, and records who changed it and why. */
-    public function adjust(Request $request, StockBatch $batch): JsonResponse
-    {
-        $this->authorizePharmacy($request);
-
-        $data = $request->validate([
-            'units_in_stock' => ['required', 'integer', 'min:0', 'max:1000000'],
-            'reason' => ['required', 'string', 'min:3', 'max:255'],
-        ], ['reason.required' => 'Say why the count is being changed.']);
-
-        DB::transaction(function () use ($batch, $data, $request) {
-            $locked = StockBatch::whereKey($batch->id)->lockForUpdate()->first();
-            if ($locked->units_in_stock === $data['units_in_stock']) {
-                throw ValidationException::withMessages(['units_in_stock' => 'That is already the count for this batch.']);
-            }
-
-            StockAdjustment::create([
-                'stock_batch_id' => $locked->id, 'medicine_id' => $locked->medicine_id, 'before' => $locked->units_in_stock,
-                'after' => $data['units_in_stock'], 'reason' => $data['reason'], 'created_by' => $request->user()->id,
-            ]);
-            $locked->update(['units_in_stock' => $data['units_in_stock']]);
-        });
-
-        return response()->json($batch->fresh()->load(['medicine:id,name,reorder_level', 'invoice:id,invoice_no']));
-    }
-
     // ---- Stockist payments and returns ----
 
     public function payInvoice(Request $request, PurchaseInvoice $purchase): JsonResponse
@@ -267,7 +241,7 @@ class PharmacyStockController extends Controller
                     'stock_batch_id' => $batch->id, 'medicine_id' => $batch->medicine_id, 'medicine_name' => $batch->medicine->name,
                     'batch_no' => $batch->batch_no, 'quantity' => $entry['quantity'], 'unit_cost' => $cost, 'amount' => $amount,
                 ]);
-                $batch->decrement('units_in_stock', $entry['quantity']);
+                $batch->move(-$entry['quantity'], 'stockist_return', "Return {$return->id} to stockist");
             }
 
             $return->update(['total' => round($total, 2)]);

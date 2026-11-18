@@ -16,6 +16,8 @@ export type User = {
   can_view_reports: boolean
   can_approve_ipd: boolean
   can_delete_bills: boolean
+  /** Approves stock counts and corrections in the pharmacy, and sees what is missing. */
+  can_audit_pharmacy: boolean
   can_change_price: boolean
   pad_hidden_sections?: string[]
   /** Menu tabs this person chose not to see. */

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AuditLog;
+use App\Models\Consultation;
 use App\Models\Patient;
 use App\Models\User;
 use App\Support\PrescriptionSafety;
@@ -32,7 +33,7 @@ class VisitLockAndAuditTest extends TestCase
         $this->travel(1)->days();
         $this->getJson($url)->assertOk()->assertJsonPath('locked', true);
         $this->putJson($url, ['diagnosis' => 'Something else'])->assertStatus(422)->assertJsonValidationErrors('visit');
-        $this->assertSame('Viral fever with dehydration', \App\Models\Consultation::first()->diagnosis);
+        $this->assertSame('Viral fever with dehydration', Consultation::first()->diagnosis);
 
         $this->postJson("{$url}/amendments", ['body' => ''])->assertStatus(422)->assertJsonValidationErrors('body');
         $this->postJson("{$url}/amendments", ['body' => 'Lab report later showed dengue NS1 positive.'])
@@ -127,7 +128,7 @@ class VisitLockAndAuditTest extends TestCase
             'medicine_id' => $medicine, 'batch_no' => 'B1', 'expiry' => now()->addYear()->format('Y-m'), 'units_per_pack' => 10, 'packs' => 5, 'pack_price' => 20, 'pack_mrp' => 30, 'gst_percent' => 12,
         ]]])->assertCreated()->json();
         $batch = $invoice['batches'][0]['id'];
-        $this->postJson("/api/pharmacy/stock/{$batch}/adjust", ['units_in_stock' => 40, 'reason' => 'Two strips damaged'])->assertSuccessful();
+        $this->postJson("/api/pharmacy/stock/{$batch}/adjust", ['units_in_stock' => 40, 'reason' => 'Two strips damaged', 'category' => 'damaged'])->assertSuccessful();
         $sale = $this->postJson('/api/pharmacy/sales', ['patient_id' => $patient->id, 'customer_name' => $patient->name, 'paid' => 0, 'payment_mode' => 'cash', 'items' => [['stock_batch_id' => $batch, 'quantity' => 4]]])->assertCreated()->json();
         $this->deleteJson("/api/pharmacy/sales/{$sale['id']}", ['reason' => 'Billed to the wrong patient'])->assertSuccessful();
 

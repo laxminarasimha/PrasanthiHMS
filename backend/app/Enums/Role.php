@@ -89,6 +89,15 @@ enum Role: string
         return in_array($this, [self::Admin, self::Doctor, self::Pharmacist], true);
     }
 
+    /**
+     * Roles allowed to approve stock counts and corrections in the pharmacy, and to see what is missing.
+     * Pharmacists count the shelf but do not approve their own counts, so stock cannot be written off by those who handle it.
+     */
+    public function canAuditPharmacy(): bool
+    {
+        return in_array($this, [self::Admin, self::Doctor], true);
+    }
+
     /** Roles allowed to charge a different price from the price list while billing. */
     public function canChangePrice(): bool
     {

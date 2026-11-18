@@ -79,6 +79,7 @@ class User extends Authenticatable
         'canRunLab' => ['Lab', 'Enter and approve lab results, and edit lab tests, packages and preferences.'],
         'canRunPharmacy' => ['Pharmacy', 'Sell medicines, receive stock, and edit medicines, bills and invoices.'],
         'canDeleteBills' => ['Delete pharmacy bills', 'Delete a pharmacy bill, which restocks it and refunds the money.'],
+        'canAuditPharmacy' => ['Pharmacy stock audit', 'Approve stock counts and stock corrections, and see where stock went and what is missing.'],
         'canWorkIpd' => ['IPD', 'Admit patients, add IPD charges, take IPD payments and discharge.'],
         'canApproveIpd' => ['Approve IPD summaries and bills', 'Approve a discharge summary or an IPD bill, which locks it against changes.'],
         'canViewReports' => ['Reports', "See the hospital's billing, collection and activity reports."],

@@ -13,6 +13,7 @@ use App\Models\PharmacySale;
 use App\Models\PurchaseInvoice;
 use App\Models\StockBatch;
 use App\Models\Stockist;
+use App\Models\StockMovement;
 use App\Models\StockReturn;
 use App\Support\Composition;
 use App\Support\OrderMatch;
@@ -375,7 +376,7 @@ class PharmacyController extends Controller
                     throw ValidationException::withMessages(["items.{$index}.discount_amount" => 'Line '.($index + 1).': the discount is more than the line is worth.']);
                 }
 
-                $invoice->batches()->create([
+                $received = $invoice->batches()->create([
                     'medicine_id' => $item['medicine_id'],
                     'batch_no' => $item['batch_no'],
                     'expiry' => Carbon::createFromFormat('Y-m-d', $item['expiry'].'-01')->endOfMonth()->toDateString(),
@@ -395,6 +396,7 @@ class PharmacyController extends Controller
                     'discount_amount' => (float) ($item['discount_amount'] ?? 0),
                     'tax_on_free' => (bool) ($item['tax_on_free'] ?? false),
                 ]);
+                StockMovement::record($received, $units, 'purchase', $invoice->invoice_no);
             }
 
             $figures = $invoice->figures();
@@ -544,6 +546,7 @@ class PharmacyController extends Controller
 
             $lines = [];
             $subtotal = $tax = 0;
+            $moved = [];
             foreach ($data['items'] as $index => $item) {
                 $batch = $batches[$item['stock_batch_id']];
                 $name = $batch->medicine->name;
@@ -566,7 +569,7 @@ class PharmacyController extends Controller
                     'batch_no' => $batch->batch_no, 'expiry' => $batch->expiry->toDateString(), 'quantity' => $item['quantity'],
                     'unit_price' => $batch->unit_mrp, 'unit_cost' => $batch->effectiveUnitCost(), 'discount_percent' => $discount, 'gst_percent' => $batch->gst_percent, 'amount' => $amount,
                 ];
-                $batch->decrement('units_in_stock', $item['quantity']);
+                $moved[] = $batch->move(-$item['quantity'], 'sale')->id;
             }
 
             $discount = round((float) ($data['discount'] ?? 0), 2);
@@ -598,6 +601,8 @@ class PharmacyController extends Controller
                 'created_by' => $request->user()->id,
             ]);
             $sale->items()->createMany($lines);
+            // The ledger lines written as each batch went down now say which bill they were for.
+            StockMovement::whereKey($moved)->update(['reference' => $sale->bill_no]);
             if ($data['paid'] > 0) {
                 $sale->payments()->create([
                     'type' => 'payment', 'amount' => $data['paid'], 'mode' => $data['payment_mode'],

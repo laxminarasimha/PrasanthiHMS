@@ -3,10 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -22,15 +25,15 @@ class AuthController extends Controller
 
         if (! $user || ! Hash::check($credentials['password'], $user->password)) {
             // Kept so that someone guessing at passwords shows up in the activity log. The password tried is never stored.
-            \App\Models\AuditLog::record('auth.failed', null, null, $user ? 'Wrong password' : 'No such login', $user, mb_substr($credentials['email'], 0, 100));
+            AuditLog::record('auth.failed', null, null, $user ? 'Wrong password' : 'No such login', $user, mb_substr($credentials['email'], 0, 100));
             throw ValidationException::withMessages(['email' => 'The email or password is incorrect.']);
         }
 
         if (! $user->is_active) {
-            \App\Models\AuditLog::record('auth.failed', null, null, 'The login is switched off', $user);
+            AuditLog::record('auth.failed', null, null, 'The login is switched off', $user);
             throw ValidationException::withMessages(['email' => 'This account has been deactivated.']);
         }
-        \App\Models\AuditLog::record('auth.login', null, null, null, $user);
+        AuditLog::record('auth.login', null, null, null, $user);
 
         return response()->json([
             'token' => $user->createToken('web')->plainTextToken,
@@ -43,7 +46,7 @@ class AuthController extends Controller
     {
         $data = $request->validate([
             'current_password' => ['required', 'string'],
-            'password' => ['required', 'confirmed', 'different:current_password', \Illuminate\Validation\Rules\Password::min(8)->letters()->numbers()],
+            'password' => ['required', 'confirmed', 'different:current_password', Password::min(8)->letters()->numbers()],
         ], ['password.different' => 'Choose a password different from the current one.', 'password.confirmed' => 'The two new passwords do not match.']);
 
         $user = $request->user();
@@ -63,8 +66,8 @@ class AuthController extends Controller
     public function saveAppearance(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'theme' => ['required', \Illuminate\Validation\Rule::in(self::THEMES)],
-            'text' => ['required', \Illuminate\Validation\Rule::in(['small', 'normal', 'large'])],
+            'theme' => ['required', Rule::in(self::THEMES)],
+            'text' => ['required', Rule::in(['small', 'normal', 'large'])],
         ]);
         $request->user()->update(['appearance' => $data]);
 
@@ -78,7 +81,7 @@ class AuthController extends Controller
     {
         $data = $request->validate([
             'hidden' => ['present', 'array'],
-            'hidden.*' => ['string', \Illuminate\Validation\Rule::in(self::MENU_TABS)],
+            'hidden.*' => ['string', Rule::in(self::MENU_TABS)],
         ]);
         $request->user()->update(['hidden_tabs' => array_values(array_unique($data['hidden'])) ?: null]);
 
@@ -121,6 +124,7 @@ class AuthController extends Controller
             'can_approve_ipd' => $user->allows('canApproveIpd'),
             'can_view_reports' => $user->allows('canViewReports'),
             'can_delete_bills' => $user->allows('canDeleteBills'),
+            'can_audit_pharmacy' => $user->allows('canAuditPharmacy'),
             'can_change_price' => $user->allows('canChangePrice'),
             'pad_hidden_sections' => $user->pad_hidden_sections ?? [],
             'hidden_tabs' => $user->hidden_tabs ?? [],
