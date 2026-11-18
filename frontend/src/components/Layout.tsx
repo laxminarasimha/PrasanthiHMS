@@ -5,6 +5,7 @@ import { ErrorBoundary } from './ErrorBoundary'
 import { PatientSearch } from './PatientSearch'
 import { onLoadTrouble } from '../api'
 import { useAuth } from '../auth'
+import { keepPrintPrefsFresh } from '../printPaper'
 import { allowedTabs, menuTabs, onTab } from '../nav'
 import { canLeave } from '../unsaved'
 
@@ -31,6 +32,10 @@ export function Layout() {
   // Whether the last thing any screen tried to load failed to arrive.
   const [trouble, setTrouble] = useState(false)
   useEffect(() => onLoadTrouble(setTrouble), [])
+  // Print pages open in their own tab and print at once, so the way prints are laid out is fetched here, ahead of time.
+  useEffect(() => {
+    void keepPrintPrefsFresh()
+  }, [])
 
   // The browser tab says which part of the app it is showing, so several open tabs can be told apart.
   useEffect(() => {

@@ -85,6 +85,40 @@ export function usePrintPaper(): Paper {
   }
 }
 
+/**
+ * How the hospital's heading is laid out and sized on every print: the last copy seen at once, then the saved one.
+ * The app refreshes the copy each time it is opened (see keepPrintPrefsFresh), so a print page almost always has it already.
+ */
+export function useHeadingPrefs(): Pick<Paper, 'heading' | 'headingSize' | 'logoSize'> {
+  const [prefs, setPrefs] = useState<Prefs | null>(() => read<Prefs>(PRINT_PREFS_KEY))
+
+  useEffect(() => {
+    let gone = false
+    keepPrintPrefsFresh().then((next) => !gone && next && setPrefs(next))
+    return () => {
+      gone = true
+    }
+  }, [])
+
+  return { heading: prefs?.bill_heading ?? 'side', headingSize: prefs?.bill_heading_size ?? 'small', logoSize: prefs?.bill_logo_size ?? 'medium' }
+}
+
+/** Fetches the print preferences and keeps a copy for the print pages, which open in their own tab and print at once. */
+export function keepPrintPrefsFresh(): Promise<Required<Prefs> | null> {
+  return api
+    .get<BillingPreferences>('/billing-preferences')
+    .then((res) => {
+      const next = printPrefs(res.data)
+      try {
+        localStorage.setItem(PRINT_PREFS_KEY, JSON.stringify(next))
+      } catch {
+        // A full or blocked store only means the print page asks for itself.
+      }
+      return next
+    })
+    .catch(() => null)
+}
+
 /** Opens the print dialog once, when everything the page needs has arrived. */
 export function useAutoPrint(ready: boolean, delay = 300) {
   const done = useRef(false)
