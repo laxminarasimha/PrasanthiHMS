@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'medicine_id', 'purchase_invoice_id', 'batch_no', 'expiry', 'units_per_pack', 'packs', 'free_packs', 'pack_price',
@@ -75,6 +76,24 @@ class StockBatch extends Model
             'unit_cost' => $cost,
             'margin_percent' => $this->unit_mrp > 0 ? round(($this->unit_mrp - $cost) / $this->unit_mrp * 100, 1) : null,
         ];
+    }
+
+    /**
+     * Adds units to the batch, or takes them off when the number is negative, and writes the ledger line for it.
+     * Every change to stock goes through here or through StockMovement::record, so nothing moves without a trace.
+     */
+    public function move(int $units, string $kind, ?string $reference = null, ?string $note = null): StockMovement
+    {
+        if ($units !== 0) {
+            $this->increment('units_in_stock', $units);
+        }
+
+        return StockMovement::record($this, $units, $kind, $reference, $note);
+    }
+
+    public function movements(): HasMany
+    {
+        return $this->hasMany(StockMovement::class)->orderBy('id');
     }
 
     public function medicine(): BelongsTo

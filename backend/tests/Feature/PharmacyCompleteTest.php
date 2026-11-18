@@ -7,6 +7,7 @@ use App\Models\Medicine;
 use App\Models\Patient;
 use App\Models\PharmacySale;
 use App\Models\StockBatch;
+use App\Models\StockCount;
 use App\Models\Stockist;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -139,8 +140,16 @@ class PharmacyCompleteTest extends TestCase
         $this->assertNull(collect($inventory)->firstWhere('id', $empty->id));
 
         $this->postJson("/api/pharmacy/stock/{$this->batch->id}/adjust", ['units_in_stock' => 96])->assertStatus(422)->assertJsonValidationErrors('reason');
-        $this->postJson("/api/pharmacy/stock/{$this->batch->id}/adjust", ['units_in_stock' => 96, 'reason' => '4 tablets damaged'])
-            ->assertOk()->assertJsonPath('units_in_stock', 96);
+        $this->postJson("/api/pharmacy/stock/{$this->batch->id}/adjust", ['units_in_stock' => 96, 'reason' => '4 tablets damaged'])->assertStatus(422)->assertJsonValidationErrors('category');
+        // From a pharmacist the correction waits for approval, and the stock stays as it was.
+        $this->postJson("/api/pharmacy/stock/{$this->batch->id}/adjust", ['units_in_stock' => 96, 'reason' => '4 tablets damaged', 'category' => 'damaged'])
+            ->assertOk()->assertJsonPath('applied', false)->assertJsonPath('batch.units_in_stock', 100);
+        // Someone trusted with the audit corrects it there and then.
+        Sanctum::actingAs(User::factory()->create(['role' => 'doctor']));
+        $this->postJson("/api/pharmacy/stock/{$this->batch->id}/adjust", ['units_in_stock' => 96, 'reason' => '4 tablets damaged', 'category' => 'damaged'])->assertStatus(422); // already on the pharmacist's report
+        StockCount::query()->update(['status' => 'cancelled']);
+        $this->postJson("/api/pharmacy/stock/{$this->batch->id}/adjust", ['units_in_stock' => 96, 'reason' => '4 tablets damaged', 'category' => 'damaged'])
+            ->assertOk()->assertJsonPath('applied', true)->assertJsonPath('batch.units_in_stock', 96);
         $this->getJson('/api/pharmacy/reports/stock-adjustments')->assertOk()
             ->assertJsonPath('rows.0.before', 100)->assertJsonPath('rows.0.after', 96)->assertJsonPath('rows.0.difference', -4)->assertJsonPath('totals.difference', -4);
     }

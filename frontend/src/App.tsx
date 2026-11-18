@@ -71,7 +71,9 @@ const PastRecordCheck = page(() => import('./pages/PastRecordCheck'), 'PastRecor
 const PastRecords = page(() => import('./pages/PastRecords'), 'PastRecords')
 const PatientDashboard = page(() => import('./pages/PatientDashboard'), 'PatientDashboard')
 const Patients = page(() => import('./pages/Patients'), 'Patients')
+const PharmacyAudit = page(() => import('./pages/pharmacy/Audit'), 'PharmacyAudit')
 const PharmacyBilling = page(() => import('./pages/pharmacy/Billing'), 'PharmacyBilling')
+const StockCountPage = page(() => import('./pages/pharmacy/StockCountPage'), 'StockCountPage')
 const PharmacyBills = page(() => import('./pages/pharmacy/Bills'), 'PharmacyBills')
 const PharmacyDashboard = page(() => import('./pages/pharmacy/Dashboard'), 'PharmacyDashboard')
 const PharmacyInventory = page(() => import('./pages/pharmacy/Inventory'), 'PharmacyInventory')
@@ -161,6 +163,8 @@ export default function App() {
             <Route path="/lab/settings" element={<LabSettings />} />
             <Route path="/pharmacy" element={<Only when="can_run_pharmacy"><PharmacyBilling /></Only>} />
             <Route path="/pharmacy/manager" element={<Only when="can_run_pharmacy"><PharmacyManager /></Only>} />
+            <Route path="/pharmacy/audit" element={<Only when="can_run_pharmacy"><PharmacyAudit /></Only>} />
+            <Route path="/pharmacy/audit/counts/:id" element={<Only when="can_run_pharmacy"><StockCountPage /></Only>} />
             <Route path="/pharmacy/bills" element={<Only when="can_run_pharmacy"><PharmacyBills /></Only>} />
             <Route path="/pharmacy/dashboard" element={<Only when="can_run_pharmacy"><PharmacyDashboard /></Only>} />
             <Route path="/pharmacy/orders" element={<Only when="can_run_pharmacy"><PharmacyOrders /></Only>} />

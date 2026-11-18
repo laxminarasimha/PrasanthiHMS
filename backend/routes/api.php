@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\PatientAppController;
 use App\Http\Controllers\Api\PatientAppExtrasController;
 use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\PatientDocumentController;
+use App\Http\Controllers\Api\PharmacyAuditController;
 use App\Http\Controllers\Api\PharmacyController;
 use App\Http\Controllers\Api\PharmacyEditController;
 use App\Http\Controllers\Api\PharmacyManagerController;
@@ -301,7 +302,6 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
         Route::post('/opening-stock', 'openingStock');
         Route::post('/opening-stock/import', 'importOpeningStock');
         Route::get('/inventory', 'inventory');
-        Route::post('/stock/{batch}/adjust', 'adjust');
         Route::post('/purchases/{purchase}/payments', 'payInvoice');
         Route::get('/stock-returns', 'stockReturns');
         Route::post('/stock-returns', 'storeStockReturn');
@@ -309,6 +309,26 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
         Route::post('/purchase-orders', 'storePurchaseOrder');
         Route::get('/purchase-orders/{order}', 'showPurchaseOrder');
         Route::put('/purchase-orders/{order}', 'updatePurchaseOrder');
+    });
+
+    // Stock audit: counting the shelf against the records, approving the differences, and seeing where stock went.
+    Route::prefix('pharmacy')->controller(PharmacyAuditController::class)->group(function () {
+        Route::post('/stock/{batch}/adjust', 'correctBatch');
+        Route::get('/audit/overview', 'overview');
+        Route::get('/audit/scopes', 'scopes');
+        Route::get('/audit/batches', 'findBatches');
+        Route::get('/audit/missing', 'missing');
+        Route::get('/audit/history', 'history');
+        Route::get('/audit/counts', 'counts');
+        Route::post('/audit/counts', 'storeCount');
+        Route::get('/audit/counts/{count}', 'showCount');
+        Route::put('/audit/counts/{count}/lines/{line}', 'countLine');
+        Route::post('/audit/counts/{count}/lines', 'addLine');
+        Route::post('/audit/counts/{count}/submit', 'submit');
+        Route::put('/audit/counts/{count}/review', 'review');
+        Route::post('/audit/counts/{count}/reopen', 'reopen');
+        Route::post('/audit/counts/{count}/approve', 'approve');
+        Route::post('/audit/counts/{count}/cancel', 'cancel');
     });
 
     Route::prefix('pharmacy')->controller(PharmacyEditController::class)->group(function () {

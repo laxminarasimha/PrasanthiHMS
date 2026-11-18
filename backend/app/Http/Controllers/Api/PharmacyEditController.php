@@ -8,6 +8,8 @@ use App\Models\PharmacyChange;
 use App\Models\PharmacySale;
 use App\Models\PurchaseInvoice;
 use App\Models\StockBatch;
+use App\Models\Stockist;
+use App\Models\StockMovement;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -82,7 +84,7 @@ class PharmacyEditController extends Controller
                     }
                 }
                 if ($extra !== 0 && $batch) {
-                    $batch->decrement('units_in_stock', $extra); // a negative number puts units back
+                    $batch->move(-$extra, 'sale_edit', $sale->bill_no); // a negative number puts units back
                 }
 
                 if ($quantity === 0) {
@@ -188,7 +190,7 @@ class PharmacyEditController extends Controller
             $changes = PharmacyChange::differences(
                 ['stockist' => 'Stockist', 'invoice_no' => 'Invoice no.', 'invoice_date' => 'Invoice date', 'remarks' => 'Remarks'],
                 ['stockist' => $purchase->stockist->name, 'invoice_no' => $purchase->invoice_no, 'invoice_date' => $purchase->invoice_date->toDateString(), 'remarks' => $purchase->remarks],
-                ['stockist' => \App\Models\Stockist::find($data['stockist_id'])->name, 'invoice_no' => $data['invoice_no'], 'invoice_date' => Carbon::parse($data['invoice_date'])->toDateString(), 'remarks' => $data['remarks'] ?? null],
+                ['stockist' => Stockist::find($data['stockist_id'])->name, 'invoice_no' => $data['invoice_no'], 'invoice_date' => Carbon::parse($data['invoice_date'])->toDateString(), 'remarks' => $data['remarks'] ?? null],
             );
 
             foreach ($data['items'] ?? [] as $index => $entry) {
@@ -222,7 +224,11 @@ class PharmacyEditController extends Controller
                     $new,
                     $batch->medicine->name.' ',
                 ));
+                $change = $stock - $batch->units_in_stock;
                 $batch->update($new + ['unit_mrp' => round($new['pack_mrp'] / $batch->units_per_pack, 2), 'units_received' => $units, 'units_in_stock' => $stock]);
+                if ($change !== 0) {
+                    StockMovement::record($batch, $change, 'purchase_edit', $data['invoice_no']);
+                }
             }
 
             $extras = ['other_charges' => (float) ($data['other_charges'] ?? $purchase->other_charges), 'cash_discount' => (float) ($data['cash_discount'] ?? $purchase->cash_discount), 'round_off' => (float) ($data['round_off'] ?? $purchase->round_off)];
@@ -243,7 +249,7 @@ class PharmacyEditController extends Controller
             $purchase->update([
                 'stockist_id' => $data['stockist_id'], 'invoice_no' => $data['invoice_no'], 'invoice_date' => $data['invoice_date'], 'remarks' => $data['remarks'] ?? null,
                 'subtotal' => round($subtotal, 2), 'tax' => round($tax, 2), 'total' => $total] + $extras + [
-            ]);
+                ]);
             $this->log('invoice', $purchase->id, $purchase->invoice_no, $changes, $data['reason'], $request);
         });
 

@@ -144,7 +144,7 @@ class PharmacySalesController extends Controller
                 $lines[] = ['item_id' => $item->id, 'medicine_name' => $item->medicine_name, 'batch_no' => $item->batch_no, 'quantity' => $entry['quantity'], 'amount' => $amount];
 
                 $item->increment('returned_quantity', $entry['quantity']);
-                StockBatch::whereKey($item->stock_batch_id)->increment('units_in_stock', $entry['quantity']);
+                StockBatch::find($item->stock_batch_id)?->move($entry['quantity'], 'sale_return', $sale->bill_no);
             }
 
             // A bill-level discount was given on the whole bill, so the same share comes off what is handed back.
@@ -187,7 +187,7 @@ class PharmacySalesController extends Controller
             foreach ($sale->items()->lockForUpdate()->get() as $item) {
                 $back = $item->quantity - $item->returned_quantity;
                 if ($back > 0) {
-                    StockBatch::whereKey($item->stock_batch_id)->increment('units_in_stock', $back);
+                    StockBatch::find($item->stock_batch_id)?->move($back, 'sale_void', $sale->bill_no, $data['reason']);
                     $item->update(['returned_quantity' => $item->quantity]);
                 }
             }

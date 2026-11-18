@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
 import { useAuth } from '../../auth'
+import { REASONS } from './auditTypes'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { daysUntil, downloadCsv, expiryLabel, rupees, today } from '../../format'
 import type { StockBatch } from '../../types'
@@ -14,6 +16,7 @@ export function PharmacyStock() {
   const [adjusting, setAdjusting] = useState<StockBatch | null>(null)
   const [count, setCount] = useState('')
   const [reason, setReason] = useState('')
+  const [category, setCategory] = useState('')
   const [error, setError] = useState('')
   const [details, setDetails] = useState({ batch_no: '', expiry: '', pack_mrp: '', rack_no: '', reason: '' })
   const [detailsError, setDetailsError] = useState('')
@@ -36,6 +39,7 @@ export function PharmacyStock() {
     setAdjusting(batch)
     setCount(String(batch.units_in_stock))
     setReason('')
+    setCategory('')
     setError('')
     setNotice('')
     setDetails({ batch_no: batch.batch_no, expiry: batch.expiry.slice(0, 7), pack_mrp: String(batch.pack_mrp), rack_no: batch.rack_no ?? '', reason: '' })
@@ -59,8 +63,12 @@ export function PharmacyStock() {
     e.preventDefault()
     if (!adjusting) return
     try {
-      await api.post(`/pharmacy/stock/${adjusting.id}/adjust`, { units_in_stock: count, reason })
-      setNotice(`${adjusting.medicine?.name} batch ${adjusting.batch_no} is now ${count} units.`)
+      const res = await api.post<{ applied: boolean; count_no?: string }>(`/pharmacy/stock/${adjusting.id}/adjust`, { units_in_stock: count, reason, category })
+      setNotice(
+        res.data.applied
+          ? `${adjusting.medicine?.name} batch ${adjusting.batch_no} is now ${count} units.`
+          : `Reported as ${res.data.count_no}: ${adjusting.medicine?.name} batch ${adjusting.batch_no} counted as ${count}. The stock changes when it is approved under Stock audit.`,
+      )
       setAdjusting(null)
       load()
     } catch (err) {
@@ -161,7 +169,7 @@ export function PharmacyStock() {
           <div className="card panel">
           <form onSubmit={adjust}>
             <div className="panel-head">
-              <h2>Adjust stock</h2>
+              <h2>Correct the stock</h2>
               <button type="button" className="btn ghost" onClick={() => setAdjusting(null)}>
                 Close
               </button>
@@ -178,13 +186,30 @@ export function PharmacyStock() {
               <input type="number" min={0} value={count} onChange={(e) => setCount(e.target.value)} autoFocus />
             </label>
             <label className="field gap-top">
-              <span className="field-label">Reason</span>
-              <input placeholder="Damaged, counting error, expired and discarded…" value={reason} onChange={(e) => setReason(e.target.value)} />
+              <span className="field-label">What kind of difference is it?</span>
+              <select value={category} onChange={(e) => setCategory(e.target.value)} required>
+                <option value="">Choose…</option>
+                {REASONS.map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
             </label>
+            <label className="field gap-top">
+              <span className="field-label">What was found</span>
+              <input placeholder="For example: two strips crushed at the back of the rack" value={reason} onChange={(e) => setReason(e.target.value)} />
+            </label>
+            <p className="muted small">
+              {user?.can_audit_pharmacy ? 'The stock is corrected now, and the correction shows in the stock history and the missing-stock report.' : 'This is sent for approval. The stock changes once it is approved under Stock audit.'}{' '}
+              <Link className="link" to={`/pharmacy/audit?tab=history&medicine=${adjusting.medicine_id}`}>
+                See this medicine's stock history
+              </Link>
+            </p>
             {error && <p className="form-error">{error}</p>}
             <div className="panel-foot">
-              <button className="btn primary" disabled={count === '' || reason.trim().length < 3}>
-                Save new count
+              <button className="btn primary" disabled={count === '' || category === '' || reason.trim().length < 3}>
+                {user?.can_audit_pharmacy ? 'Correct the stock' : 'Report for approval'}
               </button>
             </div>
           </form>

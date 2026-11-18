@@ -1447,3 +1447,61 @@ h2 .count { display: inline-block; min-width: 1.6em; margin-left: 6px; padding: 
   .patient-list tbody td:nth-child(6) { grid-area: act; align-self: end; }
   .patient-list tbody tr.empty td { grid-area: auto; text-align: center; padding: 18px 0; }
 }
+
+/* Pharmacy stock audit */
+.audit h3 { margin: 22px 0 8px; }
+.audit-tiles { margin-bottom: 14px; }
+@media (min-width: 701px) { .audit-tiles { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); } }
+.audit-tiles .tile strong small { font-size: 0.85rem; font-weight: 500; }
+.audit-lists { gap: 8px 28px; }
+.audit-lists h3 { margin-top: 8px; }
+.audit .history li { align-items: center; }
+.audit .history li .btn { flex: none; }
+.audit-warning { margin: 0 0 10px; }
+.count-start { display: grid; gap: 10px; padding: 14px 16px; margin-bottom: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
+.count-start .tabs { justify-self: start; }
+.count-choice { flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.count-choice select { width: auto; min-width: 220px; }
+.count-choice input.letter { width: 48px; text-align: center; text-transform: uppercase; }
+.count-choice .btn { margin-left: auto; }
+.chip.on { border-color: var(--brand); color: var(--brand); font-weight: 700; }
+.count-sheet input.count-box { width: 96px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.count-sheet tr.recount td { background: var(--warn-soft); }
+.count-sheet tr.different td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+.count-sheet .reason-cell { display: grid; gap: 6px; min-width: 240px; }
+.count-sheet .reason-cell select, .count-sheet .reason-cell input { width: 100%; }
+.found-batch { display: grid; gap: 8px; margin-top: 18px; padding: 12px 14px; border: 1px dashed var(--border); border-radius: 12px; }
+.count-actions { position: sticky; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 18px -20px -20px; padding: 12px 20px; background: var(--surface); border-top: 1px solid var(--border); border-radius: 0 0 14px 14px; box-shadow: 0 -8px 16px -12px var(--shadow); }
+.batch-history { border: 1px solid var(--border); border-radius: 12px; margin-bottom: 10px; padding: 0 14px; }
+.batch-history > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; padding: 12px 0; cursor: pointer; }
+.batch-history[open] > summary { border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.batch-history tr.corrected td { background: var(--warn-soft); }
+@media (max-width: 700px) {
+  .count-choice .btn { margin-left: 0; width: 100%; }
+  .count-actions { margin: 16px -12px -12px; padding: 10px 12px; }
+  .count-actions .btn { flex: 1 1 auto; }
+  /* On a phone each batch is a card with a large box to type the count, as it is used standing at the shelf. */
+  .count-sheet thead { display: none; }
+  .count-sheet, .count-sheet tbody { display: block; width: 100%; }
+  .count-sheet tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 12px 4px; border-bottom: 1px solid var(--border); }
+  .count-sheet tbody tr.empty { display: block; }
+  .count-sheet tbody td { display: block; padding: 0; border: 0; text-align: left; white-space: normal; }
+  .count-sheet tbody td:nth-child(1) { grid-column: 2; grid-row: 1; text-align: right; color: var(--muted); }
+  .count-sheet tbody td:nth-child(1)::before { content: 'Rack '; }
+  .count-sheet tbody td:nth-child(2) { grid-column: 1; grid-row: 1; }
+  .count-sheet tbody td:nth-child(n + 4) { grid-column: 1 / -1; }
+  .count-sheet tbody td:nth-child(3) { grid-column: 1 / -1; }
+  .count-sheet tbody td.num { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .count-sheet tr.different td:first-child { box-shadow: none; }
+  .count-sheet tbody tr.different { box-shadow: inset 3px 0 0 var(--warn); padding-left: 12px; }
+  .count-sheet tbody td.num:empty { display: none; }
+  .count-sheet tbody td.num::before { content: attr(data-label); color: var(--muted); font-weight: 500; }
+  .count-sheet input.count-box { width: 132px; min-height: 46px; font-size: 1.15rem; }
+  .count-sheet .reason-cell { min-width: 0; width: 100%; }
+}
+@media print {
+  .stock-count { box-shadow: none; border: 0; padding: 0; }
+  .stock-count .subnav, .stock-count .tiles, .stock-count .pill { display: none; }
+  .count-sheet input.count-box { border: 1px solid #000; background: #fff; color: #000; }
+  .count-sheet td, .count-sheet th { border-bottom: 1px solid #999; padding: 6px 8px; }
+}
