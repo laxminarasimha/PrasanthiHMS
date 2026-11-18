@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Admission;
+use App\Models\AdmissionBed;
 use App\Models\AdmissionNote;
 use App\Models\AdmissionPayment;
 use App\Models\Bed;
@@ -181,7 +182,7 @@ class IpdRecordsController extends Controller
 
     // ---- Reports ----
 
-    public const REPORTS = ['cases' => 'Case report', 'beds' => 'Bed report', 'payments' => 'Payment report'];
+    public const REPORTS = ['cases' => 'Case report', 'beds' => 'Bed report', 'moves' => 'Bed history', 'payments' => 'Payment report'];
 
     /** Same shape as the pharmacy reports, so one screen shows them all. */
     public function report(Request $request, string $type): JsonResponse
@@ -232,26 +233,27 @@ class IpdRecordsController extends Controller
     }
 
     /**
-     * Each bed, who is in it now, and how much of the period it was in use.
-     * A stay is counted against the bed the patient is in (or left from); earlier beds in the same stay are not known.
+     * Each bed, who is in it now, and how much of the period it was in use. A patient who changed beds is counted
+     * against each bed for the time they were in it.
      */
     private function beds(Carbon $from, Carbon $to): array
     {
         $end = $to->copy()->min(now());
         $days = max(1, (int) ceil($from->diffInHours($end) / 24));
-        $stays = Admission::whereNotNull('bed_id')->where('admitted_at', '<=', $end)
-            ->where(fn ($q) => $q->whereNull('discharged_at')->orWhere('discharged_at', '>=', $from))
-            ->with('patient:id,title,name')->get()->groupBy('bed_id');
+        $stays = AdmissionBed::whereNotNull('bed_id')->where('from_at', '<=', $end)
+            ->where(fn ($q) => $q->whereNull('to_at')->orWhere('to_at', '>=', $from))
+            ->get()->groupBy('bed_id');
+        $current = Admission::where('status', 'admitted')->whereNotNull('bed_id')->with('patient:id,title,name')->get()->keyBy('bed_id');
 
-        $rows = Bed::orderBy('ward')->orderBy('bed_no')->get()->map(function (Bed $bed) use ($stays, $from, $end, $days) {
+        $rows = Bed::orderBy('ward')->orderBy('bed_no')->get()->map(function (Bed $bed) use ($stays, $current, $from, $end, $days) {
             $mine = $stays->get($bed->id, collect());
-            $used = $mine->sum(fn (Admission $a) => max(0, $a->admitted_at->max($from)->diffInHours(($a->discharged_at ?? $end)->min($end)) / 24));
-            $current = $mine->firstWhere('status', 'admitted');
+            $used = $mine->sum(fn (AdmissionBed $s) => max(0, $s->from_at->max($from)->diffInHours(($s->to_at ?? $end)->min($end)) / 24));
+            $now = $current->get($bed->id);
 
             return [
                 'ward' => $bed->ward, 'bed' => $bed->bed_no,
-                'status' => ! $bed->is_active ? 'Not in use' : ($current ? 'Occupied' : 'Free'),
-                'patient' => $current?->patient->name, 'ipd_no' => $current?->ipd_no, 'since' => $current?->admitted_at->format('Y-m-d H:i'),
+                'status' => ! $bed->is_active ? 'Not in use' : ($now ? 'Occupied' : 'Free'),
+                'patient' => $now?->patient->name, 'ipd_no' => $now?->ipd_no, 'since' => $mine->firstWhere('to_at', null)?->from_at->format('Y-m-d H:i') ?? $now?->admitted_at->format('Y-m-d H:i'),
                 'stays' => $mine->count(), 'days_used' => round($used, 1), 'usage' => min(100, round($used / $days * 100, 1)),
             ];
         });
@@ -261,6 +263,24 @@ class IpdRecordsController extends Controller
             self::col('ipd_no', 'IPD no.'), self::col('since', 'Allotted on'), self::col('stays', 'Stays', 'number'),
             self::col('days_used', 'Days used', 'number'), self::col('usage', 'Usage %', 'number', false),
         ], $rows];
+    }
+
+    /** Who was in which bed, and when: every move in the period, newest first. */
+    private function moves(Carbon $from, Carbon $to): array
+    {
+        $ipd = Admission::query()->with('patient:id,title,name,uhid');
+        $rows = AdmissionBed::where('from_at', '<=', $to)->where(fn ($q) => $q->whereNull('to_at')->orWhere('to_at', '>=', $from))
+            ->with('mover:id,name')->orderByDesc('from_at')->limit(2000)->get();
+        $cases = $ipd->whereIn('id', $rows->pluck('admission_id')->unique())->get()->keyBy('id');
+
+        return [[
+            self::col('ward', 'Ward'), self::col('bed', 'Bed'), self::col('patient', 'Patient'), self::col('ipd_no', 'IPD no.'),
+            self::col('from', 'From'), self::col('until', 'Until'), self::col('days', 'Days', 'number'), self::col('by', 'Entered by'),
+        ], $rows->map(fn (AdmissionBed $s) => [
+            'ward' => $s->ward, 'bed' => $s->bed_no, 'patient' => $cases->get($s->admission_id)?->patient->name, 'ipd_no' => $cases->get($s->admission_id)?->ipd_no,
+            'from' => $s->from_at->format('Y-m-d H:i'), 'until' => $s->to_at?->format('Y-m-d H:i') ?? 'Still there',
+            'days' => round($s->from_at->diffInHours($s->to_at ?? now()) / 24, 1), 'by' => $s->mover?->name,
+        ])];
     }
 
     /** Money taken or refunded on IPD cases in the period. Refunds show as negative amounts. */

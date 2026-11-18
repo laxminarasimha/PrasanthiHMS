@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\DayClose;
 use App\Models\PatientAccount;
+use App\Support\BedCharges;
 use App\Support\DatabaseBackup;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Sanctum\Sanctum;
@@ -34,6 +35,12 @@ class AppServiceProvider extends ServiceProvider
 
             return $valid && ($token->last_used_at ?? $token->created_at)?->gt(now()->subDays($days));
         });
+
+        // Now and then, after a page has gone out, add the bed charge for any day of stay that has begun.
+        // The host has no timer, so this is how inpatients' bills keep up when nobody has the IPD screens open.
+        if (! $this->app->runningInConsole() && ! $this->app->runningUnitTests()) {
+            $this->app->terminating(fn () => BedCharges::sweep());
+        }
 
         // Once a day, after a page has gone out, write a backup of the database.
         if (! $this->app->runningInConsole() && ! $this->app->runningUnitTests() && config('app.auto_backup')) {

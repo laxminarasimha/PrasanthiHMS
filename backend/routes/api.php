@@ -360,6 +360,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
         Route::get('/beds', 'beds');
         Route::get('/services', 'services');
         Route::get('/round-times', 'roundTimes');
+        Route::get('/bed-charging', 'bedCharging');
         Route::get('/admissions', 'admissions');
         Route::get('/admissions/{admission}', 'show');
         Route::get('/admissions/{admission}/outstanding', 'outstanding');
@@ -371,6 +372,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
             Route::post('/services', 'storeService');
             Route::put('/services/{service}', 'updateService');
             Route::put('/round-times', 'saveRoundTimes');
+            Route::put('/bed-charging', 'saveBedCharging');
         });
 
         Route::post('/admissions/{admission}/approve-bill', 'approveBill');

@@ -31,6 +31,12 @@ class DayClose extends Model
         return self::whereDate('day', Carbon::parse($day)->toDateString())->whereNull('reopened_at')->latest('id')->first();
     }
 
+    /** Whether the accounts of the day something belongs to have been closed. */
+    public static function isClosed(mixed $when): bool
+    {
+        return self::whereDate('day', Carbon::parse($when ?? now())->toDateString())->whereNull('reopened_at')->exists();
+    }
+
     /** Stops the request when the day something belongs to has been closed. */
     public static function refuseIfClosed(mixed $when): void
     {

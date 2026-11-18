@@ -580,9 +580,18 @@ export type AdmissionCharge = {
   deleter?: { id: number; name: string } | null
 }
 
+/** One bed a patient occupied during a stay. `to_at` is null while they are still in it. */
+export type BedStay = { id: number; ward: string; bed_no: string; from_at: string; to_at: string | null; mover?: { id: number; name: string } | null }
+
 export type Admission = {
   id: number
   ipd_no: string
+  /** Every bed of the stay, in order. */
+  bed_stays?: BedStay[]
+  /** Whether the app adds this patient's bed charge each day (when the hospital has that switched on at all). */
+  auto_bed_charge?: boolean
+  /** Whether the hospital has automatic bed charges switched on. */
+  bed_charges_auto?: boolean
   status: AdmissionStatus
   admitted_at: string
   discharged_at: string | null

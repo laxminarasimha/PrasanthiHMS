@@ -18,6 +18,7 @@ use App\Models\LabOrderItem;
 use App\Models\Payment;
 use App\Models\PharmacySale;
 use App\Models\Setting;
+use App\Support\BedCharges;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -147,6 +148,8 @@ class IpdController extends Controller
             'q' => ['nullable', 'string', 'max:100'],
         ]);
         $status = $filters['status'] ?? 'admitted';
+        // So the amounts on the list include today's bed charges without each case having to be opened.
+        BedCharges::sweep();
         $term = trim((string) ($filters['q'] ?? ''));
 
         return response()->json(
@@ -166,6 +169,27 @@ class IpdController extends Controller
         );
     }
 
+    /** Whether each day's bed charge is added to the bill by the app, and since when. */
+    public function bedCharging(): JsonResponse
+    {
+        return response()->json(BedCharges::settings());
+    }
+
+    public function saveBedCharging(Request $request): JsonResponse
+    {
+        $data = $request->validate(['auto' => ['required', 'boolean']]);
+        $now = BedCharges::settings();
+        if ($data['auto'] !== $now['auto']) {
+            // Days of stay that had already begun when it is switched on were left to the staff, and stay that way.
+            // Admission times are entered to the minute, so the switch-on is counted from the start of its minute.
+            Setting::updateOrCreate(['key' => BedCharges::SETTING], ['value' => ['auto' => $data['auto'], 'from' => $data['auto'] ? now()->startOfMinute()->format('Y-m-d H:i:s') : null]]);
+            AuditLog::record('ipd.bed_charging', null, null, $data['auto'] ? 'Automatic bed charges switched on' : 'Automatic bed charges switched off');
+            BedCharges::sweep(true);
+        }
+
+        return response()->json(BedCharges::settings());
+    }
+
     public function admit(Request $request): JsonResponse
     {
         $data = $request->validate($this->detailRules() + [
@@ -180,7 +204,10 @@ class IpdController extends Controller
         $admission = DB::transaction(function () use ($data, $request) {
             $this->claimBed($data['bed_id'] ?? null);
 
-            return Admission::create($data + ['branch_id' => $request->user()->branch_id, 'created_by' => $request->user()->id]);
+            $admission = Admission::create($data + ['branch_id' => $request->user()->branch_id, 'created_by' => $request->user()->id]);
+            BedCharges::moveTo($admission, $admission->bed_id, $admission->admitted_at, $request->user()->id);
+
+            return $admission;
         });
 
         return response()->json($this->present($admission), 201);
@@ -199,6 +226,7 @@ class IpdController extends Controller
             'discharge_summary' => ['sometimes', 'nullable', 'string', 'max:20000'],
             'aadhaar_no' => ['sometimes', 'nullable', 'regex:/^[0-9]{12}$/'],
             'gst_no' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'auto_bed_charge' => ['sometimes', 'boolean'],
         ], ['aadhaar_no.regex' => 'An Aadhaar number has 12 digits.']);
 
         if (isset($data['discount'])) {
@@ -208,11 +236,21 @@ class IpdController extends Controller
             throw ValidationException::withMessages(['discount' => 'The discount cannot be more than the total charges.']);
         }
 
-        DB::transaction(function () use ($data, $admission) {
-            if (array_key_exists('bed_id', $data) && $data['bed_id'] !== $admission->bed_id && $admission->status === 'admitted') {
+        DB::transaction(function () use ($data, $admission, $request) {
+            $moving = array_key_exists('bed_id', $data) && $data['bed_id'] !== $admission->bed_id && $admission->status === 'admitted';
+            if ($moving) {
+                // What is owed for the bed so far is settled before the bed changes.
+                BedCharges::bringUpToDate($admission);
                 $this->claimBed($data['bed_id']);
             }
+            if (array_key_exists('auto_bed_charge', $data) && (bool) $data['auto_bed_charge'] !== $admission->auto_bed_charge) {
+                // Days up to now are dealt with under the old choice; the new one applies from the next day of stay.
+                BedCharges::bringUpToDate($admission);
+            }
             $admission->update($data);
+            if ($moving) {
+                BedCharges::moveTo($admission, $admission->bed_id, now(), $request->user()->id);
+            }
         });
 
         return response()->json($this->present($admission));
@@ -261,7 +299,8 @@ class IpdController extends Controller
         abort_unless($charge->admission_id === $admission->id, 404);
         $this->refuseIfBillApproved($admission);
         $this->refuseIfBilled($charge);
-        if ($charge->source_type) {
+        // A bed charge the app added can be corrected like any other line; a line that stands for another bill cannot.
+        if ($charge->source_type && $charge->source_type !== 'bed') {
             throw ValidationException::withMessages(['charge' => 'This line stands for another bill. Remove it here and change that bill instead.']);
         }
 
@@ -555,7 +594,12 @@ class IpdController extends Controller
             'discharge_summary' => ['nullable', 'string', 'max:20000'],
         ], ['discharged_at.after_or_equal' => 'The discharge time cannot be before the admission time.']);
 
-        $admission->update($data);
+        DB::transaction(function () use ($admission, $data) {
+            $admission->update($data);
+            // The last days of the stay go on the bill, and the bed is given up at the time of leaving.
+            BedCharges::bringUpToDate($admission);
+            BedCharges::leave($admission, $admission->discharged_at);
+        });
 
         return response()->json($this->present($admission));
     }
@@ -582,6 +626,7 @@ class IpdController extends Controller
             $bed = $admission->bed_id ? Bed::whereKey($admission->bed_id)->lockForUpdate()->first() : null;
             $taken = $bed && Admission::where('bed_id', $bed->id)->where('status', 'admitted')->exists();
             $admission->update(['status' => 'admitted', 'discharged_at' => null] + ($taken ? ['bed_id' => null] : []));
+            BedCharges::moveTo($admission, $admission->bed_id, now(), request()->user()->id);
         });
         AuditLog::record('ipd.reopened', $admission->patient_id, $admission, 'IPD '.$admission->ipd_no.': reopened (was closed as '.$was.'). Reason: '.$data['reason']);
 
@@ -713,7 +758,10 @@ class IpdController extends Controller
 
     private function present(Admission $admission): Admission
     {
+        // Any day of stay that has begun since the case was last looked at gets its bed charge first.
+        BedCharges::bringUpToDate($admission);
         $admission = $admission->fresh()->load([
+            'bedStays.mover:id,name',
             'patient:id,uhid,title,name,gender,date_of_birth,mobile,address,city,blood_group', 'doctor:id,name,department,signature_text',
             'bed:id,ward,bed_no,daily_charge', 'charges.creator:id,name', 'payments.receiver:id,name', 'billApprover:id,name', 'payer:id,name,details', 'bills.creator:id,name', 'bills.charges:id,admission_bill_id,amount',
         ]);
@@ -721,6 +769,7 @@ class IpdController extends Controller
         if (request()->user()?->allows('canWorkIpd')) {
             $admission->makeVisible('aadhaar_no');
         }
+        $admission->setAttribute('bed_charges_auto', BedCharges::settings()['auto']);
         // Lines taken off the bill, kept so there is a record of what was removed and by whom.
         $admission->setRelation('deleted_charges', AdmissionCharge::onlyTrashed()->where('admission_id', $admission->id)->with('deleter:id,name')->orderByDesc('deleted_at')->get());
 
