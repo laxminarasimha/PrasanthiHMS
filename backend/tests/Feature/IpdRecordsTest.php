@@ -2,8 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Models\Admission;
+use App\Models\AdmissionPayment;
 use App\Models\Bed;
 use App\Models\IpdService;
+use App\Models\LabOrderItem;
+use App\Models\LabTest;
 use App\Models\Patient;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -156,7 +160,7 @@ class IpdRecordsTest extends TestCase
 
         $this->deleteJson("{$case}/charges/{$charge}")->assertOk()->assertJsonPath('total', 0)->assertJsonCount(0, 'charges')
             ->assertJsonCount(1, 'deleted_charges')->assertJsonPath('deleted_charges.0.deleter.name', $this->nurse->name)->assertJsonPath('deleted_charges.0.amount', 1500);
-        $this->getJson("/api/ipd/reports/cases?from=".now()->subDays(3)->toDateString().'&to='.now()->toDateString())->assertJsonPath('rows.0.total', 0);
+        $this->getJson('/api/ipd/reports/cases?from='.now()->subDays(3)->toDateString().'&to='.now()->toDateString())->assertJsonPath('rows.0.total', 0);
     }
 
     public function test_payments_can_be_back_dated_with_remarks_and_a_mistaken_one_deleted(): void
@@ -166,7 +170,7 @@ class IpdRecordsTest extends TestCase
         $this->postJson("{$case}/payments", ['type' => 'advance', 'amount' => 5000, 'mode' => 'cash', 'paid_on' => now()->subDays(10)->toDateString()])->assertStatus(422)->assertJsonValidationErrors('paid_on');
         $payment = $this->postJson("{$case}/payments", ['type' => 'advance', 'amount' => 5000, 'mode' => 'cash', 'paid_on' => $yesterday, 'remarks' => 'Hospital advance'])
             ->assertCreated()->assertJsonPath('paid', 5000)->assertJsonPath('payments.0.remarks', 'Hospital advance')->json('payments.0');
-        $this->assertStringStartsWith($yesterday, \App\Models\AdmissionPayment::find($payment['id'])->created_at->toDateString());
+        $this->assertStringStartsWith($yesterday, AdmissionPayment::find($payment['id'])->created_at->toDateString());
         // It is counted on the day it was received.
         $this->getJson("/api/ipd/reports/payments?from={$yesterday}&to={$yesterday}")->assertJsonCount(1, 'rows');
 
@@ -175,7 +179,7 @@ class IpdRecordsTest extends TestCase
 
         Sanctum::actingAs($this->doctor);
         $this->deleteJson("{$case}/payments/{$payment['id']}")->assertStatus(422); // would leave more refunded than received
-        $refund = \App\Models\AdmissionPayment::where('type', 'refund')->value('id');
+        $refund = AdmissionPayment::where('type', 'refund')->value('id');
         $this->deleteJson("{$case}/payments/{$refund}")->assertOk()->assertJsonPath('paid', 5000);
         $this->deleteJson("{$case}/payments/{$payment['id']}")->assertOk()->assertJsonPath('paid', 0)->assertJsonCount(0, 'payments');
     }
@@ -191,18 +195,54 @@ class IpdRecordsTest extends TestCase
 
         // Two results for the same test on two days make one row with two dated values.
         Sanctum::actingAs(User::factory()->create(['role' => 'lab_tech']));
-        $test = \App\Models\LabTest::create(['name' => 'Random Blood Sugar', 'price' => 100]);
+        $test = LabTest::create(['name' => 'Random Blood Sugar', 'price' => 100]);
         $test->parameters()->create(['name' => 'RBS', 'unit' => 'mg/dL', 'reference_range' => '70 - 140']);
-        $patient = \App\Models\Admission::find($this->case)->patient_id;
+        $patient = Admission::find($this->case)->patient_id;
         foreach ([['182', 'high', now()->subDay()], ['128', null, now()]] as [$value, $flag, $when]) {
             $order = $this->postJson('/api/lab/orders', ['patient_id' => $patient, 'test_ids' => [$test->id]])->assertCreated()->json();
             $item = $order['items'][0];
             $this->putJson("/api/lab/orders/{$order['id']}/items/{$item['id']}", ['complete' => true, 'results' => [['id' => $item['results'][0]['id'], 'value' => $value, 'flag' => $flag]]])->assertOk();
-            \App\Models\LabOrderItem::whereKey($item['id'])->update(['reported_at' => $when]);
+            LabOrderItem::whereKey($item['id'])->update(['reported_at' => $when]);
         }
         $chart = $this->getJson("{$case}/investigations")->assertOk()->assertJsonCount(2, 'dates')->assertJsonCount(1, 'rows')->json();
         $this->assertSame('RBS', $chart['rows'][0]['parameter']);
         $this->assertSame(['182', '128'], array_column(array_values($chart['rows'][0]['values']), 'value'));
         $this->assertSame('high', $chart['rows'][0]['values'][now()->subDay()->toDateString()]['flag']);
+    }
+
+    public function test_the_stays_own_records_are_offered_for_the_summary(): void
+    {
+        $case = "/api/ipd/admissions/{$this->case}";
+        $now = now()->format('Y-m-d H:i');
+        $this->getJson("{$case}/summary/from-stay")->assertOk()->assertExactJson(['investigations' => '', 'treatment_given' => '', 'procedures' => '', 'operative_findings' => '', 'medicines' => []]);
+
+        // An operation note, two orders on the chart (one stopped), and a lab result during the stay.
+        $this->postJson("{$case}/notes", ['kind' => 'ot', 'noted_at' => $now, 'body' => 'Uneventful.', 'details' => ['procedure' => 'Appendicectomy', 'surgeon' => 'Dr Rao', 'anaesthesia' => 'Spinal', 'findings' => 'Inflamed appendix']])->assertCreated();
+        Sanctum::actingAs($this->doctor);
+        $this->postJson("{$case}/chart/orders", ['kind' => 'medicine', 'title' => 'Inj Ceftriaxone', 'dose' => '1 g', 'route' => 'IV', 'frequency' => 'BD'])->assertCreated();
+        $stopped = $this->postJson("{$case}/chart/orders", ['kind' => 'medicine', 'title' => 'Inj Pantoprazole', 'dose' => '40 mg', 'route' => 'IV', 'frequency' => 'OD'])->assertCreated()->json('orders.1.id');
+        $this->postJson("{$case}/chart/orders/{$stopped}/stop")->assertOk();
+        $this->postJson("{$case}/chart/orders", ['kind' => 'instruction', 'title' => 'Soft diet'])->assertCreated();
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'lab_tech']));
+        $test = $this->postJson('/api/lab/tests', ['name' => 'Lipid Profile', 'price' => 500, 'parameters' => [['name' => 'Total Cholesterol', 'unit' => 'mg/dL'], ['name' => 'HDL Cholesterol', 'unit' => 'mg/dL']]])->assertCreated()->json('id');
+        $order = $this->postJson('/api/lab/orders', ['patient_id' => Admission::find($this->case)->patient_id, 'test_ids' => [$test]])->assertCreated()->json();
+        $this->putJson("/api/lab/orders/{$order['id']}/items/{$order['items'][0]['id']}", ['complete' => true, 'results' => [['id' => $order['items'][0]['results'][0]['id'], 'value' => '232', 'flag' => 'high']]])->assertOk();
+
+        Sanctum::actingAs($this->doctor);
+        $day = now()->format('j M');
+        $offer = $this->getJson("{$case}/summary/from-stay")->assertOk()->json();
+        $this->assertSame("{$day} · Lipid Profile: Total Cholesterol 232 mg/dL (high)", $offer['investigations']);
+        $this->assertSame("Inj Ceftriaxone 1 g IV BD (from {$day})\nInj Pantoprazole 40 mg IV OD ({$day} to {$day})", $offer['treatment_given']);
+        $this->assertSame('Appendicectomy on '.now()->format('j M Y').' (Surgeon: Dr Rao; Anaesthesia: Spinal)', $offer['procedures']);
+        $this->assertSame('Inflamed appendix', $offer['operative_findings']);
+        // Only what is still running is offered as a medicine to go home with.
+        $this->assertSame([['medicine' => 'Inj Ceftriaxone', 'dose' => '1 g', 'frequency' => 'BD', 'timing' => null, 'duration' => null, 'instructions' => null]], $offer['medicines']);
+
+        // Someone who may not open the bedside chart is not shown its orders, and others cannot ask at all.
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->getJson("{$case}/summary/from-stay")->assertOk()->assertJsonPath('treatment_given', '')->assertJsonPath('medicines', [])->assertJsonPath('operative_findings', 'Inflamed appendix');
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $this->getJson("{$case}/summary/from-stay")->assertForbidden();
     }
 }

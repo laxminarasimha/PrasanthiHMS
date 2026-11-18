@@ -1408,3 +1408,14 @@ table.compact td.lab-last { white-space: nowrap; font-variant-numeric: tabular-n
 .round-row .row { flex-wrap: wrap; gap: 8px; }
 .round-row input[type='time'] { width: 128px; }
 @media (max-width: 700px) { .round-row { grid-template-columns: minmax(0, 1fr); gap: 4px; } .round-row input[type='time'] { width: calc(50% - 4px); } }
+
+/* Discharge summary */
+.summary-jump { position: sticky; top: var(--bar-h); z-index: 5; background: var(--surface); margin: 10px 0 4px; border-bottom: 1px solid var(--border); }
+.summary-progress { margin: 6px 0 10px; }
+.summary-part { scroll-margin-top: calc(var(--bar-h) + 60px); }
+.summary-part textarea { resize: vertical; overflow: hidden; }
+.summary-part .needed { color: var(--warn); font-weight: 600; text-transform: none; letter-spacing: 0; }
+.summary-part .from-stay { display: block; margin-top: 6px; text-align: left; font-weight: 600; }
+.summary-part .chip.on { border-color: var(--brand); color: var(--brand); font-weight: 700; }
+.summary-save { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: 12px; margin: 18px -20px -20px; padding: 12px 20px; background: var(--surface); border-top: 1px solid var(--border); border-radius: 0 0 14px 14px; box-shadow: 0 -8px 16px -12px var(--shadow); }
+@media (max-width: 700px) { .summary-save { margin: 16px -12px -12px; padding: 10px 12px; } .summary-jump { margin-left: 0; margin-right: 0; padding: 0; box-shadow: none; } }

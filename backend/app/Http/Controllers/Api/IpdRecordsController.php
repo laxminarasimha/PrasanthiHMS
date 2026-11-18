@@ -9,6 +9,7 @@ use App\Models\AdmissionPayment;
 use App\Models\Bed;
 use App\Models\DischargeSummary;
 use App\Models\IpdBillTemplate;
+use App\Support\StaySummary;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -76,6 +77,12 @@ class IpdRecordsController extends Controller
     public function summary(Admission $admission): JsonResponse
     {
         return response()->json($this->presentSummary($admission));
+    }
+
+    /** What the stay's own records offer for the summary: results, medicines given and operations, ready to add and edit. */
+    public function summaryFromStay(Request $request, Admission $admission): JsonResponse
+    {
+        return response()->json(StaySummary::for($admission, $request->user()->allows('canConsult')));
     }
 
     public function saveSummary(Request $request, Admission $admission): JsonResponse
