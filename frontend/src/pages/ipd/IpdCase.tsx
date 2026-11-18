@@ -52,6 +52,9 @@ export function IpdCase() {
   const [templates, setTemplates] = useState<IpdBillTemplate[]>([])
   const [bedId, setBedId] = useState('')
   const [outstanding, setOutstanding] = useState<OutstandingBill[]>([])
+  // The payment whose mode is being corrected, with what is typed for it.
+  const [fixing, setFixing] = useState<NonNullable<Admission['payments']>[number] | null>(null)
+  const [fix, setFix] = useState({ mode: 'cash', reference: '', reason: '' })
 
   const apply = (next: Admission) => {
     setAdmission(next)
@@ -501,7 +504,7 @@ export function IpdCase() {
         )}
 
         <h3>Advances, payments and refunds</h3>
-        <ul className="history">
+        <ul className="history payments-list">
           {admission.payments?.map((p) => (
             <li key={p.id}>
               <span>
@@ -517,6 +520,21 @@ export function IpdCase() {
               <a className="link" href={`/ipd/${admission.id}/receipt/${p.id}`} target="_blank" rel="noreferrer">
                 Receipt
               </a>
+              {canEdit && PAYMENT_MODES.some((m) => m.value === p.mode) && (
+                <button
+                  type="button"
+                  className="link"
+                  title="Entered under the wrong mode? Correct it here"
+                  onClick={() => {
+                    setFixing(p)
+                    setFix({ mode: p.mode, reference: p.reference ?? '', reason: '' })
+                    setNotice('')
+                    setError('')
+                  }}
+                >
+                  Change mode
+                </button>
+              )}
               {user?.can_approve_ipd && (
                 <button type="button" className="link danger" title="Remove an entry made by mistake" onClick={() => window.confirm('Delete this entry? Use this only for a mistake; money handed back should be entered as a refund.') && run(api.delete(`${url}/payments/${p.id}`), 'Entry deleted.')}>
                   Delete
@@ -530,6 +548,37 @@ export function IpdCase() {
           ))}
           {admission.payments?.length === 0 && <li className="muted">Nothing received yet.</li>}
         </ul>
+        {fixing && (
+          <form
+            className="action-box"
+            onSubmit={async (e) => {
+              e.preventDefault()
+              const ok = await run(api.put(`${url}/payments/${fixing.id}`, { mode: fix.mode, reference: fix.reference.trim() || null, reason: fix.reason }), `Recorded as ${modeLabel(fix.mode)} now. The change is kept in the record with your reason.`)
+              if (ok) setFixing(null)
+            }}
+          >
+            <h3>Change how this was paid</h3>
+            <p className="muted small">
+              {PAYMENT_TYPES.find((t) => t.value === fixing.type)?.label} of {rupees(fixing.amount)}, recorded as <strong>{modeLabel(fixing.mode)}</strong>. Only the mode changes: the amount and the day it was taken stay as they are.
+            </p>
+            <div className="grid">
+              <SelectField label="Mode" required value={fix.mode} onChange={(v) => setFix({ ...fix, mode: v })} options={PAYMENT_MODES} />
+              <TextField label="Reference" placeholder="UPI or card slip number, optional" value={fix.reference} onChange={(v) => setFix({ ...fix, reference: v })} />
+              <div className="span-2">
+                <TextField label="Reason for the change" required value={fix.reason} onChange={(v) => setFix({ ...fix, reason: v })} />
+              </div>
+            </div>
+            {error && <p className="form-error">{error}</p>}
+            <div className="panel-foot row">
+              <button type="button" className="btn ghost" onClick={() => setFixing(null)}>
+                Cancel
+              </button>
+              <button className="btn primary" disabled={fix.reason.trim().length < 3 || (fix.mode === fixing.mode && fix.reference.trim() === (fixing.reference ?? ''))}>
+                Save as {modeLabel(fix.mode)}
+              </button>
+            </div>
+          </form>
+        )}
         {admission.due > 0 && Number(pay.amount || 0) !== admission.due && (
           <button type="button" className="link add-medicine" onClick={() => setPay((p) => ({ ...p, type: 'payment', amount: String(admission.due) }))}>
             Fill in the full due of {rupees(admission.due)}

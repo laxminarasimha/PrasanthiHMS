@@ -382,6 +382,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
             Route::delete('/admissions/{admission}/charges/{charge}', 'removeCharge');
             Route::delete('/admissions/{admission}/payments/{payment}', 'removePayment');
             Route::post('/admissions/{admission}/payments', 'addPayment');
+            Route::put('/admissions/{admission}/payments/{payment}', 'updatePayment');
             Route::post('/admissions/{admission}/discharge', 'discharge');
             Route::post('/admissions/{admission}/transfer', 'transfer');
             Route::post('/admissions/{admission}/bills', 'makeBill');
