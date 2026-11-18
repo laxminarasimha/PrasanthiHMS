@@ -72,7 +72,9 @@ class PharmacyEditController extends Controller
 
     /**
      * Corrects a saved bill: customer details, the bill discount, and the quantity or discount of each line
-     * (quantity 0 takes the line off). Stock follows the quantities, and money paid beyond the new total is refunded.
+     * (quantity 0 takes the line off). More medicines can be added to it, when the customer comes back for
+     * something else, and the money for them taken in the same step. Stock follows the quantities, and money
+     * paid beyond the new total is refunded.
      */
     public function updateSale(Request $request, PharmacySale $sale): JsonResponse
     {
@@ -84,12 +86,24 @@ class PharmacyEditController extends Controller
             'referred_doctor' => ['nullable', 'string', 'max:255'],
             'discount' => ['nullable', 'numeric', 'min:0'],
             'refund_mode' => ['nullable', Rule::in(Payment::MODES)],
-            'reason' => self::REASON,
+            // Adding medicines explains itself; any other change to a saved bill needs a reason.
+            'reason' => ['nullable', 'required_without:add', 'string', 'min:3', 'max:255'],
             'items' => ['sometimes', 'array'],
             'items.*.id' => ['required', 'integer', 'distinct'],
             'items.*.quantity' => ['required', 'integer', 'min:0', 'max:100000'],
             'items.*.discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
-        ], ['reason.required' => 'Say why this bill is being changed.']);
+            'add' => ['sometimes', 'array', 'min:1', 'max:100'],
+            'add.*.stock_batch_id' => ['required', 'integer', 'distinct', 'exists:stock_batches,id'],
+            'add.*.quantity' => ['required', 'integer', 'min:1', 'max:100000'],
+            'add.*.discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'collect' => ['nullable', 'numeric', 'min:0'],
+            'collect_mode' => ['nullable', 'required_with:collect', Rule::in(Payment::MODES)],
+            'collect_reference' => ['nullable', 'string', 'max:255'],
+        ], [
+            'reason.required_without' => 'Say why this bill is being changed.',
+            'add.*.stock_batch_id.distinct' => 'The same batch is being added twice; combine the quantities.',
+        ]);
+        $reason = $data['reason'] ?? 'Medicines added to the bill';
 
         if ($sale->voided_at) {
             throw ValidationException::withMessages(['reason' => 'This bill has been deleted.']);
@@ -101,7 +115,7 @@ class PharmacyEditController extends Controller
             throw ValidationException::withMessages(['reason' => 'Part of this bill is on an IPD bill. Remove it from the IPD bill first.']);
         }
 
-        DB::transaction(function () use ($sale, $data, $request) {
+        DB::transaction(function () use ($sale, $data, $reason, $request) {
             $items = $sale->items()->lockForUpdate()->get()->keyBy('id');
             $batches = StockBatch::whereIn('id', $items->pluck('stock_batch_id'))->lockForUpdate()->get()->keyBy('id');
             $changes = PharmacyChange::differences(
@@ -149,6 +163,44 @@ class PharmacyEditController extends Controller
                 $item->update(['quantity' => $quantity, 'discount_percent' => $discount, 'amount' => round($quantity * $item->unit_price * (1 - $discount / 100), 2)]);
             }
 
+            // Adding medicines explains itself. Changing what was already on the bill does not, even when something is added too.
+            $corrected = (bool) $changes || round((float) ($data['discount'] ?? $sale->discount), 2) !== round((float) $sale->discount, 2);
+            if ($corrected && blank($data['reason'] ?? null)) {
+                throw ValidationException::withMessages(['reason' => 'Say why this bill is being changed.']);
+            }
+
+            // Medicines the customer came back for. A batch already on the bill grows; anything else becomes a new line at today's price.
+            $adding = StockBatch::with('medicine:id,name')->whereIn('id', array_column($data['add'] ?? [], 'stock_batch_id'))->lockForUpdate()->get()->keyBy('id');
+            foreach ($data['add'] ?? [] as $index => $entry) {
+                $batch = $adding[$entry['stock_batch_id']];
+                $name = $batch->medicine->name;
+                $quantity = (int) $entry['quantity'];
+
+                if ($batch->expiry->endOfDay()->isPast()) {
+                    throw ValidationException::withMessages(["add.{$index}.stock_batch_id" => "{$name} batch {$batch->batch_no} has expired."]);
+                }
+                if ($quantity > $batch->units_in_stock) {
+                    throw ValidationException::withMessages(["add.{$index}.quantity" => "Only {$batch->units_in_stock} of {$name} (batch {$batch->batch_no}) are in stock."]);
+                }
+
+                if ($line = $items->first(fn ($i) => $i->stock_batch_id === $batch->id)) {
+                    $was = $line->quantity;
+                    $line->update(['quantity' => $was + $quantity, 'amount' => round(($was + $quantity) * $line->unit_price * (1 - $line->discount_percent / 100), 2)]);
+                    $changes[] = "{$name} quantity: {$was} → {$line->quantity}";
+                } else {
+                    $discount = (float) ($entry['discount_percent'] ?? 0);
+                    $line = $sale->items()->create([
+                        'medicine_id' => $batch->medicine_id, 'stock_batch_id' => $batch->id, 'medicine_name' => $name,
+                        'batch_no' => $batch->batch_no, 'expiry' => $batch->expiry->toDateString(), 'quantity' => $quantity,
+                        'unit_price' => $batch->unit_mrp, 'unit_cost' => $batch->effectiveUnitCost(), 'discount_percent' => $discount, 'gst_percent' => $batch->gst_percent,
+                        'amount' => round($quantity * $batch->unit_mrp * (1 - $discount / 100), 2),
+                    ]);
+                    $items->put($line->id, $line);
+                    $changes[] = "{$name} (batch {$batch->batch_no}): added, {$quantity} for ₹".(float) $line->amount;
+                }
+                $batch->move(-$quantity, 'sale_edit', $sale->bill_no);
+            }
+
             if ($items->isEmpty()) {
                 throw ValidationException::withMessages(['items' => 'A bill needs at least one medicine. Delete the bill instead.']);
             }
@@ -186,7 +238,19 @@ class PharmacyEditController extends Controller
                 $changes[] = "Refunded ₹{$refund} ({$mode})";
             }
 
-            $this->log('sale', $sale->id, $sale->bill_no, $changes, $data['reason'], $request);
+            // Money taken now for what was added.
+            $collect = round((float) ($data['collect'] ?? 0), 2);
+            if ($collect > 0) {
+                $due = round($total - $sale->paid, 2);
+                if ($collect > $due) {
+                    throw ValidationException::withMessages(['collect' => $due > 0 ? "Only ₹{$due} is due on this bill after the change." : 'Nothing is due on this bill after the change.']);
+                }
+                $sale->payments()->create(['type' => 'payment', 'amount' => $collect, 'mode' => $data['collect_mode'], 'reference' => $data['collect_reference'] ?? null, 'received_by' => $request->user()->id]);
+                $sale->recalculatePaid();
+                $changes[] = "Collected ₹{$collect} ({$data['collect_mode']})";
+            }
+
+            $this->log('sale', $sale->id, $sale->bill_no, $changes, $reason, $request);
         });
 
         return response()->json($sale->fresh()->load(['items', 'patient:id,uhid,title,name', 'seller:id,name', 'payments.receiver:id,name', 'returns']));
