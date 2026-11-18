@@ -1419,3 +1419,31 @@ table.compact td.lab-last { white-space: nowrap; font-variant-numeric: tabular-n
 .summary-part .chip.on { border-color: var(--brand); color: var(--brand); font-weight: 700; }
 .summary-save { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: 12px; margin: 18px -20px -20px; padding: 12px 20px; background: var(--surface); border-top: 1px solid var(--border); border-radius: 0 0 14px 14px; box-shadow: 0 -8px 16px -12px var(--shadow); }
 @media (max-width: 700px) { .summary-save { margin: 16px -12px -12px; padding: 10px 12px; } .summary-jump { margin-left: 0; margin-right: 0; padding: 0; box-shadow: none; } }
+
+/* Patient page */
+.patient-avatar { width: 46px; height: 46px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); font-weight: 700; font-size: 1.05rem; letter-spacing: 0.02em; }
+.allergy-banner { margin: 0 0 12px; padding: 9px 14px; border-radius: 10px; border: 1px solid var(--danger-line, var(--danger)); background: var(--danger-soft); color: var(--danger); }
+.quick-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+.patient-stats { margin-bottom: 14px; }
+.patient-stats .tile strong { font-size: 1.1rem; }
+.patient-stats .tile small { min-height: 1.2em; }
+@media (min-width: 701px) { .patient-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+h2 .count { display: inline-block; min-width: 1.6em; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--stripe-1); color: var(--muted); font-size: 0.78rem; font-weight: 700; text-align: center; vertical-align: 2px; }
+.show-all { display: block; margin-top: 10px; font-weight: 600; }
+@media (max-width: 700px) {
+  .patient-avatar { width: 40px; height: 40px; }
+  .quick-actions .btn { flex: 1 1 auto; text-align: center; justify-content: center; }
+  /* On a phone each patient is a card: name and ID, then the facts, with Edit in reach. */
+  .patient-list thead { display: none; }
+  .patient-list table, .patient-list tbody { display: block; width: 100%; }
+  .patient-list tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name age" "mobile city" "seen act"; gap: 4px 12px; padding: 12px 4px; border-bottom: 1px solid var(--border); }
+  .patient-list tbody tr.empty { display: block; }
+  .patient-list tbody td { display: block; padding: 0; border: 0; text-align: left; white-space: normal; }
+  .patient-list tbody td:nth-child(1) { grid-area: name; }
+  .patient-list tbody td:nth-child(2) { grid-area: age; text-align: right; }
+  .patient-list tbody td:nth-child(3) { grid-area: mobile; }
+  .patient-list tbody td:nth-child(4) { grid-area: city; text-align: right; }
+  .patient-list tbody td:nth-child(5) { grid-area: seen; }
+  .patient-list tbody td:nth-child(6) { grid-area: act; align-self: end; }
+  .patient-list tbody tr.empty td { grid-area: auto; text-align: center; padding: 18px 0; }
+}

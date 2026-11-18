@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { SelectField, TextField } from '../components/Field'
 import { ReferralList } from '../components/ReferralList'
 import { SameMobile } from '../components/SameMobile'
-import { AGE_UNITS, TITLES, fullName } from '../format'
+import { AGE_UNITS, TITLES, fullName, longDate, stampDate } from '../format'
 import type { Patient } from '../types'
 
 type Page = { data: Patient[]; current_page: number; last_page: number; total: number }
@@ -69,6 +69,34 @@ export function Patients() {
     setNotice('')
   }
 
+  // "Edit details" on a patient's page lands here with that patient's form open.
+  const navigate = useNavigate()
+  const [params, setParams] = useSearchParams()
+  const editId = params.get('edit')
+  useEffect(() => {
+    if (!editId) return
+    api.get<Patient>(`/patients/${editId}`).then((res) => {
+      setEditing(res.data)
+      setForm(toForm(res.data))
+      setErrors({})
+    })
+    setParams({}, { replace: true })
+  }, [editId, setParams])
+
+  // "/" jumps to the search box, as on the other lists.
+  const searchBox = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const typing = e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]')
+      if (e.key === '/' && !typing && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault()
+        searchBox.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   const set = (key: keyof Form) => (value: string) => setForm((f) => ({ ...f, [key]: value }))
 
   const save = async (e: FormEvent) => {
@@ -97,13 +125,14 @@ export function Patients() {
 
   return (
     <div className="split">
-      <section className="card">
+      <section className="card patient-list">
         <div className="toolbar">
           <h1>Patients</h1>
           <input
+            ref={searchBox}
             className="search"
             type="search"
-            placeholder="Search by name, mobile or patient ID"
+            placeholder="Search by name, mobile or patient ID — press /"
             value={query}
             onChange={(e) => {
               setQuery(e.target.value)
@@ -121,32 +150,36 @@ export function Patients() {
           <table>
             <thead>
               <tr>
-                <th>Patient ID</th>
-                <th>Name</th>
+                <th>Patient</th>
                 <th>Age / Sex</th>
                 <th>Mobile</th>
                 <th>City</th>
-                <th>Registered</th>
+                <th>Last seen</th>
+                <th />
               </tr>
             </thead>
             <tbody>
               {page?.data.map((p) => (
-                <tr key={p.id} onClick={() => open(p)} className={editing !== 'new' && editing?.id === p.id ? 'selected' : ''}>
-                  <td className="mono">
-                    <Link className="link" to={`/patients/${p.id}`} onClick={(e) => e.stopPropagation()} title="View patient dashboard">
-                      {p.uhid}
-                    </Link>
-                  </td>
+                <tr key={p.id} onClick={() => navigate(`/patients/${p.id}`)} className={editing !== 'new' && editing?.id === p.id ? 'selected' : ''} title="Open the patient's page">
                   <td>
                     <strong>{fullName(p)}</strong>
                     {p.is_temporary && <span className="pill status-arrived"> Temporary</span>}
+                    <small className="muted block mono">{p.uhid}</small>
                   </td>
                   <td>
                     {p.age_label} / {p.gender.charAt(0).toUpperCase()}
                   </td>
                   <td className="mono">{p.mobile}</td>
                   <td>{p.city ?? '—'}</td>
-                  <td>{new Date(p.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                  <td>
+                    {p.last_visit_at ? longDate(p.last_visit_at) : <span className="muted">Not yet seen</span>}
+                    <small className="muted block">Registered {stampDate(p.created_at)}</small>
+                  </td>
+                  <td className="num" onClick={(e) => e.stopPropagation()}>
+                    <button className="btn small-btn" onClick={() => open(p)}>
+                      {p.is_temporary ? 'Complete' : 'Edit'}
+                    </button>
+                  </td>
                 </tr>
               ))}
               {page && page.data.length === 0 && (

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../../api'
 import { useAuth } from '../../auth'
 import { SelectField, TextField } from '../../components/Field'
@@ -31,10 +31,15 @@ export function Ipd() {
   const [status, setStatus] = useState('admitted')
   const [query, setQuery] = useState('')
   const [cases, setCases] = useState<Admission[] | null>(null)
-  const [admitting, setAdmitting] = useState(false)
+  // Coming from a patient's page with "admit", the admit form opens for that patient straight away.
+  const location = useLocation()
+  const asked = location.state as { admit?: Patient } | null
+  const [admitting, setAdmitting] = useState(Boolean(asked?.admit))
   const [beds, setBeds] = useState<Bed[]>([])
   const [doctors, setDoctors] = useState<Doctor[]>([])
-  const [patient, setPatient] = useState<Patient | null>(null)
+  const [patient, setPatient] = useState<Patient | null>(asked?.admit ?? null)
+  const [payers, setPayers] = useState<AdminEntry[]>([])
+  const [payerId, setPayerId] = useState('')
   const [form, setForm] = useState({ doctor_id: '', bed_id: '', admitted_at: nowLocal(), reason: '', attendant_name: '', attendant_phone: '' })
   const [errors, setErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
@@ -73,21 +78,31 @@ export function Ipd() {
     }
   }
 
-  const startAdmitting = (bedId = '') => {
+  /** The lists the admit form chooses from. */
+  const loadChoices = useCallback(() => {
     api.get<Bed[]>('/ipd/beds').then((res) => setBeds(res.data))
     api.get<AdminEntry[]>('/admin-lists/payer').then((res) => setPayers(res.data))
     api.get<Doctor[]>('/doctors').then((res) => {
       setDoctors(res.data)
       if (res.data.length === 1) setForm((f) => ({ ...f, doctor_id: String(res.data[0].id) }))
     })
+  }, [])
+
+  useEffect(() => {
+    if (!asked?.admit) return
+    loadChoices()
+    // Asked once: a refresh or coming back does not open the form again.
+    navigate(location.pathname, { replace: true, state: null })
+  }, [asked, loadChoices, navigate, location.pathname])
+
+  const startAdmitting = (bedId = '') => {
+    loadChoices()
     setPatient(null)
     setErrors({})
     setForm((f) => ({ ...f, admitted_at: nowLocal(), bed_id: bedId, reason: '', attendant_name: '', attendant_phone: '' }))
     setAdmitting(true)
   }
 
-  const [payers, setPayers] = useState<AdminEntry[]>([])
-  const [payerId, setPayerId] = useState('')
   const set = (key: keyof typeof form) => (value: string) => setForm((f) => ({ ...f, [key]: value }))
   const freeBeds = beds.filter((b) => b.is_active && !b.current_admission)
 

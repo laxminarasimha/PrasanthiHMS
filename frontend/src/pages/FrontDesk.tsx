@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
 import { AppointmentForm } from '../components/AppointmentForm'
@@ -49,7 +49,15 @@ export function FrontDesk() {
   const [labPackages, setLabPackages] = useState<LabPackage[]>([])
   const [doctors, setDoctors] = useState<Doctor[]>([])
   const [services, setServices] = useState<Service[]>([])
-  const [panel, setPanel] = useState<Panel>(null)
+  // Coming from a patient's page with "book" or "bill", the matching panel opens for that patient straight away.
+  const location = useLocation()
+  const navigate = useNavigate()
+  const asked = location.state as { book?: Appointment['patient']; bill?: { id: number; name: string; uhid: string } } | null
+  const [panel, setPanel] = useState<Panel>(() => (asked?.book ? { kind: 'new', preset: { patient: asked.book, doctorId: '', date: today() } } : asked?.bill ? { kind: 'charge', patient: asked.bill } : null))
+  useEffect(() => {
+    // Asked once: a refresh or coming back does not open the panel again.
+    if (asked) navigate(location.pathname, { replace: true, state: null })
+  }, [asked, navigate, location.pathname])
   const [menu, setMenu] = useState<number | null>(null)
   const [menuAt, setMenuAt] = useState({ top: 0, left: 0 })
   const [notice, setNotice] = useState('')
@@ -428,7 +436,7 @@ export function FrontDesk() {
 
       {panel?.kind === 'new' && (
         <AppointmentForm
-          key={panel.preset ? `${panel.preset.patient.id} ${panel.preset.date}` : 'new'}
+          key={panel.preset ? `${panel.preset.patient.id} ${panel.preset.date} ${doctors.length}` : 'new'}
           date={panel.preset?.date ?? date}
           patient={panel.preset?.patient}
           doctorId={panel.preset?.doctorId}

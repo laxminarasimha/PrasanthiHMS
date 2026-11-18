@@ -77,6 +77,8 @@ export type Patient = {
   tag: string | null
   existing_id: string | null
   created_at: string
+  /** When the patient was last seen, in the patients list only. */
+  last_visit_at?: string | null
 }
 
 export type Doctor = { id: number; name: string; department: string | null; availability?: Availability | null }

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Appointment;
 use App\Models\Patient;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -53,6 +54,23 @@ class PatientTest extends TestCase
         $this->getJson('/api/patients')->assertOk()->assertJsonCount(4, 'data');
     }
 
+    public function test_patients_list_says_when_each_patient_was_last_seen(): void
+    {
+        $seen = Patient::factory()->create(['name' => 'Seen Before']);
+        Patient::factory()->create(['name' => 'Never Seen']);
+        $doctor = User::factory()->create(['role' => 'doctor']);
+        $visit = fn (string $when, string $status) => Appointment::create(['patient_id' => $seen->id, 'doctor_id' => $doctor->id, 'scheduled_at' => $when, 'status' => $status]);
+        $visit(now()->subDays(9)->format('Y-m-d 10:00'), 'reviewed');
+        $visit(now()->subDays(2)->format('Y-m-d 11:00'), 'reviewed');
+        $visit(now()->subDay()->format('Y-m-d 11:00'), 'cancelled'); // a cancelled visit is not a visit
+        $visit(now()->subDay()->format('Y-m-d 12:00'), 'booked'); // nor one the patient never came for
+        $visit(now()->addDays(3)->format('Y-m-d 11:00'), 'booked'); // nor one still to come
+
+        $list = collect($this->getJson('/api/patients')->assertOk()->json('data'))->keyBy('name');
+        $this->assertStringStartsWith(now()->subDays(2)->format('Y-m-d 11:00'), $list['Seen Before']['last_visit_at']);
+        $this->assertNull($list['Never Seen']['last_visit_at']);
+    }
+
     public function test_patient_details_can_be_updated(): void
     {
         $patient = Patient::factory()->create();
@@ -64,10 +82,10 @@ class PatientTest extends TestCase
 
     public function test_a_patient_is_found_however_the_name_or_number_is_typed(): void
     {
-        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\User::factory()->create(['role' => 'frontdesk']));
-        \App\Models\Patient::factory()->create(['title' => 'Mrs', 'name' => 'K. Lakshmi  Devi', 'mobile' => '9876543210', 'mobile_alt' => '9123456780', 'existing_id' => 'HP-4411']);
-        \App\Models\Patient::factory()->create(['name' => 'Lakshmi Narayana', 'mobile' => '9000000001']);
-        \App\Models\Patient::factory()->create(['name' => 'Ravi Kumar', 'mobile' => '9000000002']);
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        Patient::factory()->create(['title' => 'Mrs', 'name' => 'K. Lakshmi  Devi', 'mobile' => '9876543210', 'mobile_alt' => '9123456780', 'existing_id' => 'HP-4411']);
+        Patient::factory()->create(['name' => 'Lakshmi Narayana', 'mobile' => '9000000001']);
+        Patient::factory()->create(['name' => 'Ravi Kumar', 'mobile' => '9000000002']);
         $find = fn (string $q) => array_column($this->getJson('/api/patients?q='.urlencode($q))->assertOk()->json('data'), 'name');
 
         $this->assertSame(['K. Lakshmi  Devi'], $find('Lakshmi Devi'));       // extra spaces in the stored name
