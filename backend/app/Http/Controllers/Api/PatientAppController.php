@@ -5,13 +5,16 @@ namespace App\Http\Controllers\Api;
 use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
+use App\Models\Consultation;
 use App\Models\DoctorBlock;
+use App\Models\LabOrder;
 use App\Models\Medicine;
 use App\Models\MedicineSubscription;
 use App\Models\Patient;
 use App\Models\PatientAccount;
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\SignInGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -65,11 +68,15 @@ class PatientAppController extends Controller
     public function login(Request $request): JsonResponse
     {
         $data = $request->validate(['mobile' => ['required', 'string', 'max:15'], 'password' => ['required', 'string']]);
-        $account = PatientAccount::where('mobile', preg_replace('/\D/', '', $data['mobile']))->first();
+        $mobile = preg_replace('/\D/', '', $data['mobile']);
+        SignInGuard::refuseIfClosed('patient', $mobile, 'mobile');
+        $account = PatientAccount::where('mobile', $mobile)->first();
 
         if (! $account || ! Hash::check($data['password'], $account->password)) {
+            SignInGuard::wrong('patient', $mobile);
             throw ValidationException::withMessages(['mobile' => 'The mobile number or password is not right.']);
         }
+        SignInGuard::clear('patient', $mobile);
         if (! $account->is_active) {
             throw ValidationException::withMessages(['mobile' => 'This account has been switched off. Please call the hospital.']);
         }
@@ -126,7 +133,7 @@ class PatientAppController extends Controller
             return response()->json(['verified' => false, 'visits' => [], 'lab' => []]);
         }
 
-        $visits = \App\Models\Consultation::where('patient_id', $patientId)->whereNotNull('completed_at')
+        $visits = Consultation::where('patient_id', $patientId)->whereNotNull('completed_at')
             ->with(['medicines', 'doctor:id,name,department'])->latest('completed_at')->limit(50)->get()
             ->map(fn ($c) => [
                 'id' => $c->id, 'date' => $c->completed_at->format('Y-m-d'), 'doctor' => $c->doctor?->only(['name', 'department']),
@@ -136,7 +143,7 @@ class PatientAppController extends Controller
 
         // A lab result goes out only when it is reported and, where the lab works that way, approved.
         $needsApproval = (bool) Setting::group('lab', Setting::LAB_DEFAULTS)['approval_required'];
-        $lab = \App\Models\LabOrder::where('patient_id', $patientId)
+        $lab = LabOrder::where('patient_id', $patientId)
             ->with(['items' => fn ($q) => $q->whereNotNull('reported_at')->when($needsApproval, fn ($w) => $w->whereNotNull('approved_at'))->with('results')])
             ->latest('ordered_at')->limit(50)->get()
             ->filter(fn ($o) => $o->items->isNotEmpty())

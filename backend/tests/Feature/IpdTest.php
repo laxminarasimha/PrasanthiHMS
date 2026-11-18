@@ -92,6 +92,19 @@ class IpdTest extends TestCase
         $this->postJson($url, ['type' => 'advance', 'amount' => 1000, 'mode' => 'cash'])->assertCreated()->assertJsonPath('paid', 9000);
     }
 
+    public function test_an_aadhaar_number_is_shown_on_the_case_to_ipd_staff_and_nowhere_else(): void
+    {
+        $case = $this->admit()->assertCreated()->json();
+        $url = "/api/ipd/admissions/{$case['id']}";
+        $this->putJson($url, ['aadhaar_no' => '123412341234'])->assertOk()->assertJsonPath('aadhaar_no', '123412341234');
+
+        // The list of cases does not carry it, and someone outside IPD who opens the case does not see it.
+        $this->assertArrayNotHasKey('aadhaar_no', $this->getJson('/api/ipd/admissions')->assertOk()->json('0'));
+        $this->getJson($url)->assertOk()->assertJsonPath('aadhaar_no', '123412341234');
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $this->assertArrayNotHasKey('aadhaar_no', $this->getJson($url)->assertOk()->json());
+    }
+
     public function test_beds_and_services_can_be_set_up_and_duplicate_beds_are_refused(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => 'admin']));

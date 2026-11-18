@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\User;
+use App\Support\DatabaseBackup;
+use App\Support\SignInGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -21,9 +24,11 @@ class AuthController extends Controller
             'password' => ['required', 'string'],
         ]);
 
+        SignInGuard::refuseIfClosed('staff', $credentials['email'], 'email');
         $user = User::where('email', $credentials['email'])->first();
 
         if (! $user || ! Hash::check($credentials['password'], $user->password)) {
+            SignInGuard::wrong('staff', $credentials['email']);
             // Kept so that someone guessing at passwords shows up in the activity log. The password tried is never stored.
             AuditLog::record('auth.failed', null, null, $user ? 'Wrong password' : 'No such login', $user, mb_substr($credentials['email'], 0, 100));
             throw ValidationException::withMessages(['email' => 'The email or password is incorrect.']);
@@ -33,6 +38,7 @@ class AuthController extends Controller
             AuditLog::record('auth.failed', null, null, 'The login is switched off', $user);
             throw ValidationException::withMessages(['email' => 'This account has been deactivated.']);
         }
+        SignInGuard::clear('staff', $credentials['email']);
         AuditLog::record('auth.login', null, null, null, $user);
 
         return response()->json([
@@ -126,6 +132,8 @@ class AuthController extends Controller
             'can_delete_bills' => $user->allows('canDeleteBills'),
             'can_audit_pharmacy' => $user->allows('canAuditPharmacy'),
             'can_change_price' => $user->allows('canChangePrice'),
+            // Something an admin should act on about the backups, shown at the top of every screen until it is done.
+            'backup_alert' => $user->role === Role::Admin ? DatabaseBackup::alert() : null,
             'pad_hidden_sections' => $user->pad_hidden_sections ?? [],
             'hidden_tabs' => $user->hidden_tabs ?? [],
             'appearance' => ($user->appearance ?? []) + ['theme' => 'prasanthi', 'text' => 'normal'],

@@ -111,6 +111,11 @@ export function Layout() {
         </div>
       </header>
       <main className="content">
+        {user.backup_alert && (
+          <NavLink className="backup-alert" to="/admin?tab=backups">
+            <strong>Backups:</strong> {user.backup_alert}
+          </NavLink>
+        )}
         <Suspense fallback={<p className="loading">Loading…</p>}>
           <Outlet />
         </Suspense>

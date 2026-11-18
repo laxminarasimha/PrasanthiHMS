@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { SetupTabs } from '../components/SetupTabs'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { TextField } from '../components/Field'
@@ -467,46 +468,94 @@ function ReadingSetup() {
   )
 }
 
-type BackupList = { backups: { name: string; size: number; made_at: string }[]; keep: number; automatic: boolean }
+type BackupList = {
+  backups: { name: string; size: number; made_at: string }[]
+  keep: number
+  automatic: boolean
+  error: string | null
+  copied_at: string | null
+  copied_by: string | null
+  files: { count: number; size: number; waiting: number; waiting_size: number; downloaded_at: string | null; downloaded_by: string | null }
+  alert: string | null
+}
 
-/** Copies of the whole database: made once a day by the app, and on demand here. */
+/** Database backups and the uploaded files beside them: made on the server, and copied off it from here. */
 function Backups() {
+  const { user, refresh } = useAuth()
   const [data, setData] = useState<BackupList | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState<'' | 'make' | 'files'>('')
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+
+  // What comes back also settles the reminder at the top of every screen.
+  const show = (next: BackupList) => {
+    setData(next)
+    if (user && (user.backup_alert ?? null) !== next.alert) refresh({ ...user, backup_alert: next.alert })
+  }
+  const load = () => api.get<BackupList>('/backups').then((res) => show(res.data))
 
   useEffect(() => {
-    api.get<BackupList>('/backups').then((res) => setData(res.data)).catch(() => setError('Could not load the backups.'))
+    load().catch(() => setError('Could not load the backups.'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const save = (blob: Blob, name: string) => {
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = name
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000)
+  }
+
   const make = async () => {
-    setBusy(true)
+    setBusy('make')
     setError('')
+    setNotice('')
     try {
-      setData((await api.post<BackupList>('/backups')).data)
+      show((await api.post<BackupList>('/backups')).data)
     } catch {
       setError('The backup could not be made. Try again in a minute.')
     } finally {
-      setBusy(false)
+      setBusy('')
     }
   }
 
   const download = async (name: string) => {
     setError('')
+    setNotice('')
     try {
       const res = await api.get<Blob>(`/backups/${name}/download`, { responseType: 'blob' })
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(res.data)
-      link.download = name
-      link.click()
-      setTimeout(() => URL.revokeObjectURL(link.href), 1000)
+      save(res.data, name)
+      setNotice('Downloaded. Keep the file somewhere safe that is not this computer alone, such as a pen drive kept at home.')
+      await load()
     } catch {
       setError('Could not download that backup.')
     }
   }
 
+  /** The uploaded files come as zip files, oldest first. Each press takes the next one until none are waiting. */
+  const downloadFiles = async (fromStart: boolean) => {
+    setBusy('files')
+    setError('')
+    setNotice('')
+    try {
+      const res = await api.get<Blob>('/backups/files', { responseType: 'blob', params: fromStart ? { from: 'start' } : {} })
+      const name = /filename="?([^";]+)"?/.exec(String(res.headers['content-disposition'] ?? ''))?.[1] ?? 'hms-files.zip'
+      save(res.data, name)
+      // Only now, with the file in hand, is the app told how far the copy has got.
+      show((await api.post<BackupList>('/backups/files/done', { through: Number(res.headers['x-backup-through']) })).data)
+      const more = Number(res.headers['x-backup-more'] ?? 0)
+      setNotice(`${res.headers['x-backup-count']} files downloaded as ${name}.${more > 0 ? ` ${more} more are waiting: press the button again for the next part.` : ''}`)
+    } catch {
+      setError('The files could not be downloaded. Check the internet connection and try again.')
+    } finally {
+      setBusy('')
+    }
+  }
+
   const size = (bytes: number) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`)
   const newest = data?.backups[0]
+  const files = data?.files
 
   return (
     <div>
@@ -523,14 +572,24 @@ function Backups() {
             {data?.automatic ? 'The app makes one by itself every day, when the first person opens it.' : 'Automatic daily backups are switched off on this server.'} The newest {data?.keep ?? 30} are kept.
           </small>
         </span>
-        <button className="btn primary" onClick={make} disabled={busy}>
-          {busy ? 'Making backup…' : 'Back up now'}
+        <button className="btn primary" onClick={make} disabled={busy !== ''}>
+          {busy === 'make' ? 'Making backup…' : 'Back up now'}
         </button>
       </div>
-      <p className="notice">
-        These backups sit on the same server as the hospital's data. Download one to your own computer every week, so there is a copy if the server itself is lost. A backup holds every patient's records: keep the file somewhere safe and do not send it by email or WhatsApp.
+      {data?.error && <p className="form-error">{data.error} Press “Back up now”; if that fails too, tell whoever looks after the system.</p>}
+      <p className={data && !data.copied_at ? 'form-error' : 'notice'}>
+        {data?.copied_at ? (
+          <>
+            Last copied off the server: <strong>{longDate(data.copied_at)} {clock(data.copied_at)}</strong>
+            {data.copied_by ? ` by ${data.copied_by}` : ''}.{' '}
+          </>
+        ) : (
+          <strong>No backup has been copied off the server yet. </strong>
+        )}
+        These backups sit on the same server as the hospital's data, so they are lost with it. Download the newest one every week and keep it away from this computer. A backup holds every patient's records: do not send it by email or WhatsApp.
       </p>
       {error && <p className="form-error">{error}</p>}
+      {notice && <p className="notice">{notice}</p>}
       <div className="table-wrap">
         <table className="compact">
           <thead>
@@ -564,14 +623,53 @@ function Backups() {
           </tbody>
         </table>
       </div>
-      <p className="muted small">Uploaded files (attachments, lab report files, signatures and the logo) are not inside these backups; they hold the database only. To put a backup back, the file is loaded through the hosting panel's phpMyAdmin.</p>
+
+      <h3 className="gap-top">Uploaded files</h3>
+      <p className="muted small">
+        Scanned old records, attachments, lab report files, signatures, seals and the logo are files, not database rows, so they are not inside the backups above. They are downloaded here as zip files.
+      </p>
+      {files && (
+        <div className="toolbar">
+          <span className="grow">
+            <strong>{files.count}</strong> files on the server ({size(files.size)}).{' '}
+            {files.waiting > 0 ? (
+              <span className="due">
+                <strong>{files.waiting}</strong> not yet downloaded ({size(files.waiting_size)}).
+              </span>
+            ) : files.count > 0 ? (
+              'All of them have been downloaded.'
+            ) : (
+              'Nothing has been uploaded yet.'
+            )}
+            {files.downloaded_at && (
+              <small className="muted block">
+                Last downloaded {longDate(files.downloaded_at)} {clock(files.downloaded_at)}
+                {files.downloaded_by ? ` by ${files.downloaded_by}` : ''}
+              </small>
+            )}
+          </span>
+          {files.count > 0 && files.waiting < files.count && (
+            <button className="btn ghost" onClick={() => downloadFiles(true)} disabled={busy !== ''} title="Start again from the very first file">
+              Download all again
+            </button>
+          )}
+          <button className="btn primary" onClick={() => downloadFiles(false)} disabled={busy !== '' || files.waiting === 0}>
+            {busy === 'files' ? 'Preparing…' : files.waiting === files.count ? 'Download the files' : 'Download new files'}
+          </button>
+        </div>
+      )}
+      <p className="muted small">
+        To put things back after a loss: the database backup is loaded through the hosting panel's phpMyAdmin, and each zip of files is unzipped into the app's <span className="mono">storage/app/private</span> folder.
+      </p>
     </div>
   )
 }
 
 export function Admin() {
   const { user } = useAuth()
-  const [tab, setTab] = useState<Tab>('clinic')
+  // A link such as /admin?tab=backups opens straight on that tab.
+  const [params] = useSearchParams()
+  const [tab, setTab] = useState<Tab>(() => (TABS.some(([key]) => key === params.get('tab')) ? (params.get('tab') as Tab) : 'clinic'))
   const tabs = TABS.filter(([key]) => key !== 'backups' || user?.role === 'admin')
 
   return (
