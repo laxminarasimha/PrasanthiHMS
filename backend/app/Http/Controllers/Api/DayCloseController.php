@@ -36,9 +36,11 @@ class DayCloseController extends Controller
         $day = $this->day($request);
         $data = $request->validate([
             'counted_cash' => ['required', 'numeric', 'min:0', 'max:99999999'],
+            // The part of the counted cash that stays in the drawer for tomorrow; the rest is handed over.
+            'kept_cash' => ['nullable', 'numeric', 'min:0', 'lte:counted_cash'],
             'variance_note' => ['nullable', 'string', 'max:1000'],
             'override_reason' => ['nullable', 'string', 'max:1000'],
-        ], ['counted_cash.required' => 'Enter the cash counted in the drawer.']);
+        ], ['counted_cash.required' => 'Enter the cash counted in the drawer.', 'kept_cash.lte' => 'The cash kept in the drawer cannot be more than the cash counted.']);
 
         $close = DB::transaction(function () use ($request, $day, $data) {
             if (DayClose::whereDate('day', $day->toDateString())->whereNull('reopened_at')->lockForUpdate()->exists()) {
@@ -68,6 +70,7 @@ class DayCloseController extends Controller
             }
 
             $close->update([
+                'opening_cash' => $book['opening_cash'], 'kept_cash' => round((float) ($data['kept_cash'] ?? 0), 2),
                 'expected_cash' => $book['expected_cash'], 'variance' => $variance,
                 'variance_note' => abs($variance) >= 0.01 ? trim($data['variance_note']) : null,
                 'exceptions' => $book['blocking'],
@@ -80,6 +83,7 @@ class DayCloseController extends Controller
 
         AuditLog::record('day.closed', null, $close, $day->format('j M Y')
             .' · cash expected ₹'.number_format($close->expected_cash, 2).', counted ₹'.number_format($close->counted_cash, 2)
+            .($close->kept_cash > 0 ? ', ₹'.number_format($close->kept_cash, 2).' kept in the drawer' : '')
             .(abs($close->variance) >= 0.01 ? ', difference ₹'.number_format($close->variance, 2).' ('.$close->variance_note.')' : '')
             .($close->exceptions > 0 ? " · closed with {$close->exceptions} unfinished: {$close->override_reason}" : ''));
 
@@ -111,7 +115,7 @@ class DayCloseController extends Controller
         $history = DayClose::whereDate('day', $day->toDateString())->latest('id')->get()
             // toArray, so the times go out as the hospital's clock reads them rather than as world time.
             ->map(fn (DayClose $c) => collect($c->toArray())->only([
-                'id', 'closed_by_name', 'closed_at', 'expected_cash', 'counted_cash', 'variance', 'variance_note', 'exceptions',
+                'id', 'closed_by_name', 'closed_at', 'opening_cash', 'expected_cash', 'counted_cash', 'kept_cash', 'variance', 'variance_note', 'exceptions',
                 'override_reason', 'reopened_by_name', 'reopened_at', 'reopen_reason',
             ])->all());
         $closed = $history->first(fn ($c) => $c['reopened_at'] === null);

@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\ChargeController;
 use App\Http\Controllers\Api\ConsultationController;
 use App\Http\Controllers\Api\DayCloseController;
 use App\Http\Controllers\Api\DoctorLibraryController;
+use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\FormController;
 use App\Http\Controllers\Api\FrontDeskController;
 use App\Http\Controllers\Api\HealthSummaryController;
@@ -141,6 +142,14 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
     Route::delete('/bills/{bill}/items/{item}', [BillController::class, 'removeItem']);
     Route::post('/bills/{bill}/payments', [BillController::class, 'addPayment']);
     Route::put('/bills/{bill}/payments/{payment}', [BillController::class, 'updatePayment']);
+
+    // Day-to-day expenses, written down by whoever keeps the cash.
+    Route::middleware('ability:canRecordExpenses')->controller(ExpenseController::class)->group(function () {
+        Route::get('/expenses', 'index');
+        Route::post('/expenses', 'store');
+        Route::put('/expenses/{expense}', 'update');
+        Route::post('/expenses/{expense}/cancel', 'cancel');
+    });
 
     // Billing from the front desk in one go: services and lab tests together, then one payment for all of it.
     Route::middleware('ability:canWorkFrontDesk')->controller(ChargeController::class)->group(function () {

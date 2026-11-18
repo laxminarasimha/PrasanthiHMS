@@ -220,6 +220,11 @@ export function FrontDesk() {
           <Link className="btn ghost small-btn" to="/front-desk/calendar">
             Calendar
           </Link>
+          {user?.can_record_expenses && (
+            <Link className="btn ghost small-btn" to="/expenses">
+              Expenses
+            </Link>
+          )}
           {user?.can_file_past_records && (
             <Link className="btn ghost small-btn" to="/past-records">
               Old papers

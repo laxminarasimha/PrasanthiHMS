@@ -345,6 +345,24 @@ tr.added-line td { background: var(--ok-soft); }
 .purchase-row input, .purchase-row select { padding: 6px 8px; }
 .narrow-totals { max-width: 320px; margin-left: auto; }
 .notice a { color: inherit; font-weight: 700; }
+.cash-sum { max-width: 560px; margin-top: 8px; }
+/* Expenses: what went out under each heading, and the list as cards on a phone. */
+.expense-headings { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+.expense-headings .chip { cursor: default; }
+@media (max-width: 640px) {
+  .expense-list thead { display: none; }
+  .expense-list, .expense-list tbody { display: block; width: 100%; }
+  .expense-list tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "what amount" "no mode" "act act"; gap: 2px 12px; padding: 12px 4px; border-bottom: 1px solid var(--border); }
+  .expense-list tbody td { display: block; padding: 0; border: 0; text-align: left; white-space: normal; }
+  .expense-list tbody td:nth-child(1) { grid-area: no; }
+  .expense-list tbody td:nth-child(2) { grid-area: what; }
+  .expense-list tbody td:nth-child(3) { grid-area: amount; text-align: right; }
+  .expense-list tbody td:nth-child(4) { grid-area: mode; text-align: right; }
+  .expense-list tbody td:nth-child(5) { display: none; }
+  .expense-list tbody td:nth-child(6) { grid-area: act; }
+  .expense-list tbody tr.empty { display: block; }
+  .expense-list tbody tr.empty td { text-align: center; padding: 18px 0; }
+}
 /* Bed history on an IPD case, and the plain-language rules under a setup switch. */
 .bed-history li { align-items: flex-start; gap: 12px; }
 .plain-rules { margin: 8px 0 0; padding-left: 18px; }

@@ -51,6 +51,7 @@ const FrontDesk = page(() => import('./pages/FrontDesk'), 'FrontDesk')
 const Account = page(() => import('./pages/Account'), 'Account')
 const Admin = page(() => import('./pages/Admin'), 'Admin')
 const AllBills = page(() => import('./pages/AllBills'), 'AllBills')
+const Expenses = page(() => import('./pages/Expenses'), 'Expenses')
 const FormPrint = page(() => import('./pages/FormPrint'), 'FormPrint')
 const Ipd = page(() => import('./pages/ipd/Ipd'), 'Ipd')
 const IpdCase = page(() => import('./pages/ipd/IpdCase'), 'IpdCase')
@@ -152,6 +153,7 @@ export default function App() {
             <Route path="/account" element={<Account />} />
             <Route path="/front-desk" element={<Only when="can_front_desk"><FrontDesk /></Only>} />
             <Route path="/front-desk/bills" element={<Only when="can_front_desk"><AllBills /></Only>} />
+            <Route path="/expenses" element={<Only when="can_record_expenses"><Expenses /></Only>} />
             <Route path="/front-desk/calendar" element={<Only when="can_front_desk"><Calendar /></Only>} />
             <Route path="/doctor" element={<Only when="can_consult"><DoctorQueue /></Only>} />
             <Route path="/doctor/consults" element={<Only when="can_consult"><DoctorConsults /></Only>} />

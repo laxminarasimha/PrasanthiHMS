@@ -10,6 +10,8 @@ use App\Models\LabOrder;
 use App\Models\Patient;
 use App\Models\Payment;
 use App\Models\PharmacySale;
+use App\Support\MoneyFigures;
+use App\Support\PaidOut;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -33,13 +35,15 @@ class ReportController extends Controller
         $to = Carbon::parse($range['to'] ?? $from)->endOfDay();
         abort_if($from->diffInDays($to) > 366, 422, 'Choose a range of one year or less.');
 
-        $departments = \App\Support\MoneyFigures::departments($from, $to);
+        $departments = MoneyFigures::departments($from, $to);
 
         return response()->json([
             'from' => $from->toDateString(),
             'to' => $to->toDateString(),
             'modes' => Payment::MODES,
             'departments' => $departments,
+            // What left the hospital in the same period: its expenses and its payments to medicine suppliers.
+            'paid_out' => PaidOut::between($from, $to),
             'counts' => [
                 'new_patients' => Patient::whereBetween('created_at', [$from, $to])->count(),
                 'appointments' => Appointment::whereBetween('scheduled_at', [$from, $to])->where('status', '!=', 'cancelled')->count(),

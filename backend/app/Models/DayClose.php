@@ -22,6 +22,7 @@ class DayClose extends Model
         return [
             'day' => 'date:Y-m-d', 'closed_at' => 'datetime:Y-m-d H:i', 'reopened_at' => 'datetime:Y-m-d H:i',
             'expected_cash' => 'float', 'counted_cash' => 'float', 'variance' => 'float', 'snapshot' => 'array',
+            'opening_cash' => 'float', 'kept_cash' => 'float',
         ];
     }
 
@@ -67,6 +68,17 @@ class DayClose extends Model
             $model::creating($made($column));
             $model::deleting($made($column));
         }
+
+        // Money paid out counts in the closing of the day it is dated: an expense, or a payment to a medicine supplier.
+        Expense::creating(fn (Expense $e) => self::refuseIfClosed($e->spent_on ?? now()));
+        Expense::updating(function (Expense $e) {
+            if ($e->isDirty(['spent_on', 'amount', 'mode', 'cancelled_at'])) {
+                self::refuseIfClosed($e->getOriginal('spent_on'));
+                self::refuseIfClosed($e->spent_on);
+            }
+        });
+        PurchasePayment::creating(fn (PurchasePayment $p) => self::refuseIfClosed($p->paid_on ?? now()));
+        PurchasePayment::deleting(fn (PurchasePayment $p) => self::refuseIfClosed($p->paid_on ?? now()));
 
         // A bill moved onto an IPD bill is noted as a payment of mode "ipd": no money changes hands, so it is left alone.
         $real = fn (Payment $p) => $p->mode === 'ipd' ? null : self::refuseIfClosed($p->created_at ?? now());

@@ -15,7 +15,7 @@ export function setupPages(user: User): { label: string; to: string }[] {
 export function allowedTabs(user: User): NavTab[] {
   const setup = setupPages(user)
   return [
-    ...(user.can_front_desk ? [{ key: 'front-desk', label: 'Front Desk', to: '/front-desk', also: ['/past-records'] }] : []),
+    ...(user.can_front_desk ? [{ key: 'front-desk', label: 'Front Desk', to: '/front-desk', also: ['/past-records', '/expenses'] }] : []),
     ...(user.can_consult ? [{ key: 'doctor', label: 'Doctor', to: '/doctor', also: ['/visits'] }] : []),
     ...(user.can_run_lab || user.can_front_desk ? [{ key: 'lab', label: 'Lab', to: '/lab' }] : []),
     ...(user.can_run_pharmacy ? [{ key: 'pharmacy', label: 'Pharmacy', to: '/pharmacy' }] : []),
