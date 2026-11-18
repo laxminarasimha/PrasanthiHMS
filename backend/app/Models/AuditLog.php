@@ -52,6 +52,7 @@ class AuditLog extends Model
         'bill.item_added' => 'Added a line to a bill',
         'bill.item_removed' => 'Removed a line from a bill',
         'bill.payment' => 'Recorded money on a bill',
+        'bill.payment_mode' => 'Changed how a bill was paid',
         'bill.discount' => 'Changed a bill’s discount',
         'day.closed' => 'Closed the day',
         'day.reopened' => 'Reopened a closed day',

@@ -6,11 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Bill;
 use App\Models\BillItem;
+use App\Models\Patient;
 use App\Models\PatientDeposit;
 use App\Models\Payment;
 use App\Models\Service;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -27,8 +29,8 @@ class BillController extends Controller
             'due' => ['sometimes', 'boolean'],
         ]);
         $term = trim((string) ($filters['q'] ?? ''));
-        $from = \Illuminate\Support\Carbon::parse($filters['from'] ?? today())->startOfDay();
-        $to = \Illuminate\Support\Carbon::parse($filters['to'] ?? $filters['from'] ?? today())->endOfDay();
+        $from = Carbon::parse($filters['from'] ?? today())->startOfDay();
+        $to = Carbon::parse($filters['to'] ?? $filters['from'] ?? today())->endOfDay();
 
         return response()->json(
             Bill::query()
@@ -49,7 +51,7 @@ class BillController extends Controller
 
         DB::transaction(function () use ($bill, $data, $request) {
             // Lock the patient so two desks cannot spend the same deposit.
-            \App\Models\Patient::whereKey($bill->patient_id)->lockForUpdate()->first();
+            Patient::whereKey($bill->patient_id)->lockForUpdate()->first();
             $balance = PatientDeposit::balance($bill->patient_id);
             if ($data['amount'] > $balance) {
                 throw ValidationException::withMessages(['amount' => "Only ₹{$balance} is on deposit."]);
@@ -99,7 +101,7 @@ class BillController extends Controller
 
             return $bill;
         });
-        \App\Models\AuditLog::record('bill.created', $bill->patient_id, $bill, 'Bill '.$bill->fresh()->bill_no);
+        AuditLog::record('bill.created', $bill->patient_id, $bill, 'Bill '.$bill->fresh()->bill_no);
 
         return response()->json($this->present($bill), 201);
     }
@@ -153,7 +155,7 @@ class BillController extends Controller
     public function addItem(Request $request, Bill $bill): JsonResponse
     {
         $this->addLineFrom($bill, $data = $request->validate($this->lineRules('required_without')));
-        \App\Models\AuditLog::record('bill.item_added', $bill->patient_id, $bill, 'Bill '.$bill->bill_no.': '.($data['description'] ?? \App\Models\Service::find($data['service_id'] ?? null)?->name ?? 'a charge'));
+        AuditLog::record('bill.item_added', $bill->patient_id, $bill, 'Bill '.$bill->bill_no.': '.($data['description'] ?? Service::find($data['service_id'] ?? null)?->name ?? 'a charge'));
 
         return response()->json($this->present($bill), 201);
     }
@@ -209,7 +211,7 @@ class BillController extends Controller
             throw ValidationException::withMessages(['item' => 'Removing this would bring the bill below what is already paid. Refund the difference first.']);
         }
 
-        \App\Models\AuditLog::record('bill.item_removed', $bill->patient_id, $bill, 'Bill '.$bill->bill_no.': '.$item->description.', ₹'.(float) $item->amount);
+        AuditLog::record('bill.item_removed', $bill->patient_id, $bill, 'Bill '.$bill->bill_no.': '.$item->description.', ₹'.(float) $item->amount);
         $item->delete();
         $bill->recalculate();
 
@@ -234,9 +236,41 @@ class BillController extends Controller
 
         $bill->payments()->create($data + ['received_by' => $request->user()->id]);
         $bill->recalculate();
-        \App\Models\AuditLog::record('bill.payment', $bill->patient_id, $bill, 'Bill '.$bill->bill_no.': '.($data['type'] === 'refund' ? 'refunded' : 'received').' ₹'.(float) $data['amount'].' by '.$data['mode']);
+        AuditLog::record('bill.payment', $bill->patient_id, $bill, 'Bill '.$bill->bill_no.': '.($data['type'] === 'refund' ? 'refunded' : 'received').' ₹'.(float) $data['amount'].' by '.$data['mode']);
 
         return response()->json($this->present($bill), 201);
+    }
+
+    /**
+     * Corrects how a payment or refund was taken when it was entered under the wrong mode: cash put down as UPI, and the like.
+     * The amount and the day stay as they are, and the change is kept in the record with who made it and why.
+     */
+    public function updatePayment(Request $request, Bill $bill, Payment $payment): JsonResponse
+    {
+        abort_unless($request->user()->allows('canWorkFrontDesk') || $request->user()->allows('canRunLab'), 403, 'You are not allowed to change payments on bills.');
+        abort_unless($payment->bill_id === $bill->id, 404);
+
+        $data = $request->validate([
+            'mode' => ['required', Rule::in(Payment::MODES)],
+            'reference' => ['nullable', 'string', 'max:255'],
+            'reason' => ['required', 'string', 'min:3', 'max:255'],
+        ], ['reason.required' => 'Say why the payment mode is being changed.']);
+
+        // Money taken from a deposit, or moved onto an IPD bill, was never cash or card at the counter.
+        if (! in_array($payment->mode, Payment::MODES, true)) {
+            throw ValidationException::withMessages(['mode' => 'This entry is not money taken at the counter, so its mode cannot be changed.']);
+        }
+        $reference = $data['reference'] ?? null;
+        if ($payment->mode === $data['mode'] && $payment->reference === $reference) {
+            throw ValidationException::withMessages(['mode' => 'That is already how this payment is recorded.']);
+        }
+
+        $was = $payment->mode;
+        $payment->update(['mode' => $data['mode'], 'reference' => $reference]);
+        AuditLog::record('bill.payment_mode', $bill->patient_id, $bill, 'Bill '.$bill->bill_no.': '.($payment->type === 'refund' ? 'refund' : 'payment').' of ₹'.(float) $payment->amount
+            .' on '.$payment->created_at->format('j M Y').' changed from '.$was.' to '.$data['mode'].($reference ? " ({$reference})" : '').'. Reason: '.$data['reason']);
+
+        return response()->json($this->present($bill));
     }
 
     private function present(Bill $bill): Bill

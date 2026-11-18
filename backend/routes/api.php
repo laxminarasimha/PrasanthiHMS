@@ -138,6 +138,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
     Route::post('/bills/{bill}/items', [BillController::class, 'addItem']);
     Route::delete('/bills/{bill}/items/{item}', [BillController::class, 'removeItem']);
     Route::post('/bills/{bill}/payments', [BillController::class, 'addPayment']);
+    Route::put('/bills/{bill}/payments/{payment}', [BillController::class, 'updatePayment']);
 
     // Billing from the front desk in one go: services and lab tests together, then one payment for all of it.
     Route::middleware('ability:canWorkFrontDesk')->controller(ChargeController::class)->group(function () {

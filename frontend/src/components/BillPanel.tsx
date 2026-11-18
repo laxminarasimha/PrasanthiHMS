@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useAuth } from '../auth'
 import { api, fieldErrors } from '../api'
 import { PAYMENT_MODES, modeLabel, rupees } from '../format'
-import type { Bill, Service } from '../types'
+import type { Bill, Payment, Service } from '../types'
 import { DepositBox } from './DepositBox'
 import { SelectField, TextField } from './Field'
 import { useBillingPreferences } from './useBillingPreferences'
@@ -32,6 +32,10 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
   const [chosenMode, setMode] = useState<string | null>(null)
   const mode = chosenMode ?? prefs.default_payment_mode
   const [reference, setReference] = useState('')
+  // The payment whose mode is being corrected, with what is typed for it.
+  const [fixing, setFixing] = useState<Payment | null>(null)
+  const [fix, setFix] = useState({ mode: 'cash', reference: '', reason: '' })
+  const [notice, setNotice] = useState('')
 
   const apply = (next: Bill) => {
     setBill(next)
@@ -39,6 +43,7 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
     setAmount(next.due > 0 ? String(next.due) : '')
     setPayType('payment')
     setError('')
+    setFixing(null)
   }
 
   useEffect(() => {
@@ -80,6 +85,16 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
     e.preventDefault()
     run(api.post(`/bills/${billId}/payments`, { type: payType, amount, mode, reference: reference || null })).then(() => setReference(''))
   }
+
+  const fixMode = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!fixing) return
+    setNotice('')
+    const ok = await run(api.put(`/bills/${billId}/payments/${fixing.id}`, { mode: fix.mode, reference: fix.reference.trim() || null, reason: fix.reason }))
+    if (ok) setNotice(`Recorded as ${modeLabel(fix.mode)} now. The change is kept in the record with your reason.`)
+  }
+  // Staff who take money on these bills may correct how it was entered.
+  const canFix = Boolean(user?.can_front_desk || user?.can_run_lab)
 
   if (!bill) return <aside className="card panel wide">Loading bill…</aside>
 
@@ -220,7 +235,7 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
         </button>
       )}
 
-      {error && <p className="form-error">{error}</p>}
+      {error && !fixing && <p className="form-error">{error}</p>}
 
       <h3>{payType === 'payment' ? 'Collect payment' : 'Give refund'}</h3>
       <form onSubmit={pay}>
@@ -249,7 +264,8 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
       {bill.payments.length > 0 && (
         <>
           <h3>Payment history</h3>
-          <ul className="history">
+          {notice && <p className="notice">{notice}</p>}
+          <ul className="history payments-list">
             {bill.payments.map((p) => (
               <li key={p.id}>
                 <span>
@@ -261,6 +277,21 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
                     {p.receiver ? ` by ${p.receiver.name}` : ''}
                   </small>
                 </span>
+                {canFix && PAYMENT_MODES.some((m) => m.value === p.mode) && (
+                  <button
+                    type="button"
+                    className="link"
+                    title="Entered under the wrong mode? Correct it here"
+                    onClick={() => {
+                      setFixing(p)
+                      setFix({ mode: p.mode, reference: p.reference ?? '', reason: '' })
+                      setNotice('')
+                      setError('')
+                    }}
+                  >
+                    Change mode
+                  </button>
+                )}
                 <strong className={p.type === 'refund' ? 'due' : ''}>
                   {p.type === 'refund' ? '−' : ''}
                   {rupees(p.amount)}
@@ -268,6 +299,30 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
               </li>
             ))}
           </ul>
+          {fixing && (
+            <form className="action-box" onSubmit={fixMode}>
+              <h3>Change how this was paid</h3>
+              <p className="muted small">
+                {fixing.type === 'refund' ? 'Refund' : 'Payment'} of {rupees(fixing.amount)}, recorded as <strong>{modeLabel(fixing.mode)}</strong>. Only the mode changes: the amount and the day it was taken stay as they are.
+              </p>
+              <div className="grid">
+                <SelectField label="Mode" required value={fix.mode} onChange={(v) => setFix({ ...fix, mode: v })} options={PAYMENT_MODES} />
+                <TextField label="Reference" placeholder="UPI or card slip number, optional" value={fix.reference} onChange={(v) => setFix({ ...fix, reference: v })} />
+                <div className="span-2">
+                  <TextField label="Reason for the change" required value={fix.reason} onChange={(v) => setFix({ ...fix, reason: v })} />
+                </div>
+              </div>
+              {error && <p className="form-error">{error}</p>}
+              <div className="panel-foot row">
+                <button type="button" className="btn ghost" onClick={() => setFixing(null)}>
+                  Cancel
+                </button>
+                <button className="btn primary" disabled={fix.reason.trim().length < 3 || (fix.mode === fixing.mode && fix.reference.trim() === (fixing.reference ?? ''))}>
+                  Save as {modeLabel(fix.mode)}
+                </button>
+              </div>
+            </form>
+          )}
         </>
       )}
 
