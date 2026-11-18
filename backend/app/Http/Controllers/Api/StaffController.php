@@ -8,9 +8,10 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class StaffController extends Controller
 {
@@ -111,6 +112,7 @@ class StaffController extends Controller
             'password' => ['required', Password::min(8)->letters()->numbers()],
         ]);
 
+        $this->onlyAdminsTouchAdmins($request, null, $data['role']);
         $data['branch_id'] = $request->user()->branch_id;
 
         return response()->json(User::create($this->withPermissions($data))->refresh()->append(self::EXTRA), 201);
@@ -123,9 +125,11 @@ class StaffController extends Controller
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
+        $this->onlyAdminsTouchAdmins($request, $staff, $data['role']);
         if (empty($data['password'])) {
             unset($data['password']);
         }
+        $newPassword = isset($data['password']) && ! $staff->is($request->user());
 
         // Stop people locking themselves out of staff management.
         if ($staff->is($request->user())) {
@@ -136,11 +140,29 @@ class StaffController extends Controller
 
         $staff->update($data);
 
-        if ($staff->is_active === false) {
+        // Switched off, or given a new password by someone else: every device signed in as this person is signed out.
+        if ($staff->is_active === false || $newPassword) {
             $staff->tokens()->delete();
         }
 
         return response()->json($staff->append(self::EXTRA));
+    }
+
+    /**
+     * An admin login can do everything, including reopening closed accounts and downloading backups, so only
+     * an admin may make one, change one, or turn someone into one. Others who manage staff work on the rest.
+     */
+    private function onlyAdminsTouchAdmins(Request $request, ?User $staff, string $newRole): void
+    {
+        if ($request->user()->role === Role::Admin) {
+            return;
+        }
+        if ($staff?->role === Role::Admin) {
+            throw ValidationException::withMessages(['role' => 'Only an admin can change an admin login.']);
+        }
+        if ($newRole === Role::Admin->value) {
+            throw ValidationException::withMessages(['role' => 'Only an admin can give someone the Admin role.']);
+        }
     }
 
     /**

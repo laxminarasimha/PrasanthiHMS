@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Admission;
 use App\Models\Appointment;
 use App\Models\Bed;
 use App\Models\Bill;
@@ -121,5 +122,61 @@ class LinkModulesTest extends TestCase
         // Removing the IPD charge gives the amount back to the lab bill.
         $this->deleteJson("{$url}/charges/{$charges[0]['id']}")->assertOk()->assertJsonPath('total', 50);
         $this->assertEquals(200, Bill::find($labBill)->due);
+    }
+
+    public function test_medicines_returned_from_a_bill_on_the_ipd_bill_come_off_the_ipd_bill(): void
+    {
+        $admission = $this->postJson('/api/ipd/admissions', [
+            'patient_id' => $this->patient->id, 'doctor_id' => $this->doctor->id, 'bed_id' => Bed::create(['ward' => 'General', 'bed_no' => '1'])->id,
+            'admitted_at' => now()->subHour()->format('Y-m-d H:i'),
+        ])->json('id');
+        $url = "/api/ipd/admissions/{$admission}";
+        $batch = $this->stock('Cetirizine 10mg Tablet');
+
+        // Ten tablets for 50: 20 paid at the counter, the other 30 put on the IPD bill.
+        $sale = $this->postJson('/api/pharmacy/sales', [
+            'patient_id' => $this->patient->id, 'customer_name' => $this->patient->name, 'paid' => 20, 'payment_mode' => 'cash',
+            'items' => [['stock_batch_id' => $batch->id, 'quantity' => 10]],
+        ])->assertCreated()->json();
+        $charge = $this->postJson("{$url}/transfer", ['type' => 'pharmacy', 'id' => $sale['id']])->assertCreated()->assertJsonPath('total', 30)->json('charges.0.id');
+
+        // Four tablets (20) come back: nothing was overpaid at the counter, so the 20 comes off the IPD bill and no money is handed back.
+        $this->postJson("/api/pharmacy/sales/{$sale['id']}/returns", ['refund_mode' => 'cash', 'items' => [['id' => $sale['items'][0]['id'], 'quantity' => 4]]])
+            ->assertCreated()->assertJsonPath('returned', 20)->assertJsonPath('ipd_transfer', 10)->assertJsonPath('paid', 20)->assertJsonPath('returns.0.refunded', 0);
+        $case = $this->getJson($url)->assertOk()->assertJsonPath('total', 10)->json();
+        $credit = collect($case['charges'])->firstWhere('source_type', 'pharmacy_return');
+        $this->assertEquals(-20, $credit['amount']);
+        $this->assertStringContainsString($sale['bill_no'], $credit['description']);
+        $this->assertSame(44, $batch->fresh()->units_in_stock);
+
+        // The rest comes back too: the last 10 leaves the IPD bill, and the 20 paid in cash is refunded.
+        $this->postJson("/api/pharmacy/sales/{$sale['id']}/returns", ['refund_mode' => 'cash', 'items' => [['id' => $sale['items'][0]['id'], 'quantity' => 6]]])
+            ->assertCreated()->assertJsonPath('ipd_transfer', 0)->assertJsonPath('paid', 0);
+        $this->getJson($url)->assertOk()->assertJsonPath('total', 0);
+
+        // The return lines cannot be removed on their own; they go with the pharmacy bill's line.
+        $this->deleteJson("{$url}/charges/{$credit['id']}")->assertStatus(422)->assertJsonValidationErrors('charge');
+        $this->deleteJson("{$url}/charges/{$charge}")->assertOk()->assertJsonPath('total', 0)->assertJsonCount(0, 'charges');
+        $this->assertEquals(0, PharmacySale::find($sale['id'])->due);
+    }
+
+    public function test_a_return_is_refused_while_the_ipd_bill_it_sits_on_is_approved(): void
+    {
+        $admission = $this->postJson('/api/ipd/admissions', [
+            'patient_id' => $this->patient->id, 'doctor_id' => $this->doctor->id, 'bed_id' => Bed::create(['ward' => 'General', 'bed_no' => '1'])->id,
+            'admitted_at' => now()->subHour()->format('Y-m-d H:i'),
+        ])->json('id');
+        $batch = $this->stock('Cetirizine 10mg Tablet');
+        $sale = $this->postJson('/api/pharmacy/sales', [
+            'patient_id' => $this->patient->id, 'customer_name' => $this->patient->name, 'paid' => 0, 'payment_mode' => 'cash',
+            'items' => [['stock_batch_id' => $batch->id, 'quantity' => 10]],
+        ])->assertCreated()->json();
+        $this->postJson("/api/ipd/admissions/{$admission}/transfer", ['type' => 'pharmacy', 'id' => $sale['id']])->assertCreated();
+        Admission::whereKey($admission)->update(['bill_approved_at' => now()]);
+
+        $this->postJson("/api/pharmacy/sales/{$sale['id']}/returns", ['refund_mode' => 'cash', 'items' => [['id' => $sale['items'][0]['id'], 'quantity' => 4]]])
+            ->assertStatus(422)->assertJsonValidationErrors('items');
+        $this->assertSame(40, $batch->fresh()->units_in_stock);
+        $this->assertEquals(50, PharmacySale::find($sale['id'])->ipd_transfer);
     }
 }

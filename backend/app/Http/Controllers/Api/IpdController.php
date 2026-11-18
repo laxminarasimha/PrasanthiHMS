@@ -292,19 +292,33 @@ class IpdController extends Controller
         abort_unless($charge->admission_id === $admission->id, 404);
         $this->refuseIfBillApproved($admission);
         $this->refuseIfBilled($charge);
+        if ($charge->source_type === 'pharmacy_return') {
+            throw ValidationException::withMessages(['charge' => 'This line is for medicines taken back at the pharmacy. It goes when the pharmacy bill itself is removed from this IPD bill.']);
+        }
 
-        if ($admission->total - $charge->amount < $admission->discount) {
+        // Medicines taken back since the pharmacy bill was moved here came off as lines of their own; they leave with it.
+        $credits = $charge->source_type === 'pharmacy'
+            ? AdmissionCharge::where('admission_id', $admission->id)->where('source_type', 'pharmacy_return')->where('source_id', $charge->source_id)->get()
+            : collect();
+        $credits->each(fn (AdmissionCharge $credit) => $this->refuseIfBilled($credit));
+        $net = round($charge->amount + $credits->sum('amount'), 2);
+
+        if ($admission->total - $net < $admission->discount) {
             throw ValidationException::withMessages(['charge' => 'Reduce the discount first; it would be more than the remaining charges.']);
         }
 
-        DB::transaction(function () use ($charge, $admission, $request) {
+        DB::transaction(function () use ($charge, $credits, $net, $admission, $request) {
             // A charge that stood for another bill hands the amount back to that bill.
             if ($charge->source_type === 'bill' && ($bill = Bill::find($charge->source_id))) {
                 $bill->payments()->where('mode', 'ipd')->where('reference', "IPD charge {$charge->id}")->delete();
                 $bill->recalculate();
             }
             if ($charge->source_type === 'pharmacy' && ($sale = PharmacySale::find($charge->source_id))) {
-                $sale->update(['ipd_transfer' => max(0, $sale->ipd_transfer - $charge->amount)]);
+                $sale->update(['ipd_transfer' => max(0, round($sale->ipd_transfer - $net, 2))]);
+            }
+            foreach ($credits as $credit) {
+                $credit->update(['deleted_by' => $request->user()->id]);
+                $credit->delete();
             }
 
             // Kept on record as a deleted line, with who removed it.
@@ -333,8 +347,10 @@ class IpdController extends Controller
             'id' => ['required', 'integer'],
         ]);
 
+        // Held until this is saved, so the same bill sent twice (a double click) is moved once: the second finds nothing left to move.
+        $admission = Admission::whereKey($admission->id)->lockForUpdate()->firstOrFail();
         $this->refuseIfBillApproved($admission);
-        $entry = collect($this->outstandingFor($admission))->first(fn ($e) => $e['type'] === $data['type'] && $e['id'] === $data['id']);
+        $entry = collect($this->outstandingFor($admission))->first(fn ($e) => $e['type'] === $data['type'] && $e['id'] === (int) $data['id']);
         if (! $entry) {
             throw ValidationException::withMessages(['id' => 'That bill has nothing left to pay, or does not belong to this stay.']);
         }
@@ -421,18 +437,27 @@ class IpdController extends Controller
             'paid_on' => ['nullable', 'date', 'before_or_equal:today', 'after_or_equal:'.$admission->admitted_at->toDateString()],
         ], ['paid_on.after_or_equal' => 'The payment date cannot be before the admission.']);
 
+        // Held until this is saved, so two entries arriving together are taken one after the other.
+        $admission = Admission::whereKey($admission->id)->lockForUpdate()->firstOrFail();
         if ($data['type'] === 'refund' && $data['amount'] > $admission->paid) {
             throw ValidationException::withMessages(['amount' => "Only ₹{$admission->paid} has been received on this case."]);
+        }
+        // An advance has no upper limit to catch a repeat, so the very same entry by the same person seconds later is taken as a double click.
+        $last = AdmissionPayment::where('admission_id', $admission->id)->latest('id')->first();
+        if ($last && $last->type === $data['type'] && (float) $last->amount === (float) $data['amount'] && $last->mode === $data['mode']
+            && $last->received_by === $request->user()->id && $last->updated_at?->gt(now()->subSeconds(5))) {
+            throw ValidationException::withMessages(['amount' => 'This entry was recorded a moment ago. Look at the list below before entering it again.']);
         }
 
         $paidOn = $data['paid_on'] ?? null;
         unset($data['paid_on']);
-        $payment = $admission->payments()->create($data + ['received_by' => $request->user()->id]);
+        $payment = $admission->payments()->make($data + ['received_by' => $request->user()->id]);
         if ($paidOn && $paidOn !== today()->toDateString()) {
             // Reports count money on the day it was received, so a back-dated entry carries that day.
+            // The date is set before saving, so a day whose accounts are closed refuses it like any other entry.
             $payment->created_at = Carbon::parse($paidOn)->setTimeFrom(now());
-            $payment->save();
         }
+        $payment->save();
         $admission->recalculate();
 
         return response()->json($this->present($admission), 201);

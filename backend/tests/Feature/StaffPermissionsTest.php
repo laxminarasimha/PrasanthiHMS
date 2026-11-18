@@ -61,9 +61,43 @@ class StaffPermissionsTest extends TestCase
         $this->putJson("/api/staff/{$doctor->id}", $this->details($doctor, ['permissions' => ['canManageStaff' => false]]))->assertOk()->assertJsonPath('abilities.canManageStaff', true);
 
         $admin = User::factory()->create(['role' => 'admin']);
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
         $this->putJson("/api/staff/{$admin->id}", $this->details($admin, ['permissions' => ['canManageStaff' => false, 'canRunLab' => false]]))->assertOk();
         $this->assertTrue($admin->fresh()->allows('canManageStaff'));
         $this->assertTrue($admin->fresh()->allows('canRunLab'));
+    }
+
+    public function test_only_an_admin_can_make_or_change_an_admin_login(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $desk = User::factory()->create(['role' => 'frontdesk']);
+        $doctor = User::factory()->create(['role' => 'doctor']);
+        Sanctum::actingAs($doctor);
+
+        // A doctor manages staff, but not the admin login, and cannot hand out the Admin role.
+        $this->putJson("/api/staff/{$admin->id}", $this->details($admin, ['email' => 'mine@example.com', 'password' => 'takeover123']))->assertStatus(422)->assertJsonValidationErrors('role');
+        $this->putJson("/api/staff/{$admin->id}", $this->details($admin, ['role' => 'nurse']))->assertStatus(422)->assertJsonValidationErrors('role');
+        $this->putJson("/api/staff/{$desk->id}", $this->details($desk, ['role' => 'admin']))->assertStatus(422)->assertJsonValidationErrors('role');
+        $this->postJson('/api/staff', ['name' => 'New Admin', 'email' => 'new@example.com', 'role' => 'admin', 'gender' => 'male', 'phone' => '9000000001', 'password' => 'secret123'])
+            ->assertStatus(422)->assertJsonValidationErrors('role');
+        $this->assertSame('admin', $admin->fresh()->role->value);
+        $this->assertNotSame('mine@example.com', $admin->fresh()->email);
+        $this->putJson("/api/staff/{$desk->id}", $this->details($desk, ['name' => 'Renamed Desk']))->assertOk();
+
+        Sanctum::actingAs($admin);
+        $this->putJson("/api/staff/{$desk->id}", $this->details($desk, ['role' => 'admin']))->assertOk()->assertJsonPath('role', 'admin');
+    }
+
+    public function test_a_password_set_by_someone_else_signs_that_person_out_everywhere(): void
+    {
+        $desk = User::factory()->create(['role' => 'frontdesk']);
+        $desk->createToken('web');
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+
+        $this->putJson("/api/staff/{$desk->id}", $this->details($desk))->assertOk();
+        $this->assertSame(1, $desk->tokens()->count());
+        $this->putJson("/api/staff/{$desk->id}", $this->details($desk, ['password' => 'fresh12345']))->assertOk();
+        $this->assertSame(0, $desk->tokens()->count());
     }
 
     public function test_changing_the_price_and_deleting_bills_can_be_switched_off_for_a_person(): void

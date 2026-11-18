@@ -80,6 +80,7 @@ class BillController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        abort_unless($request->user()->allows('canWorkFrontDesk'), 403, 'You are not allowed to make bills.');
         $data = $request->validate([
             'patient_id' => ['required', 'exists:patients,id'],
             'appointment_id' => ['nullable', 'exists:appointments,id'],
@@ -112,6 +113,7 @@ class BillController extends Controller
      */
     public function update(Request $request, Bill $bill): JsonResponse
     {
+        $bill = $this->forChange($request, $bill);
         $data = $request->validate([
             'discount' => ['required', 'numeric', 'min:0'],
             'refund_excess' => ['sometimes', 'boolean'],
@@ -154,6 +156,7 @@ class BillController extends Controller
     /** Adds a charge: a service from the price list, or anything typed in, with its own price, quantity and discount. */
     public function addItem(Request $request, Bill $bill): JsonResponse
     {
+        $bill = $this->forChange($request, $bill);
         $this->addLineFrom($bill, $data = $request->validate($this->lineRules('required_without')));
         AuditLog::record('bill.item_added', $bill->patient_id, $bill, 'Bill '.$bill->bill_no.': '.($data['description'] ?? Service::find($data['service_id'] ?? null)?->name ?? 'a charge'));
 
@@ -202,9 +205,10 @@ class BillController extends Controller
         );
     }
 
-    public function removeItem(Bill $bill, BillItem $item): JsonResponse
+    public function removeItem(Request $request, Bill $bill, BillItem $item): JsonResponse
     {
         abort_unless($item->bill_id === $bill->id, 404);
+        $bill = $this->forChange($request, $bill);
 
         $remaining = $bill->subtotal + $bill->tax - $item->amount - $item->tax;
         if ($remaining - $bill->discount < $bill->paid) {
@@ -226,6 +230,7 @@ class BillController extends Controller
             'mode' => ['required', Rule::in(Payment::MODES)],
             'reference' => ['nullable', 'string', 'max:255'],
         ]);
+        $bill = $this->forChange($request, $bill);
 
         if ($data['type'] === 'payment' && $data['amount'] > $bill->due) {
             throw ValidationException::withMessages(['amount' => "Only ₹{$bill->due} is due on this bill."]);
@@ -242,13 +247,26 @@ class BillController extends Controller
     }
 
     /**
+     * Whether this person may change the bill, and the bill as it stands this instant. Front desk staff work on every bill;
+     * lab staff only on lab bills. The row is held until the request is saved, so two requests arriving together
+     * (a double click, or two desks) are taken one after the other and the second sees what the first did.
+     */
+    private function forChange(Request $request, Bill $bill): Bill
+    {
+        $user = $request->user();
+        abort_unless($user->allows('canWorkFrontDesk') || ($bill->kind === 'lab' && $user->allows('canRunLab')), 403, 'You are not allowed to change this bill.');
+
+        return Bill::whereKey($bill->id)->lockForUpdate()->firstOrFail();
+    }
+
+    /**
      * Corrects how a payment or refund was taken when it was entered under the wrong mode: cash put down as UPI, and the like.
      * The amount and the day stay as they are, and the change is kept in the record with who made it and why.
      */
     public function updatePayment(Request $request, Bill $bill, Payment $payment): JsonResponse
     {
-        abort_unless($request->user()->allows('canWorkFrontDesk') || $request->user()->allows('canRunLab'), 403, 'You are not allowed to change payments on bills.');
         abort_unless($payment->bill_id === $bill->id, 404);
+        $bill = $this->forChange($request, $bill);
 
         $data = $request->validate([
             'mode' => ['required', Rule::in(Payment::MODES)],
