@@ -1,6 +1,8 @@
 import { Suspense, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { ErrorBoundary } from './ErrorBoundary'
 import { PatientSearch } from './PatientSearch'
+import { onLoadTrouble } from '../api'
 import { useAuth } from '../auth'
 import { allowedTabs, menuTabs, onTab } from '../nav'
 import { canLeave } from '../unsaved'
@@ -25,6 +27,9 @@ export function Layout() {
   const { user, signOut } = useAuth()
   const [open, setOpen] = useState(false)
   const { pathname } = useLocation()
+  // Whether the last thing any screen tried to load failed to arrive.
+  const [trouble, setTrouble] = useState(false)
+  useEffect(() => onLoadTrouble(setTrouble), [])
 
   // The browser tab says which part of the app it is showing, so several open tabs can be told apart.
   useEffect(() => {
@@ -116,9 +121,20 @@ export function Layout() {
             <strong>Backups:</strong> {user.backup_alert}
           </NavLink>
         )}
-        <Suspense fallback={<p className="loading">Loading…</p>}>
-          <Outlet />
-        </Suspense>
+        {/* One broken screen shows a message in place; the menu stays, and going elsewhere starts afresh. */}
+        <ErrorBoundary key={pathname}>
+          <Suspense fallback={<p className="loading">Loading…</p>}>
+            <Outlet />
+          </Suspense>
+        </ErrorBoundary>
+        {trouble && (
+          <div className="form-error floating-alert quiet top" role="alert">
+            <strong>Could not load from the server.</strong> Check the internet connection. What is on the screen may be incomplete or out of date.{' '}
+            <button type="button" className="link" onClick={() => window.location.reload()}>
+              Reload
+            </button>
+          </div>
+        )}
       </main>
     </div>
   )

@@ -92,6 +92,9 @@ export function MedicineRows({ rows, onChange, names = [], defaults = [], invali
   // so the doctor sees the single drugs and the combinations on the shelf, not only a name that matches.
   const [offer, setOffer] = useState<Offer | null>(null)
   const [found, setFound] = useState<Found[]>([])
+  // The words the list on screen was found for. While a newer search is still on its way the list is the old one,
+  // and Enter must not pick from it: that would put a medicine from the previous search on the prescription.
+  const [foundFor, setFoundFor] = useState('')
   const asked = useRef(0)
   const timer = useRef<number | undefined>(undefined)
 
@@ -107,6 +110,7 @@ export function MedicineRows({ rows, onChange, names = [], defaults = [], invali
     timer.current = window.setTimeout(() => {
       api.get<Found[]>('/medicines/find', { params: { q: term } }).then((res) => {
         if (mine !== asked.current) return
+        setFoundFor(term)
         const listed = new Set(res.data.map((f) => f.name.toLowerCase()))
         // Names this doctor has written before that the pharmacy does not list are still offered.
         const before = names.filter((n) => n.toLowerCase().includes(term.toLowerCase()) && !listed.has(n.toLowerCase())).slice(0, 5)
@@ -130,7 +134,8 @@ export function MedicineRows({ rows, onChange, names = [], defaults = [], invali
       setOffer({ ...offer, at: Math.max(offer.at - 1, 0) })
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      choose(index, found[offer.at].name)
+      // Only from a list that answers what is in the box now; a moment later it will.
+      if (foundFor === rows[index].medicine.trim()) choose(index, found[offer.at].name)
     } else if (e.key === 'Escape') {
       setOffer(null)
     }

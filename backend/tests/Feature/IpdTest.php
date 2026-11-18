@@ -178,6 +178,32 @@ class IpdTest extends TestCase
         $this->admit()->assertCreated();
     }
 
+    public function test_a_case_closed_by_mistake_can_be_reopened_by_an_approver_with_a_reason(): void
+    {
+        $case = $this->admit()->assertCreated()->json();
+        $url = "/api/ipd/admissions/{$case['id']}";
+        $this->postJson("{$url}/discharge", ['status' => 'died', 'discharged_at' => now()->format('Y-m-d H:i')])->assertOk()->assertJsonPath('status', 'died');
+
+        // A nurse closes cases but cannot reopen one; a doctor can, and must say why.
+        $this->postJson("{$url}/reopen", ['reason' => 'Wrong outcome chosen'])->assertForbidden();
+        Sanctum::actingAs($this->doctor);
+        $this->postJson("{$url}/reopen", [])->assertStatus(422)->assertJsonValidationErrors('reason');
+        $this->postJson("{$url}/reopen", ['reason' => 'Wrong outcome chosen'])->assertOk()
+            ->assertJsonPath('status', 'admitted')->assertJsonPath('discharged_at', null)->assertJsonPath('bed.id', $this->bed->id);
+        $this->assertStringContainsString('was closed as died', AuditLog::where('action', 'ipd.reopened')->sole()->summary);
+        $this->postJson("{$url}/reopen", ['reason' => 'Again'])->assertStatus(422);
+
+        // Closed again, and the bed given to someone else meanwhile: the case reopens without a bed.
+        $this->postJson("{$url}/discharge", ['status' => 'discharged', 'discharged_at' => now()->format('Y-m-d H:i')])->assertOk();
+        $other = $this->admit()->assertCreated()->json('id');
+        $this->postJson("{$url}/reopen", ['reason' => 'Patient came back the same day'])->assertOk()->assertJsonPath('status', 'admitted')->assertJsonPath('bed', null);
+
+        // Not while the same patient has another case open.
+        $this->postJson("/api/ipd/admissions/{$other}/discharge", ['status' => 'discharged', 'discharged_at' => now()->format('Y-m-d H:i')])->assertOk();
+        $again = $this->admit(['patient_id' => $case['patient_id'], 'bed_id' => null]);
+        $again->assertStatus(422); // already admitted through the reopened case
+    }
+
     public function test_patient_can_be_moved_to_a_free_bed_but_not_an_occupied_one(): void
     {
         $other = Bed::create(['ward' => 'Special Room', 'bed_no' => '1', 'daily_charge' => 2000]);

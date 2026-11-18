@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors } from '../../api'
+import { canLeave, UnsavedGuard } from '../../unsaved'
 import { useAuth } from '../../auth'
 import { SelectField, TextField } from '../../components/Field'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
@@ -78,7 +79,7 @@ export function PharmacyPurchases() {
 
   const startAdding = () => {
     api.get<Stockist[]>('/pharmacy/stockists').then((res) => setStockists(res.data))
-    api.get<Medicine[]>('/pharmacy/medicines').then((res) => setMedicines(res.data))
+    api.get<Medicine[]>('/pharmacy/medicines', { params: { list: 1 } }).then((res) => setMedicines(res.data))
     api.get<PurchaseOrder[]>('/pharmacy/purchase-orders').then((res) => setOrders(res.data.filter((o) => o.status === 'open')))
     setOrderId('')
     setViewing(null)
@@ -189,11 +190,12 @@ export function PharmacyPurchases() {
   return (
     <>
       <PharmacyTabs />
+      <UnsavedGuard on={adding && !editing && lines.some((l) => l.medicine_id !== '' || l.batch_no.trim() !== '' || l.packs !== '')} message="This purchase invoice is not saved yet. Leave without saving it?" />
       {adding ? (
         <form className="card" onSubmit={save} noValidate>
           <div className="toolbar">
             <h1 className="grow">{editing ? `Correct invoice ${editing.invoice_no}` : 'Add purchase invoice'}</h1>
-            <button type="button" className="btn ghost" onClick={() => setAdding(false)}>
+            <button type="button" className="btn ghost" onClick={() => canLeave() && setAdding(false)}>
               Cancel
             </button>
           </div>

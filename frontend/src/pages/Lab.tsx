@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, fieldErrors } from '../api'
+import { canLeave } from '../unsaved'
 import { useAuth } from '../auth'
 import { BillPanel } from '../components/BillPanel'
 import { LabOrderForm } from '../components/LabOrderForm'
@@ -158,7 +159,7 @@ export function Lab() {
             </thead>
             <tbody>
               {shown.map(({ order: o, step: next }) => {
-                const open = () => setPanel({ kind: 'results', orderId: o.id })
+                const open = () => (panel?.kind === 'results' && panel.orderId === o.id) || (canLeave() && setPanel({ kind: 'results', orderId: o.id }))
                 const done = o.items.map((i) => i.reported_at).filter(Boolean).sort().pop()
                 return (
                   <tr key={o.id} className={`${next === 'ready' ? 'done' : ''} ${panel?.kind === 'results' && panel.orderId === o.id ? 'selected' : ''}`} onClick={open}>
@@ -192,7 +193,7 @@ export function Lab() {
                     <td className="num col-bill" onClick={(e) => e.stopPropagation()}>
                       {o.bill && (
                         <>
-                          <button className="link" onClick={() => setPanel({ kind: 'bill', billId: o.bill!.id })}>
+                          <button className="link" onClick={() => canLeave() && setPanel({ kind: 'bill', billId: o.bill!.id })}>
                             {rupees(o.bill.total)}
                           </button>
                           <small className={`block ${o.bill.due > 0 ? 'due' : 'settled'}`}>{settlement(o.bill.due, o.bill.moved_to_ipd, o.bill.total)}</small>
@@ -238,7 +239,7 @@ export function Lab() {
           }}
         />
       )}
-      {panel?.kind === 'results' && <LabResults key={panel.orderId} orderId={panel.orderId} onClose={() => setPanel(null)} onChange={load} />}
+      {panel?.kind === 'results' && <LabResults key={panel.orderId} orderId={panel.orderId} onClose={() => canLeave() && setPanel(null)} onChange={load} />}
       {panel?.kind === 'bill' && <BillPanel key={panel.billId} billId={panel.billId} services={services} onClose={() => setPanel(null)} onChange={load} />}
     </div>
     </>

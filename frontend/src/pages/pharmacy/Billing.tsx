@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
+import { useUnsaved } from '../../unsaved'
 import { useAuth } from '../../auth'
 import { SelectField, TextField } from '../../components/Field'
+import { MedicinePick } from '../../components/MedicinePick'
 import { PatientPicker } from '../../components/PatientPicker'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { PAYMENT_MODES, clock, daysUntil, expiryLabel, longDate, rupees } from '../../format'
@@ -29,8 +31,6 @@ export function PharmacyBilling() {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [doctor, setDoctor] = useState('')
-  const [search, setSearch] = useState('')
-  const [matches, setMatches] = useState<SellableMedicine[]>([])
   const [lines, setLines] = useState<Line[]>([])
   const [discount, setDiscount] = useState('')
   const [paid, setPaid] = useState('')
@@ -41,7 +41,6 @@ export function PharmacyBilling() {
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState<PharmacySale | null>(null)
   // The counter is worked from the keyboard: which match is highlighted, and which line's quantity to jump to next.
-  const [at, setAt] = useState(0)
   const jumpTo = useRef<number | null>(null)
   const [given, setGiven] = useState('')
   const searchBox = useRef<HTMLInputElement>(null)
@@ -68,13 +67,6 @@ export function PharmacyBilling() {
     }
   }
 
-  useEffect(() => {
-    if (search.trim().length < 2) return
-    const timer = setTimeout(() => {
-      api.get<SellableMedicine[]>('/pharmacy/sell-search', { params: { q: search.trim() } }).then((res) => setMatches(res.data))
-    }, 200)
-    return () => clearTimeout(timer)
-  }, [search])
 
   // Once a newly added line is on the screen, the cursor goes to its quantity, with the 1 selected so a number replaces it.
   useEffect(() => {
@@ -114,7 +106,8 @@ export function PharmacyBilling() {
     })
   }, [presetPatient, setParams])
 
-  const shown = search.trim().length >= 2 ? matches : []
+  // A bill with medicines on it that has not been saved: leaving the counter asks first.
+  useUnsaved(lines.length > 0 && !saving, 'This pharmacy bill is not saved yet. Leave without saving it?')
   const subtotal = lines.reduce((sum, l) => sum + lineAmount(l), 0)
   const total = Math.max(0, Math.round(subtotal - Number(discount || 0)))
   // Until the cashier types an amount, assume the customer pays in full.
@@ -128,8 +121,6 @@ export function PharmacyBilling() {
         ? rows
         : [...rows, { batchId: batch.id, medicine: m.name, batchNo: batch.batch_no, expiry: batch.expiry, unitPrice: batch.unit_mrp, available: batch.units_in_stock, quantity: '1', discount: '' }],
     )
-    setSearch('')
-    setAt(0)
     // Straight to the quantity of that line: at once if it is on the bill already, otherwise as soon as it appears.
     const there = quantityBoxes.current[batch.id]
     if (there && lines.some((r) => r.batchId === batch.id)) {
@@ -140,24 +131,6 @@ export function PharmacyBilling() {
     }
   }
 
-  // Every batch on offer for what was typed, in the order shown, so the arrow keys can walk through them.
-  const offers = (search.trim().length >= 2 ? matches : []).flatMap((m) => m.sellable_batches.map((b, i) => ({ m, b, first: i === 0 && m.sellable_batches.length > 1 })))
-  const onSearchKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      setAt((i) => Math.min(i + 1, offers.length - 1))
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      setAt((i) => Math.max(i - 1, 0))
-    } else if (e.key === 'Enter') {
-      // Enter here chooses a medicine. It must never save the bill by accident.
-      e.preventDefault()
-      const pick = offers[Math.min(at, offers.length - 1)]
-      if (pick) add(pick.m, pick.b)
-    } else if (e.key === 'Escape') {
-      setSearch('')
-    }
-  }
   /** Enter in a quantity or discount box goes back to the search box for the next medicine, instead of saving. */
   const backToSearch = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -311,41 +284,7 @@ export function PharmacyBilling() {
             })}
 
           <h3>Medicines</h3>
-          <div className="medicine-search">
-            <input
-              ref={searchBox}
-              type="search"
-              placeholder="Type a medicine or drug name"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value)
-                setAt(0)
-              }}
-              onKeyDown={onSearchKey}
-              aria-label="Search medicine"
-              role="combobox"
-              aria-expanded={offers.length > 0}
-              aria-controls="medicine-offers"
-            />
-            {offers.length > 0 && (
-              <ul className="picker floating" id="medicine-offers" role="listbox">
-                {offers.map(({ m, b, first }, i) => (
-                  <li key={b.id} role="option" aria-selected={i === at}>
-                    <button type="button" className={i === at ? 'on' : ''} onClick={() => add(m, b)} onMouseEnter={() => setAt(i)}>
-                      <strong>{m.name}</strong>
-                      {m.composition && <small className="muted">{m.composition}</small>}
-                      <small className="muted">
-                        Batch {b.batch_no} · exp {expiryLabel(b.expiry)} · {b.units_in_stock} in stock · {rupees(b.unit_mrp)} each
-                        {first ? ' · sell this first' : ''}
-                      </small>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {search.trim().length >= 2 && shown.length === 0 && <small className="muted">No medicine in stock matches "{search.trim()}".</small>}
-            <small className="muted key-hint">↑ ↓ to choose · Enter to add · type the quantity · Enter for the next medicine · Ctrl+S to save</small>
-          </div>
+          <MedicinePick inputRef={searchBox} onPick={add} hint="↑ ↓ to choose · Enter to add · type the quantity · Enter for the next medicine · Ctrl+S to save" />
 
           <div className="table-wrap gap-top">
             <table className="compact">
@@ -466,7 +405,7 @@ export function PharmacyBilling() {
             </button>
           </div>
           <div className="bill-links">
-            <button type="button" className="link" onClick={reset}>
+            <button type="button" className="link" onClick={() => (lines.length === 0 || window.confirm('Clear this bill? The medicines on it will be taken off.')) && reset()}>
               Clear bill
             </button>
             <button type="button" className="link" onClick={printPrevious}>

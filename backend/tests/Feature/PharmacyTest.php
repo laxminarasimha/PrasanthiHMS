@@ -3,8 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\Medicine;
+use App\Models\PharmacyChange;
+use App\Models\PharmacySaleItem;
+use App\Models\PurchaseInvoice;
 use App\Models\StockBatch;
 use App\Models\Stockist;
+use App\Models\StockReturn;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -46,6 +50,19 @@ class PharmacyTest extends TestCase
         return $this->postJson('/api/pharmacy/sales', $overrides + [
             'customer_name' => 'Walk-in Customer', 'paid' => 0, 'payment_mode' => 'cash', 'items' => $items,
         ]);
+    }
+
+    public function test_the_medicine_list_for_purchase_forms_is_not_cut_off_at_500(): void
+    {
+        $before = Medicine::where('is_active', true)->count();
+        Medicine::insert(array_map(fn ($i) => ['name' => sprintf('Zinc Sample %03d', $i), 'gst_percent' => 12, 'units_per_pack' => 10, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()], range(1, 520)));
+        Medicine::create(['name' => 'Withdrawn Tablet', 'gst_percent' => 12, 'units_per_pack' => 10, 'is_active' => false]);
+
+        // The screen list stops at 500; the list the purchase forms choose from has every medicine in use, and only what they need.
+        $this->getJson('/api/pharmacy/medicines')->assertOk()->assertJsonCount(500);
+        $list = $this->getJson('/api/pharmacy/medicines?list=1')->assertOk()->assertJsonCount($before + 520)->json();
+        $this->assertSame('Zinc Sample 520', end($list)['name']);
+        $this->assertSame(['id', 'name', 'units_per_pack', 'gst_percent', 'hsn_code'], array_keys($list[0]));
     }
 
     public function test_medicines_and_stockists_can_be_added_and_duplicates_are_refused(): void
@@ -147,7 +164,7 @@ class PharmacyTest extends TestCase
 
     public function test_medicines_carry_inventory_classes_and_stockists_show_what_is_owed(): void
     {
-        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\User::factory()->create(['role' => 'pharmacist']));
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
 
         $base = ['gst_percent' => 12, 'units_per_pack' => 10];
         $this->postJson('/api/pharmacy/medicines', $base + ['name' => 'Adrenaline 1mg Injection', 'category' => 'Emergency Medicine', 'sub_category' => 'Cardiac', 'ved' => 'V', 'sde' => 'S', 'fsn' => 'S'])
@@ -161,9 +178,9 @@ class PharmacyTest extends TestCase
 
         $stockist = $this->postJson('/api/pharmacy/stockists', ['name' => 'Sample Agency', 'email' => 'not-an-email'])->assertStatus(422);
         $stockist = $this->postJson('/api/pharmacy/stockists', ['name' => 'Sample Agency', 'email' => 'orders@agency.example'])->assertCreated()->json();
-        \App\Models\PurchaseInvoice::create(['stockist_id' => $stockist['id'], 'invoice_no' => 'A1', 'invoice_date' => today(), 'total' => 5000, 'paid' => 2000]);
-        \App\Models\PurchaseInvoice::create(['stockist_id' => $stockist['id'], 'invoice_no' => 'A2', 'invoice_date' => today(), 'total' => 1500, 'paid' => 0]);
-        $return = new \App\Models\StockReturn(['stockist_id' => $stockist['id'], 'returned_on' => today()]);
+        PurchaseInvoice::create(['stockist_id' => $stockist['id'], 'invoice_no' => 'A1', 'invoice_date' => today(), 'total' => 5000, 'paid' => 2000]);
+        PurchaseInvoice::create(['stockist_id' => $stockist['id'], 'invoice_no' => 'A2', 'invoice_date' => today(), 'total' => 1500, 'paid' => 0]);
+        $return = new StockReturn(['stockist_id' => $stockist['id'], 'returned_on' => today()]);
         $return->forceFill(['total' => 500])->save();
 
         $row = collect($this->getJson('/api/pharmacy/stockists')->assertOk()->json())->firstWhere('id', $stockist['id']);
@@ -173,7 +190,7 @@ class PharmacyTest extends TestCase
 
     public function test_a_scheme_with_free_packs_shows_the_real_cost_and_margin(): void
     {
-        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\User::factory()->create(['role' => 'pharmacist']));
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
 
         // "10 + 2": ten strips paid at ₹50, two free, MRP ₹72 a strip of 10 tablets, 12% GST.
         $invoice = $this->receive([$this->line(['packs' => 10, 'free_packs' => 2, 'pack_price' => 50, 'pack_mrp' => 72, 'gst_percent' => 12, 'hsn_code' => '30049099', 'rack_no' => 'R3', 'box_no' => 'B2'])]);
@@ -187,12 +204,12 @@ class PharmacyTest extends TestCase
 
         // Selling it measures profit against the real cost.
         $sale = $this->sell([['stock_batch_id' => $batch['id'], 'quantity' => 10]])->assertCreated()->json();
-        $this->assertEquals(4.17, \App\Models\PharmacySaleItem::where('pharmacy_sale_id', $sale['id'])->value('unit_cost'));
+        $this->assertEquals(4.17, PharmacySaleItem::where('pharmacy_sale_id', $sale['id'])->value('unit_cost'));
     }
 
     public function test_rupee_discounts_tax_on_free_packs_and_bill_level_figures_reach_the_total(): void
     {
-        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\User::factory()->create(['role' => 'pharmacist']));
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
         $line = $this->line(['packs' => 10, 'free_packs' => 2, 'pack_price' => 100, 'pack_mrp' => 150, 'discount_percent' => 10, 'discount_amount' => 50, 'gst_percent' => 12, 'tax_on_free' => true]);
 
         // 10 x 100 less 10% = 900, less ₹50 = 850. GST on 850 plus the two free strips (200) = 126.
@@ -215,7 +232,7 @@ class PharmacyTest extends TestCase
         ])->assertOk()->json();
         // Without GST on the free strips: 850 + 102 + 60 - 16 - 0.5 = 995.5
         $this->assertEquals([850, 102, 995.5], [$edited['subtotal'], $edited['tax'], $edited['total']]);
-        $summary = \App\Models\PharmacyChange::where('kind', 'invoice')->latest('id')->value('summary');
+        $summary = PharmacyChange::where('kind', 'invoice')->latest('id')->value('summary');
         $this->assertStringContainsString('Other charges', $summary);
         $this->assertStringContainsString('GST on free packs', $summary);
     }

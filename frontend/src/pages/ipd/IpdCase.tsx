@@ -4,6 +4,7 @@ import { IpdCharts } from './IpdCharts'
 import { HealthSummary } from '../../components/HealthSummary'
 import { Link, useParams } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
+import { canLeave } from '../../unsaved'
 import { useAuth } from '../../auth'
 import { SelectField, TextField } from '../../components/Field'
 import { ADMISSION_STATUS, PAYMENT_MODES, clock, longDate, modeLabel, nowLocal, rupees, today } from '../../format'
@@ -39,6 +40,7 @@ export function IpdCase() {
   const [notice, setNotice] = useState('')
   /** True while something is being saved, so the money buttons cannot be pressed a second time meanwhile. */
   const [busy, setBusy] = useState(false)
+  const [reopening, setReopening] = useState('')
   const [charge, setCharge] = useState({ ipd_service_id: '', description: '', charged_on: today(), quantity: '1', unit_price: '', discount: '', remarks: '' })
   /** The charge being corrected, when the form is editing one instead of adding. */
   const [editingCharge, setEditingCharge] = useState<number | null>(null)
@@ -200,27 +202,27 @@ export function IpdCase() {
         </dl>
 
         <div className="tabs flush gap-bottom">
-          <button className={tab === 'bill' ? 'active' : ''} onClick={() => setTab('bill')}>
+          <button className={tab === 'bill' ? 'active' : ''} onClick={() => canLeave() && setTab('bill')}>
             Bill
           </button>
-          <button className={tab === 'notes' ? 'active' : ''} onClick={() => setTab('notes')}>
+          <button className={tab === 'notes' ? 'active' : ''} onClick={() => canLeave() && setTab('notes')}>
             Notes
           </button>
           {user?.can_consult && (
-            <button className={tab === 'charts' ? 'active' : ''} onClick={() => setTab('charts')}>
+            <button className={tab === 'charts' ? 'active' : ''} onClick={() => canLeave() && setTab('charts')}>
               Charts
             </button>
           )}
-          <button className={tab === 'summary' ? 'active' : ''} onClick={() => setTab('summary')}>
+          <button className={tab === 'summary' ? 'active' : ''} onClick={() => canLeave() && setTab('summary')}>
             Discharge summary
           </button>
-          <button className={tab === 'results' ? 'active' : ''} onClick={() => setTab('results')}>
+          <button className={tab === 'results' ? 'active' : ''} onClick={() => canLeave() && setTab('results')}>
             Investigations
           </button>
-          <button className={tab === 'files' ? 'active' : ''} onClick={() => setTab('files')}>
+          <button className={tab === 'files' ? 'active' : ''} onClick={() => canLeave() && setTab('files')}>
             Papers
           </button>
-          <button className={tab === 'forms' ? 'active' : ''} onClick={() => setTab('forms')}>
+          <button className={tab === 'forms' ? 'active' : ''} onClick={() => canLeave() && setTab('forms')}>
             Forms
           </button>
         </div>
@@ -712,6 +714,9 @@ export function IpdCase() {
             <form
               onSubmit={(e) => {
                 e.preventDefault()
+                // One press should not end a stay, least of all under the wrong outcome.
+                const outcome = CLOSE_OPTIONS.find((o) => o.value === closing.status)?.label ?? closing.status
+                if (!window.confirm(`Close this case as "${outcome}"?\n\nThe bed is freed and the patient leaves the list of inpatients.`)) return
                 run(api.post(`${url}/discharge`, { ...closing, discharged_at: closing.discharged_at.replace('T', ' ') }), 'Case closed and bed freed.')
               }}
             >
@@ -725,7 +730,7 @@ export function IpdCase() {
               </div>
               <p className="muted small">
                 Write the discharge summary on the{' '}
-                <button type="button" className="link" onClick={() => setTab('summary')}>
+                <button type="button" className="link" onClick={() => canLeave() && setTab('summary')}>
                   Discharge summary
                 </button>{' '}
                 tab, before or after closing the case.
@@ -740,13 +745,36 @@ export function IpdCase() {
               <p className="muted">
                 {ADMISSION_STATUS[admission.status]} on {longDate(admission.discharged_at!)} {clock(admission.discharged_at!)}
               </p>
-              <button type="button" className="btn ghost" onClick={() => setTab('summary')}>
+              <button type="button" className="btn ghost" onClick={() => canLeave() && setTab('summary')}>
                 Open the discharge summary
               </button>
+              {user?.can_approve_ipd && (
+                <form
+                  className="gap-top"
+                  onSubmit={async (e) => {
+                    e.preventDefault()
+                    if (await run(api.post(`${url}/reopen`, { reason: reopening }), 'Case reopened. Check the bed, and close it again when the patient leaves.')) setReopening('')
+                  }}
+                >
+                  <p className="muted small">Closed by mistake, or under the wrong outcome? Reopen it and close it again correctly. The reason is kept in the record.</p>
+                  <input placeholder="Reason for reopening (required)" value={reopening} onChange={(e) => setReopening(e.target.value)} aria-label="Reason for reopening" />
+                  <div className="panel-foot">
+                    <button className="btn ghost" disabled={busy || reopening.trim().length < 3}>
+                      Reopen case
+                    </button>
+                  </div>
+                </form>
+              )}
             </>
           )}
         </div>
       </aside>
+      {/* Whatever tab or part of the page the person is on, a refusal is shown where it cannot be missed. */}
+      {error && (
+        <button type="button" className="form-error floating-alert" role="alert" onClick={() => setError('')} title="Dismiss">
+          {error}
+        </button>
+      )}
     </div>
   )
 }

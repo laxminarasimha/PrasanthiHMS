@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
+import { useUnsaved } from '../../unsaved'
 import { useAuth } from '../../auth'
 import { DateRange } from '../../components/DateRange'
 import { MedicinePick, type SellableBatch } from '../../components/MedicinePick'
@@ -155,6 +156,8 @@ export function PharmacyBills() {
   // What will be owed after the change. A bill that was fully paid is offered in full; one already carrying a balance, only what is being added.
   const newDue = open ? Math.max(0, Math.round((editedTotal - open.paid) * 100) / 100) : 0
   const collectValue = collect ?? String(open && open.due > 0 ? Math.min(newDue, Math.max(0, editedTotal - open.total)) : newDue)
+
+  useUnsaved(action === 'edit' && (added.length > 0 || corrected), 'The changes to this bill are not saved yet. Leave without saving them?')
 
   const pickMedicine = (m: SellableMedicine, b: SellableBatch) => {
     setError('')

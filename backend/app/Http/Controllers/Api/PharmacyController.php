@@ -32,6 +32,12 @@ class PharmacyController extends Controller
     {
         $term = trim((string) $request->query('q'));
 
+        // For choosing a medicine on a purchase invoice, an order or opening stock: every medicine in use, however
+        // many there are, with only what those forms fill in from it. The fuller list below stops at 500.
+        if ($request->boolean('list')) {
+            return response()->json(Medicine::where('is_active', true)->orderBy('name')->get(['id', 'name', 'units_per_pack', 'gst_percent', 'hsn_code']));
+        }
+
         return response()->json(
             Medicine::query()
                 ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', "%{$term}%")->orWhere('manufacturer', 'like', "%{$term}%")->orWhere('composition', 'like', "%{$term}%")))
@@ -427,7 +433,7 @@ class PharmacyController extends Controller
                 ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('batch_no', 'like', "{$term}%")
                     ->orWhereHas('medicine', fn ($m) => $m->where('name', 'like', "%{$term}%"))))
                 ->orderBy('expiry')->orderBy('id')
-                ->limit(1000)
+                ->limit(3000)
                 ->get()
         );
     }

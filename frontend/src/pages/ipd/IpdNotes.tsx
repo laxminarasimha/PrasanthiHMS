@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { api, fieldErrors } from '../../api'
+import { canLeave, useUnsaved } from '../../unsaved'
 import { clock, longDate, nowLocal, today } from '../../format'
 import type { AdmissionNote, NoteKind } from '../../types'
 
@@ -49,6 +50,10 @@ export function IpdNotes({ admissionId, canEdit }: { admissionId: number; canEdi
   useEffect(() => {
     api.get<AdmissionNote[]>(url).then((res) => setNotes(res.data))
   }, [url])
+
+  // A note being written is lost by leaving, so leaving asks first. An untouched blank form is nothing to lose.
+  const writing = Boolean(draft && (draft.body.trim() !== '' || Object.values(draft.details).some((v) => String(v ?? '').trim() !== '')))
+  useUnsaved(writing, 'This note is not saved yet. Leave without saving it?')
 
   const send = async () => {
     if (!draft || saving) return
@@ -141,7 +146,7 @@ export function IpdNotes({ admissionId, canEdit }: { admissionId: number; canEdi
           {error && <p className="form-error">{error}</p>}
           <div className="panel-foot row">
             <span className="muted small grow">Ctrl + Enter saves</span>
-            <button type="button" className="btn ghost" onClick={() => setDraft(null)}>
+            <button type="button" className="btn ghost" onClick={() => canLeave() && setDraft(null)}>
               Cancel
             </button>
             <button className="btn primary" disabled={saving}>

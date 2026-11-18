@@ -96,8 +96,12 @@ export function VisitPad() {
   const [library, setLibrary] = useState<DoctorLibrary | null>(null)
   const [naming, setNaming] = useState<{ what: 'group' | 'template'; name: string } | null>(null)
 
+  // The vitals as the server last gave them. The desk may enter vitals while this pad is open, so on saving only
+  // the ones the doctor actually changed are sent; the rest are left as the server has them.
+  const loadedVitals = useRef<Record<string, unknown>>({})
   const apply = (next: Visit) => {
     setVisit(next)
+    loadedVitals.current = toForm(next.consultation, next.patient.allergies)
     setForm(toForm(next.consultation, next.patient.allergies))
     setExam(toExam(next.consultation))
     setInvestigations((next.consultation?.investigations ?? []).map((row) => ({ name: row.name, result: row.result ?? '', date: row.date ?? '' })))
@@ -254,9 +258,27 @@ export function VisitPad() {
     payload.diagnosis_codes = codes.map((c) => ({ code: c.code }))
     payload.investigations = investigations.filter((row) => row.name.trim() || row.result.trim()).map((row) => ({ name: row.name.trim(), result: row.result.trim() || null, date: row.date || null }))
     if (complete) payload.complete = true
+    // Vitals the doctor did not touch are not sent, so a blank box here cannot wipe what the desk has entered since.
+    // The two blood pressure values travel together.
+    const changed = (key: string) => String(form[key] ?? '') !== String(loadedVitals.current[key] ?? '')
+    const bpChanged = changed('bp_systolic') || changed('bp_diastolic')
+    for (const v of VITALS) {
+      if (!(v.key.startsWith('bp_') ? bpChanged : changed(v.key))) delete payload[v.key]
+    }
+    const sent = latestPad.current
     try {
       const res = await api.put<Visit>(`/appointments/${id}/consultation`, payload)
-      apply(res.data)
+      if (latestPad.current === sent) {
+        apply(res.data)
+      } else {
+        // Something was typed while the save was on its way. What is on the screen stays; only what was sent counts as saved.
+        const before = loadedVitals.current
+        const now = toForm(res.data.consultation, res.data.patient.allergies)
+        loadedVitals.current = now
+        setVisit(res.data)
+        setForm((f) => ({ ...f, ...Object.fromEntries(VITALS.filter((v) => String(f[v.key] ?? '') === String(before[v.key] ?? '')).map((v) => [v.key, now[v.key]])) }))
+        setSavedPad(sent)
+      }
       setNotice(complete ? 'Visit completed. You can print the prescription now.' : 'Draft saved.')
       if (complete) {
         api.get<Consultation[]>(`/patients/${res.data.patient.id}/consultations`).then((h) => setHistory(h.data))
@@ -811,7 +833,7 @@ export function VisitPad() {
               </p>
             ))}
             {h.medicines.length > 0 && canEdit && (
-              <button type="button" className="link" onClick={() => setMedicines(h.medicines.map(({ id: _id, ...rest }) => rest))}>
+              <button type="button" className="link" onClick={() => (filled().length === 0 || window.confirm('Replace the medicines already written on this visit with these?')) && setMedicines(h.medicines.map(({ id: _id, ...rest }) => rest))}>
                 Repeat these medicines
               </button>
             )}

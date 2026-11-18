@@ -374,6 +374,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
         });
 
         Route::post('/admissions/{admission}/approve-bill', 'approveBill');
+        Route::post('/admissions/{admission}/reopen', 'reopen');
 
         Route::middleware('ability:canWorkIpd')->group(function () {
             Route::post('/admissions/{admission}/templates/{template}', 'applyTemplate');

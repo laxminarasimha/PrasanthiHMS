@@ -1,6 +1,8 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+// Before the app and its router: the guard for unsaved work listens for Back and Forward ahead of them.
+import './unsaved'
 import App from './App.tsx'
 import { applyAppearance, remembered } from './appearance'
 
