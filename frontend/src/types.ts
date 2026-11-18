@@ -19,6 +19,7 @@ export type User = {
   /** Approves stock counts and corrections in the pharmacy, and sees what is missing. */
   can_audit_pharmacy: boolean
   can_change_price: boolean
+  can_record_expenses?: boolean
   /** For an admin: something about the backups that needs doing, or null. */
   backup_alert?: string | null
   pad_hidden_sections?: string[]

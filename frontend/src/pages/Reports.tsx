@@ -12,6 +12,7 @@ type Summary = {
   modes: string[]
   departments: Record<string, Department>
   counts: Record<string, number>
+  paid_out?: { expenses: number; suppliers: number; total: number; cash: number; by_category: Record<string, number> }
 }
 
 const COUNTS: [string, string][] = [
@@ -148,6 +149,27 @@ export function Reports() {
               </div>
             ))}
           </div>
+
+          {summary.paid_out && (
+            <>
+              <h3>Paid out</h3>
+              <div className="tiles small">
+                <div className="tile"><span>Expenses</span><strong>{rupees(summary.paid_out.expenses)}</strong></div>
+                <div className="tile"><span>Paid to medicine suppliers</span><strong>{rupees(summary.paid_out.suppliers)}</strong></div>
+                <div className="tile"><span>All paid out</span><strong>{rupees(summary.paid_out.total)}</strong></div>
+                <div className="tile"><span>Collected less paid out</span><strong className={collected - summary.paid_out.total < 0 ? 'due' : 'settled'}>{rupees(Math.round((collected - summary.paid_out.total) * 100) / 100)}</strong></div>
+              </div>
+              {Object.keys(summary.paid_out.by_category).length > 0 && (
+                <p className="expense-headings">
+                  {Object.entries(summary.paid_out.by_category).map(([name, amount]) => (
+                    <span key={name} className="chip">
+                      {name} <strong>{rupees(amount)}</strong>
+                    </span>
+                  ))}
+                </p>
+              )}
+            </>
+          )}
 
           <h3>Billing and collections by department</h3>
           <div className="table-wrap">

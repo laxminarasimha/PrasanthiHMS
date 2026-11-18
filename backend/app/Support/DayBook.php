@@ -8,12 +8,15 @@ use App\Models\Appointment;
 use App\Models\AuditLog;
 use App\Models\Bill;
 use App\Models\Consultation;
+use App\Models\DayClose;
+use App\Models\Expense;
 use App\Models\LabOrder;
 use App\Models\PatientDeposit;
 use App\Models\Payment;
 use App\Models\PharmacyPayment;
 use App\Models\PharmacySale;
 use App\Models\PharmacySaleReturn;
+use App\Models\PurchasePayment;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
@@ -231,11 +234,52 @@ class DayBook
                                 'detail' => trim(($words['details'] ? $words['details'].' · ' : '').$row->created_at->format('g:i A')),
                                 'to' => $page($row->patient_id),
                             ];
-                    })),
+                        })),
             ],
         ];
 
-        $sections = [$frontDesk, $doctor, $lab, $pharmacy, $ipd, $money];
+        // ---- Paid out ----
+        $out = PaidOut::between($from, $to);
+        $days = [$from->toDateString(), $to->toDateString()];
+        $expenses = Expense::live()->whereBetween('spent_on', $days)->with('creator:id,name')->orderBy('id')->get();
+        $cancelled = Expense::whereBetween('cancelled_at', [$from, $to])->with('canceller:id,name')->orderBy('id')->get();
+        $toSuppliers = PurchasePayment::whereBetween('paid_on', $days)->with(['invoice:id,invoice_no,stockist_id', 'invoice.stockist:id,name', 'payer:id,name'])->orderBy('id')->get();
+        $by = fn (string $mode) => 'by '.str_replace('_', ' ', $mode);
+
+        $paidOut = [
+            'key' => 'paid_out', 'label' => 'Paid out',
+            'figures' => [
+                self::figure('Expenses', $out['expenses'], true),
+                self::figure('Paid to medicine suppliers', $out['suppliers'], true),
+                self::figure('Of all this, in cash', $out['cash'], true),
+            ],
+            'checks' => [
+                self::check('expenses', 'Expenses entered', false, 'Money paid out for the running of the hospital. Cash ones came out of the drawer.',
+                    $expenses->map(fn (Expense $e) => [
+                        'text' => $e->category.($e->paid_to ? ' · '.$e->paid_to : ''),
+                        'detail' => $rupees($e->amount).' '.$by($e->mode).($e->creator ? ' · entered by '.$e->creator->name : ''),
+                        'to' => '/expenses',
+                    ])),
+                self::check('supplier_payments', 'Paid to medicine suppliers', false, 'Payments against purchase invoices, dated this day.',
+                    $toSuppliers->map(fn (PurchasePayment $p) => [
+                        'text' => ($p->invoice?->stockist?->name ?? 'Supplier').' · invoice '.($p->invoice?->invoice_no ?? '?'),
+                        'detail' => $rupees($p->amount).' '.$by($p->mode).($p->payer ? ' · by '.$p->payer->name : ''),
+                        'to' => '/pharmacy/purchases',
+                    ])),
+                self::check('expenses_cancelled', 'Expenses cancelled', false, 'Each one should have a reason the cashier can explain.',
+                    $cancelled->map(fn (Expense $e) => [
+                        'text' => $e->category.($e->paid_to ? ' · '.$e->paid_to : '').' · '.$rupees($e->amount),
+                        'detail' => ($e->canceller?->name ?? 'Someone').': '.$e->cancel_reason,
+                        'to' => '/expenses',
+                    ])),
+            ],
+        ];
+
+        $cashIn = round(array_sum(array_map(fn ($d) => $d['collected']['cash'], $departments)), 2);
+        // What was left in the drawer when the last day before this one was closed: the float the day starts with.
+        $before = DayClose::whereNull('reopened_at')->whereDate('day', '<', $from->toDateString())->orderByDesc('day')->first(['day', 'kept_cash']);
+        $opening = round((float) ($before?->kept_cash ?? 0), 2);
+        $sections = [$frontDesk, $doctor, $lab, $pharmacy, $ipd, $money, $paidOut];
         $checks = collect($sections)->flatMap(fn ($s) => $s['checks']);
 
         return [
@@ -243,8 +287,13 @@ class DayBook
             'sections' => $sections,
             'modes' => Payment::MODES,
             'departments' => $departments,
-            // Cash that should be in the drawer: every cash receipt of the day less every cash refund.
-            'expected_cash' => round(array_sum(array_map(fn ($d) => $d['collected']['cash'], $departments)), 2),
+            'paid_out' => $out,
+            // Cash that should be in the drawer: every cash receipt of the day less every cash refund, less the cash
+            // paid out of it for expenses and to suppliers.
+            'cash_collected' => $cashIn,
+            'opening_cash' => $opening,
+            'opening_from' => $opening > 0 ? $before->day->toDateString() : null,
+            'expected_cash' => round($opening + $cashIn - $out['cash'], 2),
             'blocking' => $checks->where('blocking', true)->sum('count'),
             'notes' => $checks->where('blocking', false)->sum('count'),
         ];

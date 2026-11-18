@@ -14,6 +14,9 @@ type Closing = {
   closed_at: string
   expected_cash: number
   counted_cash: number
+  /** Left in the drawer for the next day; the rest of what was counted was handed over. */
+  kept_cash?: number
+  opening_cash?: number
   variance: number
   variance_note: string | null
   exceptions: number
@@ -28,6 +31,12 @@ type Book = {
   modes: string[]
   departments: Record<string, Department>
   expected_cash: number
+  /** Cash taken in, before what was paid out of it. Missing on days closed before expenses were kept. */
+  cash_collected?: number
+  /** Cash left in the drawer when the day before was closed, and which day that was. */
+  opening_cash?: number
+  opening_from?: string | null
+  paid_out?: { expenses: number; expenses_cash: number; suppliers: number; suppliers_cash: number; cash: number; total: number }
   blocking: number
   notes: number
   closed: Closing | null
@@ -55,6 +64,7 @@ export function DayClose() {
   const [book, setBook] = useState<Book | null>(null)
   const [error, setError] = useState('')
   const [counted, setCounted] = useState('')
+  const [kept, setKept] = useState('')
   const [varianceNote, setVarianceNote] = useState('')
   const [override, setOverride] = useState('')
   const [reopenReason, setReopenReason] = useState('')
@@ -84,6 +94,7 @@ export function DayClose() {
     setBook(null)
     setErrors({})
     setCounted('')
+    setKept('')
     setVarianceNote('')
     setOverride('')
     setReopening(false)
@@ -96,7 +107,7 @@ export function DayClose() {
     if (!book || !window.confirm(`Close the accounts for ${longDate(book.day)}? After this, money for that day cannot be added or changed unless an admin reopens it.`)) return
     setBusy(true)
     api
-      .post<Book>('/day-close', { day, counted_cash: counted === '' ? null : Number(counted), variance_note: varianceNote, override_reason: override })
+      .post<Book>('/day-close', { day, counted_cash: counted === '' ? null : Number(counted), kept_cash: kept === '' ? 0 : Number(kept), variance_note: varianceNote, override_reason: override })
       .then((res) => {
         setBook(res.data)
         setErrors({})
@@ -134,9 +145,16 @@ export function DayClose() {
       book.modes.forEach((m) => lines.push(['Money', d.label, `Collected by ${modeLabel(m)}`, d.collected[m]]))
       lines.push(['Money', d.label, 'Refunded', d.refunded], ['Money', d.label, 'Due on the day’s bills', d.due])
     })
+    if (book.paid_out) {
+      lines.push(['Paid out', 'Expenses', 'All modes', book.paid_out.expenses], ['Paid out', 'Expenses', 'In cash', book.paid_out.expenses_cash])
+      lines.push(['Paid out', 'Medicine suppliers', 'All modes', book.paid_out.suppliers], ['Paid out', 'Medicine suppliers', 'In cash', book.paid_out.suppliers_cash])
+      lines.push(['Cash', 'Drawer', 'Left from the day before', book.opening_cash ?? 0])
+      lines.push(['Cash', 'Drawer', 'Cash collected', book.cash_collected ?? book.expected_cash], ['Cash', 'Drawer', 'Cash paid out', book.paid_out.cash])
+    }
     lines.push(['Cash', 'Drawer', 'Cash expected', book.expected_cash])
     if (book.closed) {
       lines.push(['Cash', 'Drawer', 'Cash counted', book.closed.counted_cash], ['Cash', 'Drawer', 'Difference', book.closed.variance])
+      lines.push(['Cash', 'Drawer', 'Kept in the drawer', book.closed.kept_cash ?? 0], ['Cash', 'Drawer', 'Handed over', book.closed.counted_cash - (book.closed.kept_cash ?? 0)])
       lines.push(['Closing', book.closed.closed_by_name, 'Closed at', book.closed.closed_at])
     }
     book.sections.forEach((s) => {
@@ -189,7 +207,13 @@ export function DayClose() {
                   , {gap(book.closed.variance)} ({book.closed.variance_note})
                 </>
               )}
-              .{book.closed.exceptions > 0 && <> Closed with {book.closed.exceptions} left unfinished: {book.closed.override_reason}.</>} Money records of this day are locked.
+              .{(book.closed.kept_cash ?? 0) > 0 && (
+                <>
+                  {' '}
+                  {rupees(book.closed.kept_cash!)} was kept in the drawer and {rupees(Math.round((book.closed.counted_cash - book.closed.kept_cash!) * 100) / 100)} handed over.
+                </>
+              )}
+              {book.closed.exceptions > 0 && <> Closed with {book.closed.exceptions} left unfinished: {book.closed.override_reason}.</>} Money records of this day are locked.
               {book.can_reopen && !reopening && (
                 <>
                   {' '}
@@ -309,6 +333,34 @@ export function DayClose() {
             </div>
           </div>
 
+          {book.paid_out && (
+            <div className="day-section">
+              <h3>Cash in the drawer</h3>
+              <dl className="totals cash-sum">
+                {(book.opening_cash ?? 0) > 0 && (
+                  <>
+                    <dt>Left in the drawer{book.opening_from ? ` when ${longDate(book.opening_from)} was closed` : ''}</dt>
+                    <dd>{rupees(book.opening_cash!)}</dd>
+                  </>
+                )}
+                <dt>Cash collected (after refunds)</dt>
+                <dd>{rupees(book.cash_collected ?? 0)}</dd>
+                <dt>
+                  Less expenses paid in cash
+                  {book.paid_out.expenses > book.paid_out.expenses_cash && <small className="muted"> · {rupees(book.paid_out.expenses - book.paid_out.expenses_cash)} more by other modes</small>}
+                </dt>
+                <dd>−{rupees(book.paid_out.expenses_cash)}</dd>
+                <dt>
+                  Less cash paid to medicine suppliers
+                  {book.paid_out.suppliers > book.paid_out.suppliers_cash && <small className="muted"> · {rupees(book.paid_out.suppliers - book.paid_out.suppliers_cash)} more by other modes</small>}
+                </dt>
+                <dd>−{rupees(book.paid_out.suppliers_cash)}</dd>
+                <dt className="strong">Cash expected in the drawer</dt>
+                <dd className="strong">{rupees(book.expected_cash)}</dd>
+              </dl>
+            </div>
+          )}
+
           {book.can_close && (
             <div className="day-section no-print">
               <h3>Cashier close</h3>
@@ -328,6 +380,18 @@ export function DayClose() {
                     <strong className={variance ? 'due' : variance === 0 ? 'settled' : ''}>{variance === null ? '—' : variance === 0 ? 'None' : gap(variance)}</strong>
                   </div>
                 </div>
+                <div className="cash-close">
+                  <label className="field">
+                    <span className="field-label">Kept in the drawer for tomorrow</span>
+                    <input type="number" min="0" max={counted || undefined} step="0.01" inputMode="decimal" placeholder="0" value={kept} onChange={(e) => setKept(e.target.value)} />
+                    {errors.kept_cash && <span className="field-error">{errors.kept_cash}</span>}
+                  </label>
+                  <div className="tile">
+                    <span>Handed over</span>
+                    <strong>{counted === '' ? '—' : rupees(Math.max(0, Math.round((Number(counted) - Number(kept || 0)) * 100) / 100))}</strong>
+                  </div>
+                </div>
+                <p className="muted small">Cash kept for change and small payments is what tomorrow starts with. Leave it empty if all the cash is handed over.</p>
                 {variance !== null && variance !== 0 && (
                   <label className="field">
                     <span className="field-label">Why does the cash not match? ({gap(variance)})</span>

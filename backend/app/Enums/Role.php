@@ -104,6 +104,12 @@ enum Role: string
         return in_array($this, [self::Admin, self::Doctor, self::Nurse, self::Frontdesk], true);
     }
 
+    /** Roles allowed to write down money paid out of the hospital's cash and accounts: the day-to-day expenses. */
+    public function canRecordExpenses(): bool
+    {
+        return in_array($this, [self::Admin, self::Doctor, self::Frontdesk], true);
+    }
+
     /** Roles allowed to admit patients, add IPD charges, take IPD money and discharge. */
     public function canWorkIpd(): bool
     {

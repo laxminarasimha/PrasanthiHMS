@@ -17,7 +17,7 @@ use Throwable;
 class MoneyInOneStep
 {
     /** Addresses under /api whose POST, PUT and DELETE requests carry money. */
-    private const MONEY = '#^api/(appointments$|bills(/|$)|front-desk/(charges|collect)$|patients/[^/]+/deposits$|lab/orders$|pharmacy/sales(/|$)|ipd/admissions/[^/]+/(charges|payments|bills|transfer|templates)(/|$))#';
+    private const MONEY = '#^api/(appointments$|bills(/|$)|front-desk/(charges|collect)$|patients/[^/]+/deposits$|lab/orders$|pharmacy/sales(/|$)|pharmacy/purchases/[^/]+/payments$|expenses(/|$)|ipd/admissions/[^/]+/(charges|payments|bills|transfer|templates)(/|$))#';
 
     public function handle(Request $request, Closure $next): Response
     {

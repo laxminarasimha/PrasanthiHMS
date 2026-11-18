@@ -57,6 +57,9 @@ class AuditLog extends Model
         'ipd.reopened' => 'Reopened a closed IPD case',
         'ipd.bed_charging' => 'Changed automatic bed charges',
         'bill.discount' => 'Changed a bill’s discount',
+        'expense.added' => 'Entered an expense',
+        'expense.changed' => 'Changed an expense',
+        'expense.cancelled' => 'Cancelled an expense',
         'day.closed' => 'Closed the day',
         'day.reopened' => 'Reopened a closed day',
     ];
