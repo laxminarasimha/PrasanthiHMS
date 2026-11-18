@@ -1362,3 +1362,42 @@ table.compact td.lab-last { white-space: nowrap; font-variant-numeric: tabular-n
 .case-facts .money { margin-left: auto; text-align: right; }
 .case-facts .money dd { font-size: 1.1rem; font-variant-numeric: tabular-nums; }
 @media (max-width: 700px) { .case-facts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 14px; padding: 10px 12px; } .case-facts .money { margin-left: 0; text-align: left; } }
+
+/* Second-level tabs inside a tab: underlined text, so they do not read as a second row of the same tabs */
+.tabs.sub { display: flex; gap: 2px 18px; padding: 0; background: none; border-radius: 0; border-bottom: 1px solid var(--border); margin-bottom: 14px; align-items: flex-end; }
+.tabs.sub button { padding: 7px 2px 9px; border-radius: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 600; }
+.tabs.sub button:hover:not(.active) { background: none; color: var(--text); }
+.tabs.sub button.active { background: none; color: var(--brand); box-shadow: none; border-bottom-color: var(--brand); }
+.tabs.sub button span { background: var(--stripe-1); }
+.tabs.sub button.active span { background: var(--brand-soft); color: var(--brand); }
+.tabs.sub .push { margin-bottom: 6px; }
+
+/* Bedside chart */
+.obs-latest { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; margin-bottom: 14px; }
+.obs-latest > div { display: flex; flex-direction: column; gap: 1px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); min-width: 0; }
+.obs-latest > div.none { opacity: 0.6; }
+.obs-latest span { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.obs-latest strong { font-size: 1.2rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.obs-latest strong small { font-size: 0.75rem; font-weight: 500; color: var(--muted); }
+.obs-latest > div > small { font-size: 0.76rem; }
+.order-group { margin-bottom: 6px; }
+.order-group > summary { cursor: pointer; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); margin: 10px 0 8px; }
+.order-group > summary small { font-weight: 700; margin-left: 4px; }
+.order.overdue { border-left: 4px solid var(--warn); }
+.order-timing { margin-top: 3px; font-size: 0.9rem; }
+.order-timing .pill { margin-left: 8px; }
+.order-head .btn { align-self: center; }
+.quick-ml { display: flex; flex-wrap: wrap; gap: 4px; align-self: flex-end; padding-bottom: 5px; }
+.quick-ml .chip.on { border-color: var(--brand); color: var(--brand); font-weight: 700; }
+
+/* Notes of a stay */
+.notes-bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: flex-end; justify-content: space-between; margin-bottom: 14px; }
+.notes-bar .tabs.sub { margin-bottom: 0; flex: 1; min-width: 240px; }
+.notes-bar > .row { padding-bottom: 6px; flex-wrap: wrap; gap: 6px; }
+.note-day h3 { margin: 14px 0 8px; }
+.note-day:first-of-type h3 { margin-top: 0; }
+.note { border-left: 3px solid var(--info); }
+.note.nursing { border-left-color: var(--ok); }
+.note.ot { border-left-color: var(--warn); }
+.note header .pill { font-size: 0.7rem; padding: 2px 8px; }
+@media (max-width: 700px) { .order-head > .grow { flex-basis: 100%; } .obs-latest { grid-template-columns: repeat(3, minmax(0, 1fr)); } .obs-latest strong { font-size: 1.05rem; } .tabs.sub { gap: 2px 14px; } }
