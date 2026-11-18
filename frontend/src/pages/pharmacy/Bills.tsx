@@ -4,9 +4,9 @@ import { useAuth } from '../../auth'
 import { DateRange } from '../../components/DateRange'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { PAYMENT_MODES, clock, longDate, modeLabel, rupees, today } from '../../format'
-import type { PharmacySale } from '../../types'
+import type { Payment, PharmacySale } from '../../types'
 
-type Action = 'view' | 'collect' | 'return' | 'delete' | 'edit'
+type Action = 'view' | 'collect' | 'return' | 'delete' | 'edit' | 'mode'
 type Edit = { customer_name: string; customer_phone: string; referred_doctor: string; discount: string; lines: Record<number, { quantity: string; discount_percent: string }> }
 
 const ModeSelect = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
@@ -33,6 +33,9 @@ export function PharmacyBills() {
   const [reason, setReason] = useState('')
   const [quantities, setQuantities] = useState<Record<number, string>>({})
   const [edit, setEdit] = useState<Edit | null>(null)
+  // The payment whose mode is being corrected, and the reference typed for it.
+  const [fixing, setFixing] = useState<Payment | null>(null)
+  const [reference, setReference] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const searching = query.trim().length >= 2
@@ -92,6 +95,7 @@ export function PharmacyBills() {
       run(api.put(url, { customer_name: edit.customer_name, customer_phone: edit.customer_phone || null, referred_doctor: edit.referred_doctor || null, discount: Number(edit.discount || 0), refund_mode: mode, reason, items }), 'Bill changed. The change is recorded in the Bill modified report.')
     }
     if (action === 'delete') run(api.delete(url, { data: { reason, refund_mode: mode } }), 'Bill deleted and stock restored.')
+    if (action === 'mode' && fixing) run(api.put(`${url}/payments/${fixing.id}`, { mode, reference: reference.trim() || null, reason }), `Recorded as ${modeLabel(mode)} now. The change is in the Bill modified report.`)
   }
 
   // What the bill will come to with the quantities and discounts typed so far.
@@ -292,7 +296,7 @@ export function PharmacyBills() {
             </dl>
 
             {(open.payments?.length ?? 0) > 0 && (
-              <ul className="history gap-top">
+              <ul className="history payments-list gap-top">
                 {open.payments!.map((p) => (
                   <li key={p.id}>
                     <span>
@@ -300,6 +304,24 @@ export function PharmacyBills() {
                       {p.reference ? ` · ${p.reference}` : ''}
                       <small className="muted"> {new Date(p.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' })}</small>
                     </span>
+                    {canEdit && !open.voided_at && PAYMENT_MODES.some((m) => m.value === p.mode) && (
+                      <button
+                        type="button"
+                        className="link"
+                        title="Entered under the wrong mode? Correct it here"
+                        onClick={() => {
+                          setFixing(p)
+                          setMode(p.mode)
+                          setReference(p.reference ?? '')
+                          setReason('')
+                          setError('')
+                          setNotice('')
+                          setAction('mode')
+                        }}
+                      >
+                        Change mode
+                      </button>
+                    )}
                     <strong className={p.type === 'refund' ? 'due' : ''}>
                       {p.type === 'refund' ? '−' : ''}
                       {rupees(p.amount)}
@@ -369,6 +391,28 @@ export function PharmacyBills() {
                   {open.paid > editedTotal && <ModeSelect value={mode} onChange={setMode} />}
                   <button className="btn primary" disabled={reason.trim().length < 3 || !edit.customer_name.trim()}>
                     Save changes
+                  </button>
+                </div>
+              </div>
+            )}
+            {action === 'mode' && fixing && (
+              <div className="action-box">
+                <h3>Change how this was paid</h3>
+                <p className="muted small">
+                  {fixing.type === 'refund' ? 'Refund' : 'Payment'} of {rupees(fixing.amount)}, recorded as <strong>{modeLabel(fixing.mode)}</strong>. Only the mode changes: the amount and the day it was taken stay as they are.
+                </p>
+                <div className="row">
+                  <ModeSelect value={mode} onChange={setMode} />
+                  <input placeholder="Reference, such as the UPI or card slip number (optional)" value={reference} onChange={(e) => setReference(e.target.value)} aria-label="Reference" />
+                </div>
+                <input className="gap-top" placeholder="Reason for the change (required)" value={reason} onChange={(e) => setReason(e.target.value)} aria-label="Reason" />
+                <div className="row gap-top">
+                  <span className="grow" />
+                  <button type="button" className="btn ghost" onClick={() => setAction('view')}>
+                    Cancel
+                  </button>
+                  <button className="btn primary" disabled={reason.trim().length < 3 || (mode === fixing.mode && reference.trim() === (fixing.reference ?? ''))}>
+                    Save as {modeLabel(mode)}
                   </button>
                 </div>
               </div>

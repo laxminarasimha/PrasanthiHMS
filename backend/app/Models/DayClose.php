@@ -74,6 +74,8 @@ class DayClose extends Model
         BillItem::updating($line);
         BillItem::deleting($line);
         PharmacySale::updating(fn (PharmacySale $s) => $s->isDirty(['total', 'voided_at']) ? self::refuseIfClosed($s->getOriginal('sold_at')) : null);
+        // Moving a payment from one mode to another changes the cash and the bank totals the closing counted.
+        PharmacyPayment::updating(fn (PharmacyPayment $p) => $p->isDirty(['mode', 'amount', 'type']) ? self::refuseIfClosed($p->created_at) : null);
         AdmissionCharge::updating(function (AdmissionCharge $c) {
             if ($c->isDirty(['amount', 'charged_on'])) {
                 self::refuseIfClosed($c->getOriginal('charged_on'));

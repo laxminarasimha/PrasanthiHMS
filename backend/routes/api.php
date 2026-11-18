@@ -333,6 +333,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
 
     Route::prefix('pharmacy')->controller(PharmacyEditController::class)->group(function () {
         Route::put('/sales/{sale}', 'updateSale');
+        Route::put('/sales/{sale}/payments/{payment}', 'updatePayment');
         Route::put('/purchases/{purchase}', 'updatePurchase');
         Route::put('/stock/{batch}', 'updateBatch');
     });
