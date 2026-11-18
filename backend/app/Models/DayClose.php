@@ -66,6 +66,8 @@ class DayClose extends Model
         $real = fn (Payment $p) => $p->mode === 'ipd' ? null : self::refuseIfClosed($p->created_at ?? now());
         Payment::creating($real);
         Payment::deleting($real);
+        // Moving a payment from one mode to another changes the cash and the bank totals the closing counted.
+        Payment::updating(fn (Payment $p) => $p->isDirty(['mode', 'amount', 'type']) ? self::refuseIfClosed($p->created_at) : null);
 
         // Changing what a closed day's bill is worth.
         Bill::updating(fn (Bill $b) => $b->isDirty(['subtotal', 'discount', 'tax', 'total']) ? self::refuseIfClosed($b->created_at) : null);

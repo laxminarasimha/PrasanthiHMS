@@ -2,7 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuditLog;
+use App\Models\DayClose;
 use App\Models\Patient;
+use App\Models\Payment;
 use App\Models\Service;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -104,6 +107,39 @@ class FrontDeskTest extends TestCase
 
         $this->postJson("/api/bills/{$billId}/payments", ['type' => 'refund', 'amount' => 100, 'mode' => 'cash'])
             ->assertCreated()->assertJsonPath('paid', 400)->assertJsonPath('due', 400);
+    }
+
+    public function test_a_payment_entered_under_the_wrong_mode_can_be_corrected_with_a_reason(): void
+    {
+        $billId = $this->book()['bills'][0]['id'];
+        $bill = $this->postJson("/api/bills/{$billId}/payments", ['type' => 'payment', 'amount' => 200, 'mode' => 'cash'])->assertCreated()->json();
+        $payment = $bill['payments'][0]['id'];
+        $url = "/api/bills/{$billId}/payments/{$payment}";
+
+        $this->putJson($url, ['mode' => 'upi'])->assertStatus(422)->assertJsonValidationErrors('reason');
+        $this->putJson($url, ['mode' => 'cash', 'reason' => 'Wrong mode'])->assertStatus(422)->assertJsonValidationErrors('mode'); // nothing to change
+        $this->putJson($url, ['mode' => 'deposit', 'reason' => 'Wrong mode'])->assertStatus(422)->assertJsonValidationErrors('mode');
+
+        // Only the mode moves: the amount, what is paid and what is due stay as they were.
+        $this->putJson($url, ['mode' => 'upi', 'reference' => 'UPI 7788', 'reason' => 'Paid by GPay, entered as cash'])->assertOk()
+            ->assertJsonPath('payments.0.mode', 'upi')->assertJsonPath('payments.0.reference', 'UPI 7788')->assertJsonPath('payments.0.amount', 200)
+            ->assertJsonPath('paid', 200)->assertJsonPath('due', 0);
+        $log = AuditLog::where('action', 'bill.payment_mode')->sole();
+        $this->assertStringContainsString('changed from cash to upi (UPI 7788). Reason: Paid by GPay, entered as cash', $log->summary);
+
+        // Not through another bill, not money that came from a deposit, and not by someone who does not handle bills.
+        $other = $this->book(['patient_id' => Patient::factory()->create()->id])['bills'][0]['id'];
+        $this->putJson("/api/bills/{$other}/payments/{$payment}", ['mode' => 'card', 'reason' => 'Wrong bill'])->assertNotFound();
+        Payment::whereKey($payment)->update(['mode' => 'deposit']);
+        $this->putJson($url, ['mode' => 'cash', 'reason' => 'Was a deposit'])->assertStatus(422)->assertJsonValidationErrors('mode');
+        Payment::whereKey($payment)->update(['mode' => 'upi']);
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $this->putJson($url, ['mode' => 'cash', 'reason' => 'Not my desk'])->assertForbidden();
+
+        // Once the day's accounts are closed, its cash and bank totals cannot be moved.
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        DayClose::create(['day' => today()->toDateString(), 'closed_by_name' => 'Admin', 'closed_at' => now(), 'expected_cash' => 0, 'counted_cash' => 0, 'variance' => 0, 'snapshot' => []]);
+        $this->putJson($url, ['mode' => 'cash', 'reason' => 'Back to cash'])->assertStatus(423);
     }
 
     public function test_overpayment_and_excess_refund_and_discount_are_rejected(): void
