@@ -191,8 +191,8 @@ function BillingPrefs() {
       <p className="muted small">The letters placed before the running number of each numbered IPD bill, for example {form.ipd_bill_prefix || 'IPB'}00012.</p>
       <input className="narrow" maxLength={8} value={form.ipd_bill_prefix ?? 'IPB'} onChange={(e) => setForm({ ...form, ipd_bill_prefix: e.target.value })} aria-label="IPD bill number prefix" />
 
-      <h3>Heading of bills</h3>
-      <p className="muted small">How the hospital's logo, name and address sit at the top of front desk, pharmacy and IPD bills and receipts printed on plain paper. The picture below changes as you choose; nothing is saved until you press Save.</p>
+      <h3>Heading of prints</h3>
+      <p className="muted small">How the hospital's logo, name and address sit at the top of everything printed on plain paper: bills and receipts, prescriptions, lab reports, discharge summaries, bedside charts, certificates and forms. The picture below changes as you choose; nothing is saved until you press Save.</p>
       {(
         [
           ['side', 'Logo on the left', 'The logo sits on the left, with the hospital name, address and phone beside it on the right.'],
