@@ -2,13 +2,14 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors } from '../../api'
 import { ObservationGraphs } from '../../components/ObservationGraphs'
 import { clock, longDate, nowLocal, today } from '../../format'
+import { nextRound, planOf, roundClock, type Rounds } from './doseTiming'
 
 type Who = { id: number; name: string } | null
 type Vital = { id: number; recorded_at: string; temperature_f: number | null; pulse: number | null; bp_systolic: number | null; bp_diastolic: number | null; resp_rate: number | null; spo2: number | null; blood_sugar: number | null; pain_score: number | null; notes: string | null; recorder: Who; recorded_by: number | null; created_at: string }
 type Dose = { id: number; given_at: string; status: 'given' | 'held' | 'refused'; remarks: string | null; giver: Who; given_by: number | null; created_at: string }
 type Order = { id: number; kind: 'medicine' | 'instruction'; title: string; dose: string | null; route: string | null; frequency: string | null; instructions: string | null; started_at: string; stopped_at: string | null; orderer: Who; stopper: Who; doses: Dose[] }
 type Fluid = { id: number; recorded_at: string; direction: 'in' | 'out'; kind: string; amount_ml: number; notes: string | null; recorder: Who; recorded_by: number | null; created_at: string }
-type Chart = { open: boolean; vitals: Vital[]; orders: Order[]; fluids: Fluid[]; fluid_days: { date: string; in: number; out: number; balance: number }[]; fluid_kinds: { in: string[]; out: string[] } }
+type Chart = { open: boolean; vitals: Vital[]; orders: Order[]; fluids: Fluid[]; fluid_days: { date: string; in: number; out: number; balance: number }[]; fluid_kinds: { in: string[]; out: string[] }; round_times: Rounds }
 
 const blankVitals = () => ({ recorded_at: nowLocal(), temperature_f: '', pulse: '', bp_systolic: '', bp_diastolic: '', resp_rate: '', spo2: '', blood_sugar: '', pain_score: '', notes: '' })
 const blankOrder = { kind: 'medicine' as Order['kind'], title: '', dose: '', route: '', frequency: '', instructions: '' }
@@ -36,17 +37,6 @@ const LATEST: { key: Reading; label: string; unit: string }[] = [
 ]
 const QUICK_ML = [50, 100, 200, 250, 500]
 
-/**
- * Hours between doses, only when the order says so plainly ("8 hourly", "every 6 hours", "q8h", OD, BD, TDS, QID).
- * Anything else, such as "if fever" or "SOS", gives null: no due time is guessed for it.
- */
-const everyHours = (frequency: string | null) => {
-  const f = (frequency ?? '').toLowerCase().trim()
-  if (!f || /sos|prn|stat|needed|\bif\b|\bwhen\b/.test(f)) return null
-  const match = f.match(/^(\d+)\s*-?\s*(?:hourly|hrly)$/) ?? f.match(/^every\s+(\d+)\s*(?:h|hr|hrs|hours?)$/) ?? f.match(/^q\s*(\d+)\s*h$/)
-  const hours = match ? Number(match[1]) : ({ od: 24, 'once daily': 24, 'once a day': 24, daily: 24, bd: 12, bid: 12, 'twice daily': 12, 'twice a day': 12, tds: 8, tid: 8, 'thrice daily': 8, 'three times a day': 8, qid: 6, qds: 6, 'four times a day': 6 } as Record<string, number>)[f]
-  return hours && hours >= 1 && hours <= 72 ? hours : null
-}
 const ago = (minutes: number) => (minutes < 60 ? `${minutes} min ago` : minutes < 1440 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min ago` : `${Math.floor(minutes / 1440)} d ${Math.floor((minutes % 1440) / 60)} h ago`)
 const time = (value: string) => new Date(value.replace(' ', 'T')).getTime()
 const local = (ms: number) => {
@@ -151,12 +141,17 @@ export function IpdCharts({ admissionId, userId, canChart, canOrder }: Props) {
     }
   }
 
-  /** When the medicine was last given and, if the order's timing is plain, when the next dose falls due. */
+  /**
+   * When the medicine was last given and, if the order's timing is plain, when the next dose falls due:
+   * at the ward's next round for OD, BD, TDS and QID, or so many hours after the last dose for an hourly order.
+   */
   const timing = (o: Order) => {
     const last = o.doses.find((d) => d.status === 'given')
-    const every = everyHours(o.frequency)
-    const dueAt = every ? (last ? time(last.given_at) + every * 3600000 : time(o.started_at)) : null
-    return { last, every, dueAt, overdue: dueAt !== null && now > 0 && now >= dueAt }
+    const plan = planOf(o.frequency)
+    const given = last ? time(last.given_at) : null
+    const dueAt = !plan ? null : 'round' in plan ? nextRound(chart.round_times[plan.round], given, time(o.started_at)) : given !== null ? given + plan.hours * 3600000 : time(o.started_at)
+    const how = !plan ? '' : 'round' in plan ? `The ward's rounds for this are at ${chart.round_times[plan.round].map(roundClock).join(', ')}. A dose counts for the round nearest to it.` : `Every ${plan.hours} hours after the last dose given.`
+    return { last, dueAt, how, byRound: Boolean(plan && 'round' in plan), overdue: dueAt !== null && now > 0 && now >= dueAt }
   }
 
   const latestOf = (key: Reading) => chart.vitals.find((v) => v[key] !== null)
@@ -334,7 +329,7 @@ export function IpdCharts({ admissionId, userId, canChart, canOrder }: Props) {
                   {heading} {open && <small className="muted">{list.length}</small>}
                 </summary>
                 {list.map((o) => {
-                  const { last, every, dueAt, overdue } = timing(o)
+                  const { last, dueAt, how, byRound, overdue } = timing(o)
                   const shownDoses = allDoses.includes(o.id) ? o.doses : o.doses.slice(0, 3)
                   return (
                     <div key={o.id} className={`order ${o.stopped_at ? 'stopped' : ''} ${overdue && !o.stopped_at ? 'overdue' : ''}`}>
@@ -354,8 +349,8 @@ export function IpdCharts({ admissionId, userId, canChart, canOrder }: Props) {
                                 <span className="muted">No dose recorded yet</span>
                               )}
                               {dueAt !== null && now > 0 && (
-                                <span className={`pill ${overdue ? 'status-arrived' : 'status-booked'}`} title={`Worked out from "${o.frequency}": every ${every} hours after the last dose given`}>
-                                  {overdue ? (last ? `Due since ${at(local(dueAt))}` : 'First dose due') : `Next about ${at(local(dueAt))}`}
+                                <span className={`pill ${overdue ? 'status-arrived' : 'status-booked'}`} title={how}>
+                                  {overdue ? `${last ? 'Due' : 'First dose due'} since ${at(local(dueAt))}` : `${last ? 'Next' : 'First dose'} ${byRound ? 'at' : 'about'} ${at(local(dueAt))}`}
                                 </span>
                               )}
                             </span>

@@ -117,4 +117,24 @@ class IpdChartTest extends TestCase
         Sanctum::actingAs($this->doctor);
         $this->postJson("{$this->url}/orders", ['kind' => 'medicine', 'title' => 'Paracetamol'])->assertStatus(422);
     }
+
+    public function test_ward_round_times_come_with_the_chart_and_are_set_in_setup(): void
+    {
+        $this->getJson($this->url)->assertOk()
+            ->assertJsonPath('round_times.od', ['08:00'])
+            ->assertJsonPath('round_times.tds', ['06:00', '14:00', '22:00']);
+
+        $times = ['od' => ['09:00'], 'bd' => ['09:00', '21:00'], 'tds' => ['08:00', '14:00', '20:00'], 'qid' => ['06:00', '12:00', '18:00', '22:00']];
+        $this->putJson('/api/ipd/round-times', $times)->assertForbidden(); // a nurse cannot change them
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $this->putJson('/api/ipd/round-times', ['bd' => ['09:00', '09:00']] + $times)->assertStatus(422)->assertJsonValidationErrors('bd.0');
+        $this->putJson('/api/ipd/round-times', ['tds' => ['08:00', '14:00']] + $times)->assertStatus(422)->assertJsonValidationErrors('tds');
+        $this->putJson('/api/ipd/round-times', ['od' => ['9 am']] + $times)->assertStatus(422);
+        $this->putJson('/api/ipd/round-times', $times)->assertOk()->assertJsonPath('bd', ['09:00', '21:00']);
+
+        Sanctum::actingAs($this->nurse);
+        $this->getJson('/api/ipd/round-times')->assertOk()->assertJsonPath('od', ['09:00']);
+        $this->getJson($this->url)->assertOk()->assertJsonPath('round_times.qid.3', '22:00');
+    }
 }

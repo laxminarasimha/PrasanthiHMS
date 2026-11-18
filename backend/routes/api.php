@@ -335,6 +335,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
         // Anyone signed in can look; changing things needs the right role.
         Route::get('/beds', 'beds');
         Route::get('/services', 'services');
+        Route::get('/round-times', 'roundTimes');
         Route::get('/admissions', 'admissions');
         Route::get('/admissions/{admission}', 'show');
         Route::get('/admissions/{admission}/outstanding', 'outstanding');
@@ -345,6 +346,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
             Route::put('/beds/{bed}', 'updateBed');
             Route::post('/services', 'storeService');
             Route::put('/services/{service}', 'updateService');
+            Route::put('/round-times', 'saveRoundTimes');
         });
 
         Route::post('/admissions/{admission}/approve-bill', 'approveBill');

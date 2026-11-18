@@ -8,6 +8,7 @@ use App\Models\AdmissionDose;
 use App\Models\AdmissionFluid;
 use App\Models\AdmissionOrder;
 use App\Models\AdmissionVital;
+use App\Models\Setting;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -191,6 +192,8 @@ class IpdChartController extends Controller
                 return ['date' => $date, 'in' => $in, 'out' => $out, 'balance' => $in - $out];
             })->values(),
             'fluid_kinds' => AdmissionFluid::KINDS,
+            // The ward's round times, so the chart can say when the next dose of an OD, BD, TDS or QID medicine falls.
+            'round_times' => Setting::group('ipd_rounds', Setting::ROUND_DEFAULTS),
         ];
     }
 

@@ -39,6 +39,14 @@ class Setting extends Model
         'evening_end' => '21:00',
     ];
 
+    /** The clock times of the ward's medicine rounds, for once, twice, three and four times a day. */
+    public const ROUND_DEFAULTS = [
+        'od' => ['08:00'],
+        'bd' => ['08:00', '20:00'],
+        'tds' => ['06:00', '14:00', '22:00'],
+        'qid' => ['06:00', '12:00', '18:00', '00:00'],
+    ];
+
     /**
      * @return array<string, string>
      */
