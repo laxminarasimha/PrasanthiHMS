@@ -58,6 +58,8 @@ Route::get('/health', function () {
 });
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1,staff-login');
+// The hospital's name and logo, for the sign-in page.
+Route::get('/brand', [AdminController::class, 'brand'])->middleware('throttle:60,1,brand');
 
 // ---- The patient's mobile app: its own logins, kept apart from staff ----
 Route::prefix('app')->controller(PatientAppController::class)->group(function () {

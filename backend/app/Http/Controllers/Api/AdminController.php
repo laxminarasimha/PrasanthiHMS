@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\AdminEntry;
 use App\Models\Admission;
+use App\Models\AuditLog;
 use App\Models\Patient;
 use App\Models\PatientMerge;
+use App\Models\Payment;
 use App\Models\ReferralDoctor;
 use App\Models\Setting;
 use Illuminate\Http\JsonResponse;
@@ -35,6 +37,23 @@ class AdminController extends Controller
     public function clinic(Request $request): JsonResponse
     {
         return response()->json($this->clinicDetails($request));
+    }
+
+    /**
+     * The hospital's name and logo for the sign-in page, which is seen before anyone has signed in.
+     * Nothing here is private: it is what is printed at the top of every bill.
+     */
+    public function brand(): JsonResponse
+    {
+        $settings = Setting::group('clinic', self::CLINIC_DEFAULTS);
+        $path = $settings['logo_path'] ?? null;
+
+        return response()->json([
+            'name' => $settings['name'] ?: config('app.name'),
+            'logo' => $path && Storage::disk('local')->exists($path)
+                ? 'data:'.Storage::disk('local')->mimeType($path).';base64,'.base64_encode(Storage::disk('local')->get($path))
+                : null,
+        ]);
     }
 
     public function saveClinic(Request $request): JsonResponse
@@ -106,7 +125,12 @@ class AdminController extends Controller
 
     // ---- Billing preferences ----
 
-    public const BILLING_DEFAULTS = ['default_payment_mode' => 'cash', 'pay_timing' => 'before', 'ipd_prefix' => 'IP', 'ipd_bill_prefix' => 'IPB'];
+    public const BILLING_DEFAULTS = [
+        'default_payment_mode' => 'cash', 'pay_timing' => 'before', 'ipd_prefix' => 'IP', 'ipd_bill_prefix' => 'IPB',
+        // Bills printed on the hospital's own letterhead paper leave out the hospital details and logo, and leave
+        // this much room at the top and bottom of the page for what is already printed on the paper.
+        'print_on_letterhead' => false, 'letterhead_top_mm' => 40, 'letterhead_bottom_mm' => 20,
+    ];
 
     public function billingPreferences(): JsonResponse
     {
@@ -116,9 +140,12 @@ class AdminController extends Controller
     public function saveBillingPreferences(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'default_payment_mode' => ['required', Rule::in(\App\Models\Payment::MODES)],
+            'default_payment_mode' => ['required', Rule::in(Payment::MODES)],
             // before: the consultation is paid for when the visit is booked; after: it is billed then and paid later.
             'pay_timing' => ['required', Rule::in(['before', 'after'])],
+            'print_on_letterhead' => ['sometimes', 'boolean'],
+            'letterhead_top_mm' => ['sometimes', 'integer', 'between:0,150'],
+            'letterhead_bottom_mm' => ['sometimes', 'integer', 'between:0,100'],
             // Put before the running number of each new IPD case, e.g. IP00012.
             'ipd_prefix' => ['sometimes', 'string', 'regex:/^[A-Za-z0-9\/-]{1,8}$/'],
             'ipd_bill_prefix' => ['sometimes', 'string', 'regex:/^[A-Za-z0-9\/-]{1,8}$/'],
@@ -278,7 +305,7 @@ class AdminController extends Controller
             ]);
         });
 
-        \App\Models\AuditLog::record('patient.merged', $merge->to_id, null, "{$merge->from_uhid} {$merge->from_name} into {$merge->to_uhid} {$merge->to_name}");
+        AuditLog::record('patient.merged', $merge->to_id, null, "{$merge->from_uhid} {$merge->from_name} into {$merge->to_uhid} {$merge->to_name}");
 
         return response()->json($merge->load('staff:id,name'), 201);
     }

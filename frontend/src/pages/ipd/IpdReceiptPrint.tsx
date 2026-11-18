@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../../api'
-import { ClinicFooter, ClinicHeader } from '../../components/ClinicHeader'
+import { PaperBar, PaperFooter, PaperHeader } from '../../components/PrintPaper'
+import { useAutoPrint, usePrintPaper } from '../../printPaper'
 import { fullName, modeLabel, rupees } from '../../format'
 import type { Admission } from '../../types'
 
@@ -11,13 +12,12 @@ const TITLE = { advance: 'Advance receipt', payment: 'Payment receipt', refund: 
 export function IpdReceiptPrint() {
   const { id, paymentId } = useParams()
   const [a, setA] = useState<Admission | null>(null)
+  const paper = usePrintPaper()
 
   useEffect(() => {
-    api.get<Admission>(`/ipd/admissions/${id}`).then((res) => {
-      setA(res.data)
-      setTimeout(() => window.print(), 500)
-    })
+    api.get<Admission>(`/ipd/admissions/${id}`).then((res) => setA(res.data))
   }, [id])
+  useAutoPrint(Boolean(a?.payments?.some((p) => String(p.id) === paymentId)) && paper.ready, 500)
 
   if (!a) return <p className="loading">Loading receipt…</p>
   const payment = a.payments?.find((p) => String(p.id) === paymentId)
@@ -25,9 +25,10 @@ export function IpdReceiptPrint() {
 
   return (
     <div className="receipt prescription">
-      <ClinicHeader>
+      <PaperBar paper={paper} />
+      <PaperHeader paper={paper}>
         <h2>{TITLE[payment.type]}</h2>
-      </ClinicHeader>
+      </PaperHeader>
 
       <div className="receipt-meta">
         <div>
@@ -68,7 +69,7 @@ export function IpdReceiptPrint() {
       <div className="signature">
         <strong>{payment.receiver?.name ?? 'Cashier'}</strong>
       </div>
-      <ClinicFooter />
+      <PaperFooter paper={paper} />
     </div>
   )
 }

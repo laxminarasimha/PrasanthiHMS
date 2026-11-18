@@ -503,7 +503,16 @@ export type ReferralDoctor = { id: number; direction: 'by' | 'to'; name: string;
 
 export type PatientMerge = { id: number; from_uhid: string; from_name: string; to_uhid: string; to_name: string; moved: Record<string, number> | null; created_at: string; staff?: { id: number; name: string } | null }
 
-export type BillingPreferences = { default_payment_mode: string; pay_timing: 'before' | 'after'; ipd_prefix: string; ipd_bill_prefix?: string }
+export type BillingPreferences = {
+  default_payment_mode: string
+  pay_timing: 'before' | 'after'
+  ipd_prefix: string
+  ipd_bill_prefix?: string
+  /** Bills go on the hospital's letterhead paper: no hospital details or logo are printed, and room is left for it. */
+  print_on_letterhead?: boolean
+  letterhead_top_mm?: number
+  letterhead_bottom_mm?: number
+}
 
 /** A row of a hospital-wide list: a department, a vendor, or a payer. */
 export type AdminEntry = { id: number; kind: 'department' | 'vendor' | 'payer'; name: string; details: Record<string, string> | null; is_active: boolean }

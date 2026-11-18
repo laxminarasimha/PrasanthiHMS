@@ -1,31 +1,30 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../api'
-import { ClinicFooter, ClinicHeader } from '../components/ClinicHeader'
-import { useAuth } from '../auth'
+import { PaperBar, PaperFooter, PaperHeader } from '../components/PrintPaper'
+import { useAutoPrint, usePrintPaper } from '../printPaper'
 import { longDate, modeLabel, rupees, fullName } from '../format'
 import type { Bill } from '../types'
 
 /** A plain receipt page meant for the printer; opens the print dialog once loaded. */
 export function BillPrint() {
   const { id } = useParams()
-  const { user } = useAuth()
   const [bill, setBill] = useState<Bill | null>(null)
+  const paper = usePrintPaper()
 
   useEffect(() => {
-    api.get<Bill>(`/bills/${id}`).then((res) => {
-      setBill(res.data)
-      setTimeout(() => window.print(), 300)
-    })
+    api.get<Bill>(`/bills/${id}`).then((res) => setBill(res.data))
   }, [id])
+  useAutoPrint(Boolean(bill) && paper.ready)
 
   if (!bill) return <p className="loading">Loading bill…</p>
 
   return (
     <div className="receipt">
-      <ClinicHeader>
+      <PaperBar paper={paper} />
+      <PaperHeader paper={paper}>
         <h2>Bill / Receipt</h2>
-      </ClinicHeader>
+      </PaperHeader>
 
       <div className="receipt-meta">
         <div>
@@ -104,8 +103,7 @@ export function BillPrint() {
         </p>
       )}
 
-      <footer>Billed by {user?.name}. This is a computer-generated receipt.</footer>
-      <ClinicFooter />
+      <PaperFooter paper={paper} />
     </div>
   )
 }
