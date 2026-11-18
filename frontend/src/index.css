@@ -325,6 +325,22 @@ input.result.low { border-color: var(--info); color: var(--info); font-weight: 7
 .check.flush { margin-top: 0; white-space: nowrap; }
 .medicine-search { position: relative; }
 .picker.floating { position: absolute; left: 0; right: 0; z-index: 5; background: var(--surface); box-shadow: 0 8px 20px var(--shadow); max-height: 320px; overflow-y: auto; }
+/* Adding medicines to a pharmacy bill that is already saved. */
+.add-to-bill { margin: 12px 0 10px; }
+.add-to-bill h3 { margin: 0 0 6px; }
+tr.added-line td { background: var(--ok-soft); }
+.collect-now { margin-top: 10px; align-items: center; }
+.bill-details { margin: 8px 0; }
+.bill-details summary { cursor: pointer; color: var(--brand); font-weight: 600; padding: 4px 0; }
+.bill-details .grid { margin-top: 8px; }
+.qty.wide { width: 110px; }
+.todays-bills .toolbar h2 { margin: 0; }
+@media (max-width: 640px) {
+  /* On a phone the balance column gives way and the two actions stack, so nothing runs off the side. */
+  .todays-bills th:nth-child(4), .todays-bills td:nth-child(4) { display: none; }
+  .todays-bills td.actions { white-space: normal; }
+  .todays-bills td.actions .link { display: block; }
+}
 .purchase-row { display: grid; grid-template-columns: minmax(180px, 2fr) 1fr 1.25fr 0.7fr 0.7fr 0.6fr 0.9fr 0.9fr 0.7fr 0.7fr 0.7fr 0.9fr auto; gap: 6px; align-items: center; min-width: 1180px; }
 .purchase-row input, .purchase-row select { padding: 6px 8px; }
 .narrow-totals { max-width: 320px; margin-left: auto; }

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
 import { useAuth } from '../../auth'
 import { SelectField, TextField } from '../../components/Field'
 import { PatientPicker } from '../../components/PatientPicker'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
-import { PAYMENT_MODES, daysUntil, expiryLabel, longDate, rupees } from '../../format'
+import { PAYMENT_MODES, clock, daysUntil, expiryLabel, longDate, rupees } from '../../format'
 import type { Patient, PharmacySale, PrescriptionForPharmacy, SellableMedicine } from '../../types'
 
 type Line = {
@@ -47,6 +47,14 @@ export function PharmacyBilling() {
   const searchBox = useRef<HTMLInputElement>(null)
   const quantityBoxes = useRef<Record<number, HTMLInputElement | null>>({})
   const [prescriptions, setPrescriptions] = useState<PrescriptionForPharmacy[]>([])
+  // Today's bills, newest first, shown under the counter so an earlier bill can be reopened to add medicines.
+  const [todays, setTodays] = useState<PharmacySale[] | null>(null)
+  useEffect(() => {
+    api
+      .get<PharmacySale[]>('/pharmacy/sales')
+      .then((res) => setTodays([...res.data].sort((a, b) => b.id - a.id)))
+      .catch(() => setTodays([]))
+  }, [done])
 
   // Choosing a registered patient brings up what the doctor prescribed recently.
   const choosePatient = (next: Patient | null) => {
@@ -467,6 +475,64 @@ export function PharmacyBilling() {
           </div>
         </aside>
       </form>
+
+      <section className="card gap-top todays-bills">
+        <div className="toolbar">
+          <h2>Today's bills</h2>
+          {todays && todays.length > 0 && (
+            <span className="muted">
+              {todays.filter((s) => !s.voided_at).length === 1 ? '1 bill' : `${todays.filter((s) => !s.voided_at).length} bills`} · {rupees(todays.filter((s) => !s.voided_at).reduce((sum, s) => sum + s.total - s.returned, 0))}
+            </span>
+          )}
+          <Link className="link" to="/pharmacy/bills">
+            All bills and earlier days
+          </Link>
+        </div>
+        <div className="table-wrap">
+          <table className="compact">
+            <thead>
+              <tr>
+                <th>Bill</th>
+                <th>Customer</th>
+                <th className="num">Amount</th>
+                <th className="num">Balance</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {todays?.map((s) => (
+                <tr key={s.id} className={`static ${s.voided_at ? 'faded' : ''}`}>
+                  <td>
+                    <span className="mono">{s.bill_no}</span>
+                    <small className="muted block">{clock(s.sold_at)}</small>
+                  </td>
+                  <td>
+                    {s.customer_name}
+                    {s.customer_phone && <small className="muted block">{s.customer_phone}</small>}
+                  </td>
+                  <td className="num">{rupees(s.total)}</td>
+                  <td className={`num ${s.due > 0 ? 'due strong' : ''}`}>{s.voided_at ? <span className="pill off">Deleted</span> : rupees(s.due)}</td>
+                  <td className="num actions">
+                    {canSell && !s.voided_at && s.returned === 0 && s.ipd_transfer === 0 && (
+                      <Link className="link" to={`/pharmacy/bills?add=${s.id}`}>
+                        Add medicines
+                      </Link>
+                    )}
+                    <a className="link" href={`/pharmacy/bills/${s.id}/print`} target="_blank" rel="noreferrer">
+                      Print
+                    </a>
+                  </td>
+                </tr>
+              ))}
+              {todays && todays.length === 0 && (
+                <tr className="empty">
+                  <td colSpan={5}>No pharmacy bill has been made today yet.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </>
   )
 }

@@ -1,12 +1,17 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
 import { useAuth } from '../../auth'
 import { DateRange } from '../../components/DateRange'
+import { MedicinePick, type SellableBatch } from '../../components/MedicinePick'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { PAYMENT_MODES, clock, longDate, modeLabel, rupees, today } from '../../format'
-import type { Payment, PharmacySale } from '../../types'
+import type { Payment, PharmacySale, SellableMedicine } from '../../types'
 
 type Action = 'view' | 'collect' | 'return' | 'delete' | 'edit' | 'mode'
+/** A medicine being added to a bill that is already saved. */
+type Added = { batchId: number; medicine: string; batchNo: string; unitPrice: number; available: number; quantity: string; discount: string }
+const addedAmount = (a: Added) => Math.round(Number(a.quantity || 0) * a.unitPrice * (1 - Number(a.discount || 0) / 100) * 100) / 100
 type Edit = { customer_name: string; customer_phone: string; referred_doctor: string; discount: string; lines: Record<number, { quantity: string; discount_percent: string }> }
 
 const ModeSelect = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
@@ -33,6 +38,12 @@ export function PharmacyBills() {
   const [reason, setReason] = useState('')
   const [quantities, setQuantities] = useState<Record<number, string>>({})
   const [edit, setEdit] = useState<Edit | null>(null)
+  // Medicines being added to the open bill, and the money taken for them now (null until typed: then the usual amount is offered).
+  const [added, setAdded] = useState<Added[]>([])
+  const [collect, setCollect] = useState<string | null>(null)
+  const pickBox = useRef<HTMLInputElement>(null)
+  const addedBoxes = useRef<Record<number, HTMLInputElement | null>>({})
+  const jumpTo = useRef<number | null>(null)
   // The payment whose mode is being corrected, and the reference typed for it.
   const [fixing, setFixing] = useState<Payment | null>(null)
   const [reference, setReference] = useState('')
@@ -49,14 +60,24 @@ export function PharmacyBills() {
     return () => clearTimeout(timer)
   }, [load])
 
+  const editable = (s: PharmacySale) => !s.voided_at && s.returned === 0 && s.ipd_transfer === 0
+
   const show = (sale: PharmacySale, next: Action) => {
     setError('')
     setNotice('')
     setAction(next)
     setQuantities({})
     setReason('')
+    setAdded([])
+    setCollect(null)
     api.get<PharmacySale>(`/pharmacy/sales/${sale.id}`).then((res) => {
       setOpen(res.data)
+      if (next === 'edit' && !editable(res.data)) {
+        setAction('view')
+        setNotice(res.data.voided_at ? 'This bill was deleted.' : 'Medicines were returned on this bill, or it is on an IPD bill, so it cannot be added to. Make a new bill for the extra medicines.')
+      }
+      // Straight to the medicine box, ready for the first name.
+      if (next === 'edit') setTimeout(() => pickBox.current?.focus(), 0)
       setAmount(res.data.due > 0 ? String(res.data.due) : '')
       setEdit({
         customer_name: res.data.customer_name,
@@ -92,19 +113,81 @@ export function PharmacyBills() {
     }
     if (action === 'edit' && edit) {
       const items = Object.entries(edit.lines).map(([id, l]) => ({ id: Number(id), quantity: Number(l.quantity || 0), discount_percent: Number(l.discount_percent || 0) }))
-      run(api.put(url, { customer_name: edit.customer_name, customer_phone: edit.customer_phone || null, referred_doctor: edit.referred_doctor || null, discount: Number(edit.discount || 0), refund_mode: mode, reason, items }), 'Bill changed. The change is recorded in the Bill modified report.')
+      run(
+        api.put(url, {
+          customer_name: edit.customer_name,
+          customer_phone: edit.customer_phone || null,
+          referred_doctor: edit.referred_doctor || null,
+          discount: Number(edit.discount || 0),
+          refund_mode: mode,
+          reason: reason.trim() || null,
+          items,
+          ...(toAdd.length ? { add: toAdd.map((a) => ({ stock_batch_id: a.batchId, quantity: Number(a.quantity), discount_percent: Number(a.discount || 0) })) } : {}),
+          ...(newDue > 0 && Number(collectValue) > 0 ? { collect: Number(collectValue), collect_mode: mode } : {}),
+        }),
+        toAdd.length && !corrected ? 'Medicines added to the bill and stock updated.' : 'Bill changed. The change is recorded in the Bill modified report.',
+      )
     }
     if (action === 'delete') run(api.delete(url, { data: { reason, refund_mode: mode } }), 'Bill deleted and stock restored.')
     if (action === 'mode' && fixing) run(api.put(`${url}/payments/${fixing.id}`, { mode, reference: reference.trim() || null, reason }), `Recorded as ${modeLabel(mode)} now. The change is in the Bill modified report.`)
   }
 
-  // What the bill will come to with the quantities and discounts typed so far.
+  // What the bill will come to with the quantities and discounts typed so far, and the medicines being added.
+  const toAdd = added.filter((a) => Number(a.quantity) > 0)
   const editedTotal =
     open && edit
-      ? Math.round((open.items ?? []).reduce((sum, i) => sum + Number(edit.lines[i.id]?.quantity || 0) * i.unit_price * (1 - Number(edit.lines[i.id]?.discount_percent || 0) / 100), 0) - Number(edit.discount || 0))
+      ? Math.round(
+          (open.items ?? []).reduce((sum, i) => sum + Number(edit.lines[i.id]?.quantity || 0) * i.unit_price * (1 - Number(edit.lines[i.id]?.discount_percent || 0) / 100), 0) +
+            toAdd.reduce((sum, a) => sum + addedAmount(a), 0) -
+            Number(edit.discount || 0),
+        )
       : 0
+  // Whether anything already on the bill was changed. That needs a reason; only adding medicines does not.
+  const corrected = Boolean(
+    open &&
+      edit &&
+      (edit.customer_name !== open.customer_name ||
+        edit.customer_phone !== (open.customer_phone ?? '') ||
+        edit.referred_doctor !== (open.referred_doctor ?? '') ||
+        Number(edit.discount || 0) !== open.discount ||
+        (open.items ?? []).some((i) => Number(edit.lines[i.id]?.quantity || 0) !== i.quantity || Number(edit.lines[i.id]?.discount_percent || 0) !== i.discount_percent)),
+  )
+  // What will be owed after the change. A bill that was fully paid is offered in full; one already carrying a balance, only what is being added.
+  const newDue = open ? Math.max(0, Math.round((editedTotal - open.paid) * 100) / 100) : 0
+  const collectValue = collect ?? String(open && open.due > 0 ? Math.min(newDue, Math.max(0, editedTotal - open.total)) : newDue)
+
+  const pickMedicine = (m: SellableMedicine, b: SellableBatch) => {
+    setError('')
+    setAdded((rows) => (rows.some((r) => r.batchId === b.id) ? rows : [...rows, { batchId: b.id, medicine: m.name, batchNo: b.batch_no, unitPrice: b.unit_mrp, available: b.units_in_stock, quantity: '1', discount: '' }]))
+    jumpTo.current = b.id
+  }
+  // Once a picked medicine is on the screen, the cursor goes to its quantity, with the 1 selected so a number replaces it.
+  useEffect(() => {
+    if (jumpTo.current === null) return
+    const box = addedBoxes.current[jumpTo.current]
+    jumpTo.current = null
+    box?.focus()
+    box?.select()
+  }, [added])
+  const setAddedLine = (batchId: number, key: 'quantity' | 'discount', value: string) => setAdded((rows) => rows.map((r) => (r.batchId === batchId ? { ...r, [key]: value } : r)))
+  /** Enter in a quantity box goes back to the medicine box for the next one, instead of saving the bill. */
+  const backToPick = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      pickBox.current?.focus()
+    }
+  }
+
+  // Coming from the billing screen's "Add medicines" link: that bill opens ready to be added to.
+  const [params, setParams] = useSearchParams()
+  const preset = params.get('add')
+  useEffect(() => {
+    if (!preset) return
+    show({ id: Number(preset) } as PharmacySale, 'edit')
+    setParams({}, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preset])
   const setLine = (id: number, key: 'quantity' | 'discount_percent', value: string) => setEdit((e) => (e ? { ...e, lines: { ...e.lines, [id]: { ...e.lines[id], [key]: value } } } : e))
-  const editable = (s: PharmacySale) => !s.voided_at && s.returned === 0 && s.ipd_transfer === 0
 
   const live = sales?.filter((s) => !s.voided_at) ?? []
   const billed = live.reduce((sum, s) => sum + s.total - s.returned, 0)
@@ -175,8 +258,8 @@ export function PharmacyBills() {
                       {!s.voided_at && canEdit && (
                         <>
                           {editable(s) && (
-                            <button className="link" onClick={() => show(s, 'edit')}>
-                              Edit
+                            <button className="link" title="Add more medicines to this bill, or correct it" onClick={() => show(s, 'edit')}>
+                              Add / edit
                             </button>
                           )}
                           <button className="link" onClick={() => show(s, 'return')}>
@@ -214,12 +297,26 @@ export function PharmacyBills() {
                   {open.referred_doctor ? ` · ${open.referred_doctor}` : ''}
                 </span>
               </div>
-              <button type="button" className="btn ghost" onClick={() => setOpen(null)}>
-                Close
-              </button>
+              <div className="row">
+                {canEdit && action === 'view' && editable(open) && (
+                  <button type="button" className="btn" onClick={() => show(open, 'edit')}>
+                    Add medicines
+                  </button>
+                )}
+                <button type="button" className="btn ghost" onClick={() => setOpen(null)}>
+                  Close
+                </button>
+              </div>
             </div>
             {notice && <p className="notice">{notice}</p>}
             {open.voided_at && <p className="form-error">Deleted on {longDate(open.voided_at)}: {open.void_reason}</p>}
+
+            {action === 'edit' && edit && (
+              <div className="add-to-bill">
+                <h3>Add medicines to this bill</h3>
+                <MedicinePick inputRef={pickBox} onPick={pickMedicine} hint="↑ ↓ to choose · Enter to add · type the quantity · Enter for the next medicine" />
+              </div>
+            )}
 
             <table className="compact">
               <thead>
@@ -277,6 +374,41 @@ export function PharmacyBills() {
                     </tr>
                   )
                 })}
+                {action === 'edit' &&
+                  added.map((a) => (
+                    <tr key={`new-${a.batchId}`} className="static added-line">
+                      <td>
+                        {a.medicine} <span className="pill ok">New</span>
+                        <button type="button" className="link danger block" onClick={() => setAdded((rows) => rows.filter((r) => r.batchId !== a.batchId))}>
+                          Take off
+                        </button>
+                      </td>
+                      <td>
+                        {a.batchNo}
+                        <small className="block muted">{a.available} in stock</small>
+                      </td>
+                      <td className="num muted">—</td>
+                      <td className="num">{rupees(addedAmount(a))}</td>
+                      <td className="num">
+                        <input
+                          ref={(el) => {
+                            addedBoxes.current[a.batchId] = el
+                          }}
+                          className="qty"
+                          type="number"
+                          min={1}
+                          max={a.available}
+                          value={a.quantity}
+                          onChange={(e) => setAddedLine(a.batchId, 'quantity', e.target.value)}
+                          onKeyDown={backToPick}
+                          aria-label={`Quantity of ${a.medicine} to add`}
+                        />
+                      </td>
+                      <td className="num">
+                        <input className="qty" type="number" min={0} max={100} step="0.01" value={a.discount} onChange={(e) => setAddedLine(a.batchId, 'discount', e.target.value)} onKeyDown={backToPick} aria-label={`Discount percent on ${a.medicine}`} />
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
 
@@ -360,37 +492,47 @@ export function PharmacyBills() {
             )}
             {action === 'edit' && edit && (
               <div className="action-box">
-                <h3>Edit this bill</h3>
-                <p className="muted small">Change the quantities and discounts above; a quantity of 0 takes that medicine off the bill. Stock is corrected to match. To add another medicine, make a new bill.</p>
-                <div className="grid">
-                  <label className="field">
-                    <span className="field-label">Customer</span>
-                    <input value={edit.customer_name} onChange={(e) => setEdit({ ...edit, customer_name: e.target.value })} />
-                  </label>
-                  <label className="field">
-                    <span className="field-label">Phone</span>
-                    <input inputMode="numeric" value={edit.customer_phone} onChange={(e) => setEdit({ ...edit, customer_phone: e.target.value })} />
-                  </label>
-                  <label className="field">
-                    <span className="field-label">Doctor</span>
-                    <input value={edit.referred_doctor} onChange={(e) => setEdit({ ...edit, referred_doctor: e.target.value })} />
-                  </label>
-                  <label className="field">
-                    <span className="field-label">Bill discount (₹)</span>
-                    <input type="number" min={0} step="0.01" value={edit.discount} onChange={(e) => setEdit({ ...edit, discount: e.target.value })} />
-                  </label>
-                </div>
+                <h3>{toAdd.length > 0 && !corrected ? 'Adding to this bill' : 'Edit this bill'}</h3>
+                <p className="muted small">Medicines you add go on the bill at today's price. To correct what is already on it, change the quantities and discounts above; a quantity of 0 takes that medicine off. Stock follows either way.</p>
+                <details className="bill-details">
+                  <summary>Customer details and bill discount</summary>
+                  <div className="grid">
+                    <label className="field">
+                      <span className="field-label">Customer</span>
+                      <input value={edit.customer_name} onChange={(e) => setEdit({ ...edit, customer_name: e.target.value })} />
+                    </label>
+                    <label className="field">
+                      <span className="field-label">Phone</span>
+                      <input inputMode="numeric" value={edit.customer_phone} onChange={(e) => setEdit({ ...edit, customer_phone: e.target.value })} />
+                    </label>
+                    <label className="field">
+                      <span className="field-label">Doctor</span>
+                      <input value={edit.referred_doctor} onChange={(e) => setEdit({ ...edit, referred_doctor: e.target.value })} />
+                    </label>
+                    <label className="field">
+                      <span className="field-label">Bill discount (₹)</span>
+                      <input type="number" min={0} step="0.01" value={edit.discount} onChange={(e) => setEdit({ ...edit, discount: e.target.value })} />
+                    </label>
+                  </div>
+                </details>
                 <p className="net">
                   New bill total <strong>{rupees(Math.max(0, editedTotal))}</strong>
                   {open.paid > editedTotal && <span className="due"> · {rupees(Math.round((open.paid - Math.max(0, editedTotal)) * 100) / 100)} will be refunded</span>}
                   {open.paid < editedTotal && <span className="muted"> · {rupees(Math.round((editedTotal - open.paid) * 100) / 100)} will be due</span>}
                 </p>
-                <input placeholder="Reason for the change (required)" value={reason} onChange={(e) => setReason(e.target.value)} aria-label="Reason" />
+                {newDue > 0 && (
+                  <div className="row collect-now">
+                    <span className="grow">Collect now (₹)</span>
+                    <input className="qty wide" type="number" min={0} max={newDue} step="0.01" value={collectValue} onChange={(e) => setCollect(e.target.value)} aria-label="Amount to collect now" />
+                    <ModeSelect value={mode} onChange={setMode} />
+                  </div>
+                )}
+                <input className="gap-top" placeholder={corrected ? 'Reason for the change (required)' : 'Reason (not needed when only adding medicines)'} value={reason} onChange={(e) => setReason(e.target.value)} aria-label="Reason" />
                 <div className="row gap-top">
                   <span className="grow">{open.paid > editedTotal ? 'Refund by' : ''}</span>
                   {open.paid > editedTotal && <ModeSelect value={mode} onChange={setMode} />}
-                  <button className="btn primary" disabled={reason.trim().length < 3 || !edit.customer_name.trim()}>
-                    Save changes
+                  <button className="btn primary" disabled={!edit.customer_name.trim() || (corrected ? reason.trim().length < 3 : toAdd.length === 0)}>
+                    {toAdd.length > 0 && !corrected ? 'Add to bill' : 'Save changes'}
                   </button>
                 </div>
               </div>

@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Models\Medicine;
+use App\Models\PharmacyChange;
 use App\Models\StockBatch;
 use App\Models\Stockist;
+use App\Models\StockMovement;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -94,6 +96,51 @@ class PharmacyEditTest extends TestCase
         $edit(['discount' => 5.6])->assertStatus(422)->assertJsonValidationErrors('reason'); // nothing changed
         $edit(['items' => [['id' => $line, 'quantity' => 0]]])->assertStatus(422)->assertJsonValidationErrors('items');
         $this->assertSame(70, $this->batch->fresh()->units_in_stock);
+    }
+
+    public function test_more_medicines_can_be_added_to_a_saved_bill_and_paid_for(): void
+    {
+        // A second medicine on the shelf: 5 packs of 10, MRP 50 a pack (5 a unit).
+        $other = Medicine::create(['name' => 'Cetirizine 10mg Tablet', 'gst_percent' => 12, 'units_per_pack' => 10]);
+        $second = StockBatch::find($this->postJson('/api/pharmacy/purchases', [
+            'stockist_id' => $this->stockist->id, 'invoice_no' => 'INV-2', 'invoice_date' => now()->toDateString(),
+            'items' => [['medicine_id' => $other->id, 'batch_no' => 'C001', 'expiry' => now()->addYear()->format('Y-m'), 'units_per_pack' => 10, 'packs' => 5, 'pack_price' => 30, 'pack_mrp' => 50, 'gst_percent' => 12]],
+        ])->assertCreated()->json('batches.0.id'));
+        $sale = $this->sell(10, 28); // 10 × 2.80 = 28, paid in full
+        $url = "/api/pharmacy/sales/{$sale['id']}";
+
+        // The customer comes back for 6 of the other medicine (30) and 5 more of the first (14). No reason is asked, and the money is taken with it.
+        $this->putJson($url, [
+            'customer_name' => 'Walk-in', 'collect' => 44, 'collect_mode' => 'upi',
+            'add' => [['stock_batch_id' => $second->id, 'quantity' => 6], ['stock_batch_id' => $this->batch->id, 'quantity' => 5]],
+        ])->assertOk()->assertJsonPath('total', 72)->assertJsonPath('paid', 72)->assertJsonPath('due', 0)
+            ->assertJsonCount(2, 'items')->assertJsonPath('items.0.quantity', 15)->assertJsonPath('items.1.medicine_name', 'Cetirizine 10mg Tablet')
+            ->assertJsonPath('items.1.quantity', 6)->assertJsonPath('items.1.amount', 30)
+            ->assertJsonCount(2, 'payments')->assertJsonPath('payments.1.mode', 'upi')->assertJsonPath('payments.1.amount', 44);
+
+        // The shelf and its ledger both follow.
+        $this->assertSame(85, $this->batch->fresh()->units_in_stock);
+        $this->assertSame(44, $second->fresh()->units_in_stock);
+        $this->assertSame(44, (int) StockMovement::where('stock_batch_id', $second->id)->sum('units'));
+        $this->assertSame(85, (int) StockMovement::where('stock_batch_id', $this->batch->id)->sum('units'));
+        $change = PharmacyChange::latest('id')->first();
+        $this->assertSame('Medicines added to the bill', $change->reason);
+        $this->assertStringContainsString('Cetirizine 10mg Tablet (batch C001): added, 6 for ₹30', $change->summary);
+        $this->assertStringContainsString('Collected ₹44 (upi)', $change->summary);
+
+        // More than the shelf holds, or more money than is then due, is refused, and nothing moves.
+        $this->putJson($url, ['customer_name' => 'Walk-in', 'add' => [['stock_batch_id' => $second->id, 'quantity' => 100]]])->assertStatus(422)->assertJsonValidationErrors('add.0.quantity');
+        $this->putJson($url, ['customer_name' => 'Walk-in', 'collect' => 100, 'collect_mode' => 'cash', 'add' => [['stock_batch_id' => $second->id, 'quantity' => 1]]])->assertStatus(422)->assertJsonValidationErrors('collect');
+        $this->assertSame(44, $second->fresh()->units_in_stock);
+
+        // Added without taking money: the extra stays as the balance on the bill.
+        $this->putJson($url, ['customer_name' => 'Walk-in', 'add' => [['stock_batch_id' => $second->id, 'quantity' => 2]]])->assertOk()
+            ->assertJsonPath('total', 82)->assertJsonPath('due', 10)->assertJsonPath('items.1.quantity', 8);
+
+        // Any other change still needs a reason, even when a medicine is added along with it.
+        $this->putJson($url, ['customer_name' => 'Ravi Kumar'])->assertStatus(422)->assertJsonValidationErrors('reason');
+        $this->putJson($url, ['customer_name' => 'Walk-in', 'discount' => 20, 'add' => [['stock_batch_id' => $second->id, 'quantity' => 1]]])->assertStatus(422)->assertJsonValidationErrors('reason');
+        $this->assertSame(42, $second->fresh()->units_in_stock);
     }
 
     public function test_bills_with_returns_or_deleted_bills_cannot_be_edited(): void
