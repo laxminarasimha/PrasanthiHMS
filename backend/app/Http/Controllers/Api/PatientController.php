@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Admission;
 use App\Models\Appointment;
 use App\Models\AuditLog;
+use App\Models\LabOrder;
 use App\Models\Patient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,6 +15,40 @@ use Illuminate\Validation\Rule;
 class PatientController extends Controller
 {
     public const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
+    /**
+     * The patients who are in the hospital or were here in the last few days: those with a visit, those admitted,
+     * and those who had lab tests. The people a counter is most likely to be asked about, offered before anything
+     * is typed. Those here now come first, then the most recent.
+     */
+    public function recent(): JsonResponse
+    {
+        $since = today()->subDays(2);
+        $seen = [];
+        // Each patient is listed once, by the latest thing that brought them in.
+        $note = function (?int $patientId, string $at, string $why, bool $here = false) use (&$seen) {
+            if ($patientId && (! isset($seen[$patientId]) || $here > $seen[$patientId]['here'] || ($here === $seen[$patientId]['here'] && $at > $seen[$patientId]['at']))) {
+                $seen[$patientId] = ['at' => $at, 'why' => $why, 'here' => $here];
+            }
+        };
+
+        Appointment::whereBetween('scheduled_at', [$since, now()->endOfDay()])->where('status', '!=', 'cancelled')->with('doctor:id,name')
+            ->get(['id', 'patient_id', 'doctor_id', 'scheduled_at', 'status'])
+            ->each(fn (Appointment $a) => $note(
+                $a->patient_id, $a->scheduled_at->format('Y-m-d H:i'),
+                ['booked' => 'Appointment', 'arrived' => 'Waiting', 'ongoing' => 'With the doctor', 'reviewed' => 'Seen'][$a->status].($a->doctor ? " · {$a->doctor->name}" : ''),
+                $a->scheduled_at->isToday() && in_array($a->status, ['arrived', 'ongoing'], true),
+            ));
+        LabOrder::where('ordered_at', '>=', $since)->get(['id', 'patient_id', 'ordered_at', 'order_no'])
+            ->each(fn (LabOrder $o) => $note($o->patient_id, $o->ordered_at->format('Y-m-d H:i'), "Lab tests · {$o->order_no}"));
+        Admission::where('status', 'admitted')->with('bed:id,ward,bed_no')->get(['id', 'patient_id', 'bed_id', 'ipd_no', 'admitted_at'])
+            ->each(fn (Admission $a) => $note($a->patient_id, $a->admitted_at->format('Y-m-d H:i'), "Admitted · {$a->ipd_no}".($a->bed ? " · {$a->bed->ward} bed {$a->bed->bed_no}" : ''), true));
+
+        $order = collect($seen)->sortBy([['here', 'desc'], ['at', 'desc']])->take(20);
+        $patients = Patient::whereIn('id', $order->keys())->whereNull('merged_into_id')->get(['id', 'uhid', 'title', 'name', 'gender', 'date_of_birth', 'mobile'])->keyBy('id');
+
+        return response()->json($order->filter(fn ($_, $id) => $patients->has($id))->map(fn (array $why, int $id) => $patients[$id]->toArray() + ['recent' => $why])->values());
+    }
 
     public function index(Request $request): JsonResponse
     {

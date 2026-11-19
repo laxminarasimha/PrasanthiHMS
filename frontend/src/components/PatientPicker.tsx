@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { AGE_UNITS, TITLES } from '../format'
+import { recentLine, useRecentPatients, type RecentPatient } from '../recentPatients'
 import type { Patient } from '../types'
 import { Field } from './Field'
 import { SameMobile } from './SameMobile'
@@ -10,12 +11,14 @@ type Props = {
   patient: Patient | null
   onChange: (patient: Patient | null) => void
   error?: string
+  /** Offer the patients recently in the hospital before anything is typed: for billing, lab orders and admitting. */
+  recent?: boolean
 }
 
 const summary = (p: Patient) => `${p.uhid} · ${p.age_label} / ${p.gender.charAt(0).toUpperCase()} · ${p.mobile}`
 
 /** Finds a registered patient by name, mobile or patient ID, or registers a new one on the spot. */
-export function PatientPicker({ patient, onChange, error }: Props) {
+export function PatientPicker({ patient, onChange, error, recent: offerRecent }: Props) {
   const [search, setSearch] = useState('')
   const [matches, setMatches] = useState<Patient[]>([])
   const [adding, setAdding] = useState(false)
@@ -26,6 +29,10 @@ export function PatientPicker({ patient, onChange, error }: Props) {
   // "no match found" is only said once the search for what is in the box now has really come back empty.
   const [foundFor, setFoundFor] = useState('')
   const [at, setAt] = useState(0)
+  const { recent, ask } = useRecentPatients()
+  useEffect(() => {
+    if (offerRecent && !patient) ask()
+  }, [offerRecent, patient, ask])
   useEffect(() => {
     const q = search.trim()
     if (q.length < 2) return
@@ -160,7 +167,9 @@ export function PatientPicker({ patient, onChange, error }: Props) {
   }
 
   const ready = search.trim().length >= 2 && foundFor === search.trim()
-  const shown = ready ? matches : []
+  // Before anything is typed, the people most likely to be meant: those in the hospital now or in the last few days.
+  const offering = Boolean(offerRecent) && search.trim().length < 2
+  const shown: (Patient | RecentPatient)[] = ready ? matches : offering ? recent.slice(0, 8) : []
   // The arrow keys walk the matches and Enter takes the highlighted one, as in the other search boxes.
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
@@ -182,11 +191,17 @@ export function PatientPicker({ patient, onChange, error }: Props) {
       <input type="search" autoFocus placeholder="Search by name, mobile or patient ID" value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={onKey} />
       {shown.length > 0 && (
         <ul className="picker">
+          {offering && <li className="picker-head">Recently in the hospital</li>}
           {shown.map((p, i) => (
             <li key={p.id}>
               <button type="button" className={i === at ? 'on' : ''} onClick={() => onChange(p)} onMouseEnter={() => setAt(i)}>
                 <strong>{p.name}</strong>
                 <small className="muted">{summary(p)}</small>
+                {'recent' in p && (
+                  <small className={p.recent.here ? 'recent-why here' : 'recent-why'}>
+                    {recentLine(p.recent)}
+                  </small>
+                )}
               </button>
             </li>
           ))}

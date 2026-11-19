@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Admission;
 use App\Models\Appointment;
 use App\Models\Patient;
 use App\Models\User;
@@ -100,5 +101,34 @@ class PatientTest extends TestCase
         $this->assertSame(['K. Lakshmi  Devi'], $find('HP-4411'));            // the old system's ID
         $this->assertSame([], $find('Lakshmi Kumar'));                        // every word must fit one person
         $this->assertSame([], $find('100%'));
+    }
+
+    public function test_the_patients_recently_in_the_hospital_are_offered_those_here_now_first(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $doctor = User::factory()->create(['role' => 'doctor', 'name' => 'Dr Sample']);
+        $visit = fn (string $name, string $status, $when) => tap(Patient::factory()->create(['name' => $name]), fn (Patient $p) => Appointment::create([
+            'patient_id' => $p->id, 'doctor_id' => $doctor->id, 'scheduled_at' => $when, 'status' => $status, 'token_no' => 1,
+        ]));
+
+        $waiting = $visit('Waiting Now', 'arrived', now()->startOfDay()->addHours(9));
+        $seenToday = $visit('Seen Today', 'reviewed', now()->startOfDay()->addHours(10));
+        $yesterday = $visit('Seen Yesterday', 'reviewed', now()->subDay()->startOfDay()->addHours(11));
+        $visit('Long Ago', 'reviewed', now()->subDays(6));
+        $visit('Cancelled Today', 'cancelled', now()->startOfDay()->addHours(8));
+        $admitted = Patient::factory()->create(['name' => 'In A Bed']);
+        Admission::create(['patient_id' => $admitted->id, 'doctor_id' => $doctor->id, 'admitted_at' => now()->subDays(4), 'status' => 'admitted']);
+        Patient::factory()->create(['name' => 'Never Came']);
+
+        $list = $this->getJson('/api/patients/recent')->assertOk()->json();
+        $names = array_column($list, 'name');
+        // Here now (waiting, or in a bed) before those who have left; then the latest first.
+        $this->assertSame(['Waiting Now', 'In A Bed', 'Seen Today', 'Seen Yesterday'], $names);
+        $this->assertSame('Waiting · Dr Sample', $list[0]['recent']['why']);
+        $this->assertTrue($list[1]['recent']['here']);
+        $this->assertStringStartsWith('Admitted · ', $list[1]['recent']['why']);
+        $this->assertSame($seenToday->uhid, $list[2]['uhid']);
+        $this->assertNotNull($list[2]['age_label']);
+        $this->assertSame([$waiting->id, $admitted->id, $seenToday->id, $yesterday->id], array_column($list, 'id'));
     }
 }

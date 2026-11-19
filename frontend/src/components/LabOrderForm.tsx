@@ -103,7 +103,7 @@ export function LabOrderForm({ tests, packages = [], visit, onClose, onCreated }
         </button>
       </div>
 
-      <PatientPicker patient={patient} onChange={setPatient} error={errors.patient_id} />
+      <PatientPicker patient={patient} onChange={setPatient} error={errors.patient_id} recent />
 
       <div className="gap-top">
         <ReferralList id="lab-referred-by" direction="by" />

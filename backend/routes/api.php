@@ -117,6 +117,8 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
     Route::put('/me/appearance', [AuthController::class, 'saveAppearance']);
     Route::post('/me/password', [AuthController::class, 'changePassword'])->middleware('throttle:10,1');
 
+    // Before the patient routes below, so "recent" is not read as a patient's number.
+    Route::get('/patients/recent', [PatientController::class, 'recent']);
     Route::apiResource('patients', PatientController::class)->except('destroy');
 
     Route::get('/doctors', [ServiceController::class, 'doctors']);

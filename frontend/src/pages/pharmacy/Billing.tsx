@@ -33,6 +33,8 @@ export function PharmacyBilling() {
   const [patient, setPatient] = useState<Patient | null>(null)
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
+  // Who prescribed: not typed at the counter. It is taken from the patient's latest prescription or their IPD case,
+  // and kept on the bill for the prescription-medicines register.
   const [doctor, setDoctor] = useState('')
   const [lines, setLines] = useState<Line[]>([])
   const [discount, setDiscount] = useState('')
@@ -75,6 +77,7 @@ export function PharmacyBilling() {
     setPatient(next)
     setOnIpd(true)
     setPrescriptions([])
+    setDoctor('')
     if (next) {
       api.get<PrescriptionForPharmacy[]>('/pharmacy/prescriptions', { params: { patient_id: next.id } }).then((res) => {
         setPrescriptions(res.data)
@@ -111,9 +114,16 @@ export function PharmacyBilling() {
   const presetPatient = params.get('patient')
   useEffect(() => {
     if (!presetPatient) return
+    // Chosen from a patient's page, or in the search at the top of this screen: the bill is for them.
     api.get<Patient>(`/patients/${presetPatient}`).then((res) => {
       setWalkIn(false)
+      setFromWard(false)
+      setOnIpd(true)
+      setDoctor('')
+      setDone(null)
       setPatient(res.data)
+      // Straight on to the medicines: the next thing typed is the first medicine's name.
+      setTimeout(() => searchBox.current?.focus(), 0)
       api.get<PrescriptionForPharmacy[]>('/pharmacy/prescriptions', { params: { patient_id: res.data.id } }).then((rx) => {
         setPrescriptions(rx.data)
         if (rx.data[0]?.doctor) setDoctor(rx.data[0].doctor)
@@ -202,7 +212,7 @@ export function PharmacyBilling() {
         patient_id: walkIn ? null : patient?.id,
         customer_name: customer,
         customer_phone: (walkIn ? phone : patient?.mobile) || null,
-        referred_doctor: doctor || null,
+        referred_doctor: walkIn ? null : doctor || null,
         discount: discount || 0,
         // An inpatient's medicines go on the IPD bill: nothing is taken at the counter.
         paid: toIpd ? 0 : paidValue || 0,
@@ -280,13 +290,12 @@ export function PharmacyBilling() {
           )}
 
           {walkIn ? (
-            <div className="grid three">
+            <div className="grid">
               <TextField label="Customer name" required value={name} onChange={setName} />
               <TextField label="Phone" inputMode="tel" value={phone} onChange={setPhone} />
-              <TextField label="Referred doctor" value={doctor} onChange={setDoctor} />
             </div>
           ) : (
-            <div className="grid">
+            <div>
               <div>
                 {fromWard ? (
                   <label className="field">
@@ -312,10 +321,9 @@ export function PharmacyBilling() {
                     </select>
                   </label>
                 ) : (
-                  <PatientPicker patient={patient} onChange={choosePatient} />
+                  <PatientPicker patient={patient} onChange={choosePatient} recent />
                 )}
               </div>
-              <TextField label="Referred doctor" value={doctor} onChange={setDoctor} />
             </div>
           )}
 
