@@ -8,6 +8,7 @@ import { useAuth } from '../auth'
 import { keepPrintPrefsFresh } from '../printPaper'
 import { allowedTabs, menuTabs, onTab } from '../nav'
 import { canLeave } from '../unsaved'
+import { today } from '../format'
 
 /** A small drawing beside each menu name, so a section is found by shape as well as by word. */
 const ICONS: Record<string, string> = {
@@ -32,6 +33,23 @@ export function Layout() {
   // Whether the last thing any screen tried to load failed to arrive.
   const [trouble, setTrouble] = useState(false)
   useEffect(() => onLoadTrouble(setTrouble), [])
+  // "Later" on the backup reminder: the same message stays away on this computer until tomorrow. A new message shows at once.
+  const [laterFor, setLaterFor] = useState(() => {
+    try {
+      return localStorage.getItem('hms_backup_later') ?? ''
+    } catch {
+      return ''
+    }
+  })
+  const remindLater = () => {
+    const mark = `${today()} ${user?.backup_alert ?? ''}`
+    setLaterFor(mark)
+    try {
+      localStorage.setItem('hms_backup_later', mark)
+    } catch {
+      // Without storage the reminder is only hidden until the page is loaded again.
+    }
+  }
   // Print pages open in their own tab and print at once, so the way prints are laid out is fetched here, ahead of time.
   useEffect(() => {
     void keepPrintPrefsFresh()
@@ -118,10 +136,15 @@ export function Layout() {
         </div>
       </header>
       <main className="content">
-        {user.backup_alert && (
-          <NavLink className="backup-alert" to="/admin?tab=backups">
-            <strong>Backups:</strong> {user.backup_alert}
-          </NavLink>
+        {user.backup_alert && laterFor !== `${today()} ${user.backup_alert}` && (
+          <div className="backup-alert">
+            <NavLink to="/admin?tab=backups">
+              <strong>Backups:</strong> {user.backup_alert}
+            </NavLink>
+            <button type="button" className="link" onClick={remindLater} title="Hide this reminder on this computer until tomorrow">
+              Later
+            </button>
+          </div>
         )}
         {/* One broken screen shows a message in place; the menu stays, and going elsewhere starts afresh. */}
         <ErrorBoundary key={pathname}>

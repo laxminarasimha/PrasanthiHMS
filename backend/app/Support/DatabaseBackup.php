@@ -204,20 +204,24 @@ class DatabaseBackup
             if (config('app.auto_backup') && (! $newest || $newest < now()->subHours(36)->format('Y-m-d H:i'))) {
                 return (Cache::get('backup_error') ?: ($newest ? 'No backup has been made since '.date('j M', strtotime($newest)).'.' : 'No backup has been made yet.')).' Make one under Setup → Backups.';
             }
+            // Everything that still has to leave the server is said at once, so one visit to the Backups screen settles it.
             $marks = FileBackup::marks();
+            $needs = [];
             $copied = $marks['db_downloaded_at'];
+            $days = $copied ? (int) floor(Carbon::parse($copied)->diffInDays(now())) : null;
             if (! $copied) {
-                return 'No backup has been copied off the server yet. Download one under Setup → Backups.';
-            }
-            $days = (int) floor(Carbon::parse($copied)->diffInDays(now()));
-            if ($days >= 7) {
-                return "The last backup copied off the server is {$days} days old. Download a new one under Setup → Backups.";
+                $needs[] = 'No backup has been copied off the server yet';
+            } elseif ($days >= 7) {
+                $needs[] = "The last backup copied off the server is {$days} days old";
             }
             $files = FileBackup::summary();
             $filesCopied = $marks['files_downloaded_at'];
             if ($files['waiting'] > 0 && (! $filesCopied || Carbon::parse($filesCopied)->lt(now()->subDays(7)))) {
-                return ($files['waiting'] === 1 ? '1 uploaded file (a scan, attachment or signature) has' : "{$files['waiting']} uploaded files (scans, attachments, signatures) have")
-                    .' not been copied off the server. Download under Setup → Backups.';
+                $needs[] = ($files['waiting'] === 1 ? '1 uploaded file (a scan, attachment or signature) has' : "{$files['waiting']} uploaded files (scans, attachments, signatures) have")
+                    .' not been copied off the server'.($needs ? ' either' : '');
+            }
+            if ($needs) {
+                return implode('. ', $needs).'. Press “Copy everything now” under Setup → Backups.';
             }
 
             return null;

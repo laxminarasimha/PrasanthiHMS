@@ -138,6 +138,31 @@ class BackupTest extends TestCase
         $this->assertCount(3, $this->namesIn($this->get('/api/backups/files?from=start')->assertOk()->assertHeader('X-Backup-Count', '3')));
     }
 
+    public function test_the_notice_names_everything_still_to_copy_and_goes_when_all_of_it_has_left(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $alert = fn () => $this->getJson('/api/me')->assertOk()->json('backup_alert');
+        $name = $this->postJson('/api/backups')->assertCreated()->json('backups.0.name');
+        $this->upload('attachments/7/scan.pdf', 'an old paper', 300);
+        Cache::forget('backup_alert');
+
+        // Both things are asked for in the one notice, not one after the other.
+        $this->assertStringContainsString('No backup has been copied off the server yet', $alert());
+        $this->assertStringContainsString('1 uploaded file ', $alert());
+        $this->assertStringContainsString('Copy everything now', $alert());
+
+        // The backup alone leaves the files still to do; with those gone too, nothing is said.
+        // The browser is told not to keep the file: a download answered from its own store would never be noted here.
+        $download = $this->get("/api/backups/{$name}/download")->assertOk();
+        $this->assertStringContainsString('no-store', (string) $download->headers->get('Cache-Control'));
+        $this->assertNull($download->headers->get('Last-Modified'));
+        $this->assertStringNotContainsString('No backup has been copied', $alert());
+        $this->assertStringContainsString('1 uploaded file ', $alert());
+        $through = (int) $this->get('/api/backups/files')->assertOk()->headers->get('X-Backup-Through');
+        $this->postJson('/api/backups/files/done', ['through' => $through])->assertOk()->assertJsonPath('alert', null);
+        $this->assertNull($alert());
+    }
+
     public function test_an_admin_is_told_when_backups_are_not_being_made_or_copied_off_the_server(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
