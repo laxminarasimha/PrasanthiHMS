@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors } from '../api'
 import { longDate } from '../format'
+import { usePartLoading } from '../loading'
 import type { FormRecord, FormTemplate } from '../types'
 
 type Values = Record<string, string | boolean>
@@ -16,6 +17,8 @@ type Props = {
 /** Forms filled in for one IPD case or one visit: start one from a template, fill it, print it. */
 export function FormsPanel({ url, use, canEdit }: Props) {
   const [templates, setTemplates] = useState<FormTemplate[]>([])
+  // Until the forms have come, "none designed yet" is not known to be true.
+  const loading = usePartLoading()
   const [records, setRecords] = useState<FormRecord[] | null>(null)
   const [templateId, setTemplateId] = useState('')
   const [open, setOpen] = useState<{ id: number | null; name: string; fields: FormTemplate['fields']; templateId?: number } | null>(null)
@@ -65,7 +68,7 @@ export function FormsPanel({ url, use, canEdit }: Props) {
       {canEdit && !open && (
         <div className="row gap-bottom">
           <select className="narrow" value={templateId} onChange={(e) => setTemplateId(e.target.value)} aria-label="Form to add">
-            <option value="">{templates.length ? 'Select a form…' : 'No forms have been designed yet'}</option>
+            <option value="">{templates.length ? 'Select a form…' : loading ? 'Loading the forms…' : 'No forms have been designed yet'}</option>
             {templates.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
@@ -75,7 +78,7 @@ export function FormsPanel({ url, use, canEdit }: Props) {
           <button className="btn primary" disabled={!templateId} onClick={start}>
             + Add form
           </button>
-          {templates.length === 0 && <span className="muted small">Forms are designed under Admin → Forms.</span>}
+          {templates.length === 0 && !loading && <span className="muted small">Forms are designed under Admin → Forms.</span>}
         </div>
       )}
 

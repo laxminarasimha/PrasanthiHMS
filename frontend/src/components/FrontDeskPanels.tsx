@@ -4,6 +4,7 @@ import { useAuth } from '../auth'
 import { STATUS_LABELS, longDate, rupees, today } from '../format'
 import type { Appointment, AppointmentStatus, Attachment, DaySummary, Doctor, Service, Visit } from '../types'
 import { SelectField, TextField } from './Field'
+import { usePartLoading } from '../loading'
 
 const Head = ({ title, sub, onClose }: { title: string; sub?: string; onClose: () => void }) => (
   <div className="panel-head">
@@ -67,6 +68,8 @@ export function VitalsPanel({ appointment, onClose }: { appointment: Appointment
 export function AttachmentsPanel({ patient, appointmentId, onClose }: { patient: { id: number; name: string; uhid: string }; appointmentId?: number; onClose?: () => void }) {
   const { user } = useAuth()
   const [list, setList] = useState<Attachment[]>([])
+  // Until the list has come, "none yet" is not known to be true.
+  const loading = usePartLoading()
   const [title, setTitle] = useState('')
   const [date, setDate] = useState(today())
   const [file, setFile] = useState<File | null>(null)
@@ -128,7 +131,7 @@ export function AttachmentsPanel({ patient, appointmentId, onClose }: { patient:
             )}
           </li>
         ))}
-        {list.length === 0 && <li className="muted">No attachments yet.</li>}
+        {list.length === 0 && <li className="muted">{loading ? 'Loading the attachments…' : 'No attachments yet.'}</li>}
       </ul>
       {user?.can_front_desk && (
         <form onSubmit={upload} className="gap-top">
