@@ -94,6 +94,12 @@ const PharmacyStockReturns = page(() => import('./pages/pharmacy/StockReturns'),
 const PrescriptionPrint = page(() => import('./pages/PrescriptionPrint'), 'PrescriptionPrint')
 const QueueBoard = page(() => import('./pages/QueueBoard'), 'QueueBoard')
 const Reports = page(() => import('./pages/Reports'), 'Reports')
+const WorkforceOverview = page(() => import('./workforce/Overview'), 'WorkforceOverview')
+const StaffDirectory = page(() => import('./workforce/StaffDirectory'), 'StaffDirectory')
+const WorkforceAttendance = page(() => import('./workforce/Attendance'), 'WorkforceAttendance')
+const WorkforceLeave = page(() => import('./workforce/Leave'), 'WorkforceLeave')
+const WorkforceSetup = page(() => import('./workforce/Setup'), 'WorkforceSetup')
+const MyRecord = page(() => import('./workforce/MyRecord'), 'MyRecord')
 const Services = page(() => import('./pages/Services'), 'Services')
 const Staff = page(() => import('./pages/Staff'), 'Staff')
 const VisitPad = page(() => import('./pages/VisitPad'), 'VisitPad')
@@ -115,6 +121,14 @@ function Only({ when, children }: { when: keyof User; children: ReactNode }) {
   const { user } = useAuth()
   if (!user) return null
   return user[when] ? children : <Navigate to={homeFor(user)} replace />
+}
+
+/** Shows a workforce page only to someone with that permission; everyone else goes to their own record, or home. */
+function OnlyWf({ permission, children }: { permission: string; children: ReactNode }) {
+  const { user } = useAuth()
+  if (!user) return null
+  if (user.abilities?.[permission]) return children
+  return <Navigate to={permission !== 'wf:self:view' && user.abilities?.['wf:self:view'] ? '/workforce/me' : homeFor(user)} replace />
 }
 
 function Home() {
@@ -196,6 +210,12 @@ export default function App() {
             <Route path="/services" element={<Only when="can_manage_setup"><Services /></Only>} />
             <Route path="/staff" element={<Only when="can_manage_staff"><Staff /></Only>} />
             <Route path="/reports" element={<Only when="can_view_reports"><Reports /></Only>} />
+            <Route path="/workforce" element={<OnlyWf permission="wf:reports:view"><WorkforceOverview /></OnlyWf>} />
+            <Route path="/workforce/staff" element={<OnlyWf permission="wf:staff:view"><StaffDirectory /></OnlyWf>} />
+            <Route path="/workforce/attendance" element={<OnlyWf permission="wf:attendance:view"><WorkforceAttendance /></OnlyWf>} />
+            <Route path="/workforce/leave" element={<OnlyWf permission="wf:leave:view"><WorkforceLeave /></OnlyWf>} />
+            <Route path="/workforce/setup" element={<OnlyWf permission="wf:settings:admin"><WorkforceSetup /></OnlyWf>} />
+            <Route path="/workforce/me" element={<OnlyWf permission="wf:self:view"><MyRecord /></OnlyWf>} />
           </Route>
           <Route path="*" element={<Protected />}>
             <Route path="*" element={<Home />} />

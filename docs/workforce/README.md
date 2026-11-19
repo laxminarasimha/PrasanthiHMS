@@ -9,12 +9,35 @@ Companion documents: [WordPress mapping](wordpress-mapping.md) · [Permission ma
 | Phase | Contents | State |
 |---|---|---|
 | 1 | Data model, permissions, audit base, tenant wall, password step, WordPress mapping | **This pull request** |
-| 2 | Staff directory, shifts, holidays, attendance (daily, monthly, corrections, sheet import), leave | Not started |
+| 2 | Staff directory, shifts, holidays, attendance (daily, monthly, corrections, sheet import), leave | **Built, in review** (see "Phase 2" below) |
 | 3 | Salary structures, payroll runs, payslips, advances and loans | Not started |
 | 4 | Expense approval flow on the existing expenses, categories, recurring templates, reports, no double counting | Not started |
 | 5 | WordPress snapshot, staging, dry-run reconciliation report, cutover tools | Not started; needs a database export |
 
 Phase 1 adds no screens of its own except the longer, grouped permission list under Setup → Staff. It changes no existing workflow.
+
+## Phase 2: staff, shifts, attendance and leave
+
+Screens (menu tab **Workforce**, or **My record** for staff who only have their own): Today, Staff, Attendance (Day, Month, Corrections, Bring in a sheet), Leave (Requests, Balances), Setup, My record. Server routes are in `backend/routes/workforce.php`; the arithmetic is in `AttendanceRules` and `LeaveBook`, which payroll will read in Phase 3 so the two can never disagree.
+
+Rules as built (each is a setting or a shift's own value, not fixed in the program):
+
+- **A day belongs to the day the shift started**, as in WordPress. A night shift's check-out the next morning is the same day.
+- **One open spell at a time**; a check-out is never before its check-in; nothing is entered for a time that has not come. Entering a day other than today needs a reason.
+- **Lateness** is counted from the shift's start once past its grace; **early leaving** from its end once past its allowance; the **unpaid break** comes off only when the spell is at least half the shift long; **overtime** is what is worked beyond the shift's overtime mark.
+- **Full day, half day, absent** come from the shift's two marks. A day someone judged by hand keeps that judgement. With no marks set, any time in is a full day.
+- **A missing check-out** leaves the day standing and flagged until someone puts the time right; it is listed on the Today page.
+- **Every day splits into present + leave + absent = 1** on a working day. Weekly offs and holidays are neither.
+- **Corrections**: changing a saved entry directly needs `wf:attendance:edit` and a reason; anyone else asks, and nothing changes until someone with `wf:attendance:approve` (within reach) approves. Nobody decides a correction to their own attendance. Both paths keep before and after.
+- **Sheets**: the browser reads a CSV (columns found by name: employee number, date, check in, check out); the server judges every line (ready, already here, no such staff, no check-in, no check-out, cannot be read) and saves **no attendance** until "Bring in" is pressed. Each line has a fingerprint, so the same line is never brought in twice, in this sheet or a later one.
+- **Leave** is counted in working days: weekly offs and holidays inside a stretch are not leave unless the hospital chooses to count them, and attendance shows those days as days off accordingly. Half days at either end count a half.
+- **Earning leave**: a yearly kind is given whole at the start of the leave year, in proportion for someone who joined part-way; a monthly kind a twelfth a month. A month is earned by someone on the staff on its first day. Each line can be written once only.
+- **Year end**: what is left is carried up to the kind's limit and the rest lapses, both as ledger lines; the old year ends at nothing. Carried leave unused within the kind's months lapses, with carried days counted as used first.
+- **Approval** takes the days from the account and is refused beyond the balance unless the hospital allows a negative balance. **Cancelling** approved leave gives the days back as a line of their own. Nobody decides their own leave.
+- **Self check-in is off by default.** When switched on it records only the login and the time: no location, no biometric.
+- **Exports** (staff, month attendance, leave) are made on the server, need their own permission, never include bank, identity or pay details, guard against spreadsheet formulas, and write an audit event.
+
+Front-end tests now exist (`npm test` in `frontend/`, Vitest with a pretend browser): the sheet reader, the password-again step, and the Today page's loading, error and empty states. Phone-width layout cannot be measured in a pretend browser; each screen was checked by hand at 375px with made-up staff (no sideways scrolling on any of the ten views).
 
 ## Decisions
 
@@ -109,6 +132,6 @@ See also the seven items at the end of the [WordPress mapping](wordpress-mapping
 4. Rounding of net pay, the salary month (calendar month?) and the leave year (January or April?).
 5. Which month payroll starts in the HMS, and whether opening leave balances and outstanding advances will be typed in or come from a file.
 
-## Tests in this phase
+## Tests
 
-`WorkforceFoundationTest`, `WorkforcePermissionsTest` (15 tests): tenant isolation, the no-branch case, department and self reach, encryption at rest and masking, audit append-only and tamper detection, one payslip per person per month, finalised-payroll immutability and reversal, append-only ledgers, idempotent source links, the password step, no invented statutory values, role presets, explicit deny, no self-escalation, sensitive grants. All synthetic data.
+Phase 2 adds `WorkforceTimeAndLeaveRulesTest`, `WorkforceStaffAndAttendanceApiTest`, `WorkforceLeaveAndOverviewApiTest` (18 tests) and 14 front-end tests. Phase 1: `WorkforceFoundationTest`, `WorkforcePermissionsTest` (15 tests): tenant isolation, the no-branch case, department and self reach, encryption at rest and masking, audit append-only and tamper detection, one payslip per person per month, finalised-payroll immutability and reversal, append-only ledgers, idempotent source links, the password step, no invented statutory values, role presets, explicit deny, no self-escalation, sensitive grants. All synthetic data.
