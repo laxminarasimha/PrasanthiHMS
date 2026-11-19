@@ -83,7 +83,7 @@ class HospitalReportController extends Controller
 
     private function bills(Carbon $from, Carbon $to): array
     {
-        $rows = Bill::whereBetween('created_at', [$from, $to])->with(['patient:id,title,name,uhid', 'appointment.doctor:id,name'])->orderBy('created_at')->get()
+        $rows = Bill::whereBetween('created_at', [$from, $to])->whereNull('cancelled_at')->with(['patient:id,title,name,uhid', 'appointment.doctor:id,name'])->orderBy('created_at')->get()
             ->map(fn (Bill $b) => [
                 'bill_no' => $b->bill_no, 'date' => $b->created_at->format('Y-m-d H:i'), 'patient' => $b->patient?->name, 'uhid' => $b->patient?->uhid,
                 'doctor' => $b->appointment?->doctor?->name, 'kind' => self::KIND[$b->kind] ?? $b->kind,
@@ -99,7 +99,7 @@ class HospitalReportController extends Controller
 
     private function billLines(Carbon $from, Carbon $to): array
     {
-        $bills = Bill::whereBetween('created_at', [$from, $to])->with(['patient:id,title,name', 'items'])->orderBy('created_at')->get();
+        $bills = Bill::whereBetween('created_at', [$from, $to])->whereNull('cancelled_at')->with(['patient:id,title,name', 'items'])->orderBy('created_at')->get();
         $rows = $bills->flatMap(fn (Bill $b) => $b->items->map(fn (BillItem $i) => [
             'date' => $b->created_at->format('Y-m-d H:i'), 'bill_no' => $b->bill_no, 'patient' => $b->patient?->name, 'service' => $i->description,
             'quantity' => (float) $i->quantity, 'price' => $i->unit_price, 'discount' => $i->discount, 'tax' => $i->tax, 'amount' => round($i->amount + $i->tax, 2),
@@ -178,7 +178,7 @@ class HospitalReportController extends Controller
     /** How often each service was billed and what it brought in. */
     private function services(Carbon $from, Carbon $to): array
     {
-        $rows = BillItem::whereIn('bill_id', Bill::whereBetween('created_at', [$from, $to])->select('id'))->get()
+        $rows = BillItem::whereIn('bill_id', Bill::whereBetween('created_at', [$from, $to])->whereNull('cancelled_at')->select('id'))->get()
             ->groupBy('description')
             ->map(fn (Collection $lines, string $name) => [
                 'service' => $name, 'times' => $lines->count(), 'quantity' => (float) $lines->sum('quantity'),

@@ -48,6 +48,9 @@ class BillController extends Controller
     public function useDeposit(Request $request, Bill $bill): JsonResponse
     {
         $data = $request->validate(['amount' => ['required', 'numeric', 'gt:0']]);
+        if ($bill->cancelled_at) {
+            throw ValidationException::withMessages(['amount' => 'This bill has been cancelled.']);
+        }
 
         DB::transaction(function () use ($bill, $data, $request) {
             // Lock the patient so two desks cannot spend the same deposit.
@@ -247,6 +250,49 @@ class BillController extends Controller
     }
 
     /**
+     * Cancels a bill made by mistake. Whatever was paid on it is refunded today, the bill then counts for nothing,
+     * and it stays on record with who cancelled it and why. A lab bill takes its lab order with it, which is why
+     * it is refused once the lab has started on the tests; so is a bill that has gone onto an IPD bill, one paid
+     * from a deposit, and one of a day that is closed.
+     */
+    public function cancel(Request $request, Bill $bill): JsonResponse
+    {
+        abort_unless($request->user()->allows('canDeleteBills'), 403, 'You are not allowed to cancel bills.');
+        $bill = $this->forChange($request, $bill);
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'min:3', 'max:255'],
+            'refund_mode' => ['nullable', Rule::in(Payment::MODES)],
+        ], ['reason.required' => 'Say why this bill is being cancelled.']);
+
+        $by = fn (string $mode) => round((float) $bill->payments()->where('mode', $mode)->where('type', 'payment')->sum('amount') - (float) $bill->payments()->where('mode', $mode)->where('type', 'refund')->sum('amount'), 2);
+        if ($by('ipd') > 0) {
+            throw ValidationException::withMessages(['reason' => 'This bill is on an IPD bill. Remove it from the IPD bill first.']);
+        }
+        if ($by('deposit') > 0) {
+            throw ValidationException::withMessages(['reason' => "₹{$by('deposit')} of this bill was paid from the patient's deposit, so it cannot be cancelled here. Refund it on the bill instead."]);
+        }
+        $order = $bill->labOrder()->with('items')->first();
+        if ($order && ($order->items->contains(fn ($item) => $item->stage !== 'booked') || $order->files()->exists())) {
+            throw ValidationException::withMessages(['reason' => "The lab has already taken the sample or entered results for {$order->order_no}, so this bill cannot be cancelled. Give a refund on the bill instead."]);
+        }
+        if ($bill->paid > 0 && empty($data['refund_mode'])) {
+            throw ValidationException::withMessages(['refund_mode' => "Choose how the ₹{$bill->paid} already paid is being given back."]);
+        }
+
+        $was = $bill->total;
+        if ($bill->paid > 0) {
+            $bill->payments()->create(['type' => 'refund', 'amount' => $bill->paid, 'mode' => $data['refund_mode'], 'reference' => 'Bill cancelled', 'received_by' => $request->user()->id]);
+        }
+        // Nothing was done for these tests, so the order leaves the lab's work list with the bill.
+        $order?->delete();
+        $bill->forceFill(['cancelled_at' => now(), 'cancelled_by' => $request->user()->id, 'cancel_reason' => $data['reason']]);
+        $bill->recalculate();
+        AuditLog::record('bill.cancelled', $bill->patient_id, $bill, "Bill {$bill->bill_no} of ₹{$was} cancelled: {$data['reason']}".($order ? " (lab order {$order->order_no} removed)" : ''));
+
+        return response()->json($this->present($bill));
+    }
+
+    /**
      * Whether this person may change the bill, and the bill as it stands this instant. Front desk staff work on every bill;
      * lab staff only on lab bills. The row is held until the request is saved, so two requests arriving together
      * (a double click, or two desks) are taken one after the other and the second sees what the first did.
@@ -256,7 +302,12 @@ class BillController extends Controller
         $user = $request->user();
         abort_unless($user->allows('canWorkFrontDesk') || ($bill->kind === 'lab' && $user->allows('canRunLab')), 403, 'You are not allowed to change this bill.');
 
-        return Bill::whereKey($bill->id)->lockForUpdate()->firstOrFail();
+        $bill = Bill::whereKey($bill->id)->lockForUpdate()->firstOrFail();
+        if ($bill->cancelled_at) {
+            throw ValidationException::withMessages(['bill' => 'This bill has been cancelled, so nothing more can be done on it.']);
+        }
+
+        return $bill;
     }
 
     /**
@@ -294,7 +345,7 @@ class BillController extends Controller
     private function present(Bill $bill): Bill
     {
         $bill = $bill->fresh()->load([
-            'items', 'payments.receiver:id,name', 'labOrder:id,bill_id,order_no', 'patient:id,uhid,title,name,gender,date_of_birth,mobile,address,city',
+            'items', 'payments.receiver:id,name', 'canceller:id,name', 'labOrder:id,bill_id,order_no', 'patient:id,uhid,title,name,gender,date_of_birth,mobile,address,city',
             'appointment:id,doctor_id,scheduled_at', 'appointment.doctor:id,name',
         ]);
         // What the patient has on deposit, so the desk can offer to use it.

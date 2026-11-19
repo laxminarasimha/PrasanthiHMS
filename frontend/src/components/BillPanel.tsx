@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useAuth } from '../auth'
 import { api, fieldErrors } from '../api'
-import { PAYMENT_MODES, modeLabel, rupees } from '../format'
+import { PAYMENT_MODES, modeLabel, rupees, stampDate } from '../format'
 import type { Bill, Payment, Service } from '../types'
 import { DepositBox } from './DepositBox'
 import { SelectField, TextField } from './Field'
@@ -37,6 +37,8 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
   const [fixing, setFixing] = useState<Payment | null>(null)
   const [fix, setFix] = useState({ mode: 'cash', reference: '', reason: '' })
   const [notice, setNotice] = useState('')
+  // Cancelling a bill made by mistake: why, and how the money already paid goes back.
+  const [cancelling, setCancelling] = useState({ reason: '', mode: 'cash' })
 
   const apply = (next: Bill) => {
     setBill(next)
@@ -103,6 +105,63 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
   const canFix = Boolean(user?.can_front_desk || user?.can_run_lab)
 
   if (!bill) return <aside className="card panel wide">Loading bill…</aside>
+
+  // A cancelled bill is only a record: what it was, who cancelled it and why. Nothing on it can be changed.
+  if (bill.cancelled_at) {
+    return (
+      <aside className="card panel wide">
+        <div className="panel-head">
+          <div>
+            <h2>
+              Bill {bill.bill_no} <span className="pill off">Cancelled</span>
+            </h2>
+            <span className="muted">
+              <PatientLink id={bill.patient.id} bills>
+                {bill.patient.name}
+              </PatientLink>{' '}
+              · {bill.patient.uhid} · {KIND[bill.kind]}
+            </span>
+          </div>
+          <button type="button" className="btn ghost" onClick={onClose}>
+            Close
+          </button>
+        </div>
+        <p className="form-error">
+          Cancelled on {stampDate(bill.cancelled_at)}
+          {bill.canceller ? ` by ${bill.canceller.name}` : ''}: {bill.cancel_reason}
+        </p>
+        <table className="compact">
+          <tbody>
+            {bill.items.map((item) => (
+              <tr key={item.id} className="static faded">
+                <td>
+                  <s>{item.description}</s>
+                </td>
+                <td className="num">{item.quantity}</td>
+                <td className="num">
+                  <s>{rupees(item.amount + item.tax)}</s>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="muted small">This bill counts for nothing now. Its lines are kept only as a record of what was entered.</p>
+        {bill.payments.length > 0 && (
+          <ul className="history">
+            {bill.payments.map((p) => (
+              <li key={p.id}>
+                <span>
+                  {p.type === 'refund' ? 'Refunded' : 'Paid'} · {modeLabel(p.mode)}
+                  {p.reference ? ` · ${p.reference}` : ''}
+                </span>
+                <strong>{rupees(p.amount)}</strong>
+              </li>
+            ))}
+          </ul>
+        )}
+      </aside>
+    )
+  }
 
   // A discount that takes the bill below what is paid needs the difference handed back.
   const worth = bill.subtotal + bill.tax - Number(discount || 0)
@@ -333,6 +392,33 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
             </form>
           )}
         </>
+      )}
+
+      {user?.can_delete_bills && (
+        <details className="cancel-bill">
+          <summary>Cancel this bill</summary>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              void run(api.post(`/bills/${billId}/cancel`, { reason: cancelling.reason, ...(bill.paid > 0 ? { refund_mode: cancelling.mode } : {}) }))
+            }}
+          >
+            <p className="muted small">
+              For a bill made by mistake. It stays on record as cancelled and counts for nothing{bill.paid > 0 ? `; the ${rupees(bill.paid)} already paid is given back` : ''}
+              {isLab ? '. Its lab order is removed from the lab list' : ''}. This cannot be undone.
+            </p>
+            <div className={bill.paid > 0 ? 'grid' : ''}>
+              <TextField label="Reason" required value={cancelling.reason} onChange={(reason) => setCancelling((c) => ({ ...c, reason }))} placeholder="for example: entered for the wrong patient" />
+              {bill.paid > 0 && <SelectField label={`Refund ${rupees(bill.paid)} by`} required value={cancelling.mode} onChange={(mode) => setCancelling((c) => ({ ...c, mode }))} options={PAYMENT_MODES.filter((m) => m.value !== 'insurance')} />}
+            </div>
+            {error && <p className="form-error">{error}</p>}
+            <div className="panel-foot">
+              <button className="btn danger-btn" disabled={busy || cancelling.reason.trim().length < 3}>
+                {busy ? 'Saving…' : bill.paid > 0 ? `Cancel bill and refund ${rupees(bill.paid)}` : 'Cancel bill'}
+              </button>
+            </div>
+          </form>
+        </details>
       )}
 
       {onAnotherBill && (

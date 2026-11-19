@@ -30,7 +30,7 @@ class AppointmentController extends Controller
     private static function extras(): array
     {
         return [
-            'bills' => fn ($bills) => $bills->select('id', 'appointment_id', 'bill_no', 'kind', 'total', 'paid')->withIpdTransfers(),
+            'bills' => fn ($bills) => $bills->select('id', 'appointment_id', 'bill_no', 'kind', 'total', 'paid')->whereNull('cancelled_at')->withIpdTransfers(),
             'consultation' => fn ($c) => $c->select('id', 'appointment_id', 'completed_at', 'tests_advised', 'follow_up_on', 'refer_to')->withCount('medicines'),
         ];
     }

@@ -184,6 +184,9 @@ tbody tr.empty td { text-align: center; color: var(--muted); padding: 32px; }
 .day-bill > header .row { gap: 14px; }
 .day-bill > header a.link { text-decoration: none; }
 .day-bill table { margin: 0; }
+.day-bill.cancelled { opacity: 0.6; }
+.day-bill-foot[hidden] { display: none; }
+.day-bill.cancelled td { text-decoration: line-through; }
 .day-bill td:first-child { padding-left: 12px; }
 .day-bill td:last-child { padding-right: 12px; }
 .day-bill-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 18px; margin: 0; padding: 8px 12px; border-top: 1px solid var(--border); font-size: 0.9rem; }
@@ -430,6 +433,9 @@ tr.added-line td { background: var(--ok-soft); }
 .charge-medicines li span:first-child { flex: 1 1 9em; min-width: 0; white-space: normal; }
 .receipt tr.bill-medicine td { padding-top: 1px; padding-bottom: 1px; border: 0; font-size: 0.8rem; color: var(--muted); }
 .receipt tr.bill-medicine td:nth-child(2) { padding-left: 18px; }
+/* All of a patient's bills for the day on one sheet: a band for each bill, then its lines and its total. */
+.receipt tr.bill-group td { padding-top: 10px; border-bottom: 1px solid var(--print-line, #999); font-size: 0.9rem; }
+.receipt tr.bill-group-foot td { border-bottom: 0; font-size: 0.88rem; }
 /* Bed history on an IPD case, and the plain-language rules under a setup switch. */
 .bed-history li { align-items: flex-start; gap: 12px; }
 .plain-rules { margin: 8px 0 0; padding-left: 18px; }
@@ -514,6 +520,10 @@ td.actions a.link { text-decoration: none; }
 .action-box.danger { border-color: var(--danger); background: var(--danger-soft); }
 .btn.danger-btn { background: var(--danger); border-color: transparent; color: var(--on-brand); }
 .btn.danger-btn:disabled { opacity: 0.5; }
+/* Cancelling a bill sits folded away at the foot of the panel: it is rare, and it cannot be undone. */
+.cancel-bill { margin-top: 18px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.cancel-bill summary { cursor: pointer; color: var(--danger); font-size: 0.9rem; }
+.cancel-bill form { margin-top: 8px; }
 .opening-row { display: grid; grid-template-columns: minmax(200px, 2.2fr) 1fr 1.2fr 0.8fr 1fr 0.9fr 0.9fr 0.7fr auto; gap: 6px; align-items: center; min-width: 980px; }
 .po-row { display: grid; grid-template-columns: minmax(240px, 3fr) 1fr 1fr auto; gap: 6px; align-items: center; min-width: 560px; }
 .opening-row input, .opening-row select, .po-row input, .po-row select { padding: 6px 8px; }

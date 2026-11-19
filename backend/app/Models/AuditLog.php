@@ -50,6 +50,7 @@ class AuditLog extends Model
         'auth.login' => 'Signed in',
         'auth.failed' => 'Tried to sign in and failed',
         'bill.item_added' => 'Added a line to a bill',
+        'bill.cancelled' => 'Cancelled a bill',
         'bill.item_removed' => 'Removed a line from a bill',
         'bill.payment' => 'Recorded money on a bill',
         'bill.payment_mode' => 'Changed how a bill was paid',

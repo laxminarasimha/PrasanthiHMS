@@ -143,6 +143,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
     Route::post('/bills/{bill}/items', [BillController::class, 'addItem']);
     Route::delete('/bills/{bill}/items/{item}', [BillController::class, 'removeItem']);
     Route::post('/bills/{bill}/payments', [BillController::class, 'addPayment']);
+    Route::post('/bills/{bill}/cancel', [BillController::class, 'cancel']);
     Route::put('/bills/{bill}/payments/{payment}', [BillController::class, 'updatePayment']);
 
     // Day-to-day expenses, written down by whoever keeps the cash.

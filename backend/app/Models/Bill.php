@@ -18,7 +18,7 @@ class Bill extends Model
      */
     protected function casts(): array
     {
-        return ['subtotal' => 'float', 'tax' => 'float', 'discount' => 'float', 'total' => 'float', 'paid' => 'float'];
+        return ['subtotal' => 'float', 'tax' => 'float', 'discount' => 'float', 'total' => 'float', 'paid' => 'float', 'cancelled_at' => 'datetime:Y-m-d H:i'];
     }
 
     protected static function booted(): void
@@ -37,6 +37,11 @@ class Bill extends Model
     public function appointment(): BelongsTo
     {
         return $this->belongsTo(Appointment::class);
+    }
+
+    public function canceller(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'cancelled_by');
     }
 
     /** Set when this bill was raised for a lab order. */
@@ -98,8 +103,9 @@ class Bill extends Model
     /** Recomputes the stored totals from the bill's items and payments. */
     public function recalculate(): void
     {
-        $this->subtotal = round((float) $this->items()->sum('amount'), 2);
-        $this->tax = round((float) $this->items()->sum('tax'), 2);
+        // A cancelled bill keeps its lines for the record but is worth nothing, so every total that adds bills up leaves it out.
+        $this->subtotal = $this->cancelled_at ? 0.0 : round((float) $this->items()->sum('amount'), 2);
+        $this->tax = $this->cancelled_at ? 0.0 : round((float) $this->items()->sum('tax'), 2);
         $this->total = round(max(0, $this->subtotal + $this->tax - $this->discount), 2);
         $this->paid = round(
             (float) $this->payments()->where('type', 'payment')->sum('amount')
