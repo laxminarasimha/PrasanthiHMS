@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Medicine;
 use App\Models\Payment;
 use App\Models\PharmacyChange;
 use App\Models\PharmacyPayment;
@@ -11,6 +12,7 @@ use App\Models\PurchaseInvoice;
 use App\Models\StockBatch;
 use App\Models\Stockist;
 use App\Models\StockMovement;
+use App\Support\OrderMatch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -258,7 +260,8 @@ class PharmacyEditController extends Controller
 
     /**
      * Corrects a purchase invoice: its number, date, stockist, and each line's batch, expiry, packs and prices.
-     * Changing the packs changes the stock by the same number of units.
+     * Changing the packs changes the stock by the same number of units. A medicine that was left out can be
+     * added, and one entered by mistake taken off, as long as none of it has gone out yet.
      */
     public function updatePurchase(Request $request, PurchaseInvoice $purchase): JsonResponse
     {
@@ -285,6 +288,26 @@ class PharmacyEditController extends Controller
             'items.*.hsn_code' => ['nullable', 'string', 'max:20'],
             'items.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
             'items.*.tax_on_free' => ['nullable', 'boolean'],
+            // Lines entered by mistake, by their id on this invoice.
+            'remove' => ['sometimes', 'array', 'max:200'],
+            'remove.*' => ['integer', 'distinct'],
+            // Medicines that were on the stockist's bill but were left out when it was typed in.
+            'add' => ['sometimes', 'array', 'max:200'],
+            'add.*.medicine_id' => ['required', 'exists:medicines,id'],
+            'add.*.batch_no' => ['required', 'string', 'max:50'],
+            'add.*.expiry' => ['required', 'date_format:Y-m'],
+            'add.*.units_per_pack' => ['required', 'integer', 'min:1', 'max:10000'],
+            'add.*.packs' => ['required', 'integer', 'min:1', 'max:100000'],
+            'add.*.free_packs' => ['nullable', 'integer', 'min:0', 'max:100000'],
+            'add.*.pack_price' => ['required', 'numeric', 'min:0'],
+            'add.*.pack_mrp' => ['required', 'numeric', 'gt:0'],
+            'add.*.discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'add.*.gst_percent' => ['required', 'numeric', 'min:0', 'max:40'],
+            'add.*.rack_no' => ['nullable', 'string', 'max:30'],
+            'add.*.box_no' => ['nullable', 'string', 'max:30'],
+            'add.*.hsn_code' => ['nullable', 'string', 'max:20'],
+            'add.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
+            'add.*.tax_on_free' => ['nullable', 'boolean'],
             'other_charges' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
             'cash_discount' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
             'round_off' => ['nullable', 'numeric', 'between:-10,10'],
@@ -302,7 +325,11 @@ class PharmacyEditController extends Controller
                 ['stockist' => Stockist::find($data['stockist_id'])->name, 'invoice_no' => $data['invoice_no'], 'invoice_date' => Carbon::parse($data['invoice_date'])->toDateString(), 'remarks' => $data['remarks'] ?? null],
             );
 
+            $removing = array_map('intval', $data['remove'] ?? []);
             foreach ($data['items'] ?? [] as $index => $entry) {
+                if (in_array((int) $entry['id'], $removing, true)) {
+                    continue;
+                }
                 $batch = $batches->get($entry['id']);
                 if (! $batch) {
                     throw ValidationException::withMessages(["items.{$index}.id" => 'That line is not on this invoice.']);
@@ -340,6 +367,49 @@ class PharmacyEditController extends Controller
                 }
             }
 
+            // A line entered by mistake comes off the invoice and out of stock. The batch itself stays, empty and no
+            // longer tied to the invoice, so the stock record still shows that it came in and went out again.
+            foreach ($removing as $index => $id) {
+                $batch = $batches->get($id);
+                if (! $batch) {
+                    throw ValidationException::withMessages(["remove.{$index}" => 'That line is not on this invoice.']);
+                }
+                if ((int) $batch->units_in_stock !== (int) $batch->units_received) {
+                    throw ValidationException::withMessages(["remove.{$index}" => "{$batch->medicine->name} batch {$batch->batch_no} cannot be taken off: {$batch->units_in_stock} of the {$batch->units_received} units that came in are left, so some have already been sold, returned or corrected. Lower its quantity instead, or make a stock return."]);
+                }
+                $units = (int) $batch->units_in_stock;
+                $batch->move(-$units, 'purchase_edit', $data['invoice_no'], 'Line taken off the invoice');
+                $batch->update(['purchase_invoice_id' => null, 'units_received' => 0]);
+                $changes[] = "{$batch->medicine->name} batch {$batch->batch_no}: taken off the invoice ({$batch->packs} packs".($batch->free_packs ? " + {$batch->free_packs} free" : '').", {$units} units out of stock)";
+            }
+
+            foreach ($data['add'] ?? [] as $index => $item) {
+                $medicine = Medicine::find($item['medicine_id']);
+                $expiry = Carbon::createFromFormat('Y-m-d', $item['expiry'].'-01')->endOfMonth();
+                if ($expiry->isPast()) {
+                    throw ValidationException::withMessages(["add.{$index}.expiry" => "{$medicine->name}: the batch being added has already expired."]);
+                }
+                $free = (int) ($item['free_packs'] ?? 0);
+                $discount = (float) ($item['discount_percent'] ?? 0);
+                $units = ($item['packs'] + $free) * $item['units_per_pack'];
+                if ((float) ($item['discount_amount'] ?? 0) > $item['packs'] * $item['pack_price'] * (1 - $discount / 100)) {
+                    throw ValidationException::withMessages(["add.{$index}.discount_amount" => "The discount on {$medicine->name} is more than the line is worth."]);
+                }
+                $received = $purchase->batches()->create([
+                    'medicine_id' => $medicine->id, 'batch_no' => $item['batch_no'], 'expiry' => $expiry->toDateString(),
+                    'units_per_pack' => $item['units_per_pack'], 'packs' => $item['packs'], 'free_packs' => $free,
+                    'pack_price' => $item['pack_price'], 'pack_mrp' => $item['pack_mrp'], 'unit_mrp' => round($item['pack_mrp'] / $item['units_per_pack'], 2),
+                    'discount_percent' => $discount, 'gst_percent' => $item['gst_percent'], 'units_received' => $units, 'units_in_stock' => $units,
+                    'rack_no' => $item['rack_no'] ?? null, 'box_no' => $item['box_no'] ?? null, 'hsn_code' => $item['hsn_code'] ?? null,
+                    'discount_amount' => (float) ($item['discount_amount'] ?? 0), 'tax_on_free' => (bool) ($item['tax_on_free'] ?? false),
+                ]);
+                StockMovement::record($received, $units, 'purchase_edit', $data['invoice_no'], 'Medicine added to the invoice');
+                $changes[] = "{$medicine->name} batch {$item['batch_no']}: added to the invoice ({$item['packs']} packs".($free ? " + {$free} free" : '').", {$units} units into stock)";
+            }
+            if (! $purchase->batches()->exists()) {
+                throw ValidationException::withMessages(['remove' => 'An invoice must keep at least one medicine.']);
+            }
+
             $extras = ['other_charges' => (float) ($data['other_charges'] ?? $purchase->other_charges), 'cash_discount' => (float) ($data['cash_discount'] ?? $purchase->cash_discount), 'round_off' => (float) ($data['round_off'] ?? $purchase->round_off)];
             array_push($changes, ...PharmacyChange::differences(['other_charges' => 'Other charges ₹', 'cash_discount' => 'Cash discount ₹', 'round_off' => 'Round off ₹'], $purchase->only(array_keys($extras)), $extras));
             $purchase->fill($extras);
@@ -360,6 +430,8 @@ class PharmacyEditController extends Controller
                 'subtotal' => round($subtotal, 2), 'tax' => round($tax, 2), 'total' => $total] + $extras + [
                 ]);
             $this->log('invoice', $purchase->id, $purchase->invoice_no, $changes, $data['reason'], $request);
+            // A medicine added late may be the one the order was still waiting for.
+            OrderMatch::settle($purchase->order);
         });
 
         return response()->json($purchase->fresh()->present());

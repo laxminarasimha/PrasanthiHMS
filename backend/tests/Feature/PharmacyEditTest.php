@@ -185,6 +185,50 @@ class PharmacyEditTest extends TestCase
         $edit(['packs' => 7, 'free_packs' => 1, 'batch_no' => 'B001A', 'pack_mrp' => 30], ['invoice_no' => 'INV-1A'])->assertStatus(422);
     }
 
+    public function test_a_medicine_left_out_can_be_added_to_an_invoice_and_a_wrong_one_taken_off(): void
+    {
+        $other = Medicine::create(['name' => 'Cetirizine 10mg Tablet', 'gst_percent' => 12, 'units_per_pack' => 10, 'reorder_level' => 20]);
+        $url = "/api/pharmacy/purchases/{$this->invoice['id']}";
+        $head = ['stockist_id' => $this->stockist->id, 'invoice_no' => 'INV-1', 'invoice_date' => now()->toDateString(), 'reason' => 'Left out when typing'];
+        $new = ['medicine_id' => $other->id, 'batch_no' => 'C77', 'expiry' => now()->addYear()->format('Y-m'), 'units_per_pack' => 10, 'packs' => 5, 'free_packs' => 1, 'pack_price' => 20, 'pack_mrp' => 40, 'gst_percent' => 12];
+
+        // A batch that has already expired cannot come in this way either.
+        $this->putJson($url, $head + ['add' => [['expiry' => now()->subMonths(2)->format('Y-m')] + $new]])->assertStatus(422)->assertJsonValidationErrors('add.0.expiry');
+
+        // The missed medicine: 5 packs + 1 free = 60 units into stock, 100 + 12 on the bill (168 → 280).
+        $invoice = $this->putJson($url, $head + ['add' => [$new]])->assertOk()->assertJsonCount(2, 'batches')->assertJsonPath('total', 280)->json();
+        $added = StockBatch::where('medicine_id', $other->id)->firstOrFail();
+        $this->assertSame(60, (int) $added->units_in_stock);
+        $this->assertSame($this->invoice['id'], $added->purchase_invoice_id);
+        $this->assertSame(60, (int) StockMovement::where('stock_batch_id', $added->id)->where('kind', 'purchase_edit')->sum('units'));
+        $this->assertStringContainsString('Cetirizine 10mg Tablet batch C77: added to the invoice (5 packs + 1 free, 60 units into stock)', $this->report('invoices-modified')[0]['changes']);
+        $this->assertCount(2, $invoice['batches']);
+
+        // A line some of which has been sold cannot be taken off.
+        $this->sell(10, 28);
+        $this->putJson($url, ['reason' => 'Entered by mistake', 'remove' => [$this->batch->id]] + $head)->assertStatus(422)->assertJsonValidationErrors('remove.0');
+        // Nor one that belongs to another invoice.
+        $this->putJson($url, ['reason' => 'Entered by mistake', 'remove' => [999999]] + $head)->assertStatus(422)->assertJsonValidationErrors('remove.0');
+
+        // The untouched line comes off: out of stock, off the bill, and the stock record still adds up.
+        $this->putJson($url, ['reason' => 'Entered by mistake', 'remove' => [$added->id]] + $head)->assertOk()->assertJsonCount(1, 'batches')->assertJsonPath('total', 168);
+        $added->refresh();
+        $this->assertSame(0, (int) $added->units_in_stock);
+        $this->assertNull($added->purchase_invoice_id);
+        $this->assertSame(0, (int) StockMovement::where('stock_batch_id', $added->id)->sum('units'));
+        $this->assertStringContainsString('taken off the invoice (5 packs + 1 free, 60 units out of stock)', collect($this->report('invoices-modified'))->pluck('changes')->join("\n"));
+        $this->getJson('/api/pharmacy/sell-search?q=Cetirizine')->assertOk()->assertJsonMissing(['batch_no' => 'C77']);
+    }
+
+    public function test_an_invoice_must_keep_at_least_one_medicine(): void
+    {
+        $this->putJson("/api/pharmacy/purchases/{$this->invoice['id']}", [
+            'stockist_id' => $this->stockist->id, 'invoice_no' => 'INV-1', 'invoice_date' => now()->toDateString(), 'reason' => 'Entered by mistake', 'remove' => [$this->batch->id],
+        ])->assertStatus(422)->assertJsonValidationErrors('remove');
+        $this->assertSame(100, (int) $this->batch->fresh()->units_in_stock);
+        $this->assertSame($this->invoice['id'], $this->batch->fresh()->purchase_invoice_id);
+    }
+
     public function test_batch_details_and_medicine_changes_are_logged(): void
     {
         $this->putJson("/api/pharmacy/stock/{$this->batch->id}", ['batch_no' => 'B001', 'expiry' => now()->addYears(2)->format('Y-m'), 'pack_mrp' => 32, 'rack_no' => 'R4', 'reason' => 'Label read wrongly'])

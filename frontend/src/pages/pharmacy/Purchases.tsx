@@ -53,6 +53,8 @@ export function PharmacyPurchases() {
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<PurchaseInvoice | null>(null)
   const [reason, setReason] = useState('')
+  /** On an invoice being corrected: the saved lines that are to come off it. */
+  const [removed, setRemoved] = useState<number[]>([])
   const [stockists, setStockists] = useState<Stockist[]>([])
   const [medicines, setMedicines] = useState<Medicine[]>([])
   const [stockistId, setStockistId] = useState('')
@@ -90,6 +92,7 @@ export function PharmacyPurchases() {
     setRemarks('')
     setExtras({ other_charges: '', cash_discount: '', round_off: '' })
     setLines([emptyLine()])
+    setRemoved([])
     setAdding(true)
     setNotice('')
     setErrors([])
@@ -98,7 +101,11 @@ export function PharmacyPurchases() {
   // Opens a saved invoice in the same form, to correct what was typed.
   const startEditing = (invoice: PurchaseInvoice) => {
     api.get<Stockist[]>('/pharmacy/stockists').then((res) => setStockists(res.data))
-    setMedicines((invoice.batches ?? []).map((b) => ({ id: b.medicine_id, name: b.medicine?.name ?? '' }) as Medicine))
+    // The medicines already on the invoice show at once; the whole list follows, for a medicine that was left out.
+    const onInvoice = (invoice.batches ?? []).map((b) => ({ id: b.medicine_id, name: b.medicine?.name ?? '' }) as Medicine)
+    setMedicines(onInvoice)
+    api.get<Medicine[]>('/pharmacy/medicines', { params: { list: 1 } }).then((res) => setMedicines([...res.data, ...onInvoice.filter((m) => !res.data.some((all) => all.id === m.id))]))
+    setRemoved([])
     setEditing(invoice)
     setStockistId(String(invoice.stockist.id))
     setInvoiceNo(invoice.invoice_no)
@@ -146,7 +153,8 @@ export function PharmacyPurchases() {
       }),
     )
 
-  const filled = lines.filter((l) => l.medicine_id || l.batch_no || l.packs)
+  const filled = lines.filter((l) => (l.medicine_id || l.batch_no || l.packs) && !(l.id && removed.includes(l.id)))
+  const added = editing ? filled.filter((l) => !l.id) : []
   const subtotal = filled.reduce((sum, l) => sum + lineNet(l), 0)
   const tax = filled.reduce((sum, l) => sum + lineTax(l), 0)
   const grand = subtotal + tax + Number(extras.other_charges || 0) - Number(extras.cash_discount || 0) + Number(extras.round_off || 0)
@@ -165,15 +173,20 @@ export function PharmacyPurchases() {
         other_charges: extras.other_charges || 0,
         cash_discount: extras.cash_discount || 0,
         round_off: extras.round_off || 0,
-        items: filled.map((l) => ({ ...l, free_packs: l.free_packs || 0, discount_percent: l.discount_percent || 0, discount_amount: l.discount_amount || 0, rack_no: l.rack_no || null, box_no: l.box_no || null, hsn_code: l.hsn_code || null })),
       }
-      const res = editing ? await api.put<PurchaseInvoice>(`/pharmacy/purchases/${editing.id}`, { ...body, reason }) : await api.post<PurchaseInvoice>('/pharmacy/purchases', body)
-      setNotice(editing ? `Invoice ${res.data.invoice_no} changed and stock corrected. The change is recorded in the Invoice modified report.` : `Invoice ${res.data.invoice_no} saved. ${res.data.batches?.length ?? 0} batch(es) added to stock.`)
+      const tidy = (l: Line) => ({ ...l, free_packs: l.free_packs || 0, discount_percent: l.discount_percent || 0, discount_amount: l.discount_amount || 0, rack_no: l.rack_no || null, box_no: l.box_no || null, hsn_code: l.hsn_code || null })
+      // On a saved invoice the lines go three ways: the ones corrected, the ones added, and the ones taken off.
+      const res = editing
+        ? await api.put<PurchaseInvoice>(`/pharmacy/purchases/${editing.id}`, { ...body, reason, items: filled.filter((l) => l.id).map(tidy), add: added.map(tidy), remove: removed })
+        : await api.post<PurchaseInvoice>('/pharmacy/purchases', { ...body, items: filled.map(tidy) })
+      const did = [added.length ? `${added.length} added` : '', removed.length ? `${removed.length} taken off` : ''].filter(Boolean).join(', ')
+      setNotice(editing ? `Invoice ${res.data.invoice_no} changed${did ? ` (${did})` : ''} and stock corrected. The change is recorded in the Invoice modified report.` : `Invoice ${res.data.invoice_no} saved. ${res.data.batches?.length ?? 0} batch(es) added to stock.`)
       setEditing(null)
       setAdding(false)
       setInvoiceNo('')
       setRemarks('')
       setLines([emptyLine()])
+      setRemoved([])
       load()
     } catch (err) {
       setErrors([...new Set(Object.values(fieldErrors(err)))])
@@ -190,7 +203,10 @@ export function PharmacyPurchases() {
   return (
     <>
       <PharmacyTabs />
-      <UnsavedGuard on={adding && !editing && lines.some((l) => l.medicine_id !== '' || l.batch_no.trim() !== '' || l.packs !== '')} message="This purchase invoice is not saved yet. Leave without saving it?" />
+      <UnsavedGuard
+        on={adding && (editing ? added.length > 0 || removed.length > 0 : lines.some((l) => l.medicine_id !== '' || l.batch_no.trim() !== '' || l.packs !== ''))}
+        message={editing ? 'The changes to this invoice are not saved yet. Leave without saving them?' : 'This purchase invoice is not saved yet. Leave without saving it?'}
+      />
       {adding ? (
         <form className="card" onSubmit={save} noValidate>
           <div className="toolbar">
@@ -216,7 +232,12 @@ export function PharmacyPurchases() {
           </div>
           {stockists.length === 0 && <p className="muted small">No stockists yet. Add one under "Medicines &amp; stockists" first.</p>}
 
-          {editing && <p className="muted small">Correct what was typed wrongly. Changing the packs changes the stock by the same number of units. Medicines cannot be added or removed here; use a stock return or a new invoice for that.</p>}
+          {editing && (
+            <p className="muted small">
+              Correct what was typed wrongly: changing the packs changes the stock by the same number of units. A medicine that was left out can be added at the bottom, and one entered by mistake taken off, as long as none of it has
+              been sold yet. For the wrong medicine or pack size, take the line off and add it again.
+            </p>
+          )}
           <h3>Medicines received</h3>
           <p className="muted small">For a scheme, type it the way the stockist says it: <b>10+2</b> in the Qty box means ten paid packs and two free. Stock goes up by all twelve; you pay for ten.</p>
           {lines.map((l, i) => {
@@ -227,12 +248,31 @@ export function PharmacyPurchases() {
                 <input type="number" min={more.min ?? 0} max={more.max} step={more.step} disabled={more.disabled} value={String(l[key] ?? '')} onChange={(e) => setLine(i, key, e.target.value)} />
               </label>
             )
+            // A line already saved on the invoice keeps its medicine and pack size; a new one is typed in full.
+            const saved = editing?.batches?.find((b) => b.id === l.id)
+            if (saved && removed.includes(saved.id)) {
+              return (
+                <div className="purchase-line taken-off" key={i}>
+                  <span className="grow">
+                    <s>
+                      {saved.medicine?.name} · batch {saved.batch_no} · {saved.packs} packs{saved.free_packs ? ` + ${saved.free_packs} free` : ''}
+                    </s>
+                    <small className="muted block">Comes off the invoice when you save. Stock goes down by {saved.units_in_stock} units.</small>
+                  </span>
+                  <button type="button" className="link" onClick={() => setRemoved((ids) => ids.filter((id) => id !== saved.id))}>
+                    Keep it
+                  </button>
+                </div>
+              )
+            }
+            const gone = saved ? saved.units_received - saved.units_in_stock : 0
             return (
-              <div className="purchase-line" key={i}>
+              <div className={`purchase-line ${editing && !saved ? 'added-line' : ''}`} key={i}>
+                {editing && !saved && <small className="pill status-arrived">New on this invoice</small>}
                 <div className="purchase-fields">
                   <label className="wide">
                     Medicine
-                    <select value={l.medicine_id} disabled={Boolean(editing)} onChange={(e) => setLine(i, 'medicine_id', e.target.value)} aria-label={`Medicine ${i + 1}`}>
+                    <select value={l.medicine_id} disabled={Boolean(saved)} onChange={(e) => setLine(i, 'medicine_id', e.target.value)} aria-label={`Medicine ${i + 1}`}>
                       <option value="">Select medicine</option>
                       {medicines.map((m) => (
                         <option key={m.id} value={m.id}>
@@ -249,7 +289,7 @@ export function PharmacyPurchases() {
                     Expiry
                     <input type="month" value={l.expiry} onChange={(e) => setLine(i, 'expiry', e.target.value)} />
                   </label>
-                  {num('units_per_pack', 'Units in a pack', { min: 1, disabled: Boolean(editing) })}
+                  {num('units_per_pack', 'Units in a pack', { min: 1, disabled: Boolean(saved) })}
                   <label>
                     Qty (packs)
                     <input inputMode="numeric" placeholder="10 or 10+2" value={l.packs} onChange={(e) => setLine(i, 'packs', e.target.value)} onBlur={(e) => setLine(i, 'packs', e.target.value.replace(/[^0-9]/g, ''))} />
@@ -292,20 +332,24 @@ export function PharmacyPurchases() {
                       <span className="muted">Fill in the quantity and rate to see the real cost and margin.</span>
                     )}
                   </span>
-                  {!editing && (
+                  {!saved ? (
                     <button type="button" className="link danger" onClick={() => setLines((rows) => (rows.length > 1 ? rows.filter((_, r) => r !== i) : [emptyLine()]))}>
                       Remove
                     </button>
+                  ) : gone === 0 ? (
+                    <button type="button" className="link danger" onClick={() => setRemoved((ids) => [...ids, saved.id])}>
+                      Take off the invoice
+                    </button>
+                  ) : (
+                    <small className="muted">{gone > 0 ? `${gone} units already gone out, so it cannot be taken off` : 'Stock corrected since, so it cannot be taken off'}</small>
                   )}
                 </div>
               </div>
             )
           })}
-          {!editing && (
-            <button type="button" className="link add-medicine" onClick={() => setLines((rows) => [...rows, emptyLine()])}>
-              + Add another medicine
-            </button>
-          )}
+          <button type="button" className="link add-medicine" onClick={() => setLines((rows) => [...rows, emptyLine()])}>
+            {editing ? '+ Add a medicine that was left out' : '+ Add another medicine'}
+          </button>
 
           <dl className="totals narrow-totals">
             <dt>Total before tax</dt>
@@ -369,6 +413,7 @@ export function PharmacyPurchases() {
                     <th className="num">Total</th>
                     <th className="num">Paid</th>
                     <th className="num">Balance</th>
+                    {canEdit && <th />}
                   </tr>
                 </thead>
                 <tbody>
@@ -383,11 +428,26 @@ export function PharmacyPurchases() {
                       <td className="num">{rupees(inv.total)}</td>
                       <td className="num">{rupees(inv.paid)}</td>
                       <td className={`num ${inv.total - inv.paid > 0.004 ? 'due' : ''}`}>{rupees(Math.round((inv.total - inv.paid) * 100) / 100)}</td>
+                      {canEdit && (
+                        <td className="num">
+                          <button
+                            type="button"
+                            className="link"
+                            title="Correct this invoice: change, add or take off medicines"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              api.get<PurchaseInvoice>(`/pharmacy/purchases/${inv.id}`).then((res) => startEditing(res.data))
+                            }}
+                          >
+                            Edit
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                   {invoices.length === 0 && (
                     <tr className="empty">
-                      <td colSpan={7}>No purchase invoices yet.</td>
+                      <td colSpan={canEdit ? 8 : 7}>No purchase invoices yet.</td>
                     </tr>
                   )}
                 </tbody>
