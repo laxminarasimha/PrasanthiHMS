@@ -117,4 +117,28 @@ class FrontDeskChargesTest extends TestCase
         Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
         $this->getJson("/api/front-desk/day-bills?patient_id={$patient->id}")->assertForbidden();
     }
+
+    public function test_the_lab_takes_one_payment_for_several_lab_bills_but_not_for_other_bills(): void
+    {
+        $patient = Patient::factory()->create();
+        $cbp = LabTest::create(['name' => 'CBP', 'price' => 350]);
+        $cbp->parameters()->create(['name' => 'Haemoglobin']);
+        $ecg = Service::create(['name' => 'ECG', 'type' => 'other', 'price' => 300, 'is_active' => true]);
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->postJson('/api/front-desk/charges', ['patient_id' => $patient->id, 'test_ids' => [$cbp->id]])->assertCreated();
+        $this->postJson('/api/front-desk/charges', ['patient_id' => $patient->id, 'test_ids' => [$cbp->id]])->assertCreated();
+        $this->postJson('/api/front-desk/charges', ['patient_id' => $patient->id, 'services' => [['service_id' => $ecg->id]]])->assertCreated();
+        $lab = Bill::where('kind', 'lab')->pluck('id')->all();
+        $services = Bill::where('kind', '!=', 'lab')->value('id');
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'lab_tech']));
+        // A services bill in the lot stops all of it: nothing is paid.
+        $this->postJson('/api/lab/collect', ['patient_id' => $patient->id, 'bill_ids' => [...$lab, $services], 'amount' => 1000, 'mode' => 'cash'])->assertForbidden();
+        $this->assertSame(0, Payment::count());
+
+        $this->postJson('/api/lab/collect', ['patient_id' => $patient->id, 'bill_ids' => $lab, 'amount' => 700, 'mode' => 'upi'])->assertOk();
+        $this->assertSame([350.0, 350.0], Bill::whereIn('id', $lab)->get()->map(fn (Bill $b) => (float) $b->paid)->all());
+        $this->assertSame(0.0, (float) Bill::find($services)->paid);
+    }
 }

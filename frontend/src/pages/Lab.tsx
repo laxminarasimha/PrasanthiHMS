@@ -3,28 +3,16 @@ import { api, fieldErrors } from '../api'
 import { canLeave } from '../unsaved'
 import { useAuth } from '../auth'
 import { BillPanel } from '../components/BillPanel'
+import { LabDay } from '../components/LabDay'
 import { LabOrderForm } from '../components/LabOrderForm'
 import { LabResults } from '../components/LabResults'
 import { LabTabs } from '../components/LabTabs'
 import { clock, longDate, rupees, settlement, STAGE_CLASS, STAGE_LABEL, today } from '../format'
+import { earliestStep, STEP_CLASS, STEP_LABEL, stepOf, STEPS, type Step } from './labSteps'
 import type { LabCatalogueTest, LabOrder, LabPackage, LabSettings, Service } from '../types'
 
-type Panel = { kind: 'new' } | { kind: 'results'; orderId: number } | { kind: 'bill'; billId: number } | null
-
-/** The one thing an order is waiting for next. */
-type Step = 'collect' | 'report' | 'approve' | 'ready'
-const STEPS: Step[] = ['collect', 'report', 'approve', 'ready']
-const STEP_LABEL = { collect: 'Sample to collect', report: 'Results to enter', approve: 'To approve', ready: 'Ready' } as const
-const STEP_CLASS = { collect: 'status-arrived', report: 'status-ongoing', approve: 'status-booked', ready: 'ok' } as const
-
-const stepOf = (order: LabOrder, approval: boolean): Step =>
-  order.items.some((i) => i.stage === 'booked')
-    ? 'collect'
-    : order.items.some((i) => i.stage === 'collected')
-      ? 'report'
-      : approval && order.items.some((i) => i.stage === 'reported')
-        ? 'approve'
-        : 'ready'
+/** `day` is the window with all of one patient's orders of a day; its key names the patient and the day. */
+type Panel = { kind: 'new' } | { kind: 'results'; orderId: number } | { kind: 'bill'; billId: number } | { kind: 'day'; key: string } | null
 
 const minutesBetween = (from: string, to: number) => Math.max(0, Math.round((to - new Date(from.replace(' ', 'T')).getTime()) / 60000))
 const span = (minutes: number) => (minutes < 60 ? `${minutes} min` : minutes < 1440 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : `${Math.floor(minutes / 1440)} d ${Math.floor((minutes % 1440) / 60)} h`)
@@ -38,7 +26,8 @@ export function Lab() {
   const [tests, setTests] = useState<LabCatalogueTest[]>([])
   const [services, setServices] = useState<Service[]>([])
   const [packages, setPackages] = useState<LabPackage[]>([])
-  const [approval, setApproval] = useState(false)
+  const [settings, setSettings] = useState<LabSettings | null>(null)
+  const approval = Boolean(settings?.approval_required)
   const [step, setStep] = useState<Step | ''>('')
   const [panel, setPanel] = useState<Panel>(null)
   const [notice, setNotice] = useState('')
@@ -70,7 +59,7 @@ export function Lab() {
     api.get<LabCatalogueTest[]>('/lab/tests').then((res) => setTests(res.data))
     api.get<LabPackage[]>('/lab/packages').then((res) => setPackages(res.data))
     api.get<Service[]>('/services').then((res) => setServices(res.data))
-    api.get<LabSettings>('/lab/settings').then((res) => setApproval(res.data.approval_required))
+    api.get<LabSettings>('/lab/settings').then((res) => setSettings(res.data))
   }, [])
 
   useEffect(() => {
@@ -85,18 +74,30 @@ export function Lab() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  const rows = (orders ?? []).map((order) => ({ order, step: stepOf(order, approval) }))
-  const counts = Object.fromEntries(STEPS.map((s) => [s, rows.filter((r) => r.step === s).length])) as Record<Step, number>
-  const shown = step ? rows.filter((r) => r.step === step) : rows
+  // One patient, one row: everything ordered for a patient on a day is worked on together, as on the front desk.
+  const byPatient = new Map<string, LabOrder[]>()
+  for (const order of orders ?? []) {
+    const key = `${order.patient.id}-${order.ordered_at.slice(0, 10)}`
+    byPatient.set(key, [...(byPatient.get(key) ?? []), order])
+  }
+  const rows = [...byPatient.entries()].map(([key, list]) => {
+    const sorted = [...list].sort((a, b) => a.ordered_at.localeCompare(b.ordered_at) || a.id - b.id)
+    const each = sorted.map((order) => stepOf(order, approval))
+    return { key, orders: sorted, each, step: earliestStep(each) }
+  })
+  // A patient is listed under every step one of their orders is waiting at.
+  const counts = Object.fromEntries(STEPS.map((s) => [s, rows.filter((r) => r.each.includes(s)).length])) as Record<Step, number>
+  const shown = step ? rows.filter((r) => r.each.includes(step)) : rows
   const steps = STEPS.filter((s) => s !== 'approve' || approval || counts.approve > 0)
+  const dayOrders = panel?.kind === 'day' ? rows.find((r) => r.key === panel.key)?.orders : undefined
 
-  /** The sample for every test on the order, in one tap from the list. */
-  const collect = async (order: LabOrder) => {
-    setBusy(order.id)
+  /** The sample for every test the patient is waiting to give, in one tap from the list. */
+  const collect = async (waiting: LabOrder[]) => {
+    setBusy(waiting[0].id)
     setNotice('')
     try {
-      await api.put(`/lab/orders/${order.id}/collect`, { all: true })
-      setNotice(`Sample collected for ${order.patient.name} (${order.order_no}).`)
+      for (const order of waiting) await api.put(`/lab/orders/${order.id}/collect`, { all: true })
+      setNotice(`Sample collected for ${waiting[0].patient.name} (${waiting.map((o) => o.order_no).join(', ')}).`)
       load()
     } catch (err) {
       setNotice(Object.values(fieldErrors(err))[0] ?? 'Could not save. Please try again.')
@@ -109,7 +110,7 @@ export function Lab() {
     <>
     <LabTabs />
     <div className="split">
-      <section className={`card lab-list ${panel ? 'beside-panel' : ''}`}>
+      <section className={`card lab-list ${panel && panel.kind !== 'day' ? 'beside-panel' : ''}`}>
         <div className="toolbar">
           <h1>Lab</h1>
           <input type="date" className="date" value={date} disabled={searching} onChange={(e) => setDate(e.target.value || today())} aria-label="Day" />
@@ -158,26 +159,41 @@ export function Lab() {
               </tr>
             </thead>
             <tbody>
-              {shown.map(({ order: o, step: next }) => {
-                const open = () => (panel?.kind === 'results' && panel.orderId === o.id) || (canLeave() && setPanel({ kind: 'results', orderId: o.id }))
-                const done = o.items.map((i) => i.reported_at).filter(Boolean).sort().pop()
+              {shown.map(({ key, orders: list, each, step: next }) => {
+                const o = list[0]
+                const many = list.length > 1
+                // One order opens its results as before; several open the patient's window with all of them.
+                const isOpen = many ? panel?.kind === 'day' && panel.key === key : panel?.kind === 'results' && panel.orderId === o.id
+                const open = () => isOpen || (canLeave() && setPanel(many ? { kind: 'day', key } : { kind: 'results', orderId: o.id }))
+                const items = list.flatMap((order) => order.items)
+                const done = items.map((i) => i.reported_at).filter(Boolean).sort().pop()
+                const toCollect = list.filter((_, i) => each[i] === 'collect')
+                const pending = list.find((_, i) => each[i] !== 'ready') ?? o
+                const bills = list.flatMap((order) => (order.bill ? [order.bill] : []))
+                const total = bills.reduce((sum, b) => sum + b.total, 0)
+                const due = Math.round(bills.reduce((sum, b) => sum + b.due, 0) * 100) / 100
                 return (
-                  <tr key={o.id} className={`${next === 'ready' ? 'done' : ''} ${panel?.kind === 'results' && panel.orderId === o.id ? 'selected' : ''}`} onClick={open}>
+                  <tr key={key} className={`${next === 'ready' ? 'done' : ''} ${isOpen ? 'selected' : ''}`} onClick={open}>
                     <td>
-                      <strong className="mono">{o.order_no}</strong>
-                      <small className="muted block">
-                        {searching ? `${longDate(o.ordered_at)} ` : ''}
-                        {clock(o.ordered_at)}
-                      </small>
+                      {list.map((order) => (
+                        <span key={order.id} className="block">
+                          <strong className="mono">{order.order_no}</strong>{' '}
+                          <small className="muted">
+                            {searching ? `${longDate(order.ordered_at)} ` : ''}
+                            {clock(order.ordered_at)}
+                          </small>
+                        </span>
+                      ))}
                     </td>
                     <td>
                       <strong>{o.patient.name}</strong>
                       <small className="muted block">
                         {o.patient.uhid} · {o.patient.age_label} / {o.patient.gender.charAt(0).toUpperCase()}
+                        {many ? ` · ${list.length} orders` : ''}
                       </small>
                     </td>
                     <td className="wrap">
-                      {o.items.map((i) => (
+                      {items.map((i) => (
                         <span key={i.id} className="lab-line" title={STAGE_LABEL[i.stage]}>
                           <i className={`stage-dot ${STAGE_CLASS[i.stage]}`} aria-hidden="true" />
                           {i.test_name}
@@ -187,27 +203,27 @@ export function Lab() {
                     </td>
                     <td>
                       <span className={`pill ${STEP_CLASS[next]}`}>{STEP_LABEL[next]}</span>
-                      {next !== 'ready' && !searching && date === today() && asOf > 0 && <small className="waiting block">Waiting {span(minutesBetween(o.ordered_at, asOf))}</small>}
+                      {next !== 'ready' && !searching && date === today() && asOf > 0 && <small className="waiting block">Waiting {span(minutesBetween(pending.ordered_at, asOf))}</small>}
                       {next === 'ready' && done && <small className="muted block">Took {span(minutesBetween(o.ordered_at, new Date(done.replace(' ', 'T')).getTime()))}</small>}
                     </td>
                     <td className="num col-bill" onClick={(e) => e.stopPropagation()}>
-                      {o.bill && (
+                      {bills.length > 0 && (
                         <>
-                          <button className="link" onClick={() => canLeave() && setPanel({ kind: 'bill', billId: o.bill!.id })}>
-                            {rupees(o.bill.total)}
+                          <button className="link" onClick={() => canLeave() && setPanel(many ? { kind: 'day', key } : { kind: 'bill', billId: bills[0].id })}>
+                            {rupees(total)}
                           </button>
-                          <small className={`block ${o.bill.due > 0 ? 'due' : 'settled'}`}>{settlement(o.bill.due, o.bill.moved_to_ipd, o.bill.total)}</small>
+                          <small className={`block ${due > 0 ? 'due' : 'settled'}`}>{many ? (due > 0 ? `${rupees(due)} due` : 'Paid') : settlement(bills[0].due, bills[0].moved_to_ipd, bills[0].total)}</small>
                         </>
                       )}
                     </td>
                     <td className="num" onClick={(e) => e.stopPropagation()}>
-                      {next === 'collect' && canRun ? (
-                        <button className="btn primary" disabled={busy === o.id} onClick={() => collect(o)} title="Marks the sample taken for every test on this order">
-                          {busy === o.id ? 'Saving…' : 'Mark collected'}
+                      {toCollect.length > 0 && canRun ? (
+                        <button className="btn primary" disabled={busy === toCollect[0].id} onClick={() => collect(toCollect)} title="Marks the sample taken for every test this patient is waiting to give">
+                          {busy === toCollect[0].id ? 'Saving…' : 'Mark collected'}
                         </button>
                       ) : (
                         <button className={next === 'ready' || !canRun ? 'btn' : 'btn primary'} onClick={open}>
-                          {!canRun ? 'Results' : next === 'report' ? 'Enter results' : next === 'approve' ? 'Approve' : 'View / print'}
+                          {many ? 'Open all' : !canRun ? 'Results' : next === 'report' ? 'Enter results' : next === 'approve' ? 'Approve' : 'View / print'}
                         </button>
                       )}
                     </td>
@@ -241,6 +257,17 @@ export function Lab() {
       )}
       {panel?.kind === 'results' && <LabResults key={panel.orderId} orderId={panel.orderId} onClose={() => canLeave() && setPanel(null)} onChange={load} />}
       {panel?.kind === 'bill' && <BillPanel key={panel.billId} billId={panel.billId} services={services} onClose={() => setPanel(null)} onChange={load} />}
+      {dayOrders && (
+        <LabDay
+          orders={dayOrders}
+          settings={settings}
+          canRun={canRun}
+          onClose={() => setPanel(null)}
+          onChange={load}
+          onOpenResults={(orderId) => setPanel({ kind: 'results', orderId })}
+          onOpenBill={(billId) => setPanel({ kind: 'bill', billId })}
+        />
+      )}
     </div>
     </>
   )
