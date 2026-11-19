@@ -34,7 +34,7 @@ export function allowedTabs(user: User): NavTab[] {
  */
 function workforceTab(user: User): NavTab[] {
   const can = (permission: string) => Boolean(user.abilities?.[permission])
-  const pages: [string, string][] = [['wf:reports:view', '/workforce'], ['wf:staff:view', '/workforce/staff'], ['wf:attendance:view', '/workforce/attendance'], ['wf:leave:view', '/workforce/leave'], ['wf:settings:admin', '/workforce/setup']]
+  const pages: [string, string][] = [['wf:reports:view', '/workforce'], ['wf:staff:view', '/workforce/staff'], ['wf:attendance:view', '/workforce/attendance'], ['wf:leave:view', '/workforce/leave'], ['wf:payroll:view', '/workforce/payroll'], ['wf:salary:view', '/workforce/pay'], ['wf:advances:view', '/workforce/advances'], ['wf:settings:admin', '/workforce/setup']]
   const first = pages.find(([permission]) => can(permission))
   if (first) return [{ key: 'workforce', label: 'Workforce', to: first[1], also: ['/workforce'] }]
   return can('wf:self:view') ? [{ key: 'workforce', label: 'My record', to: '/workforce/me', also: ['/workforce'] }] : []

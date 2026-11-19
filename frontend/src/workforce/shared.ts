@@ -147,6 +147,6 @@ export function useWorkforce() {
   return {
     can,
     /** Whether they look after anyone's records but their own. */
-    looksAfterStaff: ['wf:reports:view', 'wf:staff:view', 'wf:attendance:view', 'wf:leave:view', 'wf:settings:admin'].some(can),
+    looksAfterStaff: ['wf:reports:view', 'wf:staff:view', 'wf:attendance:view', 'wf:leave:view', 'wf:payroll:view', 'wf:salary:view', 'wf:advances:view', 'wf:settings:admin'].some(can),
   }
 }

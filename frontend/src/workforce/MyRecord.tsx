@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { TextField } from '../components/Field'
 import { clock, longDate, today } from '../format'
+import { Link } from 'react-router-dom'
 import { useChoiceInAddress } from '../rangeInAddress'
 import { LeaveForm } from './Leave'
+import { ADVANCE_CLASS, ADVANCE_LABEL, PAYMENT_CLASS, PAYMENT_LABEL, inr, type Advance } from './pay'
 import { DAY_CLASS, DAY_LABEL, DAY_LETTER, PART_LABEL, REQUEST_CLASS, REQUEST_LABEL, addMonths, days as dayCount, hours, monthName, thisMonth, type Correction, type Day, type LeaveRequest, type LeaveType, type Spell, type Totals } from './shared'
 import { WorkforceTabs } from './WorkforceTabs'
 
@@ -20,6 +22,8 @@ type Mine = {
   leave_types: LeaveType[]
   leave: LeaveRequest[]
   corrections: Correction[]
+  payslips: { id: number; period: string; period_name: string; slip_no: string | null; net: string; payment_status: string; paid_on: string | null }[]
+  advances: (Advance & { next: { period: string; amount: string } | null })[]
 }
 
 /** A person's own attendance, leave and requests. Nothing here shows anyone else's record. */
@@ -198,6 +202,45 @@ export function MyRecord() {
                 {shown.leave.length === 0 && <li className="muted">You have not asked for any leave.</li>}
               </ul>
             </div>
+
+            {shown.payslips.length > 0 && (
+              <div className="day-section">
+                <h3>My payslips</h3>
+                <ul className="wf-requests">
+                  {shown.payslips.map((p) => (
+                    <li key={p.id}>
+                      <span>
+                        <Link to={`/workforce/me/payslips/${p.id}/print`} target="_blank">
+                          {p.period_name}
+                        </Link>
+                        <small className="muted block">{[p.slip_no, `Net pay ${inr(p.net)}`, p.paid_on ? `paid on ${longDate(p.paid_on)}` : ''].filter(Boolean).join(' · ')}</small>
+                      </span>
+                      <span className={`pill ${PAYMENT_CLASS[p.payment_status]}`}>{PAYMENT_LABEL[p.payment_status]}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {shown.advances.length > 0 && (
+              <div className="day-section">
+                <h3>My advances and loans</h3>
+                <ul className="wf-requests">
+                  {shown.advances.map((a) => (
+                    <li key={a.id}>
+                      <span>
+                        {a.kind === 'loan' ? 'Loan' : 'Advance'} {a.advance_no} · {inr(a.amount)}
+                        <small className="muted block">
+                          {a.owed !== null ? `${inr(a.owed)} still owed` : a.reason}
+                          {a.next ? ` · ${inr(a.next.amount)} from the salary for ${monthName(a.next.period)}` : ''}
+                        </small>
+                      </span>
+                      <span className={`pill ${ADVANCE_CLASS[a.status]}`}>{ADVANCE_LABEL[a.status]}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {shown.corrections.length > 0 && (
               <div className="day-section">
