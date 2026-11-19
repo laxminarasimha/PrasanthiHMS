@@ -6,16 +6,17 @@ import { useLoadOnChange } from '../loading'
 import { useChoiceInAddress } from '../rangeInAddress'
 import { saveFile } from './sensitiveStep'
 import { DAY_CLASS, DAY_LABEL, DAY_LETTER, REQUEST_CLASS, REQUEST_LABEL, addMonths, hours, monthName, readAttendanceSheet, thisMonth, useWorkforce, type Correction, type Day, type Spell, type StaffBrief, type Totals } from './shared'
+import { RosterView } from './Roster'
 import { WorkforceTabs } from './WorkforceTabs'
 
 type DayRow = StaffBrief & { shift: string | null; day: Day; records: Spell[]; open_earlier: Spell[] }
-type DayList = { date: string; rows: DayRow[]; counts: { staff: number; in: number; not_in: number; on_leave: number; off: number; late: number; still_in: number } }
+type DayList = { date: string; rows: DayRow[]; counts: { staff: number; in: number; not_in: number; later?: number; on_leave: number; off: number; late: number; still_in: number } }
 type MonthList = { month: string; rows: (StaffBrief & { days: Day[]; totals: Totals })[] }
 type Sheet = { id: number; file_name: string | null; status: string; summary: Record<string, number>; rows: { id: number; employee_ref: string | null; staff_name: string | null; work_date: string | null; check_in: string | null; check_out: string | null; state: string; note: string | null }[] }
-type View = 'day' | 'month' | 'corrections' | 'sheet'
+type View = 'day' | 'month' | 'roster' | 'corrections' | 'sheet'
 type Editing = { person: StaffBrief; date: string; record: Spell | null }
 
-const VIEWS = ['day', 'month', 'corrections', 'sheet'] as const
+const VIEWS = ['day', 'month', 'roster', 'corrections', 'sheet'] as const
 const SHEET_STATE: Record<string, [string, string]> = {
   ready: ['Ready', 'ok'], applied: ['Brought in', 'ok'], duplicate: ['Already here', 'status-booked'], unmatched: ['No such staff', 'off'], missing_in: ['No check-in', 'status-arrived'],
   missing_out: ['No check-out', 'status-arrived'], invalid: ['Cannot be read', 'off'], linked: ['Linked', 'status-booked'],
@@ -44,6 +45,9 @@ export function WorkforceAttendance() {
             <button className={view === 'month' ? 'active' : ''} onClick={() => setView('month')}>
               Month
             </button>
+            <button className={view === 'roster' ? 'active' : ''} onClick={() => setView('roster')}>
+              Duty roster
+            </button>
             <button className={view === 'corrections' ? 'active' : ''} onClick={() => setView('corrections')}>
               Corrections
             </button>
@@ -53,7 +57,7 @@ export function WorkforceAttendance() {
               </button>
             )}
           </div>
-          {(view === 'day' || view === 'month') && departments.length > 0 && (
+          {(view === 'day' || view === 'month' || view === 'roster') && departments.length > 0 && (
             <select className="narrow" value={department} onChange={(e) => setDepartment(e.target.value)} aria-label="Department">
               <option value="">All departments</option>
               {departments.map((d) => (
@@ -66,6 +70,7 @@ export function WorkforceAttendance() {
         </div>
         {view === 'day' && <DayView department={department} />}
         {view === 'month' && <MonthView department={department} />}
+        {view === 'roster' && <RosterView department={department} />}
         {view === 'corrections' && <Corrections />}
         {view === 'sheet' && <SheetImport />}
       </section>

@@ -89,20 +89,23 @@ final class AttendanceRules
         $default = HolidayCalendar::query()->where('is_default', true)->value('id');
         $holidays = Holiday::query()->whereBetween('on', [$from, $to])->where('is_optional', false)->get()->groupBy('calendar_id')->map(fn ($list) => $list->keyBy(fn (Holiday $h) => $h->on->format('Y-m-d')));
         $usualOff = Settings::get('attendance')['default_weekly_off'];
+        // Who is on which duty: the roster where it says so, otherwise each person's usual shift and weekly off.
+        $roster = Roster::lines($ids, $from, $to);
         // Whether a weekly off or holiday inside a stretch of leave is itself leave: the same choice the leave count uses.
         $leaveCountsDaysOff = (bool) Settings::get('leave')['count_days_off'];
 
         $out = [];
         foreach ($employees as $employee) {
-            $shift = $shifts->get($employee->shift_id);
-            $off = $employee->weekly_off ?? $usualOff;
             $calendar = $holidays->get($employee->holiday_calendar_id ?? $default) ?? collect();
             for ($day = CarbonImmutable::parse($from); $day->toDateString() <= $to; $day = $day->addDay()) {
                 $date = $day->toDateString();
+                $duty = Roster::duty($employee, $date, $roster->get($employee->id.'|'.$date), $usualOff);
+                // On a day off the usual shift still sets what a full day is, for someone who comes in anyway.
+                $shift = $shifts->get($duty['shift_id'] ?? $employee->shift_id);
                 $out[$employee->id][$date] = self::day(
                     $employee, $date, $today, $records->get($employee->id.'|'.$date) ?? collect(), $leaves->get($employee->id) ?? collect(),
-                    $shift, in_array(self::DAYS[$day->dayOfWeek], $off, true), $calendar->get($date)?->name, $leaveCountsDaysOff,
-                );
+                    $shift, $duty['off'], $calendar->get($date)?->name, $leaveCountsDaysOff,
+                ) + ['shift_id' => $duty['off'] ? null : $shift?->id, 'shift' => $duty['off'] ? null : $shift?->name, 'rostered' => $duty['rostered']];
             }
         }
 
@@ -188,6 +191,12 @@ final class AttendanceRules
         if ($date > $today) {
             return ['status' => $day['leave'] > 0 ? 'half_leave' : ''] + $day;
         }
+        // Today, before their duty begins (a night duty in the afternoon): not late, not absent, simply not yet.
+        if ($date === $today && $shift && now()->lt(self::window($date, $shift)[0]) && $day['leave'] < 1.0) {
+            $day['note'] = 'On duty from '.substr((string) $shift->starts_at, 0, 5);
+
+            return ['status' => 'later'] + $day;
+        }
         $day['absent'] = 1.0 - $day['leave'];
 
         return ['status' => $date === $today ? 'not_in' : ($day['leave'] > 0 ? 'half_leave' : 'absent')] + $day;
@@ -206,7 +215,7 @@ final class AttendanceRules
 
         return [
             'present' => (float) $sum('present'), 'leave' => (float) $sum('leave'), 'paid_leave' => (float) $sum('paid_leave'),
-            'absent' => (float) array_sum(array_map(fn ($d) => in_array($d['status'], ['not_in', ''], true) ? 0 : $d['absent'], $days)),
+            'absent' => (float) array_sum(array_map(fn ($d) => in_array($d['status'], ['not_in', 'later', ''], true) ? 0 : $d['absent'], $days)),
             'holidays' => $count('holiday'), 'weekly_offs' => $count('weekly_off'),
             'late_days' => count(array_filter($days, fn ($d) => $d['late_minutes'] > 0)),
             'early_days' => count(array_filter($days, fn ($d) => $d['early_minutes'] > 0)),

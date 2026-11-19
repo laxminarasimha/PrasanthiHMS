@@ -8,6 +8,7 @@ use App\Workforce\Http\LeaveController;
 use App\Workforce\Http\OverviewController;
 use App\Workforce\Http\PayrollController;
 use App\Workforce\Http\RequireFreshPassword;
+use App\Workforce\Http\RosterController;
 use App\Workforce\Http\SalaryController;
 use App\Workforce\Http\SetupController;
 use Illuminate\Support\Facades\Route;
@@ -59,6 +60,13 @@ Route::controller(SetupController::class)->prefix('setup')->group(function () {
     Route::delete('/calendars/{calendar}/holidays/{holiday}', 'removeHoliday');
     Route::post('/leave-types', 'saveLeaveType');
     Route::put('/leave-types/{type}', 'saveLeaveType');
+});
+
+// The duty roster: who is on which duty on which day.
+Route::controller(RosterController::class)->prefix('attendance/roster')->group(function () {
+    Route::get('/', 'show');
+    Route::put('/', 'save');
+    Route::post('/copy', 'copy');
 });
 
 Route::controller(AttendanceController::class)->prefix('attendance')->group(function () {

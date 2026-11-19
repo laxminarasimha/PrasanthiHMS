@@ -5,6 +5,7 @@ import { clock, longDate, today } from '../format'
 import { Link } from 'react-router-dom'
 import { useChoiceInAddress } from '../rangeInAddress'
 import { LeaveForm } from './Leave'
+import { shortTime } from './dutyWords'
 import { ADVANCE_CLASS, ADVANCE_LABEL, PAYMENT_CLASS, PAYMENT_LABEL, inr, type Advance } from './pay'
 import { DAY_CLASS, DAY_LABEL, DAY_LETTER, PART_LABEL, REQUEST_CLASS, REQUEST_LABEL, addMonths, days as dayCount, hours, monthName, thisMonth, type Correction, type Day, type LeaveRequest, type LeaveType, type Spell, type Totals } from './shared'
 import { WorkforceTabs } from './WorkforceTabs'
@@ -24,6 +25,7 @@ type Mine = {
   corrections: Correction[]
   payslips: { id: number; period: string; period_name: string; slip_no: string | null; net: string; payment_status: string; paid_on: string | null }[]
   advances: (Advance & { next: { period: string; amount: string } | null })[]
+  duties?: { date: string; off: boolean; shift: string | null; starts_at: string | null; ends_at: string | null; rostered: boolean }[]
 }
 
 /** A person's own attendance, leave and requests. Nothing here shows anyone else's record. */
@@ -202,6 +204,20 @@ export function MyRecord() {
                 {shown.leave.length === 0 && <li className="muted">You have not asked for any leave.</li>}
               </ul>
             </div>
+
+            {(shown.duties?.length ?? 0) > 0 && (
+              <div className="day-section">
+                <h3>My duties, the next two weeks</h3>
+                <div className="wf-duties">
+                  {shown.duties!.map((d) => (
+                    <div key={d.date} className={`wf-duty ${d.off ? 'off' : d.starts_at && d.ends_at && d.ends_at <= d.starts_at ? 'night' : 'day'}`}>
+                      <small>{new Date(`${d.date}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</small>
+                      <span className="wf-duty-text">{d.off ? 'Day off' : d.starts_at ? `${d.shift ?? ''} ${shortTime(d.starts_at)}–${shortTime(d.ends_at!)}` : 'No shift set'}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {shown.payslips.length > 0 && (
               <div className="day-section">

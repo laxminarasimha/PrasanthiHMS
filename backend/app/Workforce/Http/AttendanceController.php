@@ -13,6 +13,7 @@ use App\Workforce\Support\Access;
 use App\Workforce\Support\AttendanceRules;
 use App\Workforce\Support\Audit;
 use App\Workforce\Support\Permissions;
+use App\Workforce\Support\Roster;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -43,7 +44,7 @@ class AttendanceController extends Controller
         $stale = Attendance::query()->whereIn('employee_id', $staff->pluck('id'))->where('state', 'open')->whereDate('work_date', '<', $date)->get()->groupBy('employee_id');
 
         $rows = $staff->map(fn (Employee $e) => $this->brief($e) + [
-            'shift' => $e->shift?->name,
+            'shift' => $days[$e->id][$date]['shift'] ?? $e->shift?->name,
             'day' => $days[$e->id][$date],
             'records' => ($records->get($e->id) ?? collect())->map(fn (Attendance $a) => $this->record($a))->values(),
             'open_earlier' => ($stale->get($e->id) ?? collect())->map(fn (Attendance $a) => $this->record($a))->values(),
@@ -121,7 +122,7 @@ class AttendanceController extends Controller
         $record = DB::transaction(function () use ($data, $employee, $request) {
             $this->refuseClash($employee, $data['check_in'], null);
             $record = new Attendance([
-                'employee_id' => $employee->id, 'work_date' => $data['work_date'], 'shift_id' => $employee->shift_id, 'check_in' => $data['check_in'], 'check_out' => $data['check_out'] ?? null,
+                'employee_id' => $employee->id, 'work_date' => $data['work_date'], 'shift_id' => Roster::shiftOn($employee, $data['work_date']), 'check_in' => $data['check_in'], 'check_out' => $data['check_out'] ?? null,
                 'day_status' => $data['day_status'] ?? null, 'origin' => 'manual', 'note' => $data['reason'] ?? null, 'created_by' => $request->user()->id, 'updated_by' => $request->user()->id,
             ]);
             $record->measured()->save();
@@ -198,7 +199,7 @@ class AttendanceController extends Controller
                     $this->apply($record, $after + ['reason' => $locked->reason], $user);
                 } else {
                     $this->refuseClash($employee, $after['check_in'], null);
-                    $record = new Attendance(['employee_id' => $employee->id, 'shift_id' => $employee->shift_id, 'origin' => 'manual', 'created_by' => $user->id, 'updated_by' => $user->id, 'note' => $locked->reason] + array_intersect_key($after, array_flip(['work_date', 'check_in', 'check_out', 'day_status'])));
+                    $record = new Attendance(['employee_id' => $employee->id, 'shift_id' => Roster::shiftOn($employee, $after['work_date']), 'origin' => 'manual', 'created_by' => $user->id, 'updated_by' => $user->id, 'note' => $locked->reason] + array_intersect_key($after, array_flip(['work_date', 'check_in', 'check_out', 'day_status'])));
                     $record->measured()->save();
                     Audit::record('attendance.entered', $record, null, $record->asRecorded(), $locked->reason, $employee->id);
                     $locked->attendance_id = $record->id;
@@ -274,7 +275,7 @@ class AttendanceController extends Controller
 
                     continue;
                 }
-                $record = new Attendance(['employee_id' => $row->employee_id, 'work_date' => $row->work_date, 'shift_id' => $staff[$row->employee_id]->shift_id, 'check_in' => $row->check_in, 'check_out' => $row->check_out, 'origin' => 'import', 'created_by' => $user->id, 'updated_by' => $user->id]);
+                $record = new Attendance(['employee_id' => $row->employee_id, 'work_date' => $row->work_date, 'shift_id' => Roster::shiftOn($staff[$row->employee_id], $row->work_date->format('Y-m-d')), 'check_in' => $row->check_in, 'check_out' => $row->check_out, 'origin' => 'import', 'created_by' => $user->id, 'updated_by' => $user->id]);
                 $record->measured()->save();
                 $row->update(['state' => 'applied', 'attendance_id' => $record->id]);
             }
@@ -300,7 +301,8 @@ class AttendanceController extends Controller
             if (Attendance::query()->where('employee_id', $employee->id)->where('state', 'open')->lockForUpdate()->exists()) {
                 throw ValidationException::withMessages(['employee_id' => "{$employee->name} is already checked in. Check them out first, or correct the earlier entry."]);
             }
-            $record = new Attendance(['employee_id' => $employee->id, 'work_date' => substr($at, 0, 10), 'shift_id' => $employee->shift_id, 'check_in' => $at, 'origin' => $origin, 'note' => $note, 'created_by' => $by->id, 'updated_by' => $by->id]);
+            $duty = Roster::forCheckIn($employee, $at);
+            $record = new Attendance(['employee_id' => $employee->id, 'work_date' => $duty['work_date'], 'shift_id' => $duty['shift_id'], 'check_in' => $at, 'origin' => $origin, 'note' => $note, 'created_by' => $by->id, 'updated_by' => $by->id]);
             $record->measured()->save();
             Audit::record('attendance.checked_in', $record, null, ['check_in' => $at], null, $employee->id);
 
@@ -505,7 +507,7 @@ class AttendanceController extends Controller
         $is = fn (array $statuses) => count(array_filter($days, fn ($d) => in_array($d['status'], $statuses, true)));
 
         return [
-            'staff' => count($days), 'in' => $is(['present', 'half_day', 'half_leave', 'open']), 'not_in' => $is(['not_in', 'absent']), 'on_leave' => $is(['on_leave']),
+            'staff' => count($days), 'in' => $is(['present', 'half_day', 'half_leave', 'open']), 'not_in' => $is(['not_in', 'absent']), 'later' => $is(['later']), 'on_leave' => $is(['on_leave']),
             'off' => $is(['weekly_off', 'holiday']), 'late' => count(array_filter($days, fn ($d) => $d['late_minutes'] > 0)), 'still_in' => count(array_filter($days, fn ($d) => $d['open'])),
         ];
     }

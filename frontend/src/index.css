@@ -114,6 +114,26 @@ h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color
 .wf-today { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 14px; border: 1px solid var(--brand-line); border-radius: 12px; background: var(--surface-2); }
 .wf-today > div { display: grid; gap: 2px; }
 .modal.slim { width: min(420px, 100%); }
+/* Workforce duty roster: a week of duties per person, a day box coloured by duty, and the counts at the foot. */
+.wf-roster-grid td.wf-duty { min-width: 118px; padding: 3px; text-align: left; vertical-align: top; }
+.wf-roster-grid td.wf-duty select { width: 100%; min-height: 32px; padding: 3px 6px; font-size: 0.8rem; }
+.wf-roster-grid td.wf-duty select + .wf-duty-text { display: none; }
+.wf-roster-grid th.today { color: var(--brand); }
+.wf-roster-grid td.wf-name small { display: block; color: var(--muted); font-size: 0.74rem; font-weight: 400; }
+.wf-roster-grid tfoot th, .wf-roster-grid tfoot td { font-size: 0.8rem; border-top: 1px solid var(--border); padding-top: 6px; }
+.wf-duty.day { background: var(--ok-soft); }
+.wf-duty.night { background: var(--info-soft); }
+.wf-duty.off { background: var(--stripe-1); }
+.wf-duty.rostered select { font-weight: 600; }
+.wf-duty-text { font-size: 0.8rem; }
+.wf-duties { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; }
+.wf-duties .wf-duty { display: grid; gap: 2px; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--border); }
+.wf-duties .wf-duty small { color: var(--muted); }
+@media print {
+  .wf-roster-grid td.wf-duty select { display: none; }
+  .wf-roster-grid td.wf-duty select + .wf-duty-text { display: inline; }
+  .wf-roster-wrap { max-height: none; overflow: visible; }
+}
 /* Workforce pay: one part of a salary with its figure, the stages a run has passed, and a to-do line with a button. */
 .row.between { justify-content: space-between; }
 .wf-pay-line { gap: 12px; padding: 7px 0; border-top: 1px solid var(--border); }
