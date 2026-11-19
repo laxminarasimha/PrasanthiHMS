@@ -85,6 +85,15 @@ h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color
 .first-load .tile small { visibility: hidden; }
 .first-load .tabs button span, .first-load .btn .count, .first-load h2 .count { color: transparent !important; }
 .first-load .when-loaded { display: none !important; }
+/* The versions of a lab report template, under its editor: newest first, the one in use marked. */
+.lab-versions { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--border); }
+.lab-versions h3 { margin: 0 0 4px; }
+.lab-versions ol { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.lab-versions li { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.lab-versions li.current { border-color: var(--brand-line); }
+.lab-versions li p { margin: 4px 0 0; }
+.lab-versions li table { margin-top: 8px; }
+.lab-version-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
 /* How many medicines in stock have been given a rack: a line of words over a bar. */
 .place-progress { margin: 10px 0 14px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
 .place-progress p { margin: 0 0 8px; font-size: 0.93rem; }

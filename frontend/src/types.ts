@@ -293,6 +293,8 @@ export type LabCatalogueTest = {
   price: number
   print_order: number
   is_active: boolean
+  /** Which version of its report template is in use now. An edit to the fields makes the next one. */
+  version: number
   parameters: LabParameter[]
 }
 
@@ -312,6 +314,8 @@ export type LabResult = {
 export type LabOrderItem = {
   id: number
   test_name: string
+  /** The version of the test's template this report was made with; null for a test made before versions and not linked to a template. */
+  template_version?: number | null
   department: string | null
   sample_type: string | null
   price: number
@@ -356,6 +360,8 @@ export type LabSettings = {
   print_method: boolean
   /** "End of report" after the last result. */
   print_end_mark: boolean
+  /** Which version of its template each test was reported on, beside the test's name. */
+  print_template_version: boolean
   /** A line of the lab's own at the foot of every report. */
   report_note: string
   /** Signature pictures, sent as embedded images; null when none is uploaded. */

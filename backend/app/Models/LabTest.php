@@ -21,4 +21,10 @@ class LabTest extends Model
     {
         return $this->hasMany(LabTestParameter::class)->orderBy('position');
     }
+
+    /** Every version of this test's report template, newest first. See App\Support\LabTemplate. */
+    public function versions(): HasMany
+    {
+        return $this->hasMany(LabTestVersion::class)->orderByDesc('version');
+    }
 }

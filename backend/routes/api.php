@@ -261,6 +261,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
     Route::get('/lab/tests/department-suggestions', [LabController::class, 'departmentSuggestions']);
     Route::put('/lab/tests/departments', [LabController::class, 'assignDepartments']);
     Route::put('/lab/tests/{test}', [LabController::class, 'updateTest']);
+    Route::get('/lab/tests/{test}/versions', [LabController::class, 'versions']);
     Route::get('/lab/orders', [LabController::class, 'orders']);
     Route::post('/lab/orders', [LabController::class, 'storeOrder']);
     Route::get('/lab/orders/{order}', [LabController::class, 'showOrder']);

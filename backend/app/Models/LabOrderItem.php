@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
-    'lab_test_id', 'test_name', 'kind', 'package_name', 'department', 'sample_type', 'price', 'remarks', 'report_text',
+    'lab_test_id', 'template_version', 'test_name', 'kind', 'package_name', 'department', 'sample_type', 'price', 'remarks', 'report_text',
     'collected_at', 'collected_by', 'reported_at', 'reported_by', 'approved_at', 'approved_by',
 ])]
 class LabOrderItem extends Model

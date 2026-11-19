@@ -3,6 +3,7 @@ import { api, fieldErrors, type FieldErrors } from '../api'
 import { useAuth } from '../auth'
 import { TextField } from '../components/Field'
 import { LabTabs } from '../components/LabTabs'
+import { LabVersions } from '../components/LabVersions'
 import { rupees } from '../format'
 import type { LabCatalogueTest, LabParameter, LabSettings } from '../types'
 
@@ -76,7 +77,11 @@ export function LabTests() {
     }
     try {
       const res = editing === 'new' ? await api.post<LabCatalogueTest>('/lab/tests', payload) : await api.put<LabCatalogueTest>(`/lab/tests/${(editing as LabCatalogueTest).id}`, payload)
-      setNotice(`${res.data.name} was ${editing === 'new' ? 'added' : 'updated'}.`)
+      const was = editing === 'new' ? null : (editing as LabCatalogueTest).version
+      setNotice(
+        `${res.data.name} was ${editing === 'new' ? 'added' : 'updated'}.` +
+          (was !== null && res.data.version > was ? ` Its template is now version ${res.data.version}: new orders use it, and reports already made keep the version they were made with.` : ''),
+      )
       setEditing(null)
       load()
     } catch (err) {
@@ -294,6 +299,12 @@ export function LabTests() {
                   <td>
                     <strong>{t.name}</strong>
                     {t.code && <small className="muted"> {t.code}</small>}
+                    {t.version > 1 && (
+                      <small className="muted" title="The version of the report template in use now">
+                        {' '}
+                        · v{t.version}
+                      </small>
+                    )}
                   </td>
                   <td>{t.department ?? '—'}</td>
                   <td>{t.sample_type ?? '—'}</td>
@@ -417,6 +428,7 @@ export function LabTests() {
               </button>
             </div>
           )}
+          {editing !== 'new' && <LabVersions key={`${editing.id}-${editing.version}`} testId={editing.id} />}
         </form>
       )}
     </div>

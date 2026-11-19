@@ -262,6 +262,12 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
               <strong>{item.test_name}</strong>
               {item.sample_type && <small className="muted"> · {item.sample_type}</small>}
               {item.package_name && <small className="muted"> · {item.package_name}</small>}
+              {item.template_version && (
+                <small className="muted" title="The version of this test's template these fields come from. A report keeps the version it was made with, even when the template is changed later.">
+                  {' '}
+                  · Template v{item.template_version}
+                </small>
+              )}
               {item.kind !== 'text' && !reported && boxes.length > 1 && (
                 <small className={entered === boxes.length ? 'settled' : 'muted'}>
                   {' '}

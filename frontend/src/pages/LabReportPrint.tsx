@@ -129,13 +129,16 @@ export function LabReportPrint() {
     )
   }
 
+  /** Which version of its template a test was reported on, when the lab prints that. */
+  const version = (item: LabOrderItem) => (settings.print_template_version && item.template_version ? `Template v${item.template_version}` : '')
+
   /** One test: its name, then a line for each parameter, or its written report. */
   const testBody = (item: LabOrderItem) => (
     <tbody key={item.id} className="lab-test">
       <tr className="lab-test-name">
         <td colSpan={4}>
           {item.test_name}
-          {item.sample_type && <small>Sample: {item.sample_type}</small>}
+          {(item.sample_type || version(item)) && <small>{[item.sample_type ? `Sample: ${item.sample_type}` : '', version(item)].filter(Boolean).join(' · ')}</small>}
         </td>
       </tr>
       {perTestDates && (
