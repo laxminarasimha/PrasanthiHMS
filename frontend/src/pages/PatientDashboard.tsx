@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
 import { AppAccountBox } from '../components/AppAccountBox'
@@ -23,10 +23,10 @@ const initials = (name: string) =>
     .join('')
 
 /** One list of the patient's past, with its count, the latest few rows, and the rest behind "Show all". */
-function History<T>({ title, rows, empty, children }: { title: string; rows: T[]; empty: string; children: (row: T) => ReactNode }) {
+function History<T>({ title, rows, empty, anchor, children }: { title: string; rows: T[]; empty: string; anchor?: string; children: (row: T) => ReactNode }) {
   const [all, setAll] = useState(false)
   return (
-    <section className="card">
+    <section className="card" id={anchor}>
       <h2>
         {title} {rows.length > 0 && <small className="count">{rows.length}</small>}
       </h2>
@@ -59,11 +59,13 @@ export function PatientDashboard() {
     api.get<PatientOverview>(`/patients/${id}/overview`).then((res) => setData(res.data))
   }, [id])
 
-  // Coming from the old-papers list, the page opens at the scanning section.
+  // A link can name the part of the page it is about: a name clicked on a money screen opens at the bills,
+  // one from the old-papers list at the scanning section.
   const ready = data !== null
+  const { hash } = useLocation()
   useEffect(() => {
-    if (ready && window.location.hash === '#old-papers') document.getElementById('old-papers')?.scrollIntoView()
-  }, [ready])
+    if (ready && hash) document.getElementById(hash.slice(1))?.scrollIntoView()
+  }, [ready, hash])
 
   if (!data) return <p className="loading">Loading patient…</p>
   const p = data.patient
@@ -218,10 +220,40 @@ export function PatientDashboard() {
           )}
         </History>
 
-        <History title="Bills" rows={data.bills} empty="No bills yet.">
+        <History title="Lab orders" rows={data.lab_orders} empty="No lab orders yet.">
+          {(o) => (
+            <tr key={o.id} className="static">
+              <td className="mono">{o.order_no}</td>
+              <td>
+                {longDate(o.ordered_at)}
+                <small className="muted block">{o.items.map((i) => i.test_name).join(', ')}</small>
+              </td>
+              <td>
+                <span className={`pill ${o.status === 'completed' ? 'ok' : 'status-arrived'}`}>{o.status === 'completed' ? 'Ready' : o.status === 'partial' ? 'Partly ready' : 'Pending'}</span>
+              </td>
+              <td className="num">
+                {o.status !== 'pending' && (
+                  <a className="link" href={`/lab/orders/${o.id}/print`} target="_blank" rel="noreferrer">
+                    Report
+                  </a>
+                )}
+              </td>
+            </tr>
+          )}
+        </History>
+
+        <History title="Bills" anchor="bills" rows={data.bills} empty="No bills yet.">
           {(b) => (
             <tr key={b.id} className="static">
-              <td className="mono">{b.bill_no}</td>
+              <td className="mono">
+                {user?.can_front_desk ? (
+                  <Link className="link" to={`/front-desk/bills?open=${b.id}`} title="Open this bill at the front desk">
+                    {b.bill_no}
+                  </Link>
+                ) : (
+                  b.bill_no
+                )}
+              </td>
               <td>
                 {stampDate(b.created_at)}
                 <small className="muted block">
@@ -240,23 +272,25 @@ export function PatientDashboard() {
           )}
         </History>
 
-        <History title="Lab orders" rows={data.lab_orders} empty="No lab orders yet.">
-          {(o) => (
-            <tr key={o.id} className="static">
-              <td className="mono">{o.order_no}</td>
-              <td>
-                {longDate(o.ordered_at)}
-                <small className="muted block">{o.items.map((i) => i.test_name).join(', ')}</small>
-              </td>
-              <td>
-                <span className={`pill ${o.status === 'completed' ? 'ok' : 'status-arrived'}`}>{o.status === 'completed' ? 'Ready' : o.status === 'partial' ? 'Partly ready' : 'Pending'}</span>
-              </td>
-              <td className="num">
-                {o.status !== 'pending' && (
-                  <a className="link" href={`/lab/orders/${o.id}/print`} target="_blank" rel="noreferrer">
-                    Report
-                  </a>
+        <History title="Pharmacy bills" rows={data.pharmacy_bills} empty="No pharmacy bills yet.">
+          {(sale) => (
+            <tr key={sale.id} className="static">
+              <td className="mono">
+                {user?.can_run_pharmacy ? (
+                  <Link className="link" to={`/pharmacy/bills?open=${sale.id}`} title="Open this bill in the pharmacy">
+                    {sale.bill_no}
+                  </Link>
+                ) : (
+                  sale.bill_no
                 )}
+              </td>
+              <td>{longDate(sale.sold_at)}</td>
+              <td className="num">{rupees(sale.total)}</td>
+              <td className={`num ${sale.due > 0 ? 'due' : 'settled'}`}>{settlement(sale.due, sale.ipd_transfer, sale.total)}</td>
+              <td className="num">
+                <a className="link" href={`/pharmacy/bills/${sale.id}/print`} target="_blank" rel="noreferrer">
+                  Print
+                </a>
               </td>
             </tr>
           )}
@@ -282,17 +316,6 @@ export function PatientDashboard() {
                 <span className={`pill ${a.status === 'admitted' ? 'status-ongoing' : a.status === 'discharged' ? 'ok' : 'off'}`}>{ADMISSION_STATUS[a.status]}</span>
               </td>
               <td className={`num ${a.due > 0 ? 'due' : ''}`}>{a.due > 0 ? `${rupees(a.due)} due` : ''}</td>
-            </tr>
-          )}
-        </History>
-
-        <History title="Pharmacy bills" rows={data.pharmacy_bills} empty="No pharmacy bills yet.">
-          {(sale) => (
-            <tr key={sale.id} className="static">
-              <td className="mono">{sale.bill_no}</td>
-              <td>{longDate(sale.sold_at)}</td>
-              <td className="num">{rupees(sale.total)}</td>
-              <td className={`num ${sale.due > 0 ? 'due' : 'settled'}`}>{sale.due > 0 ? `${rupees(sale.due)} due` : 'Settled'}</td>
             </tr>
           )}
         </History>

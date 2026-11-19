@@ -9,6 +9,7 @@ import { PatientPicker } from '../../components/PatientPicker'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { PAYMENT_MODES, clock, daysUntil, expiryLabel, longDate, rupees } from '../../format'
 import type { Patient, PharmacyInpatient, PharmacySale, PrescriptionForPharmacy, SellableMedicine } from '../../types'
+import { PatientLink } from '../../components/PatientLink'
 
 type Line = {
   batchId: number
@@ -537,7 +538,9 @@ export function PharmacyBilling() {
                     <small className="muted block">{clock(s.sold_at)}</small>
                   </td>
                   <td>
-                    {s.customer_name}
+                    <PatientLink id={s.patient_id} bills>
+                      {s.customer_name}
+                    </PatientLink>
                     {s.customer_phone && <small className="muted block">{s.customer_phone}</small>}
                   </td>
                   <td className="num">{rupees(s.total)}</td>

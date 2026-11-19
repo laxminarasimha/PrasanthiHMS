@@ -8,6 +8,7 @@ import { MedicinePick, type SellableBatch } from '../../components/MedicinePick'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { PAYMENT_MODES, clock, longDate, modeLabel, rupees, today } from '../../format'
 import type { Payment, PharmacySale, SellableMedicine } from '../../types'
+import { PatientLink } from '../../components/PatientLink'
 
 type Action = 'view' | 'collect' | 'return' | 'delete' | 'edit' | 'mode'
 /** A medicine being added to a bill that is already saved. */
@@ -183,13 +184,15 @@ export function PharmacyBills() {
 
   // Coming from the billing screen's "Add medicines" link: that bill opens ready to be added to.
   const [params, setParams] = useSearchParams()
+  // Coming from a patient's page: that bill opens to be looked at.
   const preset = params.get('add')
+  const linked = params.get('open')
   useEffect(() => {
-    if (!preset) return
-    show({ id: Number(preset) } as PharmacySale, 'edit')
+    if (!preset && !linked) return
+    show({ id: Number(preset ?? linked) } as PharmacySale, preset ? 'edit' : 'view')
     setParams({}, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preset])
+  }, [preset, linked])
   const setLine = (id: number, key: 'quantity' | 'discount_percent', value: string) => setEdit((e) => (e ? { ...e, lines: { ...e.lines, [id]: { ...e.lines[id], [key]: value } } } : e))
 
   const live = sales?.filter((s) => !s.voided_at) ?? []
@@ -237,7 +240,11 @@ export function PharmacyBills() {
                       </small>
                     </td>
                     <td>
-                      <strong>{s.customer_name}</strong>
+                      <strong>
+                        <PatientLink id={s.patient_id} bills>
+                          {s.customer_name}
+                        </PatientLink>
+                      </strong>
                       {s.customer_phone && <small className="muted block">{s.customer_phone}</small>}
                     </td>
                     <td className="num">
@@ -296,7 +303,10 @@ export function PharmacyBills() {
                   Bill {open.bill_no} {open.voided_at && <span className="pill off">Deleted</span>}
                 </h2>
                 <span className="muted">
-                  {open.customer_name} · {longDate(open.sold_at)} {clock(open.sold_at)}
+                  <PatientLink id={open.patient_id} bills>
+                    {open.customer_name}
+                  </PatientLink>{' '}
+                  · {longDate(open.sold_at)} {clock(open.sold_at)}
                   {open.referred_doctor ? ` · ${open.referred_doctor}` : ''}
                 </span>
               </div>

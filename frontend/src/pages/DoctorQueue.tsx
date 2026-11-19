@@ -6,6 +6,7 @@ import { DoctorTabs } from '../components/DoctorTabs'
 import { PatientSearch } from '../components/PatientSearch'
 import { STATUS_LABELS, clock, longDate, today } from '../format'
 import type { Doctor, Patient, QueueEntry } from '../types'
+import { PatientLink } from '../components/PatientLink'
 
 /** Minutes since the patient arrived, shown only while they are still waiting. */
 function waiting(entry: QueueEntry, now: number) {
@@ -126,7 +127,7 @@ export function DoctorQueue() {
                     {q.patient.name}
                   </Link>
                   <small className="muted block">
-                    {q.patient.uhid} · {q.patient.age_label} / {q.patient.gender.charAt(0).toUpperCase()}
+                    <PatientLink id={q.patient.id}>{q.patient.uhid}</PatientLink> · {q.patient.age_label} / {q.patient.gender.charAt(0).toUpperCase()}
                   </small>
                 </td>
                 {!isDoctor && <td>{q.doctor.name}</td>}

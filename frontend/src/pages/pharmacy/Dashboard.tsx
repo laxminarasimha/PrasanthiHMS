@@ -4,6 +4,7 @@ import { DateRange } from '../../components/DateRange'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { clock, rupees, today } from '../../format'
 import type { PharmacyDashboard as Data } from '../../types'
+import { PatientLink } from '../../components/PatientLink'
 
 export function PharmacyDashboard() {
   const [from, setFrom] = useState(today())
@@ -68,7 +69,11 @@ export function PharmacyDashboard() {
                       <tr key={s.id} className="static">
                         <td className="mono">{s.bill_no}</td>
                         <td>{clock(s.sold_at)}</td>
-                        <td>{s.customer_name}</td>
+                        <td>
+                          <PatientLink id={s.patient_id} bills>
+                            {s.customer_name}
+                          </PatientLink>
+                        </td>
                         <td className="num">{rupees(s.total)}</td>
                       </tr>
                     ))}

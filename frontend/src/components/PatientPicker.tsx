@@ -4,6 +4,7 @@ import { AGE_UNITS, TITLES } from '../format'
 import type { Patient } from '../types'
 import { Field } from './Field'
 import { SameMobile } from './SameMobile'
+import { PatientLink } from './PatientLink'
 
 type Props = {
   patient: Patient | null
@@ -50,7 +51,11 @@ export function PatientPicker({ patient, onChange, error }: Props) {
     return (
       <div className="chosen">
         <div>
-          <strong>{patient.name}</strong>
+          <strong>
+            <PatientLink id={patient.id} bills newTab>
+              {patient.name}
+            </PatientLink>
+          </strong>
           <small className="muted">{summary(patient)}</small>
         </div>
         <button type="button" className="link" onClick={() => onChange(null)}>

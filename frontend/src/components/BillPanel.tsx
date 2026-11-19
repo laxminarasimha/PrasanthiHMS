@@ -6,6 +6,7 @@ import type { Bill, Payment, Service } from '../types'
 import { DepositBox } from './DepositBox'
 import { SelectField, TextField } from './Field'
 import { useBillingPreferences } from './useBillingPreferences'
+import { PatientLink } from './PatientLink'
 
 type Props = {
   billId: number
@@ -114,7 +115,10 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
         <div>
           <h2>Bill {bill.bill_no}</h2>
           <span className="muted">
-            {bill.patient.name} · {bill.patient.uhid} · {KIND[bill.kind]}
+            <PatientLink id={bill.patient.id} bills>
+              {bill.patient.name}
+            </PatientLink>{' '}
+            · {bill.patient.uhid} · {KIND[bill.kind]}
             {bill.lab_order ? ` · ${bill.lab_order.order_no}` : ''}
           </span>
         </div>
