@@ -150,20 +150,34 @@ export function FrontDesk() {
   const charge = (a: Appointment, advised?: string) => open({ kind: 'charge', patient: a.patient, appointmentId: a.id, doctor: a.doctor.name, advised })
 
   const total = list ? Object.values(list.counts).reduce((sum, n) => sum + (n ?? 0), 0) : 0
-  const visits = (list?.data ?? []).filter((a) => department === 'all' || a.bills.some((b) => b.kind === department) || (department === 'appointment' && a.bills.length === 0))
-  // Walk-in bills have no visit status, so they are hidden while a status tab or doctor filter is on.
-  const walkInRows = status || doctorId ? [] : walkIns.filter((b) => department === 'all' || b.kind === department)
-  const hideVisits = department === 'other'
+  // One patient, one row. A bill made without a visit (a lab order raised in the lab, or "+ New bill") joins the
+  // patient's visit of the day when there is one, so the consultation and the tests sit side by side.
+  const dayVisits = list?.data ?? []
+  const joined = new Map<number, WalkInBill[]>()
+  const loose = new Map<number, WalkInBill[]>()
+  const inDepartment = (b: { kind: string }) => department === 'all' || b.kind === department
+  for (const bill of walkIns) {
+    const visit = dayVisits.find((a) => a.patient.id === bill.patient.id && a.status !== 'cancelled')
+    if (visit) joined.set(visit.id, [...(joined.get(visit.id) ?? []), bill])
+    // Someone with no visit today still gets one row for all their bills. Those have no visit status or doctor,
+    // so they are hidden while a status tab or doctor filter is on.
+    else if (!status && !doctorId && inDepartment(bill)) loose.set(bill.patient.id, [...(loose.get(bill.patient.id) ?? []), bill])
+  }
+  const billsOf = (a: Appointment) => [...a.bills, ...(joined.get(a.id) ?? [])]
+  const visits = dayVisits.filter((a) => department === 'all' || billsOf(a).some(inDepartment) || (department === 'appointment' && a.bills.length === 0))
+  const walkInRows = [...loose.values()]
 
   // Money still to collect on this day's list, and a way to see only those people.
   const owes = (bills: { due: number }[]) => bills.reduce((sum, b) => sum + b.due, 0)
-  const owingVisits = hideVisits ? [] : visits.filter((a) => owes(a.bills) > 0)
-  const owingWalkIns = walkInRows.filter((b) => b.due > 0)
+  const owingVisits = visits.filter((a) => owes(billsOf(a)) > 0)
+  const owingWalkIns = walkInRows.filter((bills) => owes(bills) > 0)
   const owing = owingVisits.length + owingWalkIns.length
-  const owed = owingVisits.reduce((sum, a) => sum + owes(a.bills), 0) + owingWalkIns.reduce((sum, b) => sum + b.due, 0)
+  const owed = owingVisits.reduce((sum, a) => sum + owes(billsOf(a)), 0) + owingWalkIns.reduce((sum, bills) => sum + owes(bills), 0)
   const showDues = duesOnly && owing > 0
   const shownVisits = showDues ? owingVisits : visits
   const shownWalkIns = showDues ? owingWalkIns : walkInRows
+  const chipLabel = (b: { kind: string; lab_order: { order_no: string } | null }) => (b.lab_order ? `Lab ${b.lab_order.order_no}` : b.kind === 'other' ? 'Other' : undefined)
+  const madeOf = (b: WalkInBill) => (b.lab_order ? `${b.lab_order.items.length} lab test${b.lab_order.items.length === 1 ? '' : 's'} · ${b.lab_order.order_no}` : b.items.map((i) => i.description).join(', ') || 'Other services')
   const isToday = date === today()
 
   /** How long someone who has arrived has been waiting, in words short enough for a table cell. */
@@ -277,8 +291,7 @@ export function FrontDesk() {
               </tr>
             </thead>
             <tbody>
-              {!hideVisits &&
-                shownVisits.map((a) => (
+              {shownVisits.map((a) => (
                   <tr key={`a${a.id}`} className={`static ${a.status === 'cancelled' ? 'faded' : ''} ${a.status === 'reviewed' ? 'done' : ''}`}>
                     <td className="mono">
                       <Link className="link" to={`/patients/${a.patient.id}`} title="View patient dashboard">
@@ -294,10 +307,10 @@ export function FrontDesk() {
                       </small>
                     </td>
                     <td className="bills">
-                      {a.bills
-                        .filter((b) => department === 'all' || b.kind === department)
+                      {billsOf(a)
+                        .filter(inDepartment)
                         .map((b) => (
-                          <BillChip key={b.id} label={b.lab_order ? `Lab ${b.lab_order.order_no}` : b.kind === 'other' ? 'Other' : undefined} total={b.total} due={b.due} movedToIpd={b.moved_to_ipd} onOpen={() => open({ kind: 'bill', billId: b.id })} />
+                          <BillChip key={b.id} label={chipLabel(b)} total={b.total} due={b.due} movedToIpd={b.moved_to_ipd} onOpen={() => open({ kind: 'bill', billId: b.id })} />
                         ))}
                       <button className="bill-add" onClick={() => charge(a)} title={`Add services or lab tests for ${a.patient.name}, and collect payment`}>
                         + Bill
@@ -333,11 +346,11 @@ export function FrontDesk() {
                       )}
                       {a.consultation?.tests_advised && (
                         <button
-                          className={`advice-chip tests ${a.bills.some((b) => b.lab_order) ? 'done' : ''}`}
-                          title={`Tests advised: ${a.consultation.tests_advised}. ${a.bills.some((b) => b.lab_order) ? 'A lab order has already been made for this visit.' : 'Click to make the lab order.'}`}
+                          className={`advice-chip tests ${billsOf(a).some((b) => b.lab_order) ? 'done' : ''}`}
+                          title={`Tests advised: ${a.consultation.tests_advised}. ${billsOf(a).some((b) => b.lab_order) ? 'A lab order has already been made for this patient today.' : 'Click to make the lab order.'}`}
                           onClick={() => charge(a, a.consultation?.tests_advised ?? undefined)}
                         >
-                          Tests{a.bills.some((b) => b.lab_order) ? ' ✓' : ''}
+                          Tests{billsOf(a).some((b) => b.lab_order) ? ' ✓' : ''}
                         </button>
                       )}
                       {a.consultation?.follow_up_on && (
@@ -390,34 +403,40 @@ export function FrontDesk() {
                     </td>
                   </tr>
                 ))}
-              {shownWalkIns.map((b) => (
-                <tr key={`b${b.id}`} className="static walkin">
-                  <td className="mono">
-                    <Link className="link" to={`/patients/${b.patient.id}`} title="View patient dashboard">
-                      {b.patient.uhid}
-                    </Link>
-                  </td>
-                  <td>
-                    <strong>
-                      <PatientLink id={b.patient.id} bills>
-                        {b.patient.name}
-                      </PatientLink>
-                    </strong>
-                    <small className="muted block">
-                      {b.patient.age_label} / {b.patient.gender.charAt(0).toUpperCase()} · {b.patient.mobile}
-                    </small>
-                  </td>
-                  <td className="bills">
-                    <BillChip total={b.total} due={b.due} movedToIpd={b.moved_to_ipd} onOpen={() => open({ kind: 'bill', billId: b.id })} />
-                  </td>
-                  <td className="mono">{stampTime(b.created_at)}</td>
-                  <td colSpan={4} className="muted">
-                    {b.lab_order ? `${b.lab_order.items.length} lab test${b.lab_order.items.length === 1 ? '' : 's'} · ${b.lab_order.order_no}` : b.items.map((i) => i.description).join(', ') || 'Other services'}
-                  </td>
-                  <td />
-                </tr>
-              ))}
-              {list && (hideVisits ? 0 : shownVisits.length) + shownWalkIns.length === 0 && (
+              {shownWalkIns.map((bills) => {
+                // Everything billed today to someone who has no visit: one row, a chip for each bill.
+                const { patient } = bills[0]
+                return (
+                  <tr key={`p${patient.id}`} className="static walkin">
+                    <td className="mono">
+                      <Link className="link" to={`/patients/${patient.id}`} title="View patient dashboard">
+                        {patient.uhid}
+                      </Link>
+                    </td>
+                    <td>
+                      <strong>
+                        <PatientLink id={patient.id} bills>
+                          {patient.name}
+                        </PatientLink>
+                      </strong>
+                      <small className="muted block">
+                        {patient.age_label} / {patient.gender.charAt(0).toUpperCase()} · {patient.mobile}
+                      </small>
+                    </td>
+                    <td className="bills">
+                      {bills.map((b) => (
+                        <BillChip key={b.id} label={bills.length > 1 ? chipLabel(b) : undefined} total={b.total} due={b.due} movedToIpd={b.moved_to_ipd} onOpen={() => open({ kind: 'bill', billId: b.id })} />
+                      ))}
+                    </td>
+                    <td className="mono">{stampTime(bills[0].created_at)}</td>
+                    <td colSpan={4} className="muted">
+                      {bills.map(madeOf).join(' · ')}
+                    </td>
+                    <td />
+                  </tr>
+                )
+              })}
+              {list && shownVisits.length + shownWalkIns.length === 0 && (
                 <tr className="empty">
                   <td colSpan={9}>
                     {query || status || doctorId || department !== 'all' ? (
