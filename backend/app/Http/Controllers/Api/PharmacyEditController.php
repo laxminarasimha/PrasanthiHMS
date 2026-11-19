@@ -489,6 +489,6 @@ class PharmacyEditController extends Controller
 
     private function authorizePharmacy(Request $request): void
     {
-        abort_unless($request->user()->allows('canRunPharmacy'), 403, 'You are not allowed to do this in the pharmacy.');
+        abort_unless($request->user()->mayInPharmacy($request), 403, 'You are not allowed to do this in the pharmacy.');
     }
 }

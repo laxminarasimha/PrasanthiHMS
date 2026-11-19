@@ -50,6 +50,8 @@ const stamp = (at: string) => `${longDate(at)} ${clock(at)}`
 export function LabResults({ orderId, onClose, onChange }: Props) {
   const { user } = useAuth()
   const canEdit = Boolean(user?.can_run_lab)
+  // Entering results and signing them off are separate permissions.
+  const canApprove = Boolean(user?.can_approve_lab)
   const [order, setOrder] = useState<LabOrder | null>(null)
   const [settings, setSettings] = useState<LabSettings | null>(null)
   const [drafts, setDrafts] = useState<Record<number, Draft>>({})
@@ -221,14 +223,14 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
         )}
       </div>
 
-      {canEdit && (toCollect > 0 || toApprove > 1) && (
+      {canEdit && (toCollect > 0 || (canApprove && toApprove > 1)) && (
         <div className="lab-bulk">
           {toCollect > 0 && (
             <button className="btn" disabled={saving} onClick={() => sendAll('collect')}>
               {order.items.length === 1 ? 'Sample collected' : `Sample collected for all ${toCollect === order.items.length ? order.items.length : `${toCollect} remaining`} tests`}
             </button>
           )}
-          {toApprove > 1 && (
+          {canApprove && toApprove > 1 && (
             <button className="btn" disabled={saving} onClick={() => sendAll('approve')}>
               Approve all {toApprove} reported tests
             </button>
@@ -388,12 +390,12 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
                     Reopen to correct
                   </button>
                 )}
-                {item.stage === 'reported' && (
+                {canApprove && item.stage === 'reported' && (
                   <button className="btn primary" disabled={saving} onClick={() => send(`${item.id}/approve`, { approved: true })}>
                     Approve
                   </button>
                 )}
-                {item.stage === 'approved' && (
+                {canApprove && item.stage === 'approved' && (
                   <button className="link" disabled={saving} onClick={() => send(`${item.id}/approve`, { approved: false })}>
                     Withdraw approval
                   </button>

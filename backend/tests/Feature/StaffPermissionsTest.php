@@ -19,7 +19,7 @@ class StaffPermissionsTest extends TestCase
 
     private function details(User $user, array $extra = []): array
     {
-        return $extra + ['name' => $user->name, 'email' => $user->email, 'role' => $user->role->value, 'gender' => 'female', 'phone' => '9000000000'];
+        return $extra + ['name' => $user->name, 'email' => $user->email, 'role' => $user->role->value, 'gender' => 'female', 'phone' => '9000000000', 'reason' => 'Change of duties'];
     }
 
     public function test_a_person_can_be_given_or_refused_things_their_role_does_not_decide(): void

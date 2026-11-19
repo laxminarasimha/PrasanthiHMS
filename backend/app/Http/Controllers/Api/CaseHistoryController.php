@@ -6,6 +6,7 @@ use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\Admission;
 use App\Models\Appointment;
+use App\Models\AuditLog;
 use App\Models\Consultation;
 use App\Models\LabOrder;
 use App\Models\PastRecord;
@@ -64,7 +65,7 @@ class CaseHistoryController extends Controller
     {
         $this->guard($request);
 
-        \App\Models\AuditLog::record('history.opened', $patient->id, $patient);
+        AuditLog::record('history.opened', $patient->id, $patient);
 
         $visits = Consultation::where('patient_id', $patient->id)
             ->with(['medicines', 'doctor:id,name', 'appointment:id,scheduled_at,status', 'amendments.author:id,name'])
@@ -231,7 +232,6 @@ class CaseHistoryController extends Controller
     /** Clinical notes are for the people who treat or test the patient, not for billing counters. */
     private function guard(Request $request): void
     {
-        $user = $request->user();
-        abort_unless($user->allows('canConsult') || $user->allows('canRunLab'), 403, 'You are not allowed to see clinical notes.');
+        abort_unless($request->user()->seesClinical(), 403, 'You are not allowed to see clinical notes.');
     }
 }

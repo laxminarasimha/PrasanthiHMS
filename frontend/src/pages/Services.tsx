@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { SetupTabs } from '../components/SetupTabs'
 import { api, fieldErrors, type FieldErrors } from '../api'
+import { useAuth } from '../auth'
 import { SelectField, TextField } from '../components/Field'
 import { rupees } from '../format'
 import type { Doctor, Service } from '../types'
@@ -19,6 +20,8 @@ const PRIORITIES = [
 type Form = typeof blank
 
 export function Services() {
+  // Setting a price is its own permission; without it the rest of a service can still be changed.
+  const canPrice = useAuth().user?.can_set_prices ?? true
   const [services, setServices] = useState<Service[]>([])
   const [doctors, setDoctors] = useState<Doctor[]>([])
   const [editing, setEditing] = useState<Service | 'new' | null>(null)
@@ -145,7 +148,7 @@ export function Services() {
             </div>
             <SelectField label="Type" required value={form.type} onChange={set('type')} options={TYPES} error={errors.type} />
             <TextField label="Code (optional)" value={form.code} onChange={set('code')} error={errors.code} />
-            <TextField label="Price (₹)" required type="number" min={0} step="0.01" value={form.price} onChange={set('price')} error={errors.price} />
+            <TextField label="Price (₹)" required type="number" min={0} step="0.01" value={form.price} onChange={set('price')} error={errors.price} disabled={!canPrice} title={canPrice ? undefined : 'Only someone allowed to set prices can change this'} />
             <TextField label="GST %" type="number" min={0} max={100} step="0.01" value={form.gst_percent} onChange={set('gst_percent')} error={errors.gst_percent} />
             <SelectField label="Priority in lists" value={form.priority} onChange={set('priority')} options={PRIORITIES} error={errors.priority} />
             <div>

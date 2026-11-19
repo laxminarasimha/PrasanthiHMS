@@ -640,7 +640,7 @@ class PharmacyAuditController extends Controller
 
     private function mustWork(Request $request): void
     {
-        abort_unless($request->user()->allows('canRunPharmacy') || $request->user()->allows('canAuditPharmacy'), 403, 'You are not allowed to do this in the pharmacy.');
+        abort_unless($request->user()->mayInPharmacy($request) || $request->user()->allows('canAuditPharmacy'), 403, 'You are not allowed to do this in the pharmacy.');
     }
 
     private function mustAudit(Request $request): void

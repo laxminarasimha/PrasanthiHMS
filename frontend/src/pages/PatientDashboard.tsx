@@ -114,7 +114,7 @@ export function PatientDashboard() {
           <Link className="btn" to={`/patients?edit=${p.id}`}>
             {p.is_temporary ? 'Complete registration' : 'Edit details'}
           </Link>
-          {(user?.can_consult || user?.can_run_lab) && (
+          {(user?.can_view_clinical ?? (user?.can_consult || user?.can_run_lab)) && (
             <Link className="btn" to={`/patients/${p.id}/history`}>
               Case history and test trends
             </Link>

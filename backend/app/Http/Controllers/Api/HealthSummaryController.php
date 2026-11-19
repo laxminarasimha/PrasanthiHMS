@@ -118,8 +118,7 @@ class HealthSummaryController extends Controller
 
     private function guardRead(Request $request): void
     {
-        $user = $request->user();
-        abort_unless($user->allows('canConsult') || $user->allows('canRunLab'), 403, 'You are not allowed to see clinical notes.');
+        abort_unless($request->user()->seesClinical(), 403, 'You are not allowed to see clinical notes.');
     }
 
     private function guardWrite(Request $request): void
