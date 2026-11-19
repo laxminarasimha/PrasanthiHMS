@@ -66,6 +66,17 @@ export const onLoadTrouble = (listener: TroubleListener) => {
 }
 const isRead = (method?: string) => (method ?? 'get').toLowerCase() === 'get'
 
+// The server refusing something as "not allowed" usually means this person's permissions were changed while they
+// were signed in. Whoever keeps the signed-in person's details listens here and asks the server afresh, so the
+// menus and buttons catch up at once instead of at the next reload.
+const refusedListeners = new Set<() => void>()
+export const onRefused = (listener: () => void) => {
+  refusedListeners.add(listener)
+  return () => {
+    refusedListeners.delete(listener)
+  }
+}
+
 api.interceptors.response.use(
   (response) => {
     if (isRead(response.config.method)) troubleListeners.forEach((tell) => tell(false))
@@ -77,6 +88,7 @@ api.interceptors.response.use(
       setToken(null)
       window.location.assign('/login')
     }
+    if (error.response?.status === 403) refusedListeners.forEach((tell) => tell())
     // No answer at all, or the server itself failing. A refusal (not allowed, not found) is the screen's own business.
     if (!axios.isCancel(error) && isRead(error.config?.method) && (!error.response || error.response.status >= 500)) {
       troubleListeners.forEach((tell) => tell(true))

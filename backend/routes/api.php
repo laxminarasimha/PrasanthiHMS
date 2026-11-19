@@ -39,6 +39,7 @@ use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\StaffController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Middleware\EnsureCanManageStaff;
+use App\Http\Middleware\KeepPrices;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
@@ -127,8 +128,9 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
     Route::get('/appointments/calendar', [AppointmentController::class, 'calendar']);
 
     Route::middleware('ability:canManageSetup')->group(function () {
-        Route::post('/services', [ServiceController::class, 'store']);
-        Route::put('/services/{service}', [ServiceController::class, 'update']);
+        // A price is set only by someone allowed to set prices; the rest of a service is setup like any other.
+        Route::post('/services', [ServiceController::class, 'store'])->middleware(KeepPrices::class);
+        Route::put('/services/{service}', [ServiceController::class, 'update'])->middleware(KeepPrices::class);
         Route::put('/appointments/calendar-settings', [AppointmentController::class, 'saveCalendarSettings']);
     });
 
@@ -392,10 +394,10 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
         Route::get('/admissions/{admission}/investigations', 'investigations');
 
         Route::middleware('ability:canManageSetup')->group(function () {
-            Route::post('/beds', 'storeBed');
-            Route::put('/beds/{bed}', 'updateBed');
-            Route::post('/services', 'storeService');
-            Route::put('/services/{service}', 'updateService');
+            Route::post('/beds', 'storeBed')->middleware(KeepPrices::class);
+            Route::put('/beds/{bed}', 'updateBed')->middleware(KeepPrices::class);
+            Route::post('/services', 'storeService')->middleware(KeepPrices::class);
+            Route::put('/services/{service}', 'updateService')->middleware(KeepPrices::class);
             Route::put('/round-times', 'saveRoundTimes');
             Route::put('/bed-charging', 'saveBedCharging');
         });
@@ -495,6 +497,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
         Route::get('/staff', [StaffController::class, 'index']);
         Route::post('/staff', [StaffController::class, 'store']);
         Route::put('/staff/{staff}', [StaffController::class, 'update']);
+        Route::get('/staff/{staff}/permission-history', [StaffController::class, 'permissionHistory']);
         Route::post('/staff/{staff}/signature', [StaffController::class, 'saveSignature']);
         Route::delete('/staff/{staff}/signature', [StaffController::class, 'destroySignature']);
     });

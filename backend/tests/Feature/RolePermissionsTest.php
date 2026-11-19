@@ -24,8 +24,8 @@ class RolePermissionsTest extends TestCase
         return [
             'admin' => ['admin', [true, true, true, true, true, true, true]],
             'doctor' => ['doctor', [true, true, true, true, true, true, true]],
-            // The owner's manager starts with all that a doctor may do; it is cut down per person under Setup → Staff.
-            'hospital manager' => ['manager', [true, true, true, true, true, true, true]],
+            // The owner's manager runs the day and sees everything, but does not write visit notes, enter lab results or sell medicines.
+            'hospital manager' => ['manager', [true, true, true, false, false, false, true]],
             'nurse' => ['nurse', [false, true, true, true, false, false, false]],
             'frontdesk' => ['frontdesk', [false, true, true, false, false, false, false]],
             'lab technician' => ['lab_tech', [false, false, false, false, true, false, false]],

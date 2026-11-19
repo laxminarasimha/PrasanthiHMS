@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\Role;
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\User;
 use App\Support\SignInGuard;
 use Illuminate\Http\JsonResponse;
@@ -35,7 +36,7 @@ class StaffController extends Controller
             'roles' => array_map(fn (Role $r) => ['value' => $r->value, 'label' => $r->label()], Role::cases()),
             // Every permission, with what each role gets unless it is changed for a person.
             'abilities' => collect(User::ABILITIES)->map(fn (array $text, string $key) => [
-                'key' => $key, 'label' => $text[0], 'hint' => $text[1],
+                'key' => $key, 'label' => $text[0], 'hint' => $text[1], 'sensitive' => in_array($key, User::SENSITIVE, true),
                 'roles' => collect(Role::cases())->filter(fn (Role $r) => $r->{$key}())->map->value->values(),
             ])->values(),
         ]);
@@ -115,8 +116,16 @@ class StaffController extends Controller
 
         $this->onlyAdminsTouchAdmins($request, null, $data['role']);
         $data['branch_id'] = $request->user()->branch_id;
+        $reason = $data['reason'] ?? null;
+        unset($data['reason']);
+        $data = $this->withPermissions($data);
+        $this->onlyAdminsGiveSensitive($request, [], $this->abilitiesOf($data['role'], $data['permissions'] ?? null), $data['role']);
 
-        return response()->json(User::create($this->withPermissions($data))->refresh()->append(self::EXTRA), 201);
+        $staff = User::create($data)->refresh();
+        AuditLog::record('staff.permissions', null, $staff, $this->permissionWords($staff, null, [], $staff->abilities, $reason ?: 'New member of staff'));
+        AuditLog::$written = false; // the usual "Added a staff login" line is still written as well
+
+        return response()->json($staff->append(self::EXTRA), 201);
     }
 
     public function update(Request $request, User $staff): JsonResponse
@@ -137,9 +146,27 @@ class StaffController extends Controller
             unset($data['is_active'], $data['permissions']);
             $data['role'] = $staff->role->value;
         }
+        $reason = $data['reason'] ?? null;
+        unset($data['reason']);
         $data = $this->withPermissions($data);
 
+        // What the person may do before and after: a change of role and a change of ticks are judged together.
+        $before = $staff->abilities;
+        $wasRole = $staff->role;
+        $after = $this->abilitiesOf($data['role'], array_key_exists('permissions', $data) ? $data['permissions'] : $staff->permissions);
+        $changed = $before !== $after || $wasRole->value !== $data['role'];
+        if ($changed) {
+            $this->onlyAdminsGiveSensitive($request, $before, $after, $data['role']);
+            if (blank($reason)) {
+                throw ValidationException::withMessages(['reason' => 'Say why this person’s role or permissions are being changed. It is kept with the change.']);
+            }
+        }
+
         $staff->update($data);
+        if ($changed) {
+            AuditLog::record('staff.permissions', null, $staff, $this->permissionWords($staff, $wasRole, $before, $after, $reason));
+            AuditLog::$written = false; // the usual "Changed a staff login" line is still written as well
+        }
 
         // Switched off, or given a new password by someone else: every device signed in as this person is signed out.
         if ($staff->is_active === false || $newPassword) {
@@ -151,6 +178,76 @@ class StaffController extends Controller
         }
 
         return response()->json($staff->append(self::EXTRA));
+    }
+
+    /**
+     * What a person with this role and these own settings may do, without saving anything.
+     *
+     * @param  array<string, bool>|null  $permissions
+     * @return array<string, bool>
+     */
+    private function abilitiesOf(string $role, ?array $permissions): array
+    {
+        return (new User)->forceFill(['role' => $role, 'permissions' => $permissions])->abilities;
+    }
+
+    /**
+     * Nobody hands out more than they hold. Someone who manages staff without being an admin can give a person only
+     * what they may do themself, so a manager cannot make a doctor's login to get round their own limits. And a
+     * permission that carries clinical authority, money or control (User::SENSITIVE), ticked for one person on top
+     * of what their role gives, is the admin's alone to give. Taking a permission away is open to all who manage staff.
+     *
+     * @param  array<string, bool>  $before
+     * @param  array<string, bool>  $after
+     */
+    private function onlyAdminsGiveSensitive(Request $request, array $before, array $after, string $role): void
+    {
+        $giver = $request->user();
+        if ($giver->role === Role::Admin) {
+            return;
+        }
+        $given = collect($after)->filter(fn (bool $allowed, string $a) => $allowed && ! ($before[$a] ?? false))->keys();
+        $label = fn (string $a) => User::ABILITIES[$a][0];
+
+        $notHeld = $given->reject(fn (string $a) => $giver->allows($a))->map($label);
+        if ($notHeld->isNotEmpty()) {
+            throw ValidationException::withMessages(['permissions' => 'You cannot give what you are not allowed to do yourself: '.$notHeld->implode(', ').'. Untick these, or ask an admin.']);
+        }
+        $preset = Role::from($role);
+        $extra = $given->filter(fn (string $a) => in_array($a, User::SENSITIVE, true) && ! $preset->{$a}())->map($label);
+        if ($extra->isNotEmpty()) {
+            throw ValidationException::withMessages(['permissions' => 'Only an admin can give these on top of the role: '.$extra->implode(', ').'.']);
+        }
+    }
+
+    /**
+     * One line for the record: whose permissions changed, how, and why.
+     *
+     * @param  array<string, bool>  $before
+     * @param  array<string, bool>  $after
+     */
+    private function permissionWords(User $staff, ?Role $wasRole, array $before, array $after, ?string $reason): string
+    {
+        $names = fn (bool $now) => collect(User::ABILITIES)->filter(fn ($text, $a) => ($after[$a] ?? false) === $now && ($before[$a] ?? false) !== $now)->map(fn ($text) => $text[0])->values();
+        $parts = array_filter([
+            $staff->name,
+            $wasRole === null ? 'Role: '.$staff->role->label() : ($wasRole !== $staff->role ? "Role: {$wasRole->label()} → {$staff->role->label()}" : null),
+            $names(true)->isNotEmpty() ? 'Given: '.$names(true)->implode(', ') : null,
+            $names(false)->isNotEmpty() ? 'Taken away: '.$names(false)->implode(', ') : null,
+            filled($reason) ? 'Reason: '.trim((string) $reason) : null,
+        ]);
+
+        return implode(' · ', $parts);
+    }
+
+    /** Every change to this person's role and permissions: who made it, when, what changed and why. Newest first. */
+    public function permissionHistory(User $staff): JsonResponse
+    {
+        return response()->json(
+            AuditLog::where('action', 'staff.permissions')->where('subject_type', 'User')->where('subject_id', $staff->id)->latest('id')->limit(50)
+                ->get(['id', 'user_name', 'summary', 'created_at'])
+                ->map(fn (AuditLog $row) => ['id' => $row->id, 'by' => $row->user_name, 'at' => $row->created_at?->format('Y-m-d H:i'), 'what' => $row->summary])
+        );
     }
 
     /**
@@ -185,6 +282,7 @@ class StaffController extends Controller
             'signature_text' => ['nullable', 'string', 'max:255'],
             'permissions' => ['sometimes', 'nullable', 'array:'.implode(',', array_keys(User::ABILITIES))],
             'permissions.*' => ['boolean'],
+            'reason' => ['sometimes', 'nullable', 'string', 'max:300'],
             'availability' => ['sometimes', 'nullable', 'array:mon,tue,wed,thu,fri,sat,sun'],
             'availability.*' => ['nullable', 'array', 'max:3'],
             'availability.*.*.from' => ['required', 'date_format:H:i'],

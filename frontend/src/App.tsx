@@ -167,22 +167,22 @@ export default function App() {
             <Route path="/lab/packages" element={<LabPackages />} />
             <Route path="/lab/settings" element={<LabSettings />} />
             <Route path="/pharmacy" element={<Only when="can_run_pharmacy"><PharmacyBilling /></Only>} />
-            <Route path="/pharmacy/manager" element={<Only when="can_run_pharmacy"><PharmacyManager /></Only>} />
-            <Route path="/pharmacy/audit" element={<Only when="can_run_pharmacy"><PharmacyAudit /></Only>} />
-            <Route path="/pharmacy/audit/counts/:id" element={<Only when="can_run_pharmacy"><StockCountPage /></Only>} />
-            <Route path="/pharmacy/bills" element={<Only when="can_run_pharmacy"><PharmacyBills /></Only>} />
-            <Route path="/pharmacy/dashboard" element={<Only when="can_run_pharmacy"><PharmacyDashboard /></Only>} />
-            <Route path="/pharmacy/orders" element={<Only when="can_run_pharmacy"><PharmacyOrders /></Only>} />
-            <Route path="/pharmacy/subscriptions" element={<Only when="can_run_pharmacy"><PharmacySubscriptions /></Only>} />
-            <Route path="/pharmacy/inventory" element={<Only when="can_run_pharmacy"><PharmacyInventory /></Only>} />
+            <Route path="/pharmacy/manager" element={<Only when="can_view_pharmacy"><PharmacyManager /></Only>} />
+            <Route path="/pharmacy/audit" element={<Only when="can_view_pharmacy"><PharmacyAudit /></Only>} />
+            <Route path="/pharmacy/audit/counts/:id" element={<Only when="can_view_pharmacy"><StockCountPage /></Only>} />
+            <Route path="/pharmacy/bills" element={<Only when="can_view_pharmacy"><PharmacyBills /></Only>} />
+            <Route path="/pharmacy/dashboard" element={<Only when="can_view_pharmacy"><PharmacyDashboard /></Only>} />
+            <Route path="/pharmacy/orders" element={<Only when="can_view_pharmacy"><PharmacyOrders /></Only>} />
+            <Route path="/pharmacy/subscriptions" element={<Only when="can_view_pharmacy"><PharmacySubscriptions /></Only>} />
+            <Route path="/pharmacy/inventory" element={<Only when="can_view_pharmacy"><PharmacyInventory /></Only>} />
             <Route path="/pharmacy/opening-stock" element={<Only when="can_run_pharmacy"><PharmacyOpeningStock /></Only>} />
-            <Route path="/pharmacy/stock-returns" element={<Only when="can_run_pharmacy"><PharmacyStockReturns /></Only>} />
-            <Route path="/pharmacy/purchase-orders" element={<Only when="can_run_pharmacy"><PharmacyPurchaseOrders /></Only>} />
-            <Route path="/pharmacy/reports" element={<Only when="can_run_pharmacy"><PharmacyReports /></Only>} />
-            <Route path="/pharmacy/stock" element={<Only when="can_run_pharmacy"><PharmacyStock /></Only>} />
-            <Route path="/pharmacy/purchases" element={<Only when="can_run_pharmacy"><PharmacyPurchases /></Only>} />
-            <Route path="/pharmacy/medicines" element={<Only when="can_run_pharmacy"><PharmacyMedicines /></Only>} />
-            <Route path="/pharmacy/shelves" element={<Only when="can_run_pharmacy"><PharmacyShelves /></Only>} />
+            <Route path="/pharmacy/stock-returns" element={<Only when="can_view_pharmacy"><PharmacyStockReturns /></Only>} />
+            <Route path="/pharmacy/purchase-orders" element={<Only when="can_view_pharmacy"><PharmacyPurchaseOrders /></Only>} />
+            <Route path="/pharmacy/reports" element={<Only when="can_view_pharmacy"><PharmacyReports /></Only>} />
+            <Route path="/pharmacy/stock" element={<Only when="can_view_pharmacy"><PharmacyStock /></Only>} />
+            <Route path="/pharmacy/purchases" element={<Only when="can_view_pharmacy"><PharmacyPurchases /></Only>} />
+            <Route path="/pharmacy/medicines" element={<Only when="can_view_pharmacy"><PharmacyMedicines /></Only>} />
+            <Route path="/pharmacy/shelves" element={<Only when="can_view_pharmacy"><PharmacyShelves /></Only>} />
             <Route path="/ipd" element={<Only when="can_ipd"><Ipd /></Only>} />
             <Route path="/ipd/reports" element={<Only when="can_ipd"><IpdReports /></Only>} />
             <Route path="/ipd/setup" element={<Only when="can_manage_setup"><IpdSetup /></Only>} />

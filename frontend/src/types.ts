@@ -6,9 +6,19 @@ export type User = {
   role_label: string
   can_manage_staff: boolean
   can_consult: boolean
+  /** May read clinical records: through their own clinical or lab work, or by being allowed to look. */
+  can_view_clinical?: boolean
   can_run_lab: boolean
+  can_approve_lab?: boolean
   can_run_pharmacy: boolean
+  /** May open the pharmacy's screens: to work in them, or only to look. */
+  can_view_pharmacy?: boolean
   can_manage_setup: boolean
+  can_set_prices?: boolean
+  /** May download lists and reports as a file. */
+  can_export?: boolean
+  /** Everything this person may do, by the permission's own name. */
+  abilities?: Record<string, boolean>
   can_front_desk: boolean
   /** May scan a patient's old papers, check what was read from them and file them. */
   can_file_past_records: boolean
@@ -47,7 +57,7 @@ export type Staff = {
 }
 
 /** One permission that can be given to or taken from a person, and the roles that get it by default. */
-export type Ability = { key: string; label: string; hint: string; roles: string[] }
+export type Ability = { key: string; label: string; hint: string; roles: string[]; /** Carries clinical authority, money or control: only an admin gives it on top of a role. */ sensitive?: boolean }
 
 /** A doctor's usual hours for each day of the week; a day left out means no set hours. */
 export type Availability = Partial<Record<'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun', { from: string; to: string }[]>>

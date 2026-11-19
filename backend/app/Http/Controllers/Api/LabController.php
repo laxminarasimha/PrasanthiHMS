@@ -512,7 +512,7 @@ class LabController extends Controller
     /** A second person signs off a reported result, or withdraws that sign-off. */
     public function approve(Request $request, LabOrder $order, LabOrderItem $item): JsonResponse
     {
-        $this->authorizeLab($request);
+        $this->authorizeApproval($request);
         abort_unless($item->lab_order_id === $order->id, 404);
 
         $approved = $request->validate(['approved' => ['required', 'boolean']])['approved'];
@@ -542,7 +542,7 @@ class LabController extends Controller
     /** Approves every reported test on the order in one step. */
     public function approveAll(Request $request, LabOrder $order): JsonResponse
     {
-        $this->authorizeLab($request);
+        $this->authorizeApproval($request);
 
         $waiting = $order->items()->whereNotNull('reported_at')->whereNull('approved_at');
         if (! $waiting->exists()) {
@@ -598,6 +598,12 @@ class LabController extends Controller
     private function withVersion(LabOrderItem $item): string
     {
         return $item->test_name.($item->template_version ? " (template version {$item->template_version})" : '');
+    }
+
+    /** Signing off a result is its own permission: a person may enter results without being the one who approves them. */
+    private function authorizeApproval(Request $request): void
+    {
+        abort_unless($request->user()->allows('canApproveLab'), 403, 'You are not allowed to approve lab results.');
     }
 
     private function authorizeLab(Request $request): void

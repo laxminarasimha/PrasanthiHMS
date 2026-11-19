@@ -79,7 +79,17 @@ export const placeLabel = (rack?: string | null, box?: string | null) => {
 }
 
 /** Saves rows as a CSV file the pharmacist can open in Excel. */
+// Whether the person signed in may take lists and reports away as a file. Set when they sign in or their permissions change.
+let mayExport = true
+export const setMayExport = (allowed: boolean) => {
+  mayExport = allowed
+}
+
 export function downloadCsv(filename: string, headers: string[], rows: (string | number | null | undefined)[][]) {
+  if (!mayExport) {
+    window.alert('You are not allowed to export to a file. Ask an admin for the “Export to a file” permission.')
+    return
+  }
   const cell = (value: string | number | null | undefined) => `"${String(value ?? '').replace(/"/g, '""')}"`
   const text = [headers, ...rows].map((row) => row.map(cell).join(',')).join('\r\n')
   const link = document.createElement('a')

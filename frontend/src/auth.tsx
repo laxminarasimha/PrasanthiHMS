@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { AxiosError } from 'axios'
-import { api, getToken, setToken, USER_KEY } from './api'
+import { api, getToken, onRefused, setToken, USER_KEY } from './api'
+import { setMayExport } from './format'
 import { applyAppearance } from './appearance'
 import type { User } from './types'
 
@@ -39,6 +40,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Whether lists may be taken away as a file follows the person's permissions, wherever the export button is.
+  useEffect(() => {
+    setMayExport(user?.can_export ?? true)
+  }, [user?.can_export])
+
   // The look a person chose follows them to whichever computer they sign in on.
   useEffect(() => {
     if (user?.appearance) applyAppearance(user.appearance)
@@ -73,6 +79,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       document.removeEventListener('visibilitychange', onShow)
       window.removeEventListener('focus', onShow)
+    }
+  }, [])
+
+  // A permission changed by an admin takes hold on the server at once. The screen learns of it here: once a minute
+  // while the window is in view, and straight away when the server refuses something as not allowed.
+  useEffect(() => {
+    let last = 0
+    const ask = () => {
+      if (!getToken() || Date.now() - last < 5000) return
+      last = Date.now()
+      api.get<User>('/me').then((res) => setUser(res.data)).catch(() => undefined)
+    }
+    const stop = onRefused(ask)
+    const timer = window.setInterval(() => document.visibilityState === 'visible' && ask(), 60000)
+    return () => {
+      stop()
+      window.clearInterval(timer)
     }
   }, [])
 

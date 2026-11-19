@@ -134,11 +134,12 @@ class VisitLockAndAuditTest extends TestCase
 
         // Staff: a new login and a change to it.
         $nurse = $this->postJson('/api/staff', ['name' => 'Sister Mary', 'email' => 'mary@hospital.example', 'role' => 'nurse', 'password' => 'Nursing2026', 'gender' => 'female', 'phone' => '9000000001'])->assertCreated()->json('id');
-        $this->putJson("/api/staff/{$nurse}", ['name' => 'Sister Mary', 'email' => 'mary@hospital.example', 'role' => 'frontdesk', 'gender' => 'female', 'phone' => '9000000001'])->assertOk();
+        $this->putJson("/api/staff/{$nurse}", ['name' => 'Sister Mary', 'email' => 'mary@hospital.example', 'role' => 'frontdesk', 'gender' => 'female', 'phone' => '9000000001', 'reason' => 'Moved to the front desk'])->assertOk();
 
         $this->assertSame([
             'Added a medicine', 'Added: pharmacy / stockists', 'Entered a purchase invoice', 'Adjusted stock', 'Made a pharmacy bill', 'Deleted a pharmacy bill',
-            'Added a staff login', 'Changed a staff login',
+            // A new login and a change of role are each written twice: what was given or taken away and why, then the usual line.
+            'Changed a person’s role or permissions', 'Added a staff login', 'Changed a person’s role or permissions', 'Changed a staff login',
         ], $actions());
         $rows = AuditLog::orderBy('id')->get()->keyBy(fn ($r) => AuditLog::words($r)['action']);
         $this->assertStringContainsString('Two strips damaged', $rows['Adjusted stock']->summary);

@@ -4,6 +4,7 @@ import { SetupTabs } from '../components/SetupTabs'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { useAuth } from '../auth'
 import { SelectField, TextField } from '../components/Field'
+import { clock, longDate } from '../format'
 import { useSignature } from '../components/useSignature'
 import type { Ability, Availability, RoleOption, Staff as StaffMember } from '../types'
 
@@ -25,6 +26,35 @@ type Tab = 'details' | 'permissions' | 'availability'
 
 const blank = { name: '', email: '', password: '', role: '', gender: '', phone: '', department: '', signature_text: '', is_active: true }
 type Form = typeof blank
+
+/** Every change made to one person's role and permissions: who made it, when, what changed and why. */
+function PermissionHistory({ staffId }: { staffId: number }) {
+  const [rows, setRows] = useState<{ id: number; by: string | null; at: string | null; what: string | null }[] | null>(null)
+  useEffect(() => {
+    let current = true
+    api
+      .get<{ id: number; by: string | null; at: string | null; what: string | null }[]>(`/staff/${staffId}/permission-history`)
+      .then((res) => current && setRows(res.data))
+      .catch(() => current && setRows([]))
+    return () => {
+      current = false
+    }
+  }, [staffId])
+  if (!rows || rows.length === 0) return null
+  return (
+    <div className="permission-history">
+      <h3>Changes to this person’s permissions</h3>
+      <ul>
+        {rows.map((r) => (
+          <li key={r.id}>
+            <strong>{r.at ? `${longDate(r.at)} ${clock(r.at)}` : ''}</strong> · {r.by ?? 'Unknown'}
+            <small className="muted block">{(r.what ?? '').split(' · ').slice(1).join(' · ')}</small>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
 
 export function Staff() {
   const { user } = useAuth()
@@ -64,6 +94,7 @@ export function Staff() {
     setEditing(target)
     setErrors({})
     setNotice('')
+    setReason('')
     setTab('details')
     setPerms(target === 'new' ? {} : target.abilities)
     setHours(toHours(target === 'new' ? null : target.availability))
@@ -107,6 +138,22 @@ export function Staff() {
   }
   const roleLabel = (value: string) => roles.find((r) => r.value === value)?.label ?? value
   const isSelf = editing !== 'new' && editing?.id === user?.id
+  const isAdmin = user?.role === 'admin'
+  const had = (key: string) => (editing && editing !== 'new' ? Boolean(editing.abilities[key]) : false)
+  /**
+   * Why whoever is signed in cannot give this permission to the person, or '' if they can. Nobody gives more than
+   * they hold, and a sensitive one on top of the role is the admin's to give. What a person already has stays.
+   */
+  const barred = (a: Ability) => {
+    if (isAdmin || had(a.key)) return ''
+    if (!user?.abilities?.[a.key]) return 'You cannot give this: you are not allowed to do it yourself.'
+    if (a.sensitive && !a.roles.includes(form.role)) return 'Only an admin can give this on top of the role.'
+    return ''
+  }
+  const allowedOf = (a: Ability) => (form.role === 'admin' ? true : barred(a) ? false : (perms[a.key] ?? a.roles.includes(form.role)))
+  // A change of role or of any tick is kept with who made it, when and why, so a reason is asked for.
+  const [reason, setReason] = useState('')
+  const changing = Boolean(editing && editing !== 'new' && !isSelf && form.role && (form.role !== editing.role || abilities.some((a) => allowedOf(a) !== Boolean(editing.abilities[a.key]))))
 
   const save = async (e: FormEvent) => {
     e.preventDefault()
@@ -114,7 +161,8 @@ export function Staff() {
     setErrors({})
     const body = {
       ...form,
-      permissions: form.role ? perms : undefined,
+      permissions: form.role ? Object.fromEntries(abilities.map((a) => [a.key, allowedOf(a)])) : undefined,
+      reason: changing ? reason.trim() : undefined,
       availability: form.role === 'doctor' ? Object.fromEntries(DAYS.map(([day]) => [day, hours[day].filter((r) => r.from && r.to)])) : null,
     }
     try {
@@ -130,7 +178,7 @@ export function Staff() {
       setErrors(found)
       // Show the tab that holds the problem.
       const first = Object.keys(found)[0] ?? ''
-      setTab(first.startsWith('availability') ? 'availability' : first.startsWith('permissions') ? 'permissions' : 'details')
+      setTab(first.startsWith('availability') ? 'availability' : first.startsWith('permissions') || first === 'reason' ? 'permissions' : 'details')
     } finally {
       setSaving(false)
     }
@@ -219,23 +267,31 @@ export function Staff() {
               ) : isSelf ? (
                 <p className="muted">You cannot change your own permissions. Ask another admin or doctor.</p>
               ) : (
-                <p className="muted small">Ticked by default according to the role. Change any of them for this person only.</p>
+                <p className="muted small">
+                  Ticked by default according to the role. Change any of them for this person only: an unticked box always wins over the role.
+                  {!isAdmin && ' You can give only what you are allowed to do yourself; the ones marked “admin only” are given by an admin.'}
+                </p>
               )}
               {form.role &&
                 abilities.map((a) => {
                   const usual = a.roles.includes(form.role)
-                  const allowed = form.role === 'admin' ? true : (perms[a.key] ?? usual)
+                  const allowed = allowedOf(a)
+                  const why = form.role === 'admin' || isSelf ? '' : barred(a)
                   return (
                     <label className="check top" key={a.key}>
-                      <input type="checkbox" checked={allowed} disabled={form.role === 'admin' || isSelf} onChange={(e) => setPerms((p) => ({ ...p, [a.key]: e.target.checked }))} />
+                      <input type="checkbox" checked={allowed} disabled={form.role === 'admin' || isSelf || Boolean(why)} onChange={(e) => setPerms((p) => ({ ...p, [a.key]: e.target.checked }))} />
                       <span>
                         {a.label}
+                        {a.sensitive && <span className="pill off"> Admin only to add</span>}
                         {allowed !== usual && form.role !== 'admin' && <span className="pill status-arrived"> {allowed ? 'Added' : 'Removed'} for this person</span>}
                         <small className="muted block">{a.hint}</small>
+                        {why && <small className="due block">{why}</small>}
                       </span>
                     </label>
                   )
                 })}
+              {errors.permissions && <p className="form-error">{errors.permissions}</p>}
+              {editing !== 'new' && editing && <PermissionHistory key={`${editing.id}-${staff.length}`} staffId={editing.id} />}
             </div>
           )}
 
@@ -336,9 +392,14 @@ export function Staff() {
           </>
           )}
 
+          {changing && (
+            <div className="change-reason">
+              <TextField label="Reason for changing this person’s role or permissions" required value={reason} onChange={setReason} error={errors.reason} placeholder="Kept with the change: who made it, when and why" />
+            </div>
+          )}
           {errors._ && <p className="form-error">{errors._}</p>}
           <div className="panel-foot">
-            <button className="btn primary" disabled={saving}>
+            <button className="btn primary" disabled={saving || (changing && !reason.trim())} title={changing && !reason.trim() ? 'Give the reason for the change first' : undefined}>
               {saving ? 'Saving…' : editing === 'new' ? 'Add staff' : 'Save changes'}
             </button>
           </div>

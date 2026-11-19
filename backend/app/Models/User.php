@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Http\Request;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
@@ -77,15 +78,20 @@ class User extends Authenticatable
         'canRecordExpenses' => ['Expenses', 'Write down money paid out (wages advanced, tea, repairs and the like), and correct or cancel an entry.'],
         'canFilePastRecords' => ['Old paper records', 'Scan the papers a patient brings from before, check what was read from them and file them in the record.'],
         'canConsult' => ['Doctor: visit pad', 'Open the visit pad, write notes and prescriptions, and use the doctor library.'],
+        'canViewClinical' => ['See clinical records', 'Read visits, the case history, bedside charts and the health summary, without writing anything.'],
         'canRunLab' => ['Lab', 'Enter and approve lab results, and edit lab tests, packages and preferences.'],
+        'canApproveLab' => ['Approve lab results', 'Approve a reported lab result, or withdraw the approval.'],
         'canRunPharmacy' => ['Pharmacy', 'Sell medicines, receive stock, and edit medicines, bills and invoices.'],
+        'canViewPharmacy' => ['Pharmacy: look only', 'Open the pharmacy screens and reports to see stock, bills and purchases, without changing anything.'],
         'canDeleteBills' => ['Delete and cancel bills', 'Delete a pharmacy bill, which restocks it, or cancel a front desk or lab bill made by mistake. The money is refunded.'],
         'canAuditPharmacy' => ['Pharmacy stock audit', 'Approve stock counts and stock corrections, and see where stock went and what is missing.'],
         'canWorkIpd' => ['IPD', 'Admit patients, add IPD charges, take IPD payments and discharge.'],
         'canApproveIpd' => ['Approve IPD summaries and bills', 'Approve a discharge summary or an IPD bill, which locks it against changes.'],
         'canViewReports' => ['Reports', "See the hospital's billing, collection and activity reports."],
+        'canExportData' => ['Export to a file', 'Download lists and reports as a spreadsheet file.'],
         'canCloseDay' => ['Close the day', 'Count the cash and close a day’s accounts, which locks that day’s bills and payments.'],
         'canManageSetup' => ['Price lists and setup', 'Change services, OPD hours, beds and IPD services.'],
+        'canSetPrices' => ['Set prices', 'Set or change the price of a service, an IPD service or a bed.'],
         'canManageStaff' => ['Staff and permissions', 'Add staff, reset passwords and change what each person may do.'],
     ];
 
@@ -98,6 +104,27 @@ class User extends Authenticatable
         $default = method_exists($this->role, $ability) && $this->role->{$ability}();
 
         return $this->role === Role::Admin ? $default : (bool) ($this->permissions[$ability] ?? $default);
+    }
+
+    /**
+     * Permissions that hand over clinical authority, money or control of the system. Only an admin may give one of
+     * these to a person, or give a role that carries one; anyone who manages staff may still take them away.
+     */
+    public const SENSITIVE = ['canConsult', 'canApproveLab', 'canApproveIpd', 'canChangePrice', 'canSetPrices', 'canDeleteBills', 'canAuditPharmacy', 'canCloseDay', 'canExportData', 'canManageStaff'];
+
+    /**
+     * Whether this person may do this in the pharmacy: anything if they run it, or only what reads without
+     * changing anything if they are allowed to look.
+     */
+    public function mayInPharmacy(Request $request): bool
+    {
+        return $this->allows('canRunPharmacy') || ($request->isMethodSafe() && $this->allows('canViewPharmacy'));
+    }
+
+    /** Whether this person may read clinical records: through their own clinical or lab work, or by being allowed to look. */
+    public function seesClinical(): bool
+    {
+        return $this->allows('canConsult') || $this->allows('canRunLab') || $this->allows('canViewClinical');
     }
 
     /**

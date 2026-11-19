@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../../api'
+import { useAuth } from '../../auth'
 import { TextField } from '../../components/Field'
 import { rupees } from '../../format'
 import type { Bed, IpdService } from '../../types'
@@ -13,6 +14,8 @@ const blankService = { name: '', category: '', price: '', is_active: true }
 type Editing = { kind: 'bed' | 'service'; id: number | null } | null
 
 export function IpdSetup() {
+  // Setting a price is its own permission; without it the rest of a bed or a service can still be changed.
+  const canPrice = useAuth().user?.can_set_prices ?? true
   const [beds, setBeds] = useState<Bed[]>([])
   const [services, setServices] = useState<IpdService[]>([])
   const [editing, setEditing] = useState<Editing>(null)
@@ -172,7 +175,7 @@ export function IpdSetup() {
                 <TextField label="Ward" required placeholder="General Ward" value={bed.ward} onChange={(v) => setBed((b) => ({ ...b, ward: v }))} error={errors.ward} autoFocus />
               </div>
               <TextField label="Bed number" required value={bed.bed_no} onChange={(v) => setBed((b) => ({ ...b, bed_no: v }))} error={errors.bed_no} />
-              <TextField label="Charge per day (₹)" type="number" min={0} value={bed.daily_charge} onChange={(v) => setBed((b) => ({ ...b, daily_charge: v }))} error={errors.daily_charge} />
+              <TextField label="Charge per day (₹)" type="number" min={0} value={bed.daily_charge} onChange={(v) => setBed((b) => ({ ...b, daily_charge: v }))} error={errors.daily_charge} disabled={!canPrice} title={canPrice ? undefined : 'Only someone allowed to set prices can change this'} />
               {editing.id && (
                 <label className="check span-2">
                   <input type="checkbox" checked={bed.is_active} onChange={(e) => setBed((b) => ({ ...b, is_active: e.target.checked }))} />
@@ -187,7 +190,7 @@ export function IpdSetup() {
                 <TextField label="Service name" required value={service.name} onChange={(v) => setService((s) => ({ ...s, name: v }))} error={errors.name} autoFocus />
               </div>
               <TextField label="Category" placeholder="Nursing" value={service.category} onChange={(v) => setService((s) => ({ ...s, category: v }))} error={errors.category} />
-              <TextField label="Price (₹)" required type="number" min={0} step="0.01" value={service.price} onChange={(v) => setService((s) => ({ ...s, price: v }))} error={errors.price} />
+              <TextField label="Price (₹)" required type="number" min={0} step="0.01" value={service.price} onChange={(v) => setService((s) => ({ ...s, price: v }))} error={errors.price} disabled={!canPrice} title={canPrice ? undefined : 'Only someone allowed to set prices can change this'} />
               {editing.id && (
                 <label className="check span-2">
                   <input type="checkbox" checked={service.is_active} onChange={(e) => setService((s) => ({ ...s, is_active: e.target.checked }))} />

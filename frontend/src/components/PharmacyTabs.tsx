@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
+import { useAuth } from '../auth'
 
 const GROUPS: [string, [string, string][]][] = [
   ['Today', [['/pharmacy/manager', 'Manager']]],
@@ -14,8 +15,15 @@ const GROUPS: [string, [string, string][]][] = [
  * The pharmacy's own menu, on one line under the top bar. A group with several pages opens as a
  * short list; the group you are in is marked and names the page you are on.
  */
+/** Pages that only make sense for someone who works in the pharmacy: making a bill, entering opening stock. */
+const WORK_ONLY = ['/pharmacy', '/pharmacy/opening-stock']
+
 export function PharmacyTabs() {
   const { pathname } = useLocation()
+  const { user } = useAuth()
+  // Someone allowed only to look gets the same menu without the pages for doing the work, and is told so.
+  const looking = Boolean(user && !user.can_run_pharmacy)
+  const groups = looking ? GROUPS.map(([group, links]) => [group, links.filter(([to]) => !WORK_ONLY.includes(to))] as (typeof GROUPS)[number]).filter(([, links]) => links.length > 0) : GROUPS
   const [open, setOpen] = useState<string | null>(null)
   const bar = useRef<HTMLElement>(null)
   // With a mouse the lists open as the pointer passes; on a touch screen they open on a tap.
@@ -38,7 +46,12 @@ export function PharmacyTabs() {
 
   return (
     <nav className="subnav grouped no-print" ref={bar} aria-label="Pharmacy pages">
-      {GROUPS.map(([group, links]) => {
+      {looking && (
+        <span className="look-only" title="You can open the pharmacy's screens and reports. Selling, receiving stock and editing are for the pharmacy's own staff.">
+          Look only
+        </span>
+      )}
+      {groups.map(([group, links]) => {
         if (links.length === 1) {
           return (
             <NavLink key={group} to={links[0][0]}>

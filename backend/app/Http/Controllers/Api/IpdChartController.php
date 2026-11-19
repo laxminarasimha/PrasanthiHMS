@@ -217,7 +217,9 @@ class IpdChartController extends Controller
 
     private function mustChart(Request $request): void
     {
-        abort_unless($request->user()->allows('canConsult'), 403, 'Only doctors and nurses can open or write the bedside chart.');
+        // Reading the chart is open to those allowed to see clinical records; writing on it is for doctors and nurses.
+        $user = $request->user();
+        abort_unless($user->allows('canConsult') || ($request->isMethodSafe() && $user->allows('canViewClinical')), 403, 'Only doctors and nurses can write the bedside chart.');
     }
 
     private function mustOrder(Request $request): void
