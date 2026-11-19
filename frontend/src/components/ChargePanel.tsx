@@ -6,6 +6,7 @@ import type { LabCatalogueTest, LabPackage, Service } from '../types'
 import { matchAdvised, namesOf } from './LabOrderForm'
 import { ReferralList } from './ReferralList'
 import { useBillingPreferences } from './useBillingPreferences'
+import { usePartLoading } from '../loading'
 
 type Props = {
   patient: { id: number; name: string; uhid: string }
@@ -49,6 +50,8 @@ export function ChargePanel({ patient, appointmentId, doctor, advised, services,
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState('')
   const [due, setDue] = useState<Due[]>([])
+  // Until what is unpaid has come, "nothing is due" is not known to be true.
+  const loading = usePartLoading()
   const [amount, setAmount] = useState('')
   const [chosenMode, setMode] = useState<string | null>(null)
   const mode = chosenMode ?? prefs.default_payment_mode
@@ -354,7 +357,9 @@ export function ChargePanel({ patient, appointmentId, doctor, advised, services,
           </form>
         </>
       )}
-      {due.length === 0 && lines.length === 0 && !saved && <p className="muted gap-top">Nothing is due for this patient right now. Search above to add a service or a lab test.</p>}
+      {due.length === 0 && lines.length === 0 && !saved && (
+        <p className="muted gap-top">{loading ? 'Checking what is due for this patient…' : 'Nothing is due for this patient right now. Search above to add a service or a lab test.'}</p>
+      )}
     </aside>
   )
 }

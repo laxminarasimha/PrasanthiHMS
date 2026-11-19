@@ -63,6 +63,16 @@ export function useFirstLoad(screen: string): boolean {
 }
 
 /**
+ * The same for a part of a screen that is opened later: a side panel, a window, or the body of a tab. True from
+ * when the part appears until what it asked for has arrived. Give `part` the tab's name where one body follows
+ * another in the same place, so the wait starts again at each change of tab.
+ *
+ * Put `first-load` on the part's outer element while this is true to get the same treatment as a whole screen,
+ * or use the answer directly to hold back a "nothing here" message.
+ */
+export const usePartLoading = (part = 'part'): boolean => useFirstLoad(part)
+
+/**
  * Calls `load` as soon as the screen opens, and again whenever `load` changes (a new date, a filter, a search).
  * Those later calls wait `ms` first, so typing in a search box does not ask the server at every key.
  */

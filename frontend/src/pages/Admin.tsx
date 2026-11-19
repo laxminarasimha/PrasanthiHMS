@@ -9,6 +9,7 @@ import { TextField } from '../components/Field'
 import { useAuth } from '../auth'
 import { PAYMENT_MODES, clock, longDate } from '../format'
 import { AdminList } from './AdminLists'
+import { usePartLoading } from '../loading'
 import { FormDesigner } from './FormDesigner'
 import type { BillingPreferences, Clinic, PatientMerge, ReferralDoctor } from '../types'
 
@@ -803,6 +804,8 @@ export function Admin() {
   const [params] = useSearchParams()
   const [tab, setTab] = useState<Tab>(() => (TABS.some(([key]) => key === params.get('tab')) ? (params.get('tab') as Tab) : 'clinic'))
   const tabs = TABS.filter(([key]) => key !== 'backups' || user?.role === 'admin')
+  // Each tab asks for its own list when it is opened; until that comes, its "nothing yet" line reads "Loading…".
+  const loading = usePartLoading(tab)
 
   return (
     <>
@@ -818,14 +821,16 @@ export function Admin() {
           </button>
         ))}
       </div>
-      {tab === 'clinic' && <ClinicDetails />}
-      {tab === 'billing' && <BillingPrefs />}
-      {tab === 'forms' && <FormDesigner />}
-      {(tab === 'department' || tab === 'payer' || tab === 'vendor') && <AdminList key={tab} kind={tab} />}
-      {(tab === 'by' || tab === 'to') && <ReferralDoctors key={tab} direction={tab} />}
-      {tab === 'merge' && <MergePatients />}
-      {tab === 'reading' && <ReadingSetup />}
-      {tab === 'backups' && <Backups />}
+      <div className={loading ? 'first-load' : undefined} aria-busy={loading}>
+        {tab === 'clinic' && <ClinicDetails />}
+        {tab === 'billing' && <BillingPrefs />}
+        {tab === 'forms' && <FormDesigner />}
+        {(tab === 'department' || tab === 'payer' || tab === 'vendor') && <AdminList key={tab} kind={tab} />}
+        {(tab === 'by' || tab === 'to') && <ReferralDoctors key={tab} direction={tab} />}
+        {tab === 'merge' && <MergePatients />}
+        {tab === 'reading' && <ReadingSetup />}
+        {tab === 'backups' && <Backups />}
+      </div>
     </section>
     </>
   )
