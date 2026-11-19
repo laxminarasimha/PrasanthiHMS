@@ -67,6 +67,17 @@ export const nowLocal = () => {
 export const settlement = (due: number, movedToIpd: number | null | undefined, total?: number) =>
   due > 0 ? `${rupees(due)} due` : Number(movedToIpd) > 0 ? 'On IPD bill' : total !== undefined && Number(total) <= 0 ? 'No charge' : 'Paid'
 
+/**
+ * Where a medicine is kept, the way staff say it: "Rack A · Box 3". Nothing when it has no place yet.
+ * A value that already says "rack" or "box" (as some type it) is not given the word twice.
+ */
+export const placeLabel = (rack?: string | null, box?: string | null) => {
+  const word = (name: string, value: string) => (new RegExp(`^${name}\\b`, 'i').test(value) ? value : `${name} ${value}`)
+  const r = (rack ?? '').trim()
+  const b = (box ?? '').trim()
+  return r ? `${word('Rack', r)}${b ? ` · ${word('Box', b)}` : ''}` : ''
+}
+
 /** Saves rows as a CSV file the pharmacist can open in Excel. */
 export function downloadCsv(filename: string, headers: string[], rows: (string | number | null | undefined)[][]) {
   const cell = (value: string | number | null | undefined) => `"${String(value ?? '').replace(/"/g, '""')}"`

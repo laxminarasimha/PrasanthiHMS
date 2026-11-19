@@ -4,7 +4,7 @@ import { api, fieldErrors } from '../../api'
 import { useAuth } from '../../auth'
 import { REASONS } from './auditTypes'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
-import { daysUntil, downloadCsv, expiryLabel, rupees, today } from '../../format'
+import { daysUntil, downloadCsv, expiryLabel, placeLabel, rupees, today } from '../../format'
 import type { StockBatch } from '../../types'
 
 export function PharmacyStock() {
@@ -18,7 +18,7 @@ export function PharmacyStock() {
   const [reason, setReason] = useState('')
   const [category, setCategory] = useState('')
   const [error, setError] = useState('')
-  const [details, setDetails] = useState({ batch_no: '', expiry: '', pack_mrp: '', rack_no: '', reason: '' })
+  const [details, setDetails] = useState({ batch_no: '', expiry: '', pack_mrp: '', rack_no: '', box_no: '', reason: '' })
   const [detailsError, setDetailsError] = useState('')
   const [notice, setNotice] = useState('')
 
@@ -44,7 +44,7 @@ export function PharmacyStock() {
     setCategory('')
     setError('')
     setNotice('')
-    setDetails({ batch_no: batch.batch_no, expiry: batch.expiry.slice(0, 7), pack_mrp: String(batch.pack_mrp), rack_no: batch.rack_no ?? '', reason: '' })
+    setDetails({ batch_no: batch.batch_no, expiry: batch.expiry.slice(0, 7), pack_mrp: String(batch.pack_mrp), rack_no: batch.rack_no ?? '', box_no: batch.box_no ?? '', reason: '' })
     setDetailsError('')
   }
 
@@ -52,7 +52,7 @@ export function PharmacyStock() {
     e.preventDefault()
     if (!adjusting) return
     try {
-      await api.put(`/pharmacy/stock/${adjusting.id}`, { ...details, rack_no: details.rack_no || null })
+      await api.put(`/pharmacy/stock/${adjusting.id}`, { ...details, rack_no: details.rack_no || null, box_no: details.box_no || null })
       setNotice(`Details of ${adjusting.medicine?.name} batch ${details.batch_no} corrected. The change is recorded in the Stock data update report.`)
       setAdjusting(null)
       load()
@@ -81,8 +81,8 @@ export function PharmacyStock() {
   const exportCsv = () =>
     downloadCsv(
       `pharmacy-stock-${today()}.csv`,
-      ['Medicine', 'Batch', 'Expiry', 'Units in stock', 'Units received', 'Units per pack', 'Pack price', 'Pack MRP', 'Unit MRP', 'GST %', 'Invoice', 'Rack'],
-      (batches ?? []).map((b) => [b.medicine?.name, b.batch_no, b.expiry, b.units_in_stock, b.units_received, b.units_per_pack, b.pack_price, b.pack_mrp, b.unit_mrp, b.gst_percent, b.invoice?.invoice_no ?? 'Opening stock', b.rack_no]),
+      ['Medicine', 'Batch', 'Expiry', 'Units in stock', 'Units received', 'Units per pack', 'Pack price', 'Pack MRP', 'Unit MRP', 'GST %', 'Invoice', 'Rack', 'Box'],
+      (batches ?? []).map((b) => [b.medicine?.name, b.batch_no, b.expiry, b.units_in_stock, b.units_received, b.units_per_pack, b.pack_price, b.pack_mrp, b.unit_mrp, b.gst_percent, b.invoice?.invoice_no ?? 'Opening stock', b.rack_no, b.box_no]),
     )
 
   return (
@@ -132,6 +132,7 @@ export function PharmacyStock() {
                     <tr key={b.id} className={`static ${b.units_in_stock === 0 ? 'faded' : ''} ${adjusting?.id === b.id ? 'selected' : ''}`}>
                       <td>
                         <strong>{b.medicine?.name}</strong>
+                        {placeLabel(b.rack_no, b.box_no) && <small className="shelf-place block">{placeLabel(b.rack_no, b.box_no)}</small>}
                       </td>
                       <td>{b.batch_no}</td>
                       <td>
@@ -234,8 +235,15 @@ export function PharmacyStock() {
               </label>
               <label className="field">
                 <span className="field-label">Rack</span>
-                <input value={details.rack_no} onChange={(e) => setDetails({ ...details, rack_no: e.target.value })} />
+                <input maxLength={30} value={details.rack_no} onChange={(e) => setDetails({ ...details, rack_no: e.target.value })} />
               </label>
+              <label className="field">
+                <span className="field-label">Box</span>
+                <input maxLength={30} value={details.box_no} onChange={(e) => setDetails({ ...details, box_no: e.target.value })} />
+              </label>
+              <p className="muted small span-2">
+                Only for a batch kept apart from the rest. To move the medicine itself, use Inventory → Racks and boxes.
+              </p>
               <label className="field span-2">
                 <span className="field-label">Reason</span>
                 <input placeholder="Label read wrongly, price revised…" value={details.reason} onChange={(e) => setDetails({ ...details, reason: e.target.value })} />

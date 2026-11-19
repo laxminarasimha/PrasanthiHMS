@@ -13,6 +13,7 @@ use App\Models\StockBatch;
 use App\Models\Stockist;
 use App\Models\StockMovement;
 use App\Support\OrderMatch;
+use App\Support\ShelfPlace;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -447,17 +448,22 @@ class PharmacyEditController extends Controller
             'expiry' => ['required', 'date_format:Y-m'],
             'pack_mrp' => ['required', 'numeric', 'gt:0'],
             'rack_no' => ['nullable', 'string', 'max:30'],
+            'box_no' => ['sometimes', 'nullable', 'string', 'max:30'],
             'reason' => self::REASON,
         ], ['reason.required' => 'Say why the batch details are being changed.']);
 
         $new = [
             'batch_no' => $data['batch_no'],
             'expiry' => Carbon::createFromFormat('Y-m-d', $data['expiry'].'-01')->endOfMonth()->toDateString(),
-            'pack_mrp' => (float) $data['pack_mrp'], 'rack_no' => $data['rack_no'] ?? null,
+            'pack_mrp' => (float) $data['pack_mrp'], 'rack_no' => ShelfPlace::tidy($data['rack_no'] ?? null),
         ];
+        // The box is only touched when the form sent one, so an older screen cannot wipe it.
+        if (array_key_exists('box_no', $data)) {
+            $new['box_no'] = $new['rack_no'] === null ? null : ShelfPlace::tidy($data['box_no']);
+        }
         $batch->load('medicine:id,name');
         $changes = PharmacyChange::differences(
-            ['batch_no' => 'Batch', 'expiry' => 'Expiry', 'pack_mrp' => 'Pack MRP ₹', 'rack_no' => 'Rack'],
+            ['batch_no' => 'Batch', 'expiry' => 'Expiry', 'pack_mrp' => 'Pack MRP ₹', 'rack_no' => 'Rack', 'box_no' => 'Box'],
             ['expiry' => $batch->expiry->toDateString()] + $batch->only(array_keys($new)),
             $new,
         );

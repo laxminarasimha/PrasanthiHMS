@@ -5,7 +5,7 @@ import { SelectField, TextField } from '../../components/Field'
 import { useSearchParams } from 'react-router-dom'
 import { MedicineOptions } from '../../components/MedicineOptions'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
-import { downloadCsv, rupees, today } from '../../format'
+import { downloadCsv, placeLabel, rupees, today } from '../../format'
 import type { Manufacturer, Medicine, Stockist } from '../../types'
 
 const TYPES = ['Tablet', 'Capsule', 'Chewable Tablet', 'Dispersible Tablet', 'Syrup', 'Suspension', 'Solution', 'Injection', 'Ointment', 'Cream', 'Gel', 'Lotion', 'Drops', 'Powder', 'Sachet', 'Inhaler', 'Spray', 'Suppository', 'Surgical', 'Other'].map((t) => ({ value: t, label: t }))
@@ -15,7 +15,7 @@ const SDE = [{ value: 'S', label: 'Scarce' }, { value: 'D', label: 'Difficult to
 const FSN = [{ value: 'F', label: 'Fast moving' }, { value: 'S', label: 'Slow moving' }, { value: 'N', label: 'Non-moving' }]
 const classLabel = (list: { value: string; label: string }[], value?: string | null) => list.find((o) => o.value === value)?.label
 
-const blankMedicine = { name: '', composition: '', type: 'Tablet', manufacturer: '', category: '', sub_category: '', ved: '', sde: '', fsn: '', hsn_code: '', gst_percent: '12', units_per_pack: '10', reorder_level: '0', desired_stock: '', preferred_stockist_id: '', is_active: true, is_scheduled: false }
+const blankMedicine = { name: '', composition: '', type: 'Tablet', manufacturer: '', category: '', sub_category: '', ved: '', sde: '', fsn: '', hsn_code: '', gst_percent: '12', units_per_pack: '10', reorder_level: '0', desired_stock: '', preferred_stockist_id: '', is_active: true, is_scheduled: false, rack_no: '', box_no: '' }
 const blankStockist = { name: '', phone: '', email: '', gstin: '', address: '', lead_days: '2', credit_days: '0' }
 
 type Editing = { kind: 'medicine' | 'stockist' | 'manufacturer'; id: number | null } | null
@@ -63,7 +63,7 @@ export function PharmacyMedicines() {
         ? {
             name: m.name, composition: m.composition ?? '', type: m.type ?? '', manufacturer: m.manufacturer ?? '', category: m.category ?? '', sub_category: m.sub_category ?? '', ved: m.ved ?? '', sde: m.sde ?? '', fsn: m.fsn ?? '', hsn_code: m.hsn_code ?? '',
             gst_percent: String(m.gst_percent), units_per_pack: String(m.units_per_pack), reorder_level: String(m.reorder_level), desired_stock: m.desired_stock ? String(m.desired_stock) : '', preferred_stockist_id: m.preferred_stockist_id ? String(m.preferred_stockist_id) : '', is_active: m.is_active,
-            is_scheduled: m.is_scheduled,
+            is_scheduled: m.is_scheduled, rack_no: m.rack_no ?? '', box_no: m.box_no ?? '',
           }
         : blankMedicine,
     )
@@ -176,6 +176,7 @@ export function PharmacyMedicines() {
                       <td>
                         <strong>{m.name}</strong> {m.is_scheduled && <span className="pill status-ongoing">Scheduled</span>}
                         {m.composition && <small className="muted block">{m.composition}</small>}
+                        {placeLabel(m.rack_no, m.box_no) && <small className="shelf-place block">{placeLabel(m.rack_no, m.box_no)}</small>}
                       </td>
                       <td>{m.type ?? '—'}</td>
                       <td>{m.manufacturer ?? '—'}</td>
@@ -335,6 +336,8 @@ export function PharmacyMedicines() {
                   <SelectField label="How easy to get (SDE)" value={medicine.sde} onChange={setM('sde')} options={SDE} placeholder="Not set" error={errors.sde} />
                   <SelectField label="How fast it sells (FSN)" value={medicine.fsn} onChange={setM('fsn')} options={FSN} placeholder="Not set" error={errors.fsn} />
                   <TextField label="HSN code" value={medicine.hsn_code} onChange={setM('hsn_code')} error={errors.hsn_code} />
+                  <TextField label="Kept in rack" value={medicine.rack_no} onChange={setM('rack_no')} error={errors.rack_no} maxLength={30} placeholder="for example: A, or Fridge" />
+                  <TextField label="Box on that rack" value={medicine.box_no} onChange={setM('box_no')} error={errors.box_no} maxLength={30} placeholder="for example: 3" />
                   <TextField label="Units per pack" required type="number" min={1} value={medicine.units_per_pack} onChange={setM('units_per_pack')} error={errors.units_per_pack} />
                   <TextField label="GST %" required type="number" min={0} step="0.01" value={medicine.gst_percent} onChange={setM('gst_percent')} error={errors.gst_percent} />
                   <TextField label="Minimum on the shelf (units)" type="number" min={0} value={medicine.reorder_level} onChange={setM('reorder_level')} error={errors.reorder_level} />

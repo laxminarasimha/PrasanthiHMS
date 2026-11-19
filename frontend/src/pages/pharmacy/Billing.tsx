@@ -7,7 +7,7 @@ import { SelectField, TextField } from '../../components/Field'
 import { MedicinePick } from '../../components/MedicinePick'
 import { PatientPicker } from '../../components/PatientPicker'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
-import { PAYMENT_MODES, clock, daysUntil, expiryLabel, longDate, rupees } from '../../format'
+import { PAYMENT_MODES, clock, daysUntil, expiryLabel, longDate, placeLabel, rupees } from '../../format'
 import type { Patient, PharmacyInpatient, PharmacySale, PrescriptionForPharmacy, SellableMedicine } from '../../types'
 import { PharmacyDay } from '../../components/PharmacyDay'
 
@@ -20,6 +20,8 @@ type Line = {
   available: number
   quantity: string
   discount: string
+  /** Where to fetch it from: its rack and box, if it has been given a place. */
+  place: string
 }
 
 const lineAmount = (l: Line) => Math.round(Number(l.quantity || 0) * l.unitPrice * (1 - Number(l.discount || 0) / 100) * 100) / 100
@@ -136,7 +138,7 @@ export function PharmacyBilling() {
     setLines((rows) =>
       rows.some((r) => r.batchId === batch.id)
         ? rows
-        : [...rows, { batchId: batch.id, medicine: m.name, batchNo: batch.batch_no, expiry: batch.expiry, unitPrice: batch.unit_mrp, available: batch.units_in_stock, quantity: '1', discount: '' }],
+        : [...rows, { batchId: batch.id, medicine: m.name, batchNo: batch.batch_no, expiry: batch.expiry, unitPrice: batch.unit_mrp, available: batch.units_in_stock, quantity: '1', discount: '', place: placeLabel(batch.rack_no, batch.box_no) }],
     )
     // Straight to the quantity of that line: at once if it is on the bill already, otherwise as soon as it appears.
     const there = quantityBoxes.current[batch.id]
@@ -358,6 +360,9 @@ export function PharmacyBilling() {
                         <span className="grow">
                           {m.medicine}
                           {m.directions && <small className="muted"> · {m.directions}</small>}
+                          {m.match?.sellable_batches[0] && placeLabel(m.match.sellable_batches[0].rack_no, m.match.sellable_batches[0].box_no) && (
+                            <small className="shelf-place"> {placeLabel(m.match.sellable_batches[0].rack_no, m.match.sellable_batches[0].box_no)}</small>
+                          )}
                         </span>
                         {m.match?.sellable_batches.length ? (
                           <button type="button" className="link" onClick={() => add(m.match!, m.match!.sellable_batches[0])}>
@@ -395,6 +400,7 @@ export function PharmacyBilling() {
                   <tr key={l.batchId} className="static">
                     <td>
                       <strong>{l.medicine}</strong>
+                      {l.place && <small className="shelf-place block">{l.place}</small>}
                     </td>
                     <td>{l.batchNo}</td>
                     <td>
