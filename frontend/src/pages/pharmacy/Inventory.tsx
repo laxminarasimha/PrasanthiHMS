@@ -28,9 +28,9 @@ export function PharmacyInventory() {
   const term = query.trim().toLowerCase()
   const rows = (data?.all ?? []).filter(FILTERS[tab]).filter((m) => m.name.toLowerCase().includes(term) || (m.composition ?? '').toLowerCase().includes(term))
   const tabs: [Tab, string][] = [
-    ['all', `In stock (${data?.all.length ?? 0})`],
-    ['expiring', `Expiring in 90 days (${data?.counts.expiring ?? 0})`],
-    ['low', `Low stock (${data?.counts.low ?? 0})`],
+    ['all', data ? `In stock (${data.all.length})` : 'In stock'],
+    ['expiring', data ? `Expiring in 90 days (${data.counts.expiring})` : 'Expiring in 90 days'],
+    ['low', data ? `Low stock (${data.counts.low})` : 'Low stock'],
   ]
 
   return (

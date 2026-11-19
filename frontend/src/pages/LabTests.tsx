@@ -148,13 +148,13 @@ export function LabTests() {
           <h1>Report templates</h1>
           <input className="search" type="search" placeholder="Filter tests" value={filter} onChange={(e) => setFilter(e.target.value)} />
           <select className="dept-filter" value={showing} onChange={(e) => setShowing(e.target.value)} aria-label="Department">
-            <option value="">All departments ({tests.length})</option>
+            <option value="">All departments{tests.length > 0 ? ` (${tests.length})` : ''}</option>
             {inUse.map((d) => (
               <option key={d} value={d}>
                 {d} ({tests.filter((t) => (t.department ?? '').trim().toLowerCase() === d.toLowerCase()).length})
               </option>
             ))}
-            <option value="-">No department ({unfiled.length})</option>
+            <option value="-">No department{tests.length > 0 ? ` (${unfiled.length})` : ''}</option>
           </select>
           {canEdit && !ordering && !sorting && unfiled.length > 0 && (
             <button className="btn ghost" onClick={startSorting} title="File the tests that have no department">

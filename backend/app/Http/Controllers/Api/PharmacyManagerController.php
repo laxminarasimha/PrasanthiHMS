@@ -54,9 +54,14 @@ class PharmacyManagerController extends Controller
             $line('stock', 'note', $never, $say($never, 'medicine in the list has', 'medicines in the list have').' never had stock entered. Until opening stock is in, nothing here is suggested for them.'),
         ])->where('count', '>', 0)->values();
 
+        // How far the shelves have been labelled: of the medicines with stock to sell, how many have a rack.
+        $inStock = Medicine::where('is_active', true)->whereHas('batches', fn ($q) => $q->where('units_in_stock', '>', 0)->whereDate('expiry', '>=', today()));
+        $places = ['in_stock' => (clone $inStock)->count(), 'placed' => (clone $inStock)->whereNotNull('rack_no')->where('rack_no', '!=', '')->count()];
+
         return response()->json([
             'today' => today()->toDateString(),
             'actions' => $actions,
+            'places' => $places,
             'never_stocked' => $never,
             'reorder' => $reorder,
             'expiring' => $expiry['expiring'],

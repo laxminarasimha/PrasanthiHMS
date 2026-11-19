@@ -1,4 +1,5 @@
 import axios, { AxiosError, type AxiosResponse } from 'axios'
+import { loadEnded, loadStarted } from './loading'
 
 const TOKEN_KEY = 'hms_token'
 
@@ -37,7 +38,14 @@ const send = axios.getAdapter(api.defaults.adapter)
 const onTheWay = new Map<string, Promise<AxiosResponse>>()
 api.defaults.adapter = (config) => {
   const method = (config.method ?? 'get').toLowerCase()
-  if (method === 'get' || typeof config.data !== 'string') return send(config)
+  if (method === 'get') {
+    // A screen is still loading while something it asked for is on its way. Writing a backup takes minutes and
+    // is not part of opening any screen.
+    if (config.url?.startsWith('/backups')) return send(config)
+    const ask = loadStarted()
+    return send(config).finally(() => loadEnded(ask))
+  }
+  if (typeof config.data !== 'string') return send(config)
   const key = `${method} ${config.url} ${config.data}`
   const first = onTheWay.get(key)
   if (first) return first

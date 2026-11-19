@@ -763,7 +763,7 @@ export function VisitPad() {
         />
 
         <h2 className="gap-top">Lab results</h2>
-        {labOrders.length === 0 && <p className="muted">No lab orders for this patient yet.</p>}
+        {labOrders.length === 0 && <p className="muted when-loaded">No lab orders for this patient yet.</p>}
         {labOrders.map((o) => (
           <details key={o.id} className="past" open={o.status !== 'pending' && labOrders[0].id === o.id}>
             <summary>
@@ -802,7 +802,7 @@ export function VisitPad() {
         <a className="link" href={`/patients/${visit.patient.id}/history`} target="_blank" rel="noreferrer">
           Full case history and test trends ↗
         </a>
-        {pastVisits.length === 0 && <p className="muted">No earlier visits recorded here.</p>}
+        {pastVisits.length === 0 && <p className="muted when-loaded">No earlier visits recorded here.</p>}
         {pastVisits.map((h) => (
           <details key={h.id} className="past">
             <summary>

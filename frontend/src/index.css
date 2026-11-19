@@ -73,6 +73,36 @@ h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color
 /* A turning ring beside the word, so a wait looks like work and not like a stuck page. */
 .loading::before { content: ''; display: inline-block; width: 16px; height: 16px; margin-right: 10px; vertical-align: -3px; border: 2px solid var(--brand-line); border-top-color: var(--brand); border-radius: 50%; animation: turn 0.8s linear infinite; }
 @keyframes turn { to { transform: rotate(360deg); } }
+
+/* A screen that has just been opened and is still waiting for what it asked the server for (see loading.ts).
+   One treatment for every screen: a thin moving bar under the menu, figures greyed out instead of reading 0,
+   and "Loading…" where a list will come instead of "nothing here yet". */
+.load-bar { height: 3px; margin: 0 0 -3px; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--brand), transparent) 0 0 / 40% 100% no-repeat var(--stripe-1); animation: load-slide 1.1s ease-in-out infinite; }
+@keyframes load-slide { from { background-position: -70% 0; } to { background-position: 170% 0; } }
+@keyframes load-pulse { from { opacity: 1; } to { opacity: 0.45; } }
+.first-load .tile strong, .first-load .loads { display: inline-block; align-self: flex-start; min-width: 2.6em; border-radius: 6px; background: var(--stripe-1); color: transparent !important; user-select: none; animation: load-pulse 0.7s ease-in-out infinite alternate; }
+.first-load .tile strong *, .first-load .loads * { color: transparent !important; }
+.first-load .tile small { visibility: hidden; }
+.first-load .tabs button span, .first-load .btn .count, .first-load h2 .count { color: transparent !important; }
+.first-load .when-loaded { display: none !important; }
+/* How many medicines in stock have been given a rack: a line of words over a bar. */
+.place-progress { margin: 10px 0 14px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.place-progress p { margin: 0 0 8px; font-size: 0.93rem; }
+.place-progress .bar { height: 8px; border-radius: 999px; background: var(--stripe-1); overflow: hidden; }
+.place-progress .bar i { display: block; height: 100%; min-width: 4px; border-radius: 999px; background: var(--accent); transition: width 0.3s; }
+.place-progress.done .bar i { background: var(--ok, var(--brand)); }
+.first-load .place-progress { visibility: hidden; }
+@media print { .place-progress { display: none; } }
+/* Rows that answer the previous search, while the new one is on its way: greyed, and not clickable. */
+tbody.stale { opacity: 0.4; pointer-events: none; transition: opacity 0.15s; }
+.searching { white-space: nowrap; font-size: 0.9rem; }
+.searching::before { content: ''; display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; border: 2px solid var(--brand-line); border-top-color: var(--brand); border-radius: 50%; animation: turn 0.8s linear infinite; }
+.first-load tbody tr.empty td { font-size: 0; }
+.first-load tbody tr.empty td > * { display: none; }
+.first-load tbody tr.empty td::before { content: ''; display: inline-block; width: 16px; height: 16px; margin-right: 10px; vertical-align: -3px; border: 2px solid var(--brand-line); border-top-color: var(--brand); border-radius: 50%; animation: turn 0.8s linear infinite; }
+.first-load tbody tr.empty td::after { content: 'Loading…'; font-size: 0.95rem; }
+.first-load table:has(> tbody:empty)::after { content: 'Loading…'; display: table-caption; caption-side: bottom; padding: 28px 12px; text-align: center; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .load-bar, .first-load .tile strong, .first-load .loads, .first-load tbody tr.empty td::before { animation: none; } }
 @media (prefers-reduced-motion: reduce) { .loading::before { animation: none; } * { transition: none !important; } }
 
 /* Top bar */

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useLoadOnChange } from '../../loading'
 import { api, fieldErrors, type FieldErrors } from '../../api'
 import { useAuth } from '../../auth'
 import { SelectField, TextField } from '../../components/Field'
@@ -44,10 +45,8 @@ export function PharmacyMedicines() {
     api.get<Medicine[]>('/pharmacy/medicines', { params: { all: 1, q: query.trim() || undefined, category: filter.category || undefined, ved: filter.ved || undefined, sde: filter.sde || undefined, fsn: filter.fsn || undefined } }).then((res) => setMedicines(res.data))
   }, [query, filter])
 
-  useEffect(() => {
-    const timer = setTimeout(load, 250)
-    return () => clearTimeout(timer)
-  }, [load])
+  // At once when the screen opens; after a short pause when a search or filter changes.
+  useLoadOnChange(load)
 
   const loadStockists = useCallback(() => {
     api.get<Stockist[]>('/pharmacy/stockists').then((res) => setStockists(res.data))
@@ -211,7 +210,7 @@ export function PharmacyMedicines() {
             <div className="toolbar">
               <h1>Stockists</h1>
               <span className="muted grow">
-                We owe in all: <strong className={stockists.some((s) => (s.balance ?? 0) > 0) ? 'due' : ''}>{rupees(stockists.reduce((sum, s) => sum + Math.max(0, s.balance ?? 0), 0))}</strong>
+                We owe in all: <strong className={`loads ${stockists.some((s) => (s.balance ?? 0) > 0) ? 'due' : ''}`}>{rupees(stockists.reduce((sum, s) => sum + Math.max(0, s.balance ?? 0), 0))}</strong>
               </span>
               <button
                 className="btn ghost"
@@ -283,7 +282,7 @@ export function PharmacyMedicines() {
                   {m.name}
                 </button>
               ))}
-              {manufacturers.length === 0 && <span className="muted">Manufacturers are added here, or automatically when you type one on a medicine.</span>}
+              {manufacturers.length === 0 && <span className="muted when-loaded">Manufacturers are added here, or automatically when you type one on a medicine.</span>}
             </div>
           </section>
         </div>

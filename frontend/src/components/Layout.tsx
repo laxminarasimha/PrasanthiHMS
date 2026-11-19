@@ -9,6 +9,7 @@ import { keepPrintPrefsFresh } from '../printPaper'
 import { allowedTabs, menuTabs, onTab } from '../nav'
 import { canLeave } from '../unsaved'
 import { today } from '../format'
+import { loadEnded, loadStarted, useFirstLoad } from '../loading'
 
 /** A small drawing beside each menu name, so a section is found by shape as well as by word. */
 const ICONS: Record<string, string> = {
@@ -26,12 +27,23 @@ const ICONS: Record<string, string> = {
 const initials = (name: string) =>
   name.replace(/^(dr|mr|mrs|ms)\.?\s+/i, '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('')
 
+/** Shown while a screen's own code is being fetched; that counts as the screen still loading. */
+function ScreenComing() {
+  useEffect(() => {
+    const ask = loadStarted()
+    return () => loadEnded(ask)
+  }, [])
+  return <p className="loading">Loading…</p>
+}
+
 export function Layout() {
   const { user, signOut } = useAuth()
   const [open, setOpen] = useState(false)
   const { pathname } = useLocation()
   // Whether the last thing any screen tried to load failed to arrive.
   const [trouble, setTrouble] = useState(false)
+  // Until a screen has everything it first asked for, its figures are greyed and "nothing here" messages held back.
+  const loading = useFirstLoad(pathname)
   useEffect(() => onLoadTrouble(setTrouble), [])
   // "Later" on the backup reminder: the same message stays away on this computer until tomorrow. A new message shows at once.
   const [laterFor, setLaterFor] = useState(() => {
@@ -135,7 +147,8 @@ export function Layout() {
           </button>
         </div>
       </header>
-      <main className="content">
+      <main className={`content${loading ? ' first-load' : ''}`} aria-busy={loading}>
+        {loading && <div className="load-bar" aria-hidden="true" />}
         {user.backup_alert && laterFor !== `${today()} ${user.backup_alert}` && (
           <div className="backup-alert">
             <NavLink to="/admin?tab=backups">
@@ -148,7 +161,7 @@ export function Layout() {
         )}
         {/* One broken screen shows a message in place; the menu stays, and going elsewhere starts afresh. */}
         <ErrorBoundary key={pathname}>
-          <Suspense fallback={<p className="loading">Loading…</p>}>
+          <Suspense fallback={<ScreenComing />}>
             <Outlet />
           </Suspense>
         </ErrorBoundary>

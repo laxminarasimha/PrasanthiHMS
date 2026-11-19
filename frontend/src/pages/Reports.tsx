@@ -4,6 +4,7 @@ import { DayClose } from '../components/DayClose'
 import { FindPatients } from '../components/FindPatients'
 import { ReportScreen } from '../components/ReportScreen'
 import { modeLabel, rupees, today } from '../format'
+import { useChoiceInAddress, useRangeInAddress } from '../rangeInAddress'
 
 type Department = { label: string; billed: number; collected: Record<string, number>; collected_total: number }
 type Summary = {
@@ -28,13 +29,14 @@ const COUNTS: [string, string][] = [
 ]
 
 const firstOfMonth = () => today().slice(0, 8) + '01'
+const TABS = ['summary', 'detailed', 'find', 'close'] as const
 
 export function Reports() {
-  const [from, setFrom] = useState(today())
-  const [to, setTo] = useState(today())
+  // The period and the tab are kept in the address, so a refresh or a shared link shows the same report.
+  const [from, to, setRange] = useRangeInAddress('today')
   const [summary, setSummary] = useState<Summary | null>(null)
   const [error, setError] = useState('')
-  const [tab, setTab] = useState<'summary' | 'detailed' | 'find' | 'close'>('summary')
+  const [tab, setTab] = useChoiceInAddress('tab', 'summary', TABS)
 
   useEffect(() => {
     if (from > to) return
@@ -101,24 +103,18 @@ export function Reports() {
     <section className="card">
       <div className="toolbar">
         <h1>Organisation report</h1>
-        <input type="date" className="date" value={from} max={to} onChange={(e) => setFrom(e.target.value || today())} aria-label="From" />
+        <input type="date" className="date" value={from} max={to} onChange={(e) => setRange(e.target.value || today(), to)} aria-label="From" />
         <span className="muted">to</span>
-        <input type="date" className="date" value={to} min={from} max={today()} onChange={(e) => setTo(e.target.value || today())} aria-label="To" />
+        <input type="date" className="date" value={to} min={from} max={today()} onChange={(e) => setRange(from, e.target.value || today())} aria-label="To" />
         <button
           className="btn ghost"
-          onClick={() => {
-            setFrom(today())
-            setTo(today())
-          }}
+          onClick={() => setRange(today(), today())}
         >
           Today
         </button>
         <button
           className="btn ghost"
-          onClick={() => {
-            setFrom(firstOfMonth())
-            setTo(today())
-          }}
+          onClick={() => setRange(firstOfMonth(), today())}
         >
           This month
         </button>

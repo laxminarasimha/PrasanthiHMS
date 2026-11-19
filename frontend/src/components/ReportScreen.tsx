@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { api } from '../api'
-import { downloadCsv, monthStart, rupees, today } from '../format'
+import { downloadCsv, rupees } from '../format'
 import type { PharmacyReport as Report, ReportColumn } from '../types'
 import { DateRange } from './DateRange'
+import { useChoiceInAddress, useRangeInAddress } from '../rangeInAddress'
 
 const cell = (column: ReportColumn, value: string | number | null) =>
   value === null || value === undefined || value === '' ? '—' : column.type === 'money' ? rupees(Number(value)) : String(value)
@@ -19,9 +20,9 @@ type Props = {
 
 /** One screen for a family of reports: choose the report and the dates, read it, export or print it. */
 export function ReportScreen({ base, first, firstLabel, lead }: Props) {
-  const [type, setType] = useState(first)
-  const [from, setFrom] = useState(monthStart())
-  const [to, setTo] = useState(today())
+  // Which report and which dates are kept in the address, so a refresh or a shared link shows the same thing.
+  const [type, setType] = useChoiceInAddress('report', first)
+  const [from, to, setRange] = useRangeInAddress('month')
   const [report, setReport] = useState<Report | null>(null)
   const [error, setError] = useState('')
 
@@ -48,7 +49,7 @@ export function ReportScreen({ base, first, firstLabel, lead }: Props) {
             </option>
           ))}
         </select>
-        <DateRange from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t) }} />
+        <DateRange from={from} to={to} onChange={setRange} />
         <span className="grow" />
         <button className="btn ghost" disabled={!report} onClick={() => report && downloadCsv(`${report.type}-${report.from}-to-${report.to}.csv`, report.columns.map((c) => c.label), report.rows.map((row) => report.columns.map((c) => row[c.key])))}>
           Export

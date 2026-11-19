@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useState, type FormEvent } from 'react'
+import { useLoadOnChange } from '../../loading'
 import { Link } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
 import { useAuth } from '../../auth'
@@ -26,10 +27,8 @@ export function PharmacyStock() {
     api.get<StockBatch[]>('/pharmacy/stock', { params: { q: query.trim() || undefined, show_empty: showEmpty ? 1 : undefined } }).then((res) => setBatches(res.data))
   }, [query, showEmpty])
 
-  useEffect(() => {
-    const timer = setTimeout(load, 250)
-    return () => clearTimeout(timer)
-  }, [load])
+  // At once when the screen opens; after a short pause when a search or filter changes.
+  useLoadOnChange(load)
 
   const expired = batches?.filter((b) => b.units_in_stock > 0 && daysUntil(b.expiry) < 0).length ?? 0
   const expiring = batches?.filter((b) => b.units_in_stock > 0 && daysUntil(b.expiry) >= 0 && daysUntil(b.expiry) <= 90).length ?? 0
@@ -102,7 +101,7 @@ export function PharmacyStock() {
             </button>
           </div>
           <p className="muted small">
-            Stock value at MRP <strong>{rupees(Math.round(value))}</strong>
+            Stock value at MRP <strong className="loads">{rupees(Math.round(value))}</strong>
             {expiring > 0 && <> · <span className="pill status-arrived">{expiring} expiring in 90 days</span></>}
             {expired > 0 && <> · <span className="pill off">{expired} expired</span></>}
           </p>
