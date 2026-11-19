@@ -89,6 +89,18 @@ class WorkforceFoundationTest extends TestCase
         Employee::create(['employee_no' => 'E2', 'name' => 'No Branch']);
     }
 
+    public function test_where_there_is_only_one_hospital_a_login_without_a_branch_belongs_to_it(): void
+    {
+        $this->elsewhere->delete();
+        Tenant::forget();
+        $this->employee('Asha Sample');
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin', 'branch_id' => null]));
+
+        $this->assertSame(['Asha Sample'], Employee::pluck('name')->all());
+        $this->assertSame($this->here->id, (int) Employee::create(['employee_no' => 'E3', 'name' => 'Added By First Admin'])->branch_id);
+        $this->getJson('/api/workforce/access')->assertOk();
+    }
+
     public function test_a_permission_reaches_all_staff_a_department_or_only_oneself(): void
     {
         $nursing = $this->department('Nursing');
