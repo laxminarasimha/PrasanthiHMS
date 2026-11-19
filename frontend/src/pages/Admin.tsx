@@ -569,7 +569,7 @@ type BackupList = {
 function Backups() {
   const { user, refresh } = useAuth()
   const [data, setData] = useState<BackupList | null>(null)
-  const [busy, setBusy] = useState<'' | 'make' | 'files'>('')
+  const [busy, setBusy] = useState<'' | 'make' | 'files' | 'all'>('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
@@ -584,6 +584,10 @@ function Backups() {
     load().catch(() => setError('Could not load the backups.'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // A download must reach the server every time: that is how it knows a copy has left. The changing number stops
+  // the browser answering from a copy it kept of an earlier download.
+  const fresh = () => ({ t: String(Date.now()) })
 
   const save = (blob: Blob, name: string) => {
     const link = document.createElement('a')
@@ -610,7 +614,7 @@ function Backups() {
     setError('')
     setNotice('')
     try {
-      const res = await api.get<Blob>(`/backups/${name}/download`, { responseType: 'blob' })
+      const res = await api.get<Blob>(`/backups/${name}/download`, { responseType: 'blob', params: fresh() })
       save(res.data, name)
       setNotice('Downloaded. Keep the file somewhere safe that is not this computer alone, such as a pen drive kept at home.')
       await load()
@@ -625,7 +629,7 @@ function Backups() {
     setError('')
     setNotice('')
     try {
-      const res = await api.get<Blob>('/backups/files', { responseType: 'blob', params: fromStart ? { from: 'start' } : {} })
+      const res = await api.get<Blob>('/backups/files', { responseType: 'blob', params: { ...(fromStart ? { from: 'start' } : {}), ...fresh() } })
       const name = /filename="?([^";]+)"?/.exec(String(res.headers['content-disposition'] ?? ''))?.[1] ?? 'hms-files.zip'
       save(res.data, name)
       // Only now, with the file in hand, is the app told how far the copy has got.
@@ -634,6 +638,44 @@ function Backups() {
       setNotice(`${res.headers['x-backup-count']} files downloaded as ${name}.${more > 0 ? ` ${more} more are waiting: press the button again for the next part.` : ''}`)
     } catch {
       setError('The files could not be downloaded. Check the internet connection and try again.')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  /**
+   * Everything the reminder asks for, in one press: the newest backup, then every zip of uploaded files that is
+   * still waiting. The reminder at the top goes as soon as the last of them has arrived.
+   */
+  const copyAll = async () => {
+    setBusy('all')
+    setError('')
+    setNotice('')
+    let got = 0
+    try {
+      const newestName = data?.backups[0]?.name
+      if (newestName) {
+        const res = await api.get<Blob>(`/backups/${newestName}/download`, { responseType: 'blob', params: fresh() })
+        save(res.data, newestName)
+        got += 1
+      }
+      // Each zip holds the next lot of files; there are rarely more than one or two.
+      let waiting = data?.files.waiting ?? 0
+      for (let part = 0; waiting > 0 && part < 40; part += 1) {
+        setNotice(`Downloading the uploaded files${part > 0 ? `, part ${part + 1}` : ''}…`)
+        const res = await api.get<Blob>('/backups/files', { responseType: 'blob', params: fresh() })
+        const name = /filename="?([^";]+)"?/.exec(String(res.headers['content-disposition'] ?? ''))?.[1] ?? 'hms-files.zip'
+        save(res.data, name)
+        got += 1
+        const next = (await api.post<BackupList>('/backups/files/done', { through: Number(res.headers['x-backup-through']) })).data
+        show(next)
+        waiting = Number(res.headers['x-backup-more'] ?? 0)
+      }
+      await load()
+      setNotice(got > 0 ? `${got} ${got === 1 ? 'file' : 'files'} downloaded to this computer. Move them somewhere safe that is not this computer alone, such as a pen drive kept at home.` : 'There is nothing to download yet. Press “Back up now” first.')
+    } catch {
+      setError(`The copy stopped part-way${got > 0 ? ` after ${got} ${got === 1 ? 'file' : 'files'}` : ''}. Check the internet connection and press the button again: it carries on from where it stopped.`)
+      await load().catch(() => undefined)
     } finally {
       setBusy('')
     }
@@ -658,10 +700,14 @@ function Backups() {
             {data?.automatic ? 'The app makes one by itself every day, when the first person opens it.' : 'Automatic daily backups are switched off on this server.'} The newest {data?.keep ?? 30} are kept.
           </small>
         </span>
-        <button className="btn primary" onClick={make} disabled={busy !== ''}>
+        <button className="btn ghost" onClick={make} disabled={busy !== ''}>
           {busy === 'make' ? 'Making backup…' : 'Back up now'}
         </button>
+        <button className="btn primary" onClick={copyAll} disabled={busy !== '' || !data || (data.backups.length === 0 && data.files.waiting === 0)} title="Downloads the newest backup and every uploaded file not yet copied, one after the other">
+          {busy === 'all' ? 'Copying…' : 'Copy everything now'}
+        </button>
       </div>
+      {data?.alert && <p className="form-error">{data.alert}</p>}
       {data?.error && <p className="form-error">{data.error} Press “Back up now”; if that fails too, tell whoever looks after the system.</p>}
       <p className={data && !data.copied_at ? 'form-error' : 'notice'}>
         {data?.copied_at ? (

@@ -47,7 +47,22 @@ class BackupController extends Controller
         FileBackup::mark(['db_downloaded_at' => now()->format('Y-m-d H:i'), 'db_downloaded_by' => $request->user()->name]);
         Cache::forget('backup_alert');
 
-        return response()->download($path, $name, ['Content-Type' => 'application/gzip']);
+        return $this->neverKept(response()->download($path, $name, ['Content-Type' => 'application/gzip']));
+    }
+
+    /**
+     * A download the browser must fetch from the server every time and never keep a copy of. Left to itself a file
+     * response may be reused from the browser's own store: the next "download" then never reaches the server, so it
+     * is not noted as copied and the reminder stays. A backup is also every patient's records, which should not sit
+     * in a browser's store at all.
+     */
+    private function neverKept(BinaryFileResponse $response): BinaryFileResponse
+    {
+        $response->setAutoLastModified(false)->setAutoEtag(false);
+        $response->headers->remove('Last-Modified');
+        $response->headers->set('Cache-Control', 'no-store, private');
+
+        return $response;
     }
 
     /**
@@ -64,9 +79,9 @@ class BackupController extends Controller
             return response()->json(['message' => 'Every uploaded file has already been downloaded.'], 422);
         }
 
-        return response()->download($zip['path'], $zip['name'], [
+        return $this->neverKept(response()->download($zip['path'], $zip['name'], [
             'Content-Type' => 'application/zip', 'X-Backup-Through' => (string) $zip['through'], 'X-Backup-Count' => (string) $zip['count'], 'X-Backup-More' => (string) $zip['more'],
-        ])->deleteFileAfterSend();
+        ])->deleteFileAfterSend());
     }
 
     public function filesDone(Request $request): JsonResponse

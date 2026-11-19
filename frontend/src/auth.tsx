@@ -59,6 +59,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false))
   }, [])
 
+  // Coming back to the window after a while, the server is asked again, so a reminder that someone else has
+  // dealt with (or a permission that was changed) does not linger until the page is reloaded.
+  useEffect(() => {
+    let asked = Date.now()
+    const onShow = () => {
+      if (document.visibilityState !== 'visible' || !getToken() || Date.now() - asked < 120000) return
+      asked = Date.now()
+      api.get<User>('/me').then((res) => setUser(res.data)).catch(() => undefined)
+    }
+    document.addEventListener('visibilitychange', onShow)
+    window.addEventListener('focus', onShow)
+    return () => {
+      document.removeEventListener('visibilitychange', onShow)
+      window.removeEventListener('focus', onShow)
+    }
+  }, [])
+
   const signIn = async (email: string, password: string) => {
     const res = await api.post<{ token: string; user: User }>('/login', { email, password })
     setToken(res.data.token)
