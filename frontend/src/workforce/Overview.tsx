@@ -3,11 +3,13 @@ import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { clock, longDate, today } from '../format'
 import { useChoiceInAddress } from '../rangeInAddress'
+import { inr } from './pay'
 import type { StaffBrief } from './shared'
 import { WorkforceTabs } from './WorkforceTabs'
 
 type Person = StaffBrief & { late_minutes: number; leave_type: string | null }
 type Board = {
+  pay: { unpaid_salaries?: { slips: number; net: string }; runs_in_hand?: number; advances?: { count: number; owed: string; waiting: number } } | null
   date: string
   is_today: boolean
   staff: number
@@ -107,6 +109,31 @@ export function WorkforceOverview() {
                 <strong>{shown.off}</strong>
               </div>
             </div>
+
+            {shown.pay && (
+              <div className="tiles small">
+                {shown.pay.unpaid_salaries && (
+                  <Link className="tile" to="/workforce/payroll">
+                    <span>Salaries finalised, not yet paid</span>
+                    <strong className={shown.pay.unpaid_salaries.slips > 0 ? 'due' : ''}>{inr(shown.pay.unpaid_salaries.net)}</strong>
+                    <small className="muted">
+                      {shown.pay.unpaid_salaries.slips} {shown.pay.unpaid_salaries.slips === 1 ? 'payslip' : 'payslips'}
+                      {shown.pay.runs_in_hand ? ` · ${shown.pay.runs_in_hand} payroll ${shown.pay.runs_in_hand === 1 ? 'run' : 'runs'} in hand` : ''}
+                    </small>
+                  </Link>
+                )}
+                {shown.pay.advances && (
+                  <Link className="tile" to="/workforce/advances">
+                    <span>Owed by staff on advances and loans</span>
+                    <strong>{inr(shown.pay.advances.owed)}</strong>
+                    <small className="muted">
+                      on {shown.pay.advances.count}
+                      {shown.pay.advances.waiting ? ` · ${shown.pay.advances.waiting} waiting for a decision` : ''}
+                    </small>
+                  </Link>
+                )}
+              </div>
+            )}
 
             {(shown.leave_waiting || shown.corrections_waiting || shown.missing_check_outs.length > 0) && (
               <ul className="todo">

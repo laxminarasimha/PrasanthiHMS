@@ -8,7 +8,7 @@ import { WorkforceTabs } from './WorkforceTabs'
 type Shift = { id: number; name: string; starts_at: string; ends_at: string; grace_minutes: number; early_leave_minutes: number; break_minutes: number; half_day_minutes: number | null; full_day_minutes: number | null; overtime_after_minutes: number | null; is_active: boolean }
 type Calendar = { id: number; name: string; is_default: boolean; holidays: { id: number; on: string; name: string; is_optional: boolean }[] }
 type Kind = { id: number; code: string; name: string; is_paid: boolean; annual_allowance: number; accrual: string; carry_forward_max: number; carry_forward_expires_months: number | null; allow_half_day: boolean; needs_approval: boolean; is_active: boolean }
-type Settings = { numbering: { employee_prefix: string; employee_digits: number }; attendance: { self_check_in: boolean; default_weekly_off: string[] }; leave: { year_starts_month: number; count_days_off: boolean; allow_negative: boolean } }
+type Settings = { payroll: { month_days: string; round_net_to: string; deduct_absence: boolean; daily_paid_days_off: boolean; salary_needs_approval: boolean }; numbering: { employee_prefix: string; employee_digits: number }; attendance: { self_check_in: boolean; default_weekly_off: string[] }; leave: { year_starts_month: number; count_days_off: boolean; allow_negative: boolean } }
 type All = { shifts: Shift[]; calendars: Calendar[]; leave_types: Kind[]; settings: Settings; departments: { id: number; name: string; manager_ids: number[] }[]; logins: { id: number; name: string; role: string }[] }
 type Editing = { what: 'shift' | 'calendar' | 'holiday' | 'leave'; id: number | null; calendarId?: number }
 
@@ -274,6 +274,35 @@ export function WorkforceSetup() {
                   <span>
                     Let staff mark their own attendance from their login
                     <small className="muted block">Off unless you are satisfied nobody can sign in for someone else. No location or fingerprint is taken; it records only the login and the time.</small>
+                  </span>
+                </label>
+              </div>
+
+              <div className="day-section">
+                <h3>Payroll</h3>
+                <div className="grid three">
+                  <SelectField label="A day’s pay, for someone paid by the month" value={all.settings.payroll.month_days} onChange={(v) => void saveSettings({ payroll: { month_days: v } })} options={[{ value: 'calendar', label: 'The salary ÷ the days in that month' }, { value: 'fixed_30', label: 'The salary ÷ 30' }, { value: 'fixed_26', label: 'The salary ÷ 26' }]} />
+                  <SelectField label="Net pay is" value={all.settings.payroll.round_net_to} onChange={(v) => void saveSettings({ payroll: { round_net_to: v } })} options={[{ value: 'rupee', label: 'Rounded to the rupee' }, { value: 'paise', label: 'Left in paise' }]} />
+                </div>
+                <label className="check top">
+                  <input type="checkbox" checked={all.settings.payroll.deduct_absence} onChange={(e) => void saveSettings({ payroll: { deduct_absence: e.target.checked } })} />
+                  <span>
+                    Take pay off for absence
+                    <small className="muted block">On: a working day with no attendance and no leave takes a day’s pay off. Switch it off until attendance is being kept here every day, or everyone will look absent; leave without pay is taken off either way.</small>
+                  </span>
+                </label>
+                <label className="check top">
+                  <input type="checkbox" checked={all.settings.payroll.daily_paid_days_off} onChange={(e) => void saveSettings({ payroll: { daily_paid_days_off: e.target.checked } })} />
+                  <span>
+                    Pay weekly offs and holidays to staff paid by the day
+                    <small className="muted block">Off: they are paid for the days worked and paid leave only.</small>
+                  </span>
+                </label>
+                <label className="check top">
+                  <input type="checkbox" checked={all.settings.payroll.salary_needs_approval} onChange={(e) => void saveSettings({ payroll: { salary_needs_approval: e.target.checked } })} />
+                  <span>
+                    A new salary waits for a second person’s approval
+                    <small className="muted block">Payroll does not use a salary until someone other than the person who entered it has approved it. The admin’s own entries are approved at once.</small>
                   </span>
                 </label>
               </div>

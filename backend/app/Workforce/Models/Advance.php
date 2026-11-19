@@ -4,6 +4,7 @@ namespace App\Workforce\Models;
 
 use App\Workforce\Support\BranchScoped;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /** Money given ahead of salary, or lent, to be taken back from later salaries. */
@@ -31,5 +32,10 @@ class Advance extends Model
     public function ledger(): HasMany
     {
         return $this->hasMany(AdvanceLedgerLine::class, 'advance_id')->orderBy('id');
+    }
+
+    public function employee(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class);
     }
 }

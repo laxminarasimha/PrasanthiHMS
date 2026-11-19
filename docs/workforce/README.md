@@ -10,7 +10,7 @@ Companion documents: [WordPress mapping](wordpress-mapping.md) · [Permission ma
 |---|---|---|
 | 1 | Data model, permissions, audit base, tenant wall, password step, WordPress mapping | **This pull request** |
 | 2 | Staff directory, shifts, holidays, attendance (daily, monthly, corrections, sheet import), leave | **Built, in review** (see "Phase 2" below) |
-| 3 | Salary structures, payroll runs, payslips, advances and loans | Not started |
+| 3 | Salary structures, payroll runs, payslips, advances and loans | Done (see below) |
 | 4 | Expense approval flow on the existing expenses, categories, recurring templates, reports, no double counting | Not started |
 | 5 | WordPress snapshot, staging, dry-run reconciliation report, cutover tools | Not started; needs a database export |
 
@@ -135,3 +135,19 @@ See also the seven items at the end of the [WordPress mapping](wordpress-mapping
 ## Tests
 
 Phase 2 adds `WorkforceTimeAndLeaveRulesTest`, `WorkforceStaffAndAttendanceApiTest`, `WorkforceLeaveAndOverviewApiTest` (18 tests) and 14 front-end tests. Phase 1: `WorkforceFoundationTest`, `WorkforcePermissionsTest` (15 tests): tenant isolation, the no-branch case, department and self reach, encryption at rest and masking, audit append-only and tamper detection, one payslip per person per month, finalised-payroll immutability and reversal, append-only ledgers, idempotent source links, the password step, no invented statutory values, role presets, explicit deny, no self-escalation, sensitive grants. All synthetic data.
+
+## Phase 3: salaries, payroll, payslips, advances and loans
+
+Screens: **Salaries** (who is paid what; parts of a salary), **Payroll** (runs, one run from draft to paid, a payslip beside it), **Advances** (requests, the plan, the account), the printed payslip (`/workforce/payslips/:id/print`, on the hospital's print heading), and payslips and advances in **My record**. Payroll choices are under Setup → Payroll.
+
+- **Arithmetic**: `PayrollEngine` works one payslip out from the person's days (read through `AttendanceRules`, so payroll and attendance never disagree), the salary in force, what is due on advances and any one-off lines. All money is `brick/math` decimals (`Money`), rounded to paise half up; net pay is rounded to the rupee or left in paise, by setting, with the difference as its own line. Every line carries how it was arrived at, in words and figures.
+- **Unpaid days**: absent days and leave without pay take a day's pay off the earnings marked "shrinks with unpaid days"; a day's pay is the month's set pay ÷ the days in the month, 30 or 26 (setting). "Take pay off for absence" can be switched off while attendance is not yet kept here every day. Someone who joined or left mid-month is paid for the days employed.
+- **Statutory parts**: worked out only from the rule the accountant enters (percentage, ceiling, "only for pay up to", fixed amount, slabs, rounding). With no rule, nothing is taken and the payslip says so. No rate is built in.
+- **The run**: draft → reviewed → approved → finalised → paid; reversed only after finalising. Whoever prepared or reviewed a run cannot approve it (unless admin). Each step forward first works the run out again and refuses if attendance, leave, a salary or an advance has moved since. Finalising and reversing need the password typed again; finalising numbers the payslips and writes advance repayments into their accounts; reversing puts them back as owed in new lines and frees the month. Payment is recorded (date, mode, reference) and never made from here.
+- **Advances and loans**: requested, approved (the plan may be changed), recorded as given, then taken back through payroll. What is owed is the sum of the append-only account; payroll takes what the plan expects by that month less what has come back, never more than the salary leaves. Paid back by hand, skip a month, waive part, write off (own permission, a reason and the password).
+- **Who sees pay**: a run's existence and totals need "See payroll runs"; any person's figures need "See salaries" as well, and are otherwise not sent. A person sees their own payslips only once their payroll is finalised.
+
+Not yet done (Phase 4): posting a finalised payroll into the HMS expenses as one entry, and putting cash paid out for salaries and advances into the day's cash count. The figures should be checked by the accountant on a first real month before they are relied on.
+
+Tests: `WorkforcePayrollRulesTest` (rounding, unpaid days, overtime, daily pay, joining mid-month, statutory rules, advances through payroll and reversal, never below nothing, duplicate prevention, staleness, immutability) and `WorkforcePayrollApiTest` (salary entry and approval, the run through different hands, who sees what, payment, export, reversal, advances, another hospital), plus `pay.test.ts` and `Payroll.test.tsx` on the web side. Made-up staff and figures only.
+

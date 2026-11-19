@@ -4,6 +4,7 @@ namespace App\Workforce\Models;
 
 use App\Workforce\Support\BranchScoped;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /** What one person is paid, from a date. A rise is a new row; the old one is kept. */
@@ -26,5 +27,10 @@ class SalaryStructure extends Model
     public function lines(): HasMany
     {
         return $this->hasMany(SalaryStructureLine::class, 'structure_id');
+    }
+
+    public function employee(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class);
     }
 }

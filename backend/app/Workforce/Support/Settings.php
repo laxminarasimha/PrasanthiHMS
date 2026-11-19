@@ -12,7 +12,7 @@ final class Settings
 {
     public const DEFAULTS = [
         // How staff are numbered when added here: a prefix and a count padded to so many digits.
-        'numbering' => ['employee_prefix' => 'EMP-', 'employee_digits' => 6],
+        'numbering' => ['employee_prefix' => 'EMP-', 'employee_digits' => 6, 'payslip_prefix' => 'PS-', 'advance_prefix' => 'ADV-'],
         'attendance' => [
             // Staff marking their own attendance from their login. Off until the hospital decides its safeguards are enough.
             'self_check_in' => false,
@@ -23,6 +23,18 @@ final class Settings
             'year_starts_month' => 1, // 1 = January, 4 = April
             'count_days_off' => false, // whether weekly offs and holidays inside a leave are counted as leave days
             'allow_negative' => false, // whether leave may be approved beyond the balance
+        ],
+        'payroll' => [
+            // What a day's pay is, for someone paid by the month: the month's own days, or a fixed 30 or 26.
+            'month_days' => 'calendar', // calendar | fixed_30 | fixed_26
+            // Whether a day with no attendance and no leave takes a day's pay off. Off for a hospital not yet keeping attendance here.
+            'deduct_absence' => true,
+            // Whether net pay is rounded to the whole rupee (the difference is shown as its own line) or left in paise.
+            'round_net_to' => 'rupee', // rupee | paise
+            // For someone paid by the day: whether weekly offs and holidays are paid days too.
+            'daily_paid_days_off' => false,
+            // Whether a new salary waits for a second person's approval before payroll uses it.
+            'salary_needs_approval' => true,
         ],
     ];
 

@@ -14,6 +14,9 @@ export function WorkforceTabs() {
       {can('wf:staff:view') && <NavLink to="/workforce/staff">Staff</NavLink>}
       {can('wf:attendance:view') && <NavLink to="/workforce/attendance">Attendance</NavLink>}
       {can('wf:leave:view') && <NavLink to="/workforce/leave">Leave</NavLink>}
+      {can('wf:salary:view') && <NavLink to="/workforce/pay">Salaries</NavLink>}
+      {can('wf:payroll:view') && <NavLink to="/workforce/payroll">Payroll</NavLink>}
+      {can('wf:advances:view') && <NavLink to="/workforce/advances">Advances</NavLink>}
       {can('wf:settings:admin') && <NavLink to="/workforce/setup">Setup</NavLink>}
       {can('wf:self:view') && <NavLink to="/workforce/me">My record</NavLink>}
     </nav>

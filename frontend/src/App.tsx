@@ -100,6 +100,11 @@ const WorkforceAttendance = page(() => import('./workforce/Attendance'), 'Workfo
 const WorkforceLeave = page(() => import('./workforce/Leave'), 'WorkforceLeave')
 const WorkforceSetup = page(() => import('./workforce/Setup'), 'WorkforceSetup')
 const MyRecord = page(() => import('./workforce/MyRecord'), 'MyRecord')
+const WorkforceSalaries = page(() => import('./workforce/Salaries'), 'WorkforceSalaries')
+const WorkforcePayroll = page(() => import('./workforce/Payroll'), 'WorkforcePayroll')
+const WorkforceAdvances = page(() => import('./workforce/Advances'), 'WorkforceAdvances')
+const PayslipPrint = page(() => import('./workforce/PayslipPrint'), 'PayslipPrint')
+const MyPayslipPrint = page(() => import('./workforce/PayslipPrint'), 'MyPayslipPrint')
 const Services = page(() => import('./pages/Services'), 'Services')
 const Staff = page(() => import('./pages/Staff'), 'Staff')
 const VisitPad = page(() => import('./pages/VisitPad'), 'VisitPad')
@@ -160,6 +165,8 @@ export default function App() {
           <Route path="/lab/orders/:id/print" element={<PrintOnly><LabReportPrint /></PrintOnly>} />
           <Route path="/forms/:id/print" element={<PrintOnly><FormPrint /></PrintOnly>} />
           <Route path="/documents/:id/print" element={<PrintOnly><DocumentPrint /></PrintOnly>} />
+          <Route path="/workforce/payslips/:id/print" element={<PrintOnly><PayslipPrint /></PrintOnly>} />
+          <Route path="/workforce/me/payslips/:id/print" element={<PrintOnly><MyPayslipPrint /></PrintOnly>} />
           <Route path="/ipd/:id/print" element={<PrintOnly><IpdPrint /></PrintOnly>} />
           <Route path="/ipd/:id/bills/:billId/print" element={<PrintOnly><IpdPrint /></PrintOnly>} />
           <Route path="/ipd/:id/receipt/:paymentId" element={<PrintOnly><IpdReceiptPrint /></PrintOnly>} />
@@ -214,6 +221,9 @@ export default function App() {
             <Route path="/workforce/staff" element={<OnlyWf permission="wf:staff:view"><StaffDirectory /></OnlyWf>} />
             <Route path="/workforce/attendance" element={<OnlyWf permission="wf:attendance:view"><WorkforceAttendance /></OnlyWf>} />
             <Route path="/workforce/leave" element={<OnlyWf permission="wf:leave:view"><WorkforceLeave /></OnlyWf>} />
+            <Route path="/workforce/pay" element={<OnlyWf permission="wf:salary:view"><WorkforceSalaries /></OnlyWf>} />
+            <Route path="/workforce/payroll" element={<OnlyWf permission="wf:payroll:view"><WorkforcePayroll /></OnlyWf>} />
+            <Route path="/workforce/advances" element={<OnlyWf permission="wf:advances:view"><WorkforceAdvances /></OnlyWf>} />
             <Route path="/workforce/setup" element={<OnlyWf permission="wf:settings:admin"><WorkforceSetup /></OnlyWf>} />
             <Route path="/workforce/me" element={<OnlyWf permission="wf:self:view"><MyRecord /></OnlyWf>} />
           </Route>
