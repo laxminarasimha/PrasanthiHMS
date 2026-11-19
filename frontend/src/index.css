@@ -507,6 +507,8 @@ tfoot td { font-weight: 700; border-top: 2px solid var(--text); padding: 10px; w
 .tabs button.square { border-radius: 6px; }
 .tab-gap { width: 12px; }
 td.bills { white-space: normal; }
+/* Room for a consultation and a lab bill side by side, so a patient with both is still a short row. */
+@media (min-width: 1200px) { td.bills { min-width: 215px; } }
 .bill-chip { font: inherit; font-weight: 700; font-variant-numeric: tabular-nums; border: 1px solid transparent; border-radius: 6px; padding: 2px 8px; margin: 2px 4px 2px 0; cursor: pointer; display: inline-flex; gap: 6px; align-items: baseline; }
 .bill-chip span { font-weight: 400; font-size: 0.8rem; }
 .bill-chip.paid { color: var(--ok); background: var(--ok-soft); border-color: var(--ok-line); }
