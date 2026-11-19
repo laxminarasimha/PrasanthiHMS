@@ -1,19 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { fullName } from '../format'
+import { recentLine, useRecentPatients, type RecentPatient } from '../recentPatients'
 import type { Patient } from '../types'
 import { canLeave } from '../unsaved'
 
 /**
- * Finds any patient by name, mobile or patient ID. In the top bar it opens the patient's page;
- * a screen can pass onPick to do something else with the chosen patient.
+ * Finds any patient by name, mobile or patient ID. Before anything is typed it offers the patients who are in
+ * the hospital or were here in the last few days. In the top bar it opens the patient's page, except on the
+ * pharmacy counter, where the chosen patient is put on the bill being made; a screen can pass onPick to do
+ * something else with the chosen patient.
  */
-export function PatientSearch({ onPick, placeholder = 'Find a patient', className = 'patient-search' }: { onPick?: (p: Patient) => void; placeholder?: string; className?: string }) {
+export function PatientSearch({ onPick, placeholder, className = 'patient-search' }: { onPick?: (p: Patient) => void; placeholder?: string; className?: string }) {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  // On the pharmacy's billing screen the search is for whom the bill is for.
+  const billing = !onPick && pathname === '/pharmacy'
   const [query, setQuery] = useState('')
   const [found, setFound] = useState<{ query: string; patients: Patient[] } | null>(null)
   const [open, setOpen] = useState(false)
+  const [at, setAt] = useState(0)
+  const { recent, ask } = useRecentPatients()
   const box = useRef<HTMLDivElement>(null)
   const term = query.trim()
 
@@ -38,11 +46,14 @@ export function PatientSearch({ onPick, placeholder = 'Find a patient', classNam
     return () => document.removeEventListener('mousedown', close)
   }, [])
 
-  const patients = term.length >= 2 && found?.query === term ? found.patients : null
+  const searched = term.length >= 2 && found?.query === term ? found.patients : null
+  // What the list holds: the matches once something is typed, the recent patients before that.
+  const offered: (Patient | RecentPatient)[] | null = term.length >= 2 ? searched : recent.length > 0 ? recent : null
   const go = (p: Patient) => {
     setQuery('')
     setOpen(false)
     if (onPick) onPick(p)
+    else if (billing) navigate(`/pharmacy?patient=${p.id}`)
     else if (canLeave()) navigate(`/patients/${p.id}`)
   }
 
@@ -50,32 +61,53 @@ export function PatientSearch({ onPick, placeholder = 'Find a patient', classNam
     <div className={className} ref={box}>
       <input
         type="search"
-        placeholder={placeholder}
+        placeholder={placeholder ?? (billing ? 'Find a patient to bill' : 'Find a patient')}
         value={query}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          setOpen(true)
+          ask()
+        }}
         onChange={(e) => {
           setQuery(e.target.value)
           setOpen(true)
+          setAt(0)
         }}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && patients?.length) go(patients[0])
-          if (e.key === 'Escape') setOpen(false)
+          if (e.key === 'ArrowDown' && offered?.length) {
+            e.preventDefault()
+            setOpen(true)
+            setAt((i) => Math.min(i + 1, offered.length - 1))
+          } else if (e.key === 'ArrowUp' && offered?.length) {
+            e.preventDefault()
+            setAt((i) => Math.max(i - 1, 0))
+          } else if (e.key === 'Enter' && open && offered?.length && (term.length >= 2 || at > 0 || billing)) {
+            // With nothing typed, Enter takes a recent patient only after one was chosen with the arrows, or on the counter.
+            go(offered[Math.min(at, offered.length - 1)])
+          } else if (e.key === 'Escape') {
+            setOpen(false)
+          }
         }}
-        aria-label="Find a patient by name, mobile or patient ID"
+        aria-label={billing ? 'Find the patient this bill is for, by name, mobile or patient ID' : 'Find a patient by name, mobile or patient ID'}
       />
-      {open && patients && (
+      {open && offered && (
         <ul className="picker">
-          {patients.map((p) => (
+          {term.length < 2 && <li className="picker-head">{billing ? 'Recently in the hospital · choose who the bill is for' : 'Recently in the hospital'}</li>}
+          {offered.map((p, i) => (
             <li key={p.id}>
-              <button type="button" onClick={() => go(p)}>
+              <button type="button" className={i === at ? 'on' : ''} onClick={() => go(p)} onMouseEnter={() => setAt(i)}>
                 <strong>{fullName(p)}</strong>
                 <small className="muted">
                   {p.uhid} · {p.age_label} / {p.gender.charAt(0).toUpperCase()} · {p.mobile}
                 </small>
+                {'recent' in p && (
+                  <small className={p.recent.here ? 'recent-why here' : 'recent-why'}>
+                    {recentLine(p.recent)}
+                  </small>
+                )}
               </button>
             </li>
           ))}
-          {patients.length === 0 && <li className="none">No patient matches.</li>}
+          {offered.length === 0 && <li className="none">No patient matches.</li>}
         </ul>
       )}
     </div>

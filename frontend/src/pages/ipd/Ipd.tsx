@@ -339,7 +339,7 @@ export function Ipd() {
               Close
             </button>
           </div>
-          <PatientPicker patient={patient} onChange={setPatient} error={errors.patient_id} />
+          <PatientPicker patient={patient} onChange={setPatient} error={errors.patient_id} recent />
           <div className="grid gap-top">
             <SelectField label="Doctor" required value={form.doctor_id} onChange={set('doctor_id')} options={doctors.map((d) => ({ value: String(d.id), label: d.name }))} placeholder="Select doctor" error={errors.doctor_id} />
             <SelectField

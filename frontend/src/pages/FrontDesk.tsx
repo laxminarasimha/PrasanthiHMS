@@ -569,7 +569,7 @@ export function FrontDesk() {
             </button>
           </div>
           <p className="muted small">For someone who has no appointment today: a dressing, an ECG, an injection, lab tests, or all of them on one visit to the desk.</p>
-          <PatientPicker patient={walkInPatient} onChange={setWalkInPatient} />
+          <PatientPicker patient={walkInPatient} onChange={setWalkInPatient} recent />
           <div className="panel-foot">
             <button className="btn primary" disabled={!walkInPatient} onClick={() => walkInPatient && open({ kind: 'charge', patient: walkInPatient })}>
               Choose services and tests

@@ -274,6 +274,11 @@ select.status.cancelled { background: var(--danger-soft); border-color: var(--da
 
 .chosen { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--brand-soft); border-radius: 8px; }
 .chosen small, .picker small { display: block; }
+/* Patients recently in the hospital, offered before anything is typed: a small heading, and why each is listed. */
+.picker li.picker-head { padding: 6px 10px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); border-bottom: 1px solid var(--border); }
+.picker small.recent-why { color: var(--brand); font-weight: 600; }
+.picker small.recent-why.here { color: var(--ok); }
+.patient-search .picker { max-height: min(70vh, 520px); overflow-y: auto; }
 .picker { list-style: none; margin: 4px 0 0; padding: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .picker button { display: block; width: 100%; text-align: left; font: inherit; color: var(--text); background: var(--surface); border: 0; border-bottom: 1px solid var(--border); padding: 8px 10px; cursor: pointer; }
 .picker li:last-child button { border-bottom: 0; }
