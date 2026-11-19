@@ -471,6 +471,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
     });
 
     Route::get('/reports/summary', [ReportController::class, 'summary']);
+    Route::get('/reports/owner', [ReportController::class, 'owner']);
     Route::controller(DayCloseController::class)->group(function () {
         Route::get('/day-close', 'show');
         Route::post('/day-close', 'close');

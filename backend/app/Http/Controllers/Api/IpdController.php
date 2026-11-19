@@ -146,6 +146,8 @@ class IpdController extends Controller
             'status' => ['nullable', Rule::in(['admitted', 'all', ...Admission::CLOSED_STATUSES])],
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date'],
+            // Cases that ended on or after this day, whenever the patient came in.
+            'left_from' => ['nullable', 'date'],
             'q' => ['nullable', 'string', 'max:100'],
         ]);
         $status = $filters['status'] ?? 'admitted';
@@ -159,6 +161,7 @@ class IpdController extends Controller
                 // Patients still in a bed always show, whenever they came in.
                 ->when($status !== 'admitted' && ($filters['from'] ?? null), fn ($q) => $q->whereDate('admitted_at', '>=', $filters['from']))
                 ->when($status !== 'admitted' && ($filters['to'] ?? null), fn ($q) => $q->whereDate('admitted_at', '<=', $filters['to']))
+                ->when($filters['left_from'] ?? null, fn ($q) => $q->where('status', '!=', 'admitted')->whereDate('discharged_at', '>=', $filters['left_from']))
                 ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('ipd_no', 'like', "{$term}%")
                     ->orWhereHas('patient', fn ($p) => $p->where('name', 'like', "%{$term}%")
                         ->orWhere('mobile', 'like', "{$term}%")

@@ -70,7 +70,7 @@ export type MedicineName = { id: number; name: string; type: string | null }
 export type SubscriptionItem = { medicine_id: number | null; name: string; quantity: number }
 export type Subscription = { id: number; title: string; items: SubscriptionItem[]; day_of_month: number; status: 'active' | 'paused' | 'cancelled'; next_due_on: string; last_prepared_on: string | null; notes: string | null }
 
-export type StaffUser = { id: number; name: string; role: string; role_label: string; can_consult: boolean; can_view_reports?: boolean; can_run_pharmacy?: boolean; can_ipd?: boolean; branch: { name: string } | null }
+export type StaffUser = { id: number; name: string; role: string; role_label: string; can_consult: boolean; can_view_reports?: boolean; can_run_pharmacy?: boolean; can_audit_pharmacy?: boolean; can_ipd?: boolean; branch: { name: string } | null }
 export type QueueEntry = {
   id: number
   scheduled_at: string
@@ -154,7 +154,8 @@ export type AbnormalOrder = { order_id: number; order_no: string; reported_at: s
 export type FoundPatient = { id: number; uhid: string; title?: string | null; name: string; gender: string; age_label: string; mobile: string | null }
 export type WardNote = { id: number; kind: string; noted_at: string; body: string | null; author?: { name: string } | null }
 export type Department = { label: string; billed: number; collected: Record<string, number>; collected_total: number; refunded?: number; due?: number }
-export type Summary = { from: string; to: string; modes: string[]; departments: Record<string, Department>; counts: Record<string, number> }
+export type PaidOut = { expenses: number; suppliers: number; cash: number; total: number; by_category: Record<string, number> | []; by_mode: Record<string, number> | [] }
+export type Summary = { from: string; to: string; modes: string[]; departments: Record<string, Department>; counts: Record<string, number>; paid_out?: PaidOut }
 export type DayCheck = { key: string; label: string; blocking: boolean; count: number }
 export type DayBook = {
   day: string
@@ -166,7 +167,51 @@ export type DayBook = {
   closed: { closed_by_name: string; closed_at: string; counted_cash: number; variance: number } | null
   recent: { day: string; closed: boolean }[]
 }
-export type PharmacyDesk = { actions: { key: string; tone: 'danger' | 'warn' | 'note'; count: number; text: string }[] }
+export type PharmacyDesk = {
+  actions: { key: string; tone: 'danger' | 'warn' | 'note'; count: number; text: string }[]
+  reorder?: { medicine_id: number; name: string; class: 'out' | 'urgent' | 'low'; usable: number; days_cover: number | null; suggest_packs: number; stockist: string | null }[]
+  expiring?: ExpiryRow[]
+  expired?: ExpiryRow[]
+  payables?: {
+    suppliers: { stockist_id: number; stockist: string | null; invoices: number; owed: number }[]
+    totals: { owed: number; not_due: number; d1_30: number; d31_60: number; d61_90: number; over_90: number }
+  }
+}
+export type ExpiryRow = { batch_id: number; medicine: string | null; batch_no: string; expiry: string; days_left: number; units: number; value: number }
+
+// ---- The owner's view: the wards, the pharmacy and the money, read-only ----
+
+/** A case as the IPD list sends it, with what the bill has come to so far. */
+export type IpdCase = Inpatient & { status: string; discharged_at: string | null; total: number; discount: number; paid: number; net: number; due: number; payer?: { name: string } | null }
+export type WardBed = { id: number; ward: string; bed_no: string; is_active: boolean; current_admission: { id: number; ipd_no: string } | null }
+export type PharmacyDash = {
+  from: string
+  to: string
+  sales: number
+  billed: number
+  collected: number
+  collected_cash: number
+  collected_card: number
+  collected_other: number
+  statistics: { medicines: number; inventory_cost: number; inventory_mrp: number; units_in_stock: number; out_of_stock: number }
+  latest_sales: { id: number; bill_no: string; customer_name: string; sold_at: string; total: number; returned: number; paid: number; ipd_transfer: number }[]
+  fast_moving: { medicine_name: string; sold: number }[]
+}
+export type StockAudit = {
+  this_month: { loss_value: number; unexplained_value: number; found_value: number; corrections: number }
+  last_month: { loss_value: number; unexplained_value: number; found_value: number; corrections: number }
+  waiting: unknown[]
+  adrift: unknown[]
+}
+export type OwnerOverview = {
+  today: string
+  from: string
+  to: string
+  trend: { day: string; billed: number; collected: number; paid_out: number }[]
+  owed: { key: string; label: string; owed: number; count: number }[]
+  owed_total: number
+  doctors: { id: number; name: string; booked: number; seen: number; billed: number; inpatients: number }[]
+}
 
 // ---- The doctor's visit pad ----
 

@@ -2,15 +2,20 @@ import { useCallback, useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { addDays, api, ApiError, niceDate, niceTime, todayIso, type Inpatient, type QueueEntry, type StaffUser } from '../api'
 import { colors, space } from '../theme'
-import { Button, Card, Empty, Loading, Notice, Pill, Screen, TabBar, text } from '../ui'
+import { Button, Card, Empty, Loading, Notice, Pill, Screen, Switch, TabBar, text } from '../ui'
 import { AbnormalResults } from './Alerts'
 import { FindPatient } from './Find'
 import { HospitalDay } from './Hospital'
+import { IpdBoard } from './owner/IpdBoard'
+import { PharmacyBoard } from './owner/PharmacyBoard'
+import { ReportsBoard } from './owner/ReportsBoard'
 import { PatientView, type PatientRef } from './PatientView'
 import { VisitPad } from './VisitPad'
 
 type Tab = 'appointments' | 'inpatients' | 'alerts' | 'find' | 'hospital'
-const TITLES: Record<Tab, string> = { appointments: 'My appointments', inpatients: 'My inpatients', alerts: 'Results to see', find: 'Find a patient', hospital: 'Hospital today' }
+const TITLES: Record<Tab, string> = { appointments: 'My appointments', inpatients: 'My inpatients', alerts: 'Results to see', find: 'Find a patient', hospital: 'Hospital' }
+/** The owner's side of the app: the day, the wards, the pharmacy and the money. */
+type Section = 'day' | 'ipd' | 'pharmacy' | 'reports'
 
 /** The doctor's appointments for a day, refreshed on its own while the screen is open. */
 export function DoctorHome({ user, onSignOut }: { user: StaffUser; onSignOut: () => void }) {
@@ -24,6 +29,14 @@ export function DoctorHome({ user, onSignOut }: { user: StaffUser; onSignOut: ()
   ]
   const [tab, setTab] = useState<Tab>(tabs[0]?.key ?? 'hospital')
   const [refreshKey, setRefreshKey] = useState(0)
+  // What the Hospital tab offers this person. The choice is kept while a patient is opened from it and closed again.
+  const sections: { value: Section; label: string }[] = [
+    ...(user.can_view_reports ? [{ value: 'day' as const, label: 'Today' }] : []),
+    { value: 'ipd' as const, label: 'IPD' },
+    ...(user.can_run_pharmacy ? [{ value: 'pharmacy' as const, label: 'Pharmacy' }] : []),
+    ...(user.can_view_reports ? [{ value: 'reports' as const, label: 'Reports' }] : []),
+  ]
+  const [section, setSection] = useState<Section>(sections[0].value)
   const [inpatients, setInpatients] = useState<Inpatient[] | null>(null)
   const [viewing, setViewing] = useState<{ patient: PatientRef; admissionId?: number; subtitle?: string } | null>(null)
   // The appointment whose visit pad is open. A patient's history can be opened on top of it.
@@ -106,7 +119,15 @@ export function DoctorHome({ user, onSignOut }: { user: StaffUser; onSignOut: ()
     >
       {tab === 'alerts' && <AbnormalResults key={refreshKey} onOpen={(patient) => setViewing({ patient })} />}
       {tab === 'find' && <FindPatient onOpen={(patient) => setViewing({ patient })} />}
-      {tab === 'hospital' && <HospitalDay user={user} refreshKey={refreshKey} />}
+      {tab === 'hospital' && (
+        <>
+          {sections.length > 1 && <Switch options={sections} value={section} onChange={setSection} />}
+          {section === 'day' && <HospitalDay user={user} refreshKey={refreshKey} />}
+          {section === 'ipd' && <IpdBoard refreshKey={refreshKey} onOpen={(patient, admissionId, subtitle) => setViewing({ patient, admissionId, subtitle })} />}
+          {section === 'pharmacy' && <PharmacyBoard user={user} refreshKey={refreshKey} />}
+          {section === 'reports' && <ReportsBoard refreshKey={refreshKey} />}
+        </>
+      )}
       {tab === 'inpatients' && (
         <>
           <Notice text={error} />
