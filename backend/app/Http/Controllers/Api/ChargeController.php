@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Bill;
+use App\Models\Patient;
 use App\Models\Payment;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -59,6 +61,36 @@ class ChargeController extends Controller
         }
 
         return response()->json(['made' => $made, 'due' => $this->present($this->owed((int) $data['patient_id'], $data['appointment_id'] ?? null))], 201);
+    }
+
+    /**
+     * Everything billed to one patient on one day, paid or not: each bill with its lines, so the desk sees
+     * all that was ordered in one place instead of opening the bills one by one. A bill belongs to the day
+     * it was made on, and a visit's bill also to the day of the visit, since that is where the day list shows it.
+     */
+    public function day(Request $request): JsonResponse
+    {
+        $data = $request->validate(['patient_id' => ['required', 'exists:patients,id'], 'date' => ['nullable', 'date']]);
+        $day = Carbon::parse($data['date'] ?? today())->toDateString();
+
+        $bills = Bill::where('patient_id', $data['patient_id'])
+            ->where(fn ($q) => $q->whereDate('created_at', $day)->orWhereHas('appointment', fn ($a) => $a->whereDate('scheduled_at', $day)))
+            ->with(['items', 'payments', 'labOrder:id,bill_id,order_no', 'appointment:id,doctor_id,scheduled_at', 'appointment.doctor:id,name'])
+            ->withIpdTransfers()->oldest('id')->get();
+
+        return response()->json([
+            'date' => $day,
+            'patient' => Patient::find($data['patient_id'])->only(['id', 'uhid', 'title', 'name', 'gender', 'age_label', 'mobile']),
+            'bills' => $bills->map(fn (Bill $b) => [
+                'id' => $b->id, 'bill_no' => $b->bill_no, 'kind' => $b->kind, 'order_no' => $b->labOrder?->order_no,
+                'created_at' => $b->created_at->format('Y-m-d H:i'), 'appointment_id' => $b->appointment_id, 'doctor' => $b->appointment?->doctor?->name,
+                'subtotal' => (float) $b->subtotal, 'discount' => (float) $b->discount, 'tax' => (float) $b->tax,
+                'total' => (float) $b->total, 'paid' => (float) $b->paid, 'due' => (float) $b->due, 'moved_to_ipd' => (float) $b->moved_to_ipd,
+                'items' => $b->items->map(fn ($i) => ['id' => $i->id, 'description' => $i->description, 'quantity' => (float) $i->quantity, 'unit_price' => (float) $i->unit_price, 'discount' => (float) $i->discount, 'amount' => round((float) $i->amount + (float) $i->tax, 2)])->all(),
+                'payments' => $b->payments->map(fn (Payment $p) => ['type' => $p->type, 'mode' => $p->mode, 'amount' => (float) $p->amount])->all(),
+            ])->all(),
+            'total' => round((float) $bills->sum('total'), 2), 'paid' => round((float) $bills->sum('paid'), 2), 'due' => round((float) $bills->sum('due'), 2),
+        ]);
     }
 
     /** What the patient still owes for this visit, or for today when there is no visit. */

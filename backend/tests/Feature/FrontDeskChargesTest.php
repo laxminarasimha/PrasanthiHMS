@@ -81,4 +81,40 @@ class FrontDeskChargesTest extends TestCase
         // Lab tests alone, for someone with no visit today: what is due is today's bills.
         $this->postJson('/api/front-desk/charges', ['patient_id' => $other->id, 'test_ids' => [$cbp->id]])->assertCreated()->assertJsonCount(1, 'made')->assertJsonPath('due.0.kind', 'lab')->assertJsonPath('due.0.due', 350);
     }
+
+    public function test_all_of_a_patients_bills_for_the_day_come_back_together(): void
+    {
+        $doctor = User::factory()->create(['role' => 'doctor', 'name' => 'Dr Sample']);
+        $patient = Patient::factory()->create();
+        $other = Patient::factory()->create();
+        $visit = Appointment::create(['patient_id' => $patient->id, 'doctor_id' => $doctor->id, 'scheduled_at' => now()->format('Y-m-d H:i'), 'status' => 'arrived', 'token_no' => 1]);
+        $ecg = Service::create(['name' => 'ECG', 'type' => 'other', 'price' => 300, 'is_active' => true]);
+        $cbp = LabTest::create(['name' => 'CBP', 'price' => 350]);
+        $cbp->parameters()->create(['name' => 'Haemoglobin']);
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        // Billed three times over the day: a service on the visit, a lab test on the visit, and a lab test with no visit.
+        $this->postJson('/api/front-desk/charges', ['patient_id' => $patient->id, 'appointment_id' => $visit->id, 'services' => [['service_id' => $ecg->id, 'quantity' => 2]]])->assertCreated();
+        $this->postJson('/api/front-desk/charges', ['patient_id' => $patient->id, 'appointment_id' => $visit->id, 'test_ids' => [$cbp->id]])->assertCreated();
+        $this->postJson('/api/front-desk/charges', ['patient_id' => $patient->id, 'test_ids' => [$cbp->id]])->assertCreated();
+        // Someone else's bill, and this patient's bill from another day, stay out of it.
+        $this->postJson('/api/front-desk/charges', ['patient_id' => $other->id, 'services' => [['service_id' => $ecg->id]]])->assertCreated();
+        $old = Bill::create(['patient_id' => $patient->id, 'kind' => 'other']);
+        $old->forceFill(['created_at' => now()->subDays(3)])->save();
+
+        $day = $this->getJson("/api/front-desk/day-bills?patient_id={$patient->id}")->assertOk()
+            ->assertJsonCount(3, 'bills')->assertJsonPath('total', 1300)->assertJsonPath('paid', 0)->assertJsonPath('due', 1300)
+            ->assertJsonPath('bills.0.items.0.description', 'ECG')->assertJsonPath('bills.0.items.0.quantity', 2)->assertJsonPath('bills.0.items.0.amount', 600)
+            ->assertJsonPath('bills.0.doctor', 'Dr Sample')->assertJsonPath('bills.1.kind', 'lab')->assertJsonPath('bills.2.appointment_id', null)
+            ->json();
+
+        // One payment settles the lot, and the same page then shows it paid.
+        $this->postJson('/api/front-desk/collect', ['patient_id' => $patient->id, 'bill_ids' => array_column($day['bills'], 'id'), 'amount' => 1300, 'mode' => 'upi'])->assertOk();
+        $this->getJson("/api/front-desk/day-bills?patient_id={$patient->id}&date=".now()->toDateString())->assertOk()
+            ->assertJsonPath('paid', 1300)->assertJsonPath('due', 0)->assertJsonPath('bills.1.payments.0.mode', 'upi');
+        $this->getJson("/api/front-desk/day-bills?patient_id={$patient->id}&date=".now()->subDays(3)->toDateString())->assertOk()->assertJsonCount(1, 'bills');
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $this->getJson("/api/front-desk/day-bills?patient_id={$patient->id}")->assertForbidden();
+    }
 }

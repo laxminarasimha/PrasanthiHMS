@@ -5,6 +5,7 @@ import { useAuth } from '../auth'
 import { AppointmentForm } from '../components/AppointmentForm'
 import { BillPanel } from '../components/BillPanel'
 import { ChargePanel } from '../components/ChargePanel'
+import { DayBills } from '../components/DayBills'
 import { AttachmentsPanel, EditAppointmentPanel, SummaryPanel, VitalsPanel } from '../components/FrontDeskPanels'
 import { PatientPicker } from '../components/PatientPicker'
 import { STATUS_LABELS, clock, longDate, rupees, settlement, stampTime, today } from '../format'
@@ -18,6 +19,8 @@ type Panel =
   | { kind: 'followups' }
   | { kind: 'charge'; patient: { id: number; name: string; uhid: string }; appointmentId?: number; doctor?: string; advised?: string }
   | { kind: 'bill'; billId: number }
+  /** Everything billed to one patient on the day shown, in a window over the list. */
+  | { kind: 'day'; patient: { id: number; name: string; uhid: string }; appointmentId?: number; doctor?: string }
   | { kind: 'walkin' }
   | { kind: 'vitals' | 'attachments' | 'edit'; appointment: Appointment }
   | { kind: 'summary' }
@@ -310,7 +313,7 @@ export function FrontDesk() {
                       {billsOf(a)
                         .filter(inDepartment)
                         .map((b) => (
-                          <BillChip key={b.id} label={chipLabel(b)} total={b.total} due={b.due} movedToIpd={b.moved_to_ipd} onOpen={() => open({ kind: 'bill', billId: b.id })} />
+                          <BillChip key={b.id} label={chipLabel(b)} total={b.total} due={b.due} movedToIpd={b.moved_to_ipd} onOpen={() => open({ kind: 'day', patient: a.patient, appointmentId: a.id, doctor: a.doctor.name })} />
                         ))}
                       <button className="bill-add" onClick={() => charge(a)} title={`Add services or lab tests for ${a.patient.name}, and collect payment`}>
                         + Bill
@@ -425,7 +428,7 @@ export function FrontDesk() {
                     </td>
                     <td className="bills">
                       {bills.map((b) => (
-                        <BillChip key={b.id} label={bills.length > 1 ? chipLabel(b) : undefined} total={b.total} due={b.due} movedToIpd={b.moved_to_ipd} onOpen={() => open({ kind: 'bill', billId: b.id })} />
+                        <BillChip key={b.id} label={bills.length > 1 ? chipLabel(b) : undefined} total={b.total} due={b.due} movedToIpd={b.moved_to_ipd} onOpen={() => open({ kind: 'day', patient })} />
                       ))}
                     </td>
                     <td className="mono">{stampTime(bills[0].created_at)}</td>
@@ -461,7 +464,7 @@ export function FrontDesk() {
           </table>
         </div>
         <p className="muted small legend">
-          <span className="bill-chip paid">₹</span> paid <span className="bill-chip unpaid">₹</span> money due. Click a patient ID for their full record.
+          <span className="bill-chip paid">₹</span> paid <span className="bill-chip unpaid">₹</span> money due. Click any amount to see all of that patient's bills for the day together.
         </p>
       </section>
 
@@ -495,6 +498,17 @@ export function FrontDesk() {
           onClose={() => setPanel(null)}
           onChange={load}
           onAnotherBill={(bill) => open({ kind: 'charge', patient: bill.patient, appointmentId: bill.appointment?.id, doctor: bill.appointment?.doctor?.name })}
+        />
+      )}
+      {panel?.kind === 'day' && (
+        <DayBills
+          key={`${panel.patient.id}-${date}`}
+          patient={panel.patient}
+          date={date}
+          onClose={() => setPanel(null)}
+          onChange={load}
+          onOpenBill={(billId) => open({ kind: 'bill', billId })}
+          onAdd={() => open({ kind: 'charge', patient: panel.patient, appointmentId: panel.appointmentId, doctor: panel.doctor })}
         />
       )}
       {panel?.kind === 'charge' && (
