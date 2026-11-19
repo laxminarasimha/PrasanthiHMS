@@ -79,10 +79,30 @@ export function PharmacyPurchases() {
   }, [])
   useEffect(load, [load])
 
+  // The lists the form chooses from are fetched as the page opens, so they are there by the time "Add invoice" is
+  // pressed, and fetched again each time the form opens in case a stockist or medicine was added meanwhile.
+  // Until they arrive the form says it is loading; it never says "no stockists" about a list it has not received yet.
+  const [lists, setLists] = useState<'loading' | 'ready' | 'failed'>('loading')
+  const loadLists = useCallback(() => {
+    return Promise.all([
+      api.get<Stockist[]>('/pharmacy/stockists').then((res) => setStockists(res.data)),
+      api.get<PurchaseOrder[]>('/pharmacy/purchase-orders').then((res) => setOrders(res.data.filter((o) => o.status === 'open'))),
+    ])
+      .then(() => setLists('ready'))
+      .catch(() => setLists((now) => (now === 'ready' ? now : 'failed')))
+  }, [])
+  useEffect(() => {
+    void loadLists()
+  }, [loadLists])
+  /** Fetches the lists again when the form is opened, or after a failure; a list already in hand stays on screen meanwhile. */
+  const refreshLists = () => {
+    setLists((now) => (now === 'ready' ? now : 'loading'))
+    void loadLists()
+  }
+
   const startAdding = () => {
-    api.get<Stockist[]>('/pharmacy/stockists').then((res) => setStockists(res.data))
+    refreshLists()
     api.get<Medicine[]>('/pharmacy/medicines', { params: { list: 1 } }).then((res) => setMedicines(res.data))
-    api.get<PurchaseOrder[]>('/pharmacy/purchase-orders').then((res) => setOrders(res.data.filter((o) => o.status === 'open')))
     setOrderId('')
     setViewing(null)
     setEditing(null)
@@ -102,7 +122,7 @@ export function PharmacyPurchases() {
   const startEditing = (invoice: PurchaseInvoice) => {
     // The invoice's own stockist shows at once; the full list follows. Without this the box read "Select stockist" until it arrived.
     setStockists((list) => (list.some((s) => s.id === invoice.stockist.id) ? list : [invoice.stockist as Stockist, ...list]))
-    api.get<Stockist[]>('/pharmacy/stockists').then((res) => setStockists(res.data))
+    refreshLists()
     // The medicines already on the invoice show at once; the whole list follows, for a medicine that was left out.
     const onInvoice = (invoice.batches ?? []).map((b) => ({ id: b.medicine_id, name: b.medicine?.name ?? '' }) as Medicine)
     setMedicines(onInvoice)
@@ -231,7 +251,7 @@ export function PharmacyPurchases() {
                 setOrderId('')
               }}
               options={stockists.map((s) => ({ value: String(s.id), label: s.name }))}
-              placeholder="Select stockist"
+              placeholder={lists === 'loading' && stockists.length === 0 ? 'Loading the stockists…' : 'Select stockist'}
             />
             <TextField label="Invoice number" required value={invoiceNo} onChange={setInvoiceNo} />
             <TextField label="Invoice date" required type="date" value={invoiceDate} onChange={setInvoiceDate} />
@@ -246,7 +266,16 @@ export function PharmacyPurchases() {
             )}
             <TextField label="Remarks" value={remarks} onChange={setRemarks} />
           </div>
-          {stockists.length === 0 && <p className="muted small">No stockists yet. Add one first under Inventory → Medicines, in the Stockists list.</p>}
+          {stockists.length === 0 && lists === 'loading' && <p className="muted small">Loading the stockists…</p>}
+          {stockists.length === 0 && lists === 'failed' && (
+            <p className="form-error">
+              The stockists could not be loaded.{' '}
+              <button type="button" className="link" onClick={refreshLists}>
+                Try again
+              </button>
+            </p>
+          )}
+          {stockists.length === 0 && lists === 'ready' && <p className="muted small">No stockists yet. Add one first under Inventory → Medicines, in the Stockists list.</p>}
 
           {editing && (
             <p className="muted small">

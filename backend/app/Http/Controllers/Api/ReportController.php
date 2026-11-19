@@ -8,6 +8,7 @@ use App\Models\Appointment;
 use App\Models\Bill;
 use App\Models\Consultation;
 use App\Models\LabOrder;
+use App\Models\LabOrderItem;
 use App\Models\Patient;
 use App\Models\Payment;
 use App\Models\PharmacySale;
@@ -56,6 +57,8 @@ class ReportController extends Controller
                     ->orWhereHas('consultation', fn ($q) => $q->whereBetween('completed_at', [$from, $to])))->count(),
                 'visit_pads' => Consultation::whereBetween('completed_at', [$from, $to])->count(),
                 'lab_orders' => LabOrder::whereBetween('ordered_at', [$from, $to])->count(),
+                // An order holds one or more tests; both are counted so neither is mistaken for the other.
+                'lab_tests' => LabOrderItem::whereIn('lab_order_id', LabOrder::whereBetween('ordered_at', [$from, $to])->select('id'))->count(),
                 'pharmacy_bills' => PharmacySale::whereBetween('sold_at', [$from, $to])->whereNull('voided_at')->count(),
                 'admissions' => Admission::whereBetween('admitted_at', [$from, $to])->count(),
                 'discharges' => Admission::whereBetween('discharged_at', [$from, $to])->count(),
