@@ -4,6 +4,7 @@ namespace App\Workforce\Models;
 
 use App\Workforce\Support\BranchScoped;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /** A request for leave, and what was decided. */
 class LeaveRequest extends Model
@@ -20,5 +21,15 @@ class LeaveRequest extends Model
     protected function casts(): array
     {
         return ['from_date' => 'date:Y-m-d', 'to_date' => 'date:Y-m-d', 'days' => 'float', 'decided_at' => 'datetime'];
+    }
+
+    public function type(): BelongsTo
+    {
+        return $this->belongsTo(LeaveType::class, 'leave_type_id');
+    }
+
+    public function employee(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class);
     }
 }

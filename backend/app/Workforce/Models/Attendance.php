@@ -2,6 +2,7 @@
 
 namespace App\Workforce\Models;
 
+use App\Workforce\Support\AttendanceRules;
 use App\Workforce\Support\BranchScoped;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -26,5 +27,27 @@ class Attendance extends Model
     public function employee(): BelongsTo
     {
         return $this->belongsTo(Employee::class);
+    }
+
+    public function shift(): BelongsTo
+    {
+        return $this->belongsTo(Shift::class);
+    }
+
+    /** Works out the state, hours, lateness and overtime from the times and the shift, ready to save. */
+    public function measured(): static
+    {
+        return $this->fill(AttendanceRules::measure(
+            $this->work_date->format('Y-m-d'), $this->check_in?->format('Y-m-d H:i:s'), $this->check_out?->format('Y-m-d H:i:s'), $this->shift_id ? $this->shift : null,
+        ));
+    }
+
+    /** The parts of a spell that a correction can change, as they stand, for the record of what it was before. */
+    public function asRecorded(): array
+    {
+        return [
+            'work_date' => $this->work_date?->format('Y-m-d'), 'check_in' => $this->check_in?->format('Y-m-d H:i:s'), 'check_out' => $this->check_out?->format('Y-m-d H:i:s'),
+            'day_status' => $this->day_status, 'note' => $this->note,
+        ];
     }
 }
