@@ -25,7 +25,7 @@ export type Employee = StaffBrief & {
   payment_mode: string | null
   user_id: number | null
 }
-export type DayStatus = 'present' | 'half_day' | 'half_leave' | 'on_leave' | 'absent' | 'not_in' | 'open' | 'holiday' | 'weekly_off' | 'not_employed' | ''
+export type DayStatus = 'present' | 'half_day' | 'half_leave' | 'on_leave' | 'absent' | 'not_in' | 'later' | 'open' | 'holiday' | 'weekly_off' | 'not_employed' | ''
 export type Day = {
   date: string
   status: DayStatus
@@ -95,13 +95,13 @@ export type LeaveType = { id: number; code: string; name: string; is_paid: boole
 // ---- Words and looks, the same on every screen ----
 
 export const DAY_LABEL: Record<string, string> = {
-  present: 'Present', half_day: 'Half day', half_leave: 'Half day leave', on_leave: 'On leave', absent: 'Absent', not_in: 'Not in yet', open: 'In', holiday: 'Holiday',
+  present: 'Present', half_day: 'Half day', half_leave: 'Half day leave', on_leave: 'On leave', absent: 'Absent', not_in: 'Not in yet', later: 'On duty later', open: 'In', holiday: 'Holiday',
   weekly_off: 'Weekly off', not_employed: '—', '': '—',
 }
 /** One letter for the month grid, where a box is all the room there is. */
-export const DAY_LETTER: Record<string, string> = { present: 'P', half_day: '½', half_leave: '½L', on_leave: 'L', absent: 'A', not_in: '·', open: 'In', holiday: 'H', weekly_off: 'O', not_employed: '', '': '' }
+export const DAY_LETTER: Record<string, string> = { present: 'P', half_day: '½', half_leave: '½L', on_leave: 'L', absent: 'A', not_in: '·', later: '·', open: 'In', holiday: 'H', weekly_off: 'O', not_employed: '', '': '' }
 export const DAY_CLASS: Record<string, string> = {
-  present: 'ok', half_day: 'status-arrived', half_leave: 'status-ongoing', on_leave: 'status-ongoing', absent: 'off', not_in: 'status-booked', open: 'ok', holiday: 'status-booked', weekly_off: 'status-booked',
+  present: 'ok', half_day: 'status-arrived', half_leave: 'status-ongoing', on_leave: 'status-ongoing', absent: 'off', not_in: 'status-booked', later: 'status-booked', open: 'ok', holiday: 'status-booked', weekly_off: 'status-booked',
 }
 export const REQUEST_CLASS: Record<string, string> = { pending: 'status-arrived', approved: 'ok', applied: 'ok', rejected: 'off', cancelled: 'status-booked' }
 export const REQUEST_LABEL: Record<string, string> = { pending: 'Waiting', approved: 'Approved', applied: 'Made directly', rejected: 'Refused', cancelled: 'Cancelled' }

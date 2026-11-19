@@ -166,3 +166,15 @@ Also fixed in this phase: working a draft payroll out again could remove payslip
 
 Tests: `WorkforceExpensesTest` (approval and payment, limits, own approval refused, bills, the day lock and earlier-day reversal, payroll and advances posted once, re-run after reversal, cash paid back in the drawer, headings, repeating drafts, export) and a payroll re-work test; `expenseRules.test.ts` and `Expenses.test.tsx` on the web side.
 
+## Duty roster: morning, long-day and night duties
+
+Asked for on 2026-11-20: morning duties (8 AM–6 PM for some, 10 AM–9 PM for others) and night duties (8 PM–8 AM the next day). Shifts were already set up per hospital under Setup → Shifts, and a shift ending at or before it starts already runs into the next morning. What was missing was saying who works which duty on which day.
+
+- `wf_roster` (`RosterDay`) holds a person's duty for a day where it differs from their usual shift and weekly off: a shift, or a day off. No line means the usual. `Roster::duty()` answers for one day; `AttendanceRules::days()` reads it, so the day's figures, lateness, overtime and payroll all follow the roster.
+- A check-in takes the rostered shift. One made in the small hours, while last night's night duty has not been checked into yet, counts for that night duty and that day (`Roster::forCheckIn`).
+- Before today's duty begins (a night duty in the afternoon) a person is "On duty later", not "Not in yet" and not absent.
+- Changing a day's duty measures any attendance already recorded that day again. A month whose payroll is finalised for that person keeps its duties.
+- Screens: Attendance → Duty roster (a week per screen, a choice per box, counts of each duty per day at the foot, copy last week, print), "On duty later today" on Today, and "My duties, the next two weeks" in My record. Seen with "See attendance" and set with "Enter attendance", each within its reach, so a department manager rosters only their own departments.
+
+Tests: `WorkforceRosterTest` (the three duties set up, a nurse moved to nights, a check-in after midnight, moving a day off, re-measuring, copying a week, own duties, department reach) and `dutyWords.test.ts`.
+

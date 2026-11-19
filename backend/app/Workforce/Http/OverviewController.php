@@ -13,11 +13,13 @@ use App\Workforce\Models\LeaveRequest;
 use App\Workforce\Models\LeaveType;
 use App\Workforce\Models\PayrollRun;
 use App\Workforce\Models\Payslip;
+use App\Workforce\Models\Shift;
 use App\Workforce\Support\Access;
 use App\Workforce\Support\AttendanceRules;
 use App\Workforce\Support\LeaveBook;
 use App\Workforce\Support\Money;
 use App\Workforce\Support\Period;
+use App\Workforce\Support\Roster;
 use App\Workforce\Support\Settings;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -43,12 +45,12 @@ class OverviewController extends Controller
         $days = AttendanceRules::days($staff, $date, $date);
         $ids = $staff->pluck('id');
         $list = fn (array $statuses, ?callable $also = null) => $staff->filter(fn (Employee $e) => in_array($days[$e->id][$date]['status'], $statuses, true) && (! $also || $also($days[$e->id][$date])))
-            ->map(fn (Employee $e) => $this->brief($e) + ['late_minutes' => $days[$e->id][$date]['late_minutes'], 'leave_type' => $days[$e->id][$date]['leave_type']])->values();
+            ->map(fn (Employee $e) => $this->brief($e) + ['late_minutes' => $days[$e->id][$date]['late_minutes'], 'leave_type' => $days[$e->id][$date]['leave_type'], 'shift' => $days[$e->id][$date]['shift'], 'note' => $days[$e->id][$date]['note']])->values();
         $working = ['present', 'half_day', 'half_leave', 'open'];
 
         return response()->json([
             'date' => $date, 'is_today' => $date === now()->toDateString(), 'staff' => $staff->count(),
-            'in' => $list($working), 'not_in' => $list(['not_in', 'absent']), 'on_leave' => $list(['on_leave', 'half_leave'], fn ($d) => $d['leave'] > 0),
+            'in' => $list($working), 'not_in' => $list(['not_in', 'absent']), 'later' => $list(['later']), 'on_leave' => $list(['on_leave', 'half_leave'], fn ($d) => $d['leave'] > 0),
             'late' => $list($working, fn ($d) => $d['late_minutes'] > 0), 'off' => $list(['weekly_off', 'holiday'])->count(),
             // Left open on an earlier day: someone forgot to check out, or was not checked out.
             'missing_check_outs' => Attendance::query()->whereIn('employee_id', $ids)->where('state', 'open')->whereDate('work_date', '<', now()->toDateString())->with('employee:id,name,employee_no')->orderBy('work_date')->limit(50)->get()
@@ -92,7 +94,29 @@ class OverviewController extends Controller
             // A person's own pay: payslips once their payroll is finalised (never a draft), and what they still owe on an advance.
             'payslips' => $this->finalPayslips($employee->id)->limit(24)->get()->map(fn (Payslip $s) => ['id' => $s->id, 'period' => $s->period, 'period_name' => Period::name($s->period), 'slip_no' => $s->slip_no, 'net' => $s->net, 'payment_status' => $s->payment_status, 'paid_on' => $s->paid_on?->format('Y-m-d')]),
             'advances' => $this->myAdvances($employee->id),
+            'duties' => $this->myDuties($employee),
         ]);
+    }
+
+    /**
+     * The person's duties for the next two weeks, from the roster or their usual shift.
+     *
+     * @return list<array{date: string, off: bool, shift: string|null, starts_at: string|null, ends_at: string|null, rostered: bool}>
+     */
+    private function myDuties(Employee $employee): array
+    {
+        $from = now()->toDateString();
+        $to = now()->addDays(13)->toDateString();
+        $lines = Roster::lines(collect([$employee->id]), $from, $to);
+        $shifts = Shift::query()->get()->keyBy('id');
+        $out = [];
+        for ($day = CarbonImmutable::parse($from); $day->toDateString() <= $to; $day = $day->addDay()) {
+            $duty = Roster::duty($employee, $day->toDateString(), $lines->get($employee->id.'|'.$day->toDateString()));
+            $shift = $duty['off'] ? null : $shifts->get($duty['shift_id']);
+            $out[] = ['date' => $day->toDateString(), 'off' => $duty['off'], 'shift' => $shift?->name, 'starts_at' => $shift ? substr((string) $shift->starts_at, 0, 5) : null, 'ends_at' => $shift ? substr((string) $shift->ends_at, 0, 5) : null, 'rostered' => $duty['rostered']];
+        }
+
+        return $out;
     }
 
     /** A person's own payslip in full. Only one of a finalised payroll that still stands. */

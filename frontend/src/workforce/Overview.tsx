@@ -7,7 +7,7 @@ import { inr } from './pay'
 import type { StaffBrief } from './shared'
 import { WorkforceTabs } from './WorkforceTabs'
 
-type Person = StaffBrief & { late_minutes: number; leave_type: string | null }
+type Person = StaffBrief & { late_minutes: number; leave_type: string | null; shift?: string | null; note?: string | null }
 type Board = {
   pay: { unpaid_salaries?: { slips: number; net: string }; runs_in_hand?: number; advances?: { count: number; owed: string; waiting: number }; expenses_waiting?: number } | null
   date: string
@@ -15,6 +15,7 @@ type Board = {
   staff: number
   in: Person[]
   not_in: Person[]
+  later?: Person[]
   on_leave: Person[]
   late: Person[]
   off: number
@@ -172,7 +173,8 @@ export function WorkforceOverview() {
               {list(shown.is_today ? 'Not in yet' : 'Absent', shown.not_in, 'Everyone expected is in.')}
               {list('Came late', shown.late, 'Nobody was late.', (p) => `${p.late_minutes} min late`)}
               {list('On leave', shown.on_leave, 'Nobody is on leave.', (p) => p.leave_type ?? '')}
-              {list('In', shown.in, 'Nobody has been marked in.')}
+              {list('In', shown.in, 'Nobody has been marked in.', (p) => p.shift ?? '')}
+              {shown.is_today && (shown.later?.length ?? 0) > 0 && list('On duty later today', shown.later ?? [], '', (p) => [p.shift, p.note?.replace('On duty from ', 'from ')].filter(Boolean).join(' '))}
             </div>
           </>
         )}
