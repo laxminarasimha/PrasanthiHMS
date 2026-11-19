@@ -495,6 +495,8 @@ export type PharmacySale = {
   reference: string | null
   items_count?: number
   items?: PharmacySaleItem[]
+  /** Empty for a walk-in customer. */
+  patient_id?: number | null
   patient?: { id: number; uhid: string; name: string } | null
   seller?: { id: number; name: string } | null
 }
@@ -601,6 +603,8 @@ export type AdmissionCharge = {
   remarks: string | null
   /** Set when the line stands for another bill moved onto this one. */
   source_type?: string | null
+  /** The id of that other bill: a front desk or lab bill for "bill", a pharmacy bill for "pharmacy". */
+  source_id?: number | null
   /** The numbered bill this charge is printed on, if any. */
   admission_bill_id?: number | null
   /** For a pharmacy bill on the IPD bill: the medicines that were on it. */
@@ -785,7 +789,7 @@ export type PatientOverview = {
   visits: { id: number; scheduled_at: string; status: AppointmentStatus; doctor: { name: string }; service: { name: string } | null; consultation: { id: number; diagnosis: string | null; completed_at: string | null } | null }[]
   bills: { id: number; bill_no: string; kind: BillKind; total: number; paid: number; due: number; moved_to_ipd: number | null; created_at: string; lab_order: { order_no: string } | null }[]
   lab_orders: { id: number; order_no: string; status: string; ordered_at: string; items: { id: number; test_name: string }[] }[]
-  pharmacy_bills: { id: number; bill_no: string; sold_at: string; total: number; due: number }[]
+  pharmacy_bills: { id: number; bill_no: string; sold_at: string; total: number; due: number; ipd_transfer: number }[]
   admissions: { id: number; ipd_no: string; status: string; admitted_at: string; discharged_at: string | null; due: number; doctor: { name: string }; bed: { ward: string; bed_no: string } | null }[]
   attachments: Attachment[]
 }

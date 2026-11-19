@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import { BillPanel } from '../components/BillPanel'
 import { DateRange } from '../components/DateRange'
 import { clock, fullName, longDate, rupees, settlement, today } from '../format'
 import type { BillKind, Patient, Service } from '../types'
+import { PatientLink } from '../components/PatientLink'
 
 type Row = {
   id: number
@@ -32,7 +33,9 @@ export function AllBills() {
   const [dueOnly, setDueOnly] = useState(false)
   const [bills, setBills] = useState<Row[] | null>(null)
   const [services, setServices] = useState<Service[]>([])
-  const [open, setOpen] = useState<number | null>(null)
+  // Coming from a patient's page, the bill named in the address opens straight away.
+  const [params] = useSearchParams()
+  const [open, setOpen] = useState<number | null>(Number(params.get('open')) || null)
   const searching = query.trim().length >= 2
 
   const load = useCallback(() => {
@@ -104,7 +107,11 @@ export function AllBills() {
                   <td>
                     {b.patient ? (
                       <>
-                        <strong>{fullName(b.patient)}</strong>
+                        <strong>
+                          <PatientLink id={b.patient.id} bills>
+                            {fullName(b.patient)}
+                          </PatientLink>
+                        </strong>
                         <small className="muted block">
                           {b.patient.uhid} · {b.patient.mobile}
                         </small>

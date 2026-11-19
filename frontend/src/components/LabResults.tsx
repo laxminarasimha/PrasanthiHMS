@@ -4,6 +4,7 @@ import { useUnsaved } from '../unsaved'
 import { useAuth } from '../auth'
 import { clock, longDate, STAGE_CLASS, STAGE_LABEL } from '../format'
 import type { LabOrder, LabOrderFile, LabOrderItem, LabResult, LabSettings } from '../types'
+import { PatientLink } from './PatientLink'
 
 type Props = {
   orderId: number
@@ -183,7 +184,7 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
         <div>
           <h2>Results · {order.order_no}</h2>
           <span className="muted">
-            {order.patient.name} · {order.patient.uhid} · {order.patient.age_label} / {order.patient.gender.charAt(0).toUpperCase()}
+            <PatientLink id={order.patient.id}>{order.patient.name}</PatientLink> · {order.patient.uhid} · {order.patient.age_label} / {order.patient.gender.charAt(0).toUpperCase()}
           </span>
         </div>
         <button type="button" className="btn ghost" onClick={onClose}>

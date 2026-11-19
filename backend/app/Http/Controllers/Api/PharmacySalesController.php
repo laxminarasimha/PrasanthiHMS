@@ -56,7 +56,7 @@ class PharmacySalesController extends Controller
                 'units_in_stock' => (int) (clone $sellable)->sum('units_in_stock'),
                 'out_of_stock' => Medicine::where('is_active', true)->whereDoesntHave('batches', fn ($q) => $q->where('units_in_stock', '>', 0))->count(),
             ],
-            'latest_sales' => (clone $sales)->latest('sold_at')->latest('id')->limit(10)->get(['id', 'bill_no', 'customer_name', 'sold_at', 'total', 'returned', 'paid', 'ipd_transfer', 'voided_at']),
+            'latest_sales' => (clone $sales)->latest('sold_at')->latest('id')->limit(10)->get(['id', 'bill_no', 'patient_id', 'customer_name', 'sold_at', 'total', 'returned', 'paid', 'ipd_transfer', 'voided_at']),
             'fast_moving' => PharmacySaleItem::query()
                 ->whereHas('sale', fn ($q) => $q->whereBetween('sold_at', [$from, $to])->whereNull('voided_at'))
                 ->selectRaw('medicine_name, sum(quantity - returned_quantity) as sold')

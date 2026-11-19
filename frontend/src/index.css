@@ -202,6 +202,11 @@ a.btn { text-decoration: none; display: inline-block; }
 .link { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--brand); cursor: pointer; }
 .link:hover { text-decoration: underline; }
 .link.danger { color: var(--danger); font-weight: 400; font-size: 0.85rem; }
+/* A patient's name, or a line that stands for another bill: it reads as the text it always was, with a faint dotted line under it to say it can be opened. */
+.patient-link { color: inherit; font: inherit; text-decoration: underline dotted color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 3px; cursor: pointer; }
+.patient-link:hover, .patient-link:focus-visible { color: var(--brand); text-decoration-color: currentColor; }
+/* A part of the patient page opened by a link stops below the top bar, not under it. */
+.card[id] { scroll-margin-top: 84px; }
 .due { color: var(--danger); }
 .settled { color: var(--ok); }
 .strong { font-weight: 700; }

@@ -14,6 +14,7 @@ import { AttachmentsPanel } from '../../components/FrontDeskPanels'
 import { IpdInvestigations } from './IpdInvestigations'
 import { IpdNotes } from './IpdNotes'
 import { IpdSummary } from './IpdSummary'
+import { PatientLink } from '../../components/PatientLink'
 
 const CLOSE_OPTIONS = ['discharged', 'lama', 'dama', 'absconded', 'died'].map((s) => ({
   value: s,
@@ -152,7 +153,7 @@ export function IpdCase() {
           </Link>
           <div className="grow">
             <h1>
-              {admission.patient.name} <small className="muted mono">{admission.ipd_no}</small>
+              <PatientLink id={admission.patient.id}>{admission.patient.name}</PatientLink> <small className="muted mono">{admission.ipd_no}</small>
             </h1>
             <span className="muted">
               {admission.patient.uhid} · {admission.patient.age_label} / {admission.patient.gender.charAt(0).toUpperCase()} · {admission.patient.mobile}
@@ -287,7 +288,13 @@ export function IpdCase() {
                 <tr key={c.id} className={`static ${editingCharge === c.id ? 'selected' : ''}`}>
                   <td>{longDate(c.charged_on)}</td>
                   <td>
-                    {c.description}
+                    {c.source_id && (c.source_type === 'pharmacy' || c.source_type === 'bill') ? (
+                      <a className="patient-link" href={c.source_type === 'pharmacy' ? `/pharmacy/bills/${c.source_id}/print` : `/bills/${c.source_id}/print`} target="_blank" rel="noreferrer" title="Open that bill (new tab)">
+                        {c.description}
+                      </a>
+                    ) : (
+                      c.description
+                    )}
                     {c.medicines && c.medicines.length > 0 && (
                       <details className="charge-medicines">
                         <summary>

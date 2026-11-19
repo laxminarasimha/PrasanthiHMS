@@ -9,6 +9,7 @@ import { AttachmentsPanel, EditAppointmentPanel, SummaryPanel, VitalsPanel } fro
 import { PatientPicker } from '../components/PatientPicker'
 import { STATUS_LABELS, clock, longDate, rupees, settlement, stampTime, today } from '../format'
 import type { Appointment, AppointmentStatus, Doctor, FollowUp, LabCatalogueTest, LabPackage, Patient, Service, WalkInBill } from '../types'
+import { PatientLink } from '../components/PatientLink'
 
 type DayList = { data: Appointment[]; counts: Partial<Record<AppointmentStatus, number>> }
 type Department = 'all' | 'appointment' | 'lab' | 'other'
@@ -285,7 +286,9 @@ export function FrontDesk() {
                       </Link>
                     </td>
                     <td>
-                      <strong>{a.patient.name}</strong>
+                      <strong>
+                        <PatientLink id={a.patient.id}>{a.patient.name}</PatientLink>
+                      </strong>
                       <small className="muted block">
                         {a.patient.age_label} / {a.patient.gender.charAt(0).toUpperCase()} · {a.patient.mobile}
                       </small>
@@ -395,7 +398,11 @@ export function FrontDesk() {
                     </Link>
                   </td>
                   <td>
-                    <strong>{b.patient.name}</strong>
+                    <strong>
+                      <PatientLink id={b.patient.id} bills>
+                        {b.patient.name}
+                      </PatientLink>
+                    </strong>
                     <small className="muted block">
                       {b.patient.age_label} / {b.patient.gender.charAt(0).toUpperCase()} · {b.patient.mobile}
                     </small>
@@ -499,7 +506,9 @@ export function FrontDesk() {
             {followUps.map((f) => (
               <li key={f.id}>
                 <span>
-                  <strong>{f.patient.name}</strong>
+                  <strong>
+                    <PatientLink id={f.patient.id}>{f.patient.name}</PatientLink>
+                  </strong>
                   <small className="muted block">
                     {f.patient.uhid} · {f.patient.mobile} · {f.doctor.name}
                   </small>

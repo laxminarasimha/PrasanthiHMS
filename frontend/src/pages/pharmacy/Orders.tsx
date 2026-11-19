@@ -4,6 +4,7 @@ import { api } from '../../api'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { clock, today } from '../../format'
 import type { PrescriptionOrder } from '../../types'
+import { PatientLink } from '../../components/PatientLink'
 
 /** The day's prescriptions from the doctors, so the pharmacy can see who is coming and who has been served. */
 export function PharmacyOrders() {
@@ -47,7 +48,9 @@ export function PharmacyOrders() {
                 <tr key={o.id} className="static">
                   <td className="mono">{clock(o.completed_at)}</td>
                   <td>
-                    <strong>{o.patient.name}</strong>
+                    <strong>
+                      <PatientLink id={o.patient.id}>{o.patient.name}</PatientLink>
+                    </strong>
                     <small className="muted block">
                       {o.patient.uhid} · {o.patient.age_label} / {o.patient.gender.charAt(0).toUpperCase()}
                     </small>
