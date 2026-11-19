@@ -8,7 +8,8 @@ import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { downloadCsv, placeLabel, rupees, today } from '../../format'
 import type { Manufacturer, Medicine, Stockist } from '../../types'
 
-const TYPES = ['Tablet', 'Capsule', 'Chewable Tablet', 'Dispersible Tablet', 'Syrup', 'Suspension', 'Solution', 'Injection', 'Ointment', 'Cream', 'Gel', 'Lotion', 'Drops', 'Powder', 'Sachet', 'Inhaler', 'Spray', 'Suppository', 'Surgical', 'Other'].map((t) => ({ value: t, label: t }))
+// The dosage forms offered. The three joined ones are how the medicine list first loaded names them, so a medicine filed that way shows its form here instead of a blank.
+const TYPES = ['Tablet', 'Capsule', 'Chewable Tablet', 'Dispersible Tablet', 'Syrup', 'Suspension', 'Solution', 'Injection', 'IV fluid', 'Cream / ointment', 'Ointment', 'Cream', 'Gel', 'Lotion', 'Drops', 'Powder', 'Sachet', 'Inhaler / spray', 'Inhaler', 'Spray', 'Suppository', 'Surgical', 'Other'].map((t) => ({ value: t, label: t }))
 const CATEGORIES = ['General', 'Scheduled Drug H', 'Scheduled Drug H1', 'Scheduled Drug X', 'Fast Moving', 'Emergency Medicine', 'High Risk Medicine', 'Surgical and consumables']
 const VED = [{ value: 'V', label: 'Vital' }, { value: 'E', label: 'Essential' }, { value: 'D', label: 'Desirable' }]
 const SDE = [{ value: 'S', label: 'Scarce' }, { value: 'D', label: 'Difficult to get' }, { value: 'E', label: 'Easy to get' }]
@@ -161,7 +162,7 @@ export function PharmacyMedicines() {
                 <thead>
                   <tr>
                     <th>Medicine</th>
-                    <th>Type</th>
+                    <th>Dosage form</th>
                     <th>Manufacturer</th>
                     <th>Category and class</th>
                     <th className="num">Per pack</th>
@@ -312,7 +313,15 @@ export function PharmacyMedicines() {
                     </datalist>
                     <small className="muted">For a combination, put a plus between its drugs: “Paracetamol 325 mg + Aceclofenac 100 mg”. Each drug is linked, so a search for one finds it alone and in combinations.</small>
                   </div>
-                  <SelectField label="Type" value={medicine.type} onChange={setM('type')} options={TYPES} placeholder="Select" error={errors.type} />
+                  <SelectField
+                    label="Dosage form"
+                    value={medicine.type}
+                    onChange={setM('type')}
+                    // A form typed some other way in the past is still shown as it is, never silently as nothing.
+                    options={medicine.type && !TYPES.some((t) => t.value === medicine.type) ? [{ value: medicine.type, label: medicine.type }, ...TYPES] : TYPES}
+                    placeholder="Not set"
+                    error={errors.type}
+                  />
                   <label className="field">
                     <span className="field-label">Manufacturer</span>
                     <input list="manufacturer-names" value={medicine.manufacturer} onChange={(e) => setM('manufacturer')(e.target.value)} />

@@ -360,6 +360,7 @@ class PharmacyController extends Controller
             'cash_discount' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
             'round_off' => ['nullable', 'numeric', 'between:-10,10'],
         ], [
+            'stockist_id.required' => 'Choose the stockist the invoice is from.',
             'invoice_no.unique' => 'This invoice number is already entered for this stockist.',
             'purchase_order_id.exists' => 'Choose an approved, open order placed with this stockist.',
             'due_date.after_or_equal' => 'The due date cannot be before the invoice date.',

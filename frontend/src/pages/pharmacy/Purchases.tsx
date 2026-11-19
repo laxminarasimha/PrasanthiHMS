@@ -100,6 +100,8 @@ export function PharmacyPurchases() {
 
   // Opens a saved invoice in the same form, to correct what was typed.
   const startEditing = (invoice: PurchaseInvoice) => {
+    // The invoice's own stockist shows at once; the full list follows. Without this the box read "Select stockist" until it arrived.
+    setStockists((list) => (list.some((s) => s.id === invoice.stockist.id) ? list : [invoice.stockist as Stockist, ...list]))
     api.get<Stockist[]>('/pharmacy/stockists').then((res) => setStockists(res.data))
     // The medicines already on the invoice show at once; the whole list follows, for a medicine that was left out.
     const onInvoice = (invoice.batches ?? []).map((b) => ({ id: b.medicine_id, name: b.medicine?.name ?? '' }) as Medicine)
@@ -219,7 +221,18 @@ export function PharmacyPurchases() {
             </button>
           </div>
           <div className="grid four">
-            <SelectField label="Stockist" required value={stockistId} onChange={setStockistId} options={stockists.map((s) => ({ value: String(s.id), label: s.name }))} placeholder="Select stockist" />
+            <SelectField
+              label="Stockist"
+              required
+              value={stockistId}
+              // An order belongs to one stockist: choosing another drops the order that was picked, instead of sending it along unseen.
+              onChange={(next) => {
+                setStockistId(next)
+                setOrderId('')
+              }}
+              options={stockists.map((s) => ({ value: String(s.id), label: s.name }))}
+              placeholder="Select stockist"
+            />
             <TextField label="Invoice number" required value={invoiceNo} onChange={setInvoiceNo} />
             <TextField label="Invoice date" required type="date" value={invoiceDate} onChange={setInvoiceDate} />
             {!editing && (
@@ -228,12 +241,12 @@ export function PharmacyPurchases() {
                 value={orders.some((o) => String(o.id) === orderId && String(o.stockist.id) === stockistId) ? orderId : ''}
                 onChange={setOrderId}
                 options={orders.filter((o) => String(o.stockist.id) === stockistId).map((o) => ({ value: String(o.id), label: `${o.order_no} · ${longDate(o.order_date)}` }))}
-                placeholder={stockistId && orders.some((o) => String(o.stockist.id) === stockistId) ? 'No order' : 'No open order with this stockist'}
+                placeholder={!stockistId ? 'Choose the stockist first' : orders.some((o) => String(o.stockist.id) === stockistId) ? 'No order' : 'No open order with this stockist'}
               />
             )}
             <TextField label="Remarks" value={remarks} onChange={setRemarks} />
           </div>
-          {stockists.length === 0 && <p className="muted small">No stockists yet. Add one under "Medicines &amp; stockists" first.</p>}
+          {stockists.length === 0 && <p className="muted small">No stockists yet. Add one first under Inventory → Medicines, in the Stockists list.</p>}
 
           {editing && (
             <p className="muted small">
@@ -388,7 +401,8 @@ export function PharmacyPurchases() {
             </div>
           )}
           <div className="panel-foot">
-            <button className="btn primary" disabled={saving || filled.length === 0 || (Boolean(editing) && reason.trim().length < 3)}>
+            {!stockistId && filled.length > 0 && <span className="muted small grow">Choose the stockist at the top before saving.</span>}
+            <button className="btn primary" disabled={saving || filled.length === 0 || !stockistId || (Boolean(editing) && reason.trim().length < 3)}>
               {saving ? 'Saving…' : editing ? 'Save corrections' : 'Save invoice and add to stock'}
             </button>
           </div>
