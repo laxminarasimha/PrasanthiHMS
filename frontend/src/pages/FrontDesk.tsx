@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLoadOnChange } from '../loading'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
@@ -83,14 +84,12 @@ export function FrontDesk() {
     api.get<FollowUp[]>('/front-desk/follow-ups', { params: { date } }).then((res) => setFollowUps(res.data))
   }, [date, status, doctorId, query])
 
+  // At once when the screen opens; after a short pause when the day, a filter or the search changes.
+  useLoadOnChange(load, 200)
   useEffect(() => {
-    const timer = setTimeout(load, 200)
     // Keep in step with the doctor's room: statuses and advice change there, not here.
     const refresh = setInterval(load, 30000)
-    return () => {
-      clearTimeout(timer)
-      clearInterval(refresh)
-    }
+    return () => clearInterval(refresh)
   }, [load])
 
   useEffect(() => {
@@ -556,7 +555,7 @@ export function FrontDesk() {
                 )}
               </li>
             ))}
-            {followUps.length === 0 && <li className="muted">No one is due on this day.</li>}
+            {followUps.length === 0 && <li className="muted when-loaded">No one is due on this day.</li>}
           </ul>
         </aside>
       )}

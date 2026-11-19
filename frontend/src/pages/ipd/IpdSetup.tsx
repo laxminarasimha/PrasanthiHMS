@@ -67,7 +67,10 @@ export function IpdSetup() {
             </Link>
             <h1 className="grow">Beds</h1>
             <span className="muted">
-              {occupied} of {beds.filter((b) => b.is_active).length} occupied
+              <span className="loads">
+                {occupied} of {beds.filter((b) => b.is_active).length}
+              </span>{' '}
+              occupied
             </span>
             <button className="btn primary" onClick={() => openBed(null)}>
               + Add bed

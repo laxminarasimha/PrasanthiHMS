@@ -105,7 +105,11 @@ export function DoctorLibrary() {
         {error && <p className="form-error">{error}</p>}
 
         {!library || !doctorId ? (
-          <p className="muted">{doctorId ? 'Loading…' : 'No doctors have been added yet.'}</p>
+          doctorId ? (
+            <p className="loading">Loading…</p>
+          ) : (
+            <p className="muted when-loaded">No doctors have been added yet.</p>
+          )
         ) : tab === 'rx' ? (
           <RxGroups key={doctorId} groups={library.rx_groups} doctorId={doctorId} run={run} names={suggestions} defaults={library.medicine_defaults} />
         ) : tab === 'templates' ? (

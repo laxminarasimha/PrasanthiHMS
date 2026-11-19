@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLoadOnChange } from '../loading'
 import { api, fieldErrors } from '../api'
 import { canLeave } from '../unsaved'
 import { useAuth } from '../auth'
@@ -45,14 +46,12 @@ export function Lab() {
     })
   }, [date, query, searching])
 
+  // At once when the screen opens; after a short pause when the day or the search changes.
+  useLoadOnChange(load)
   useEffect(() => {
-    const timer = setTimeout(load, 250)
     // Keep in step with the front desk and the doctors, who add orders from their own screens.
     const refresh = setInterval(load, 60000)
-    return () => {
-      clearTimeout(timer)
-      clearInterval(refresh)
-    }
+    return () => clearInterval(refresh)
   }, [load])
 
   useEffect(() => {
@@ -89,6 +88,9 @@ export function Lab() {
   const counts = Object.fromEntries(STEPS.map((s) => [s, rows.filter((r) => r.each.includes(s)).length])) as Record<Step, number>
   const shown = step ? rows.filter((r) => r.each.includes(step)) : rows
   const steps = STEPS.filter((s) => s !== 'approve' || approval || counts.approve > 0)
+  // The tabs count patients, because that is how the list is grouped. This line says what that stands for.
+  const count = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
+  const workload = orders && rows.length > 0 ? [count(rows.length, 'patient'), count(orders.length, 'order'), count(orders.reduce((n, o) => n + o.items.length, 0), 'test')].join(' · ') : ''
   const dayOrders = panel?.kind === 'day' ? rows.find((r) => r.key === panel.key)?.orders : undefined
 
   /** The sample for every test the patient is waiting to give, in one tap from the list. */
@@ -142,6 +144,11 @@ export function Lab() {
               </button>
             ))}
           </div>
+          {workload && (
+            <span className="muted small workload" title="Each row is one patient; a patient can have several orders, and an order several tests">
+              {workload}
+            </span>
+          )}
         </div>
 
         {notice && <p className="notice">{notice}</p>}

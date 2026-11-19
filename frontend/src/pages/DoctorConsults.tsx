@@ -1,27 +1,27 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
+import { useLoadOnChange } from '../loading'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
 import { DateRange } from '../components/DateRange'
 import { DoctorTabs } from '../components/DoctorTabs'
-import { clock, longDate, monthStart, today } from '../format'
+import { clock, longDate } from '../format'
+import { useRangeInAddress } from '../rangeInAddress'
 import type { ConsultRow } from '../types'
 
 /** Every completed consultation in a date range. */
 export function DoctorConsults() {
   const { user } = useAuth()
   const isDoctor = user?.role === 'doctor'
-  const [from, setFrom] = useState(monthStart())
-  const [to, setTo] = useState(today())
+  const [from, to, setRange] = useRangeInAddress('month')
   const [query, setQuery] = useState('')
   const [rows, setRows] = useState<ConsultRow[] | null>(null)
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      api.get<ConsultRow[]>('/doctor/consults', { params: { from, to, q: query.trim() || undefined } }).then((res) => setRows(res.data))
-    }, 250)
-    return () => clearTimeout(timer)
+  const load = useCallback(() => {
+    api.get<ConsultRow[]>('/doctor/consults', { params: { from, to, q: query.trim() || undefined } }).then((res) => setRows(res.data))
   }, [from, to, query])
+  // At once when the screen opens; after a short pause when the dates or the search change.
+  useLoadOnChange(load)
 
   return (
     <>
@@ -32,14 +32,11 @@ export function DoctorConsults() {
           <DateRange
             from={from}
             to={to}
-            onChange={(f, t) => {
-              setFrom(f)
-              setTo(t)
-            }}
+            onChange={setRange}
           />
           <input className="search" type="search" placeholder="Patient name, mobile or ID" value={query} onChange={(e) => setQuery(e.target.value)} />
           <span className="muted">
-            <strong>{rows?.length ?? 0}</strong> consult{rows?.length === 1 ? '' : 's'}
+            <strong className="loads">{rows?.length ?? 0}</strong> consult{rows?.length === 1 ? '' : 's'}
           </span>
         </div>
         <div className="table-wrap">

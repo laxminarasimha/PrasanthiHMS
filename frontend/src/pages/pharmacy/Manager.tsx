@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { PlaceProgress } from '../../components/PlaceProgress'
 import { Link } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
 import { useAuth } from '../../auth'
@@ -30,6 +31,7 @@ type Order = { id: number; order_no: string; stockist: string; status: 'draft' |
 type Data = {
   today: string
   actions: { key: string; tone: 'danger' | 'warn' | 'note'; count: number; text: string }[]
+  places: { in_stock: number; placed: number }
   reorder: Reorder[]
   expiring: Batch[]
   expired: Batch[]
@@ -175,6 +177,8 @@ export function PharmacyManager() {
                 ))}
               </ul>
             )}
+
+            {data.places.placed < data.places.in_stock && <PlaceProgress placed={data.places.placed} inStock={data.places.in_stock} link />}
 
             <div className="day-section" id="order">
               <h3>Medicines to order ({data.reorder.length})</h3>

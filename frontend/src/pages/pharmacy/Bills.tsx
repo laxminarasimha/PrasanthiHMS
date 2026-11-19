@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useLoadOnChange } from '../../loading'
+import { useRangeInAddress } from '../../rangeInAddress'
 import { useSearchParams } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
 import { useUnsaved } from '../../unsaved'
@@ -6,7 +8,7 @@ import { useAuth } from '../../auth'
 import { DateRange } from '../../components/DateRange'
 import { MedicinePick, type SellableBatch } from '../../components/MedicinePick'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
-import { PAYMENT_MODES, clock, longDate, modeLabel, placeLabel, rupees, today } from '../../format'
+import { PAYMENT_MODES, clock, longDate, modeLabel, placeLabel, rupees } from '../../format'
 import type { Payment, PharmacySale, SellableMedicine } from '../../types'
 import { PatientLink } from '../../components/PatientLink'
 import { PharmacyDay } from '../../components/PharmacyDay'
@@ -30,8 +32,7 @@ const ModeSelect = ({ value, onChange }: { value: string; onChange: (v: string) 
 export function PharmacyBills() {
   const { user } = useAuth()
   const canEdit = Boolean(user?.can_run_pharmacy)
-  const [from, setFrom] = useState(today())
-  const [to, setTo] = useState(today())
+  const [from, to, setRange] = useRangeInAddress('today')
   const [query, setQuery] = useState('')
   const [sales, setSales] = useState<PharmacySale[] | null>(null)
   const [open, setOpen] = useState<PharmacySale | null>(null)
@@ -58,10 +59,8 @@ export function PharmacyBills() {
     api.get<PharmacySale[]>('/pharmacy/sales', { params: searching ? { q: query.trim() } : { from, to } }).then((res) => setSales(res.data))
   }, [from, to, query, searching])
 
-  useEffect(() => {
-    const timer = setTimeout(load, 250)
-    return () => clearTimeout(timer)
-  }, [load])
+  // At once when the screen opens; after a short pause when a search or filter changes.
+  useLoadOnChange(load)
 
   const editable = (s: PharmacySale) => !s.voided_at && s.returned === 0 && s.ipd_transfer === 0
 
@@ -210,7 +209,7 @@ export function PharmacyBills() {
         <section className="card">
           <div className="toolbar">
             <h1>Pharmacy bills</h1>
-            {!searching && <DateRange from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t) }} />}
+            {!searching && <DateRange from={from} to={to} onChange={setRange} />}
             <input className="search" type="search" placeholder="Find by bill no., customer or phone (all dates)" value={query} onChange={(e) => setQuery(e.target.value)} />
           </div>
           <div className="tiles small">

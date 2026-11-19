@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useLoadOnChange } from '../loading'
+import { useRangeInAddress } from '../rangeInAddress'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import { BillPanel } from '../components/BillPanel'
 import { DateRange } from '../components/DateRange'
-import { fullName, rupees, settlement, stampDate, stampTime, today } from '../format'
+import { fullName, rupees, settlement, stampDate, stampTime } from '../format'
 import type { BillKind, Patient, Service } from '../types'
 import { PatientLink } from '../components/PatientLink'
 
@@ -28,8 +30,7 @@ const KIND_LABEL: Record<BillKind, string> = { appointment: 'Appointment', lab: 
 
 /** Every front desk and lab bill in a date range, or found by a search across all dates. */
 export function AllBills() {
-  const [from, setFrom] = useState(today())
-  const [to, setTo] = useState(today())
+  const [from, to, setRange] = useRangeInAddress('today')
   const [query, setQuery] = useState('')
   const [kind, setKind] = useState<BillKind | ''>('')
   const [dueOnly, setDueOnly] = useState(false)
@@ -44,10 +45,8 @@ export function AllBills() {
     api.get<Row[]>('/bills', { params: { ...(searching ? { q: query.trim() } : { from, to }), kind: kind || undefined, due: dueOnly ? 1 : undefined } }).then((res) => setBills(res.data))
   }, [from, to, query, searching, kind, dueOnly])
 
-  useEffect(() => {
-    const timer = setTimeout(load, 250)
-    return () => clearTimeout(timer)
-  }, [load])
+  // At once when the screen opens; after a short pause when a search or filter changes.
+  useLoadOnChange(load)
   useEffect(() => {
     api.get<Service[]>('/services').then((res) => setServices(res.data))
   }, [])
@@ -62,7 +61,7 @@ export function AllBills() {
             ← Day list
           </Link>
           <h1>All bills</h1>
-          {!searching && <DateRange from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t) }} />}
+          {!searching && <DateRange from={from} to={to} onChange={setRange} />}
           <input className="search" type="search" placeholder="Find by bill no., patient name, mobile or ID (all dates)" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
         <div className="tabs">

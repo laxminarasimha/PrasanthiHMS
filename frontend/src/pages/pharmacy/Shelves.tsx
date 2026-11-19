@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { PlaceProgress } from '../../components/PlaceProgress'
 import { api, fieldErrors } from '../../api'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { placeLabel } from '../../format'
@@ -152,6 +153,7 @@ export function PharmacyShelves() {
             <strong>{racks.length}</strong>
           </div>
         </div>
+        {rows && <PlaceProgress placed={all.filter((m) => m.rack_no && m.units_in_stock > 0).length} inStock={all.filter((m) => m.units_in_stock > 0).length} />}
 
         <div className="desk-filters">
           <div className="tabs flush" role="group" aria-label="Which medicines to show">

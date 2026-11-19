@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useLoadOnChange } from '../loading'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { SelectField, TextField } from '../components/Field'
@@ -52,15 +53,25 @@ export function Patients() {
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
 
+  // Which search and page the rows on screen are the answer to. While that is not what is in the box now, the rows
+  // are greyed and cannot be clicked, so nobody opens a patient from the previous search by mistake.
+  const [shownFor, setShownFor] = useState('')
+  const wanted = `${query}\n${pageNo}`
+  const lastAsked = useRef('')
   const load = useCallback(() => {
-    api.get<Page>('/patients', { params: { q: query || undefined, page: pageNo } }).then((res) => setPage(res.data))
+    const asked = `${query}\n${pageNo}`
+    lastAsked.current = asked
+    api.get<Page>('/patients', { params: { q: query || undefined, page: pageNo } }).then((res) => {
+      // An answer to an earlier search that arrives late is dropped.
+      if (lastAsked.current !== asked) return
+      setPage(res.data)
+      setShownFor(asked)
+    })
   }, [query, pageNo])
+  const searching = page !== null && shownFor !== wanted
 
-  // Wait briefly after typing so each keystroke does not hit the server.
-  useEffect(() => {
-    const timer = setTimeout(load, 250)
-    return () => clearTimeout(timer)
-  }, [load])
+  // At once when the screen opens; after a short pause when a search or filter changes.
+  useLoadOnChange(load)
 
   const open = (target: Patient | 'new') => {
     setEditing(target)
@@ -139,6 +150,7 @@ export function Patients() {
               setPageNo(1)
             }}
           />
+          {searching && <span className="searching muted">Searching…</span>}
           <button className="btn primary" onClick={() => open('new')}>
             + New patient
           </button>
@@ -158,7 +170,7 @@ export function Patients() {
                 <th />
               </tr>
             </thead>
-            <tbody>
+            <tbody className={searching ? 'stale' : ''} aria-busy={searching}>
               {page?.data.map((p) => (
                 <tr key={p.id} onClick={() => navigate(`/patients/${p.id}`)} className={editing !== 'new' && editing?.id === p.id ? 'selected' : ''} title="Open the patient's page">
                   <td>

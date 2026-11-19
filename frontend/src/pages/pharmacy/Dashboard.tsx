@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
+import { useRangeInAddress } from '../../rangeInAddress'
 import { api } from '../../api'
 import { DateRange } from '../../components/DateRange'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
-import { clock, rupees, today } from '../../format'
+import { clock, rupees } from '../../format'
 import type { PharmacyDashboard as Data } from '../../types'
 import { PatientLink } from '../../components/PatientLink'
 
 export function PharmacyDashboard() {
-  const [from, setFrom] = useState(today())
-  const [to, setTo] = useState(today())
+  const [from, to, setRange] = useRangeInAddress('today')
   const [data, setData] = useState<Data | null>(null)
 
   useEffect(() => {
@@ -23,7 +23,7 @@ export function PharmacyDashboard() {
       <section className="card">
         <div className="toolbar">
           <h1>Pharmacy dashboard</h1>
-          <DateRange from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t) }} />
+          <DateRange from={from} to={to} onChange={setRange} />
         </div>
         {data && stats && (
           <>

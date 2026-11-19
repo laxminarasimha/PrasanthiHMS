@@ -28,7 +28,7 @@ export function PharmacyOrders() {
           <h1>Prescriptions</h1>
           <input type="date" className="date" value={date} max={today()} onChange={(e) => setDate(e.target.value || today())} aria-label="Day" />
           <span className="muted grow">
-            {pending} waiting · {(orders?.length ?? 0) - pending} billed
+            {orders ? `${pending} waiting · ${orders.length - pending} billed` : ''}
           </span>
         </div>
         <div className="table-wrap">

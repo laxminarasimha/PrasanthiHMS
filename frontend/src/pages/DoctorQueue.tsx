@@ -93,7 +93,7 @@ export function DoctorQueue() {
         <input className="search" type="search" placeholder="Search by name, mobile or ID" value={search} onChange={(e) => setSearch(e.target.value)} />
         <PatientSearch className="patient-search on-page" placeholder="+ New visit: find a patient" onPick={startVisit} />
         <span className="muted">
-          Pending: <strong>{pending}</strong> · Completed: <strong>{done}</strong>
+          Pending: <strong className="loads">{pending}</strong> · Completed: <strong className="loads">{done}</strong>
           {purposes.length > 0 && <small className="block">{purposes.map(([name, count]) => `${name} ${count}`).join(' · ')}</small>}
         </span>
       </div>

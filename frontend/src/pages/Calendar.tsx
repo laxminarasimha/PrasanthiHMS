@@ -323,7 +323,9 @@ export function Calendar() {
 
         <p className="cal-heading">
           <strong>{heading}</strong>
-          <span className="muted"> · {appointments.filter((a) => a.status !== 'cancelled').length} appointments. Tap an empty slot to book; tap a name to change or move it.</span>
+          <span className="muted">
+            {' · '}
+            <span className="loads">{appointments.filter((a) => a.status !== 'cancelled').length}</span> appointments. Tap an empty slot to book; tap a name to change or move it.</span>
         </p>
         {notice && <p className="notice">{notice}</p>}
 

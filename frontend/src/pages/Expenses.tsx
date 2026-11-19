@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useState, type FormEvent } from 'react'
+import { useLoadOnChange } from '../loading'
+import { useRangeInAddress } from '../rangeInAddress'
 import { Link } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { DateRange } from '../components/DateRange'
@@ -29,8 +31,7 @@ const blank = (day: string): Form => ({ spent_on: day, category: '', paid_to: ''
 
 /** Money paid out day to day. Whoever keeps the cash writes each payment down here as it is made, so the drawer agrees at the day close. */
 export function Expenses() {
-  const [from, setFrom] = useState(today())
-  const [to, setTo] = useState(today())
+  const [from, to, setRange] = useRangeInAddress('today')
   const [query, setQuery] = useState('')
   const [data, setData] = useState<List | null>(null)
   const [form, setForm] = useState<Form | null>(null)
@@ -51,10 +52,8 @@ export function Expenses() {
       .catch(() => setFailed('Could not load the expenses.'))
   }, [from, to, query])
 
-  useEffect(() => {
-    const timer = setTimeout(load, 250)
-    return () => clearTimeout(timer)
-  }, [load])
+  // At once when the screen opens; after a short pause when a search or filter changes.
+  useLoadOnChange(load)
 
   useUnsaved(Boolean(form && (form.amount !== '' || form.category !== '' || form.paid_to !== '')) && !form?.id, 'This expense is not saved yet. Leave without saving it?')
 
@@ -119,7 +118,7 @@ export function Expenses() {
       <section className="card">
         <div className="toolbar">
           <h1>Expenses</h1>
-          <DateRange from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t) }} />
+          <DateRange from={from} to={to} onChange={setRange} />
           <input className="search" type="search" placeholder="Find by who was paid, details or number" value={query} onChange={(e) => setQuery(e.target.value)} />
           <span className="grow" />
           <button className="btn ghost" onClick={exportCsv} disabled={!data?.rows.length}>

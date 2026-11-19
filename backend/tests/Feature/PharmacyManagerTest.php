@@ -9,6 +9,7 @@ use App\Models\StockBatch;
 use App\Models\Stockist;
 use App\Models\StockReturn;
 use App\Models\User;
+use App\Support\ShelfPlace;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -33,6 +34,22 @@ class PharmacyManagerTest extends TestCase
     private function sell(StockBatch $batch, int $units): void
     {
         $this->postJson('/api/pharmacy/sales', ['customer_name' => 'Walk-in', 'paid' => $units * 3, 'payment_mode' => 'cash', 'items' => [['stock_batch_id' => $batch->id, 'quantity' => $units]]])->assertCreated();
+    }
+
+    public function test_it_says_how_many_medicines_in_stock_have_a_place(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $this->batch($placed = $this->medicine('On Rack A'), 30);
+        ShelfPlace::set($placed, 'A', '2');
+        $this->batch($this->medicine('Not Placed'), 30);
+        // Neither of these is on the shelf to be found: one has sold out, one was never stocked.
+        $this->batch($gone = $this->medicine('Sold Out'), 0);
+        ShelfPlace::set($gone, 'B', null);
+        $this->medicine('Never Stocked');
+        // Out-of-date stock is not sold, so it does not count as waiting for a place.
+        $this->batch($this->medicine('Expired Only'), 10, ['expiry' => now()->subMonth()]);
+
+        $this->getJson('/api/pharmacy/manager')->assertOk()->assertJsonPath('places', ['in_stock' => 2, 'placed' => 1]);
     }
 
     public function test_the_reorder_list_says_what_to_order_and_how_much(): void

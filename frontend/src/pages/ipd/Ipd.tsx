@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useLoadOnChange } from '../../loading'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../../api'
 import { useAuth } from '../../auth'
@@ -52,10 +53,8 @@ export function Ipd() {
     api.get<Bed[]>('/ipd/beds').then((res) => setBeds(res.data))
   }, [status, query])
 
-  useEffect(() => {
-    const timer = setTimeout(load, 250)
-    return () => clearTimeout(timer)
-  }, [load])
+  // At once when the screen opens; after a short pause when a search or filter changes.
+  useLoadOnChange(load)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -268,7 +267,7 @@ export function Ipd() {
                 </div>
               </section>
             )}
-            {inUse.length === 0 && noBed.length === 0 && <p className="muted">No beds are set up yet. Add them under Beds, services &amp; templates.</p>}
+            {inUse.length === 0 && noBed.length === 0 && <p className="muted when-loaded">No beds are set up yet. Add them under Beds, services &amp; templates.</p>}
           </div>
         ) : (
           <div className="table-wrap">
