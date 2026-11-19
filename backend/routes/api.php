@@ -292,6 +292,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
         Route::get('/stock', 'stock');
         Route::get('/sell-search', 'sellSearch');
         Route::get('/prescriptions', 'prescriptions');
+        Route::get('/inpatients', 'inpatients');
         Route::get('/sales', 'sales');
         Route::post('/sales', 'storeSale');
         Route::get('/sales/{sale}', 'showSale');

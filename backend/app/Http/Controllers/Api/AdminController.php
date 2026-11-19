@@ -133,6 +133,8 @@ class AdminController extends Controller
         // How the hospital's heading sits at the top of a bill on plain paper: the logo on the left with the name and
         // address beside it, or everything centred with the logo on top; and how large the words and the logo are.
         'bill_heading' => 'side', 'bill_heading_size' => 'small', 'bill_logo_size' => 'medium',
+        // On the printed IPD bill, list each medicine under the pharmacy bill it came on.
+        'ipd_print_medicines' => true,
     ];
 
     public function billingPreferences(): JsonResponse
@@ -152,6 +154,7 @@ class AdminController extends Controller
             'bill_heading' => ['sometimes', Rule::in(['side', 'centre'])],
             'bill_heading_size' => ['sometimes', Rule::in(['small', 'medium', 'large'])],
             'bill_logo_size' => ['sometimes', Rule::in(['small', 'medium', 'large'])],
+            'ipd_print_medicines' => ['sometimes', 'boolean'],
             // Put before the running number of each new IPD case, e.g. IP00012.
             'ipd_prefix' => ['sometimes', 'string', 'regex:/^[A-Za-z0-9\/-]{1,8}$/'],
             'ipd_bill_prefix' => ['sometimes', 'string', 'regex:/^[A-Za-z0-9\/-]{1,8}$/'],

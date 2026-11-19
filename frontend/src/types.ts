@@ -528,6 +528,8 @@ export type BillingPreferences = {
   bill_heading?: 'side' | 'centre'
   bill_heading_size?: 'small' | 'medium' | 'large'
   bill_logo_size?: 'small' | 'medium' | 'large'
+  /** On the printed IPD bill, each medicine is listed under the pharmacy bill it came on. */
+  ipd_print_medicines?: boolean
 }
 
 /** A row of a hospital-wide list: a department, a vendor, or a payer. */
@@ -601,10 +603,15 @@ export type AdmissionCharge = {
   source_type?: string | null
   /** The numbered bill this charge is printed on, if any. */
   admission_bill_id?: number | null
+  /** For a pharmacy bill on the IPD bill: the medicines that were on it. */
+  medicines?: { name: string; batch: string | null; quantity: number; returned: number; rate: number; amount: number }[]
   creator?: { id: number; name: string } | null
   deleted_at?: string | null
   deleter?: { id: number; name: string } | null
 }
+
+/** A patient admitted now, as the pharmacy counter lists them to send a bill to the IPD bill. */
+export type PharmacyInpatient = { admission_id: number; ipd_no: string; patient: Patient; bed: string | null; doctor: string | null; bill_approved: boolean }
 
 /** One bed a patient occupied during a stay. `to_at` is null while they are still in it. */
 export type BedStay = { id: number; ward: string; bed_no: string; from_at: string; to_at: string | null; mover?: { id: number; name: string } | null }

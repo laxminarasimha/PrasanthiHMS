@@ -288,6 +288,27 @@ export function IpdCase() {
                   <td>{longDate(c.charged_on)}</td>
                   <td>
                     {c.description}
+                    {c.medicines && c.medicines.length > 0 && (
+                      <details className="charge-medicines">
+                        <summary>
+                          {c.medicines.length} {c.medicines.length === 1 ? 'medicine' : 'medicines'}
+                        </summary>
+                        <ul>
+                          {c.medicines.map((m, i) => (
+                            <li key={i}>
+                              <span>
+                                {m.name}
+                                {m.returned > 0 && <small className="muted"> · {m.returned} returned</small>}
+                              </span>
+                              <span className="muted">
+                                {m.quantity} × {rupees(m.rate)}
+                              </span>
+                              <span>{rupees(m.amount)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
                     {c.remarks && <small className="muted block">{c.remarks}</small>}
                     {c.admission_bill_id && <small className="settled block">On bill {billNo[c.admission_bill_id] ?? ''}</small>}
                   </td>

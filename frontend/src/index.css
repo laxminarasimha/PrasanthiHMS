@@ -385,6 +385,21 @@ tr.added-line td { background: var(--ok-soft); }
   .expense-list tbody tr.empty { display: block; }
   .expense-list tbody tr.empty td { text-align: center; padding: 18px 0; }
 }
+/* The pharmacy counter, for a patient who is admitted: the bill can go on their IPD bill instead of being paid. */
+.ipd-choice { margin: 10px 0 4px; padding: 10px 12px; border: 1px solid var(--border); border-left: 4px solid var(--border); border-radius: 8px; background: var(--bg); }
+.ipd-choice.on { border-left-color: var(--brand); background: var(--brand-soft); }
+.ipd-choice .check { margin: 0; }
+.ipd-tile strong { color: var(--brand-dark); }
+.hidden { display: none; }
+/* Under a pharmacy bill on the IPD bill: the medicines that were on it. */
+.charge-medicines { margin: 2px 0 0; }
+.charge-medicines summary { cursor: pointer; color: var(--brand); font-size: 0.82rem; }
+.charge-medicines ul { list-style: none; margin: 4px 0 0; padding: 0; font-size: 0.84rem; }
+.charge-medicines li { display: flex; flex-wrap: wrap; gap: 0 10px; padding: 2px 0; }
+.charge-medicines li span { flex: none; white-space: nowrap; }
+.charge-medicines li span:first-child { flex: 1 1 9em; min-width: 0; white-space: normal; }
+.receipt tr.bill-medicine td { padding-top: 1px; padding-bottom: 1px; border: 0; font-size: 0.8rem; color: var(--muted); }
+.receipt tr.bill-medicine td:nth-child(2) { padding-left: 18px; }
 /* Bed history on an IPD case, and the plain-language rules under a setup switch. */
 .bed-history li { align-items: flex-start; gap: 12px; }
 .plain-rules { margin: 8px 0 0; padding-left: 18px; }
