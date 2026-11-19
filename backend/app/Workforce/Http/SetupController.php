@@ -3,6 +3,9 @@
 namespace App\Workforce\Http;
 
 use App\Http\Controllers\Controller;
+use App\Models\AdminEntry;
+use App\Models\User;
+use App\Workforce\Models\DepartmentManager;
 use App\Workforce\Models\Holiday;
 use App\Workforce\Models\HolidayCalendar;
 use App\Workforce\Models\LeaveType;
@@ -24,12 +27,18 @@ class SetupController extends Controller
     public function show(Request $request): JsonResponse
     {
         Access::require($request->user(), 'wf:settings:admin');
+        $managers = DepartmentManager::query()->get(['department_id', 'user_id'])->groupBy('department_id');
 
         return response()->json([
             'shifts' => Shift::query()->orderBy('name')->get(),
             'calendars' => HolidayCalendar::query()->with('holidays')->orderBy('name')->get(),
             'leave_types' => LeaveType::query()->orderBy('name')->get(),
             'settings' => collect(array_keys(Settings::DEFAULTS))->mapWithKeys(fn ($group) => [$group => Settings::get($group)]),
+            // Who looks after each department's staff, and the logins that could.
+            'departments' => AdminEntry::query()->where('kind', 'department')->where('is_active', true)->orderBy('name')->get(['id', 'name'])
+                ->map(fn (AdminEntry $d) => ['id' => $d->id, 'name' => $d->name, 'manager_ids' => $managers->get($d->id, collect())->pluck('user_id')->values()]),
+            'logins' => User::query()->where('branch_id', $request->user()->branch_id)->where('is_active', true)->orderBy('name')->get(['id', 'name', 'role'])
+                ->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name, 'role' => $u->role->label()]),
         ]);
     }
 
