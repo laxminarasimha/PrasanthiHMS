@@ -70,6 +70,7 @@ class ReportTest extends TestCase
             ->assertJsonPath('counts.new_patients', 1)
             ->assertJsonPath('counts.appointments', 1)
             ->assertJsonPath('counts.lab_orders', 1)
+            ->assertJsonPath('counts.lab_tests', 1)
             ->assertJsonPath('counts.pharmacy_bills', 1)
             ->assertJsonPath('counts.admissions', 1)
             ->assertJsonPath('counts.inpatients_now', 1)

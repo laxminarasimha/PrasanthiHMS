@@ -146,12 +146,18 @@ export function Reports() {
               <div className="tile" key={key}>
                 <span>{label}</span>
                 <strong>{summary.counts[key]}</strong>
+                {/* An order can hold several tests: both are said, so the figure cannot be read as the other. */}
+                {key === 'lab_orders' && summary.counts.lab_tests !== undefined && (
+                  <small className="muted">
+                    {summary.counts.lab_tests} {summary.counts.lab_tests === 1 ? 'test' : 'tests'} on them
+                  </small>
+                )}
               </div>
             ))}
           </div>
 
           {summary.paid_out && (
-            <>
+            <div className="print-together">
               <h3>Paid out</h3>
               <div className="tiles small">
                 <div className="tile"><span>Expenses</span><strong>{rupees(summary.paid_out.expenses)}</strong></div>
@@ -168,9 +174,10 @@ export function Reports() {
                   ))}
                 </p>
               )}
-            </>
+            </div>
           )}
 
+          <div className="print-together">
           <h3>Billing and collections by department</h3>
           <div className="table-wrap">
             <table>
@@ -225,6 +232,7 @@ export function Reports() {
           <p className="muted small">
             "Billed" is what was charged in this period. "Collected" is money actually received in this period, net of refunds, whenever the bill was made — so the two need not match.
           </p>
+          </div>
         </>
       )}
     </section>
