@@ -6,6 +6,8 @@ enum Role: string
 {
     case Admin = 'admin';
     case Doctor = 'doctor';
+    // Runs the hospital for the owner: by default may do all a doctor may, and is not a doctor patients are booked with.
+    case Manager = 'manager';
     case Nurse = 'nurse';
     case Pharmacist = 'pharmacist';
     case LabTech = 'lab_tech';
@@ -16,6 +18,7 @@ enum Role: string
         return match ($this) {
             self::Admin => 'Admin',
             self::Doctor => 'Doctor',
+            self::Manager => 'Hospital Manager',
             self::Nurse => 'Nurse',
             self::Pharmacist => 'Pharmacist',
             self::LabTech => 'Lab Technician',
@@ -32,61 +35,61 @@ enum Role: string
     /** Roles allowed to add and edit staff accounts. */
     public function canManageStaff(): bool
     {
-        return in_array($this, [self::Admin, self::Doctor], true);
+        return in_array($this, [self::Admin, self::Doctor, self::Manager], true);
     }
 
     /** Roles allowed to write clinical notes and prescriptions. Nurses are included so they can record vitals. */
     public function canConsult(): bool
     {
-        return in_array($this, [self::Admin, self::Doctor, self::Nurse], true);
+        return in_array($this, [self::Admin, self::Doctor, self::Manager, self::Nurse], true);
     }
 
     /** Roles allowed to enter lab results and edit the test catalogue. */
     public function canRunLab(): bool
     {
-        return in_array($this, [self::Admin, self::Doctor, self::LabTech], true);
+        return in_array($this, [self::Admin, self::Doctor, self::Manager, self::LabTech], true);
     }
 
     /** Roles allowed to receive stock, sell medicines and edit the medicine list. */
     public function canRunPharmacy(): bool
     {
-        return in_array($this, [self::Admin, self::Doctor, self::Pharmacist], true);
+        return in_array($this, [self::Admin, self::Doctor, self::Manager, self::Pharmacist], true);
     }
 
     /** Roles allowed to change price lists and hospital setup: OPD services, beds and IPD services. */
     public function canManageSetup(): bool
     {
-        return in_array($this, [self::Admin, self::Doctor], true);
+        return in_array($this, [self::Admin, self::Doctor, self::Manager], true);
     }
 
     /** Roles allowed to book appointments and change their status. */
     public function canWorkFrontDesk(): bool
     {
-        return in_array($this, [self::Admin, self::Doctor, self::Nurse, self::Frontdesk], true);
+        return in_array($this, [self::Admin, self::Doctor, self::Manager, self::Nurse, self::Frontdesk], true);
     }
 
     /** Roles allowed to scan a patient's old papers, check what was read from them and file them in the record. */
     public function canFilePastRecords(): bool
     {
-        return in_array($this, [self::Admin, self::Doctor, self::Nurse, self::Frontdesk], true);
+        return in_array($this, [self::Admin, self::Doctor, self::Manager, self::Nurse, self::Frontdesk], true);
     }
 
     /** Roles allowed to approve a discharge summary or an IPD bill, which locks it. */
     public function canApproveIpd(): bool
     {
-        return in_array($this, [self::Admin, self::Doctor], true);
+        return in_array($this, [self::Admin, self::Doctor, self::Manager], true);
     }
 
     /** Roles allowed to see the hospital's money and activity reports. */
     public function canViewReports(): bool
     {
-        return in_array($this, [self::Admin, self::Doctor], true);
+        return in_array($this, [self::Admin, self::Doctor, self::Manager], true);
     }
 
     /** Roles allowed to delete a pharmacy bill, which restocks it and refunds the money. */
     public function canDeleteBills(): bool
     {
-        return in_array($this, [self::Admin, self::Doctor, self::Pharmacist], true);
+        return in_array($this, [self::Admin, self::Doctor, self::Manager, self::Pharmacist], true);
     }
 
     /**
@@ -95,24 +98,24 @@ enum Role: string
      */
     public function canAuditPharmacy(): bool
     {
-        return in_array($this, [self::Admin, self::Doctor], true);
+        return in_array($this, [self::Admin, self::Doctor, self::Manager], true);
     }
 
     /** Roles allowed to charge a different price from the price list while billing. */
     public function canChangePrice(): bool
     {
-        return in_array($this, [self::Admin, self::Doctor, self::Nurse, self::Frontdesk], true);
+        return in_array($this, [self::Admin, self::Doctor, self::Manager, self::Nurse, self::Frontdesk], true);
     }
 
     /** Roles allowed to write down money paid out of the hospital's cash and accounts: the day-to-day expenses. */
     public function canRecordExpenses(): bool
     {
-        return in_array($this, [self::Admin, self::Doctor, self::Frontdesk], true);
+        return in_array($this, [self::Admin, self::Doctor, self::Manager, self::Frontdesk], true);
     }
 
     /** Roles allowed to admit patients, add IPD charges, take IPD money and discharge. */
     public function canWorkIpd(): bool
     {
-        return in_array($this, [self::Admin, self::Doctor, self::Nurse, self::Frontdesk], true);
+        return in_array($this, [self::Admin, self::Doctor, self::Manager, self::Nurse, self::Frontdesk], true);
     }
 }
