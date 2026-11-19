@@ -57,7 +57,7 @@ export type Staff = {
 }
 
 /** One permission that can be given to or taken from a person, and the roles that get it by default. */
-export type Ability = { key: string; label: string; hint: string; roles: string[]; /** Carries clinical authority, money or control: only an admin gives it on top of a role. */ sensitive?: boolean }
+export type Ability = { key: string; label: string; hint: string; roles: string[]; /** The heading it is listed under on the Staff screen. */ group?: string; /** Carries clinical authority, money or control: only an admin gives it on top of a role. */ sensitive?: boolean }
 
 /** A doctor's usual hours for each day of the week; a day left out means no set hours. */
 export type Availability = Partial<Record<'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun', { from: string; to: string }[]>>

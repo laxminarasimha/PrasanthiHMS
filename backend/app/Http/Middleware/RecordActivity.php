@@ -85,6 +85,7 @@ class RecordActivity
         'POST ipd/services' => 'Added an IPD service',
         'PUT ipd/services/{service}' => 'Changed an IPD service or its price',
         'POST backups' => 'Made a database backup',
+        'POST workforce/confirm-password' => 'Typed their password again for a sensitive step',
         'GET backups/{name}/download' => 'Downloaded a database backup',
     ];
 

@@ -86,6 +86,7 @@ h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color
 .first-load .tabs button span, .first-load .btn .count, .first-load h2 .count { color: transparent !important; }
 .first-load .when-loaded { display: none !important; }
 /* Staff permissions: the reason asked for with a change, the record of earlier changes, and the pharmacy's look-only mark. */
+.permission-group { margin: 18px 0 6px; padding-top: 10px; border-top: 1px solid var(--border); }
 .change-reason { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--brand-line); border-radius: 10px; background: var(--surface-2); }
 .permission-history { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border); }
 .permission-history h3 { margin: 0 0 6px; }

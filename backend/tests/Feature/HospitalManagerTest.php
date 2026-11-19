@@ -28,7 +28,8 @@ class HospitalManagerTest extends TestCase
 
         $this->assertSame(
             ['canWorkFrontDesk', 'canRecordExpenses', 'canFilePastRecords', 'canViewClinical', 'canViewPharmacy', 'canWorkIpd', 'canViewReports', 'canManageSetup', 'canManageStaff'],
-            array_keys(array_filter($manager->abilities)),
+            // The workforce module's own permissions are checked in WorkforcePermissionsTest.
+            array_values(array_filter(array_keys(array_filter($manager->abilities)), fn (string $key) => ! str_starts_with($key, 'wf:'))),
         );
 
         Sanctum::actingAs($manager);
