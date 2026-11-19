@@ -4,18 +4,25 @@ namespace App\Workforce\Http;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Workforce\Models\Advance;
 use App\Workforce\Models\Attendance;
 use App\Workforce\Models\AttendanceCorrection;
 use App\Workforce\Models\Employee;
 use App\Workforce\Models\LeaveRequest;
 use App\Workforce\Models\LeaveType;
+use App\Workforce\Models\PayrollRun;
+use App\Workforce\Models\Payslip;
 use App\Workforce\Support\Access;
 use App\Workforce\Support\AttendanceRules;
 use App\Workforce\Support\LeaveBook;
+use App\Workforce\Support\Money;
+use App\Workforce\Support\Period;
 use App\Workforce\Support\Settings;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
 /** The day at a glance for those who look after staff, and each person's own record for themself. */
@@ -47,6 +54,7 @@ class OverviewController extends Controller
                 ->map(fn (Attendance $a) => ['id' => $a->id, 'employee' => ['id' => $a->employee->id, 'name' => $a->employee->name], 'work_date' => $a->work_date->format('Y-m-d'), 'check_in' => $a->check_in?->format('Y-m-d H:i')]),
             'corrections_waiting' => $user->allows('wf:attendance:view') ? Access::narrow(AttendanceCorrection::query(), $user, 'wf:attendance:view')->where('status', 'pending')->count() : null,
             'leave_waiting' => $user->allows('wf:leave:view') ? Access::narrow(LeaveRequest::query(), $user, 'wf:leave:view')->where('status', 'pending')->count() : null,
+            'pay' => $this->pay($user),
         ]);
     }
 
@@ -80,7 +88,36 @@ class OverviewController extends Controller
                 ->map(fn (LeaveType $t) => $t->only(['id', 'code', 'name', 'is_paid', 'allow_half_day']) + ['left' => LeaveBook::balance($employee->id, $t->id, $year)]),
             'leave' => LeaveRequest::query()->where('employee_id', $employee->id)->with('type:id,code,name,is_paid')->orderByDesc('from_date')->limit(30)->get()->map(fn (LeaveRequest $r) => $leave->present($r, collect())),
             'corrections' => AttendanceCorrection::query()->where('employee_id', $employee->id)->latest('id')->limit(20)->get()->map(fn (AttendanceCorrection $c) => $attendance->correction($c, collect(), collect())),
+            // A person's own pay: payslips once their payroll is finalised (never a draft), and what they still owe on an advance.
+            'payslips' => $this->finalPayslips($employee->id)->limit(24)->get()->map(fn (Payslip $s) => ['id' => $s->id, 'period' => $s->period, 'period_name' => Period::name($s->period), 'slip_no' => $s->slip_no, 'net' => $s->net, 'payment_status' => $s->payment_status, 'paid_on' => $s->paid_on?->format('Y-m-d')]),
+            'advances' => $this->myAdvances($employee->id),
         ]);
+    }
+
+    /** A person's own payslip in full. Only one of a finalised payroll that still stands. */
+    public function myPayslip(Request $request, int $slip): JsonResponse
+    {
+        $user = $request->user();
+        Access::require($user, 'wf:self:view');
+        $employee = Employee::query()->where('user_id', $user->id)->firstOrFail();
+        $slip = $this->finalPayslips($employee->id)->with(['lines', 'run', 'employee.department:id,name'])->findOrFail($slip);
+
+        return response()->json(app(PayrollController::class)->slip($slip));
+    }
+
+    private function finalPayslips(int $employeeId): Builder
+    {
+        return Payslip::query()->where('employee_id', $employeeId)->whereNotNull('live_period')->whereHas('run', fn ($q) => $q->whereIn('status', ['finalised', 'paid']))->orderByDesc('period');
+    }
+
+    /** @return Collection<int, array<string, mixed>> */
+    private function myAdvances(int $employeeId): Collection
+    {
+        $advances = app(AdvanceController::class);
+        $rows = Advance::query()->where('employee_id', $employeeId)->whereIn('status', ['requested', 'approved', 'issued'])->with('schedule')->orderByDesc('id')->get();
+        $owed = $advances->owed($rows->pluck('id'));
+
+        return $rows->map(fn (Advance $a) => $advances->present($a, $owed) + ['next' => $a->status === 'issued' ? $a->schedule->firstWhere('status', 'due')?->only(['period', 'amount']) : null]);
     }
 
     /** A person asks for leave for themself. */
@@ -126,6 +163,33 @@ class OverviewController extends Controller
         $record = $open ? $attendance->close($open, now()->format('Y-m-d H:i:s'), $user) : $attendance->open($employee, now()->format('Y-m-d H:i:s'), 'self', null, $user);
 
         return response()->json($attendance->record($record));
+    }
+
+    /**
+     * Money still to go out or come back, for those who may see it: salaries finalised and not yet paid, and what
+     * staff owe on advances and loans. Null for anyone who may see neither.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function pay(User $user): ?array
+    {
+        $payroll = $user->allows('wf:payroll:view');
+        $advances = $user->allows('wf:advances:view');
+        if (! $payroll && ! $advances) {
+            return null;
+        }
+        $out = [];
+        if ($payroll) {
+            $unpaid = Payslip::query()->where('payment_status', '!=', 'paid')->whereNotNull('live_period')->whereHas('run', fn ($q) => $q->whereIn('status', ['finalised', 'paid']))->selectRaw('COUNT(*) as slips, COALESCE(SUM(net), 0) as net')->first();
+            $out['unpaid_salaries'] = ['slips' => (int) $unpaid->slips, 'net' => Money::text($unpaid->net)];
+            $out['runs_in_hand'] = PayrollRun::query()->whereIn('status', ['draft', 'reviewed', 'approved'])->count();
+        }
+        if ($advances) {
+            $issued = Access::narrow(Advance::query(), $user, 'wf:advances:view')->where('status', 'issued')->pluck('id');
+            $out['advances'] = ['count' => $issued->count(), 'owed' => Money::text(app(AdvanceController::class)->owed($issued)->sum()), 'waiting' => Access::narrow(Advance::query(), $user, 'wf:advances:view')->where('status', 'requested')->count()];
+        }
+
+        return $out;
     }
 
     private function mine(User $user): Employee

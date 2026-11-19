@@ -1,10 +1,14 @@
 <?php
 
+use App\Workforce\Http\AdvanceController;
 use App\Workforce\Http\AttendanceController;
 use App\Workforce\Http\EmployeeController;
 use App\Workforce\Http\FoundationController;
 use App\Workforce\Http\LeaveController;
 use App\Workforce\Http\OverviewController;
+use App\Workforce\Http\PayrollController;
+use App\Workforce\Http\RequireFreshPassword;
+use App\Workforce\Http\SalaryController;
 use App\Workforce\Http\SetupController;
 use Illuminate\Support\Facades\Route;
 
@@ -28,6 +32,7 @@ Route::controller(OverviewController::class)->group(function () {
     Route::post('/me/leave/{leave}/cancel', 'cancelLeave');
     Route::post('/me/corrections', 'askCorrection');
     Route::post('/me/punch', 'punch');
+    Route::get('/me/payslips/{slip}', 'myPayslip')->whereNumber('slip');
 });
 
 Route::controller(EmployeeController::class)->group(function () {
@@ -83,4 +88,50 @@ Route::controller(LeaveController::class)->prefix('leave')->group(function () {
     Route::get('/ledger/{employee}', 'ledger');
     Route::post('/{leave}/decide', 'decide')->whereNumber('leave');
     Route::post('/{leave}/cancel', 'cancel')->whereNumber('leave');
+});
+
+// What salaries are made of, and what each person is paid.
+Route::controller(SalaryController::class)->prefix('pay')->group(function () {
+    Route::get('/components', 'components');
+    Route::post('/components/starter', 'starter');
+    Route::post('/components', 'saveComponent');
+    Route::put('/components/{component}', 'saveComponent')->whereNumber('component');
+    Route::get('/salaries', 'index');
+    Route::get('/salaries/{employee}', 'show')->whereNumber('employee');
+    Route::post('/salaries/{employee}', 'store')->whereNumber('employee');
+    Route::post('/structures/{structure}/approve', 'approve')->whereNumber('structure');
+    Route::post('/structures/{structure}/withdraw', 'withdraw')->whereNumber('structure');
+});
+
+// Payroll runs. Finalising, reversing and the register export need the password typed again.
+Route::controller(PayrollController::class)->prefix('payroll')->group(function () {
+    Route::get('/runs', 'index');
+    Route::post('/runs', 'store');
+    Route::get('/outstanding', 'outstanding');
+    Route::get('/payslips/{slip}', 'payslip')->whereNumber('slip');
+    Route::get('/runs/{run}', 'show')->whereNumber('run');
+    Route::post('/runs/{run}/work-out', 'workOut')->whereNumber('run');
+    Route::post('/runs/{run}/hold-back', 'holdBack')->whereNumber('run');
+    Route::post('/runs/{run}/payslips/{slip}/lines', 'addLine')->whereNumber(['run', 'slip']);
+    Route::delete('/runs/{run}/payslips/{slip}/lines/{line}', 'removeLine')->whereNumber(['run', 'slip', 'line']);
+    Route::post('/runs/{run}/step', 'step')->whereNumber('run');
+    Route::post('/runs/{run}/pay', 'pay')->whereNumber('run');
+    Route::middleware(RequireFreshPassword::class)->group(function () {
+        Route::post('/runs/{run}/finalise', 'finalise')->whereNumber('run');
+        Route::post('/runs/{run}/reverse', 'reverse')->whereNumber('run');
+        Route::get('/runs/{run}/export', 'export')->whereNumber('run');
+    });
+});
+
+// Advances and loans. Letting go of what is owed, and the export, need the password typed again.
+Route::controller(AdvanceController::class)->prefix('advances')->group(function () {
+    Route::get('/', 'index');
+    Route::post('/', 'store');
+    Route::get('/export', 'export')->middleware(RequireFreshPassword::class);
+    Route::get('/{advance}', 'show')->whereNumber('advance');
+    Route::post('/{advance}/decide', 'decide')->whereNumber('advance');
+    Route::post('/{advance}/issue', 'issue')->whereNumber('advance');
+    Route::post('/{advance}/repay', 'repay')->whereNumber('advance');
+    Route::post('/{advance}/skip', 'skip')->whereNumber('advance');
+    Route::post('/{advance}/let-go', 'letGo')->whereNumber('advance')->middleware(RequireFreshPassword::class);
 });

@@ -120,6 +120,9 @@ class SetupController extends Controller
         Access::require($request->user(), 'wf:settings:admin');
         $data = $request->validate([
             'numbering.employee_prefix' => ['sometimes', 'string', 'max:12', 'regex:/^[A-Za-z0-9\-\/]*$/'], 'numbering.employee_digits' => ['sometimes', 'integer', 'between:1,10'],
+            'numbering.payslip_prefix' => ['sometimes', 'string', 'max:12', 'regex:/^[A-Za-z0-9\-\/]*$/'], 'numbering.advance_prefix' => ['sometimes', 'string', 'max:12', 'regex:/^[A-Za-z0-9\-\/]*$/'],
+            'payroll.month_days' => ['sometimes', Rule::in(['calendar', 'fixed_30', 'fixed_26'])], 'payroll.round_net_to' => ['sometimes', Rule::in(['rupee', 'paise'])],
+            'payroll.daily_paid_days_off' => ['sometimes', 'boolean'], 'payroll.deduct_absence' => ['sometimes', 'boolean'], 'payroll.salary_needs_approval' => ['sometimes', 'boolean'],
             'attendance.self_check_in' => ['sometimes', 'boolean'], 'attendance.default_weekly_off' => ['sometimes', 'array', 'max:7'], 'attendance.default_weekly_off.*' => [Rule::in(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'])],
             'leave.year_starts_month' => ['sometimes', 'integer', 'between:1,12'], 'leave.count_days_off' => ['sometimes', 'boolean'], 'leave.allow_negative' => ['sometimes', 'boolean'],
         ]);
