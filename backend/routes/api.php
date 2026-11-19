@@ -156,6 +156,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
     // Billing from the front desk in one go: services and lab tests together, then one payment for all of it.
     Route::middleware('ability:canWorkFrontDesk')->controller(ChargeController::class)->group(function () {
         Route::get('/front-desk/due', 'due');
+        Route::get('/front-desk/day-bills', 'day');
         Route::post('/front-desk/charges', 'store');
         Route::post('/front-desk/collect', 'collect');
     });

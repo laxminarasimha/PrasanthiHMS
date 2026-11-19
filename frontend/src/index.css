@@ -171,6 +171,28 @@ tbody tr.empty td { text-align: center; color: var(--muted); padding: 32px; }
 .pager { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; color: var(--muted); }
 .pill { display: inline-block; font-size: 0.76rem; font-weight: 700; letter-spacing: 0.01em; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
 .pill.ok { color: var(--ok); background: var(--ok-soft); }
+.pill.owed { color: var(--danger); background: var(--danger-soft); }
+/* A window over the page, for something looked at as a whole and then closed: a patient's bills of the day. */
+.modal-back { position: fixed; inset: 0; z-index: 70; display: grid; justify-items: center; align-items: start; padding: 6vh 16px 24px; overflow-y: auto; background: rgba(31, 26, 36, 0.5); }
+.modal { width: min(780px, 100%); background: var(--surface); color: var(--text); border-radius: 14px; padding: 20px 22px; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.3); outline: none; }
+.modal .panel-head { margin-bottom: 12px; }
+.modal .tiles { margin-bottom: 4px; }
+.day-bill { border: 1px solid var(--border); border-radius: 10px; margin-top: 12px; overflow: hidden; }
+.day-bill > header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 9px 12px; background: var(--surface-2); }
+.day-bill > header > div { flex: 1; min-width: 180px; }
+.day-bill > header .row { gap: 14px; }
+.day-bill > header a.link { text-decoration: none; }
+.day-bill table { margin: 0; }
+.day-bill td:first-child { padding-left: 12px; }
+.day-bill td:last-child { padding-right: 12px; }
+.day-bill-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 18px; margin: 0; padding: 8px 12px; border-top: 1px solid var(--border); font-size: 0.9rem; }
+.day-collect { margin-top: 16px; padding-top: 12px; border-top: 2px solid var(--border); }
+.day-collect h3 { margin: 0 0 10px; }
+@media (max-width: 640px) {
+  .modal-back { padding: 12px 8px; }
+  .modal { padding: 14px; }
+  .modal .grid.three { grid-template-columns: 1fr 1fr; }
+}
 .pill.off { color: var(--danger); background: var(--danger-soft); }
 
 /* Sign in */
