@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { api } from '../api'
 import { PaperBar, PaperFooter, PaperHeader } from '../components/PrintPaper'
 import { useAutoPrint, usePrintPaper } from '../printPaper'
-import { longDate, modeLabel, rupees, fullName } from '../format'
+import { modeLabel, rupees, fullName, stampDate } from '../format'
 import type { Bill } from '../types'
 
 /** A plain receipt page meant for the printer; opens the print dialog once loaded. */
@@ -26,6 +26,7 @@ export function BillPrint() {
         <h2>Bill / Receipt</h2>
       </PaperHeader>
 
+      {bill.cancelled_at && <p className="form-error">This bill was cancelled: {bill.cancel_reason}</p>}
       <div className="receipt-meta">
         <div>
           <strong>{fullName(bill.patient)}</strong>
@@ -37,7 +38,7 @@ export function BillPrint() {
         <div className="right">
           Bill no: <strong>{bill.bill_no}</strong>
           <br />
-          Date: {longDate(bill.created_at)}
+          Date: {stampDate(bill.created_at)}
           {bill.appointment && (
             <>
               <br />

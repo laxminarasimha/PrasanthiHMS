@@ -262,7 +262,7 @@ export function PatientDashboard() {
                 </small>
               </td>
               <td className="num">{rupees(b.total)}</td>
-              <td className={`num ${b.due > 0 ? 'due' : 'settled'}`}>{settlement(b.due, b.moved_to_ipd, b.total)}</td>
+              <td className={`num ${b.due > 0 ? 'due' : 'settled'}`}>{b.cancelled_at ? <span className="pill off">Cancelled</span> : settlement(b.due, b.moved_to_ipd, b.total)}</td>
               <td className="num">
                 <a className="link" href={`/bills/${b.id}/print`} target="_blank" rel="noreferrer">
                   Print

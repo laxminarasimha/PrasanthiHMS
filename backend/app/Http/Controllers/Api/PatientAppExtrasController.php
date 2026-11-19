@@ -123,7 +123,7 @@ class PatientAppExtrasController extends Controller
         ];
 
         $bills = collect()
-            ->concat(Bill::whereIn('patient_id', $patientIds)->latest('id')->limit(100)->get()
+            ->concat(Bill::whereIn('patient_id', $patientIds)->whereNull('cancelled_at')->latest('id')->limit(100)->get()
                 ->map(fn (Bill $b) => $row($labBills->has($b->id) ? 'Lab' : 'Consultation', $b->bill_no, $b->created_at, $b->total, $b->paid, $b->due, $b->patient_id)))
             ->concat(PharmacySale::whereIn('patient_id', $patientIds)->whereNull('voided_at')->latest('id')->limit(100)->get()
                 ->map(fn (PharmacySale $s) => $row('Pharmacy', $s->bill_no, $s->sold_at, $s->total - $s->returned, $s->paid, $s->due, $s->patient_id)))

@@ -21,6 +21,8 @@ type DayBill = {
   paid: number
   due: number
   moved_to_ipd: number
+  cancelled_at: string | null
+  cancel_reason: string | null
   items: { id: number; description: string; quantity: number; unit_price: number; discount: number; amount: number }[]
   payments: { type: 'payment' | 'refund'; mode: string; amount: number }[]
 }
@@ -82,6 +84,7 @@ export function DayBills({ patient, date, onClose, onChange, onOpenBill, onAdd }
   }, [onClose])
 
   const owing = day?.bills.filter((b) => b.due > 0) ?? []
+  const live = day?.bills.filter((b) => !b.cancelled_at) ?? []
   const collect = async (e: FormEvent) => {
     e.preventDefault()
     setBusy(true)
@@ -113,13 +116,18 @@ export function DayBills({ patient, date, onClose, onChange, onOpenBill, onAdd }
             </h2>
             <span className="muted">
               {patient.uhid} · {longDate(date)}
-              {day ? ` · ${day.bills.length} ${day.bills.length === 1 ? 'bill' : 'bills'}` : ''}
+              {day ? ` · ${live.length} ${live.length === 1 ? 'bill' : 'bills'}` : ''}
             </span>
           </div>
           <div className="row">
             <button type="button" className="btn primary" onClick={onAdd}>
               + Add services or lab tests
             </button>
+            {live.length > 0 && (
+              <a className="btn" href={`/front-desk/patients/${patient.id}/bills/${date}/print`} target="_blank" rel="noreferrer" title="One sheet with all of today's bills for this patient">
+                Print all
+              </a>
+            )}
             <button type="button" className="btn ghost" onClick={onClose}>
               Close
             </button>
@@ -146,7 +154,7 @@ export function DayBills({ patient, date, onClose, onChange, onOpenBill, onAdd }
 
             {day.bills.length === 0 && <p className="muted">Nothing has been billed to this patient on this day yet.</p>}
             {day.bills.map((b) => (
-              <section key={b.id} className="day-bill">
+              <section key={b.id} className={`day-bill ${b.cancelled_at ? 'cancelled' : ''}`}>
                 <header>
                   <div>
                     <strong>{KIND[b.kind]}</strong>
@@ -156,7 +164,7 @@ export function DayBills({ patient, date, onClose, onChange, onOpenBill, onAdd }
                       {b.doctor ? ` · ${b.doctor}` : ''}
                     </small>
                   </div>
-                  <span className={`pill ${b.due > 0 ? 'owed' : 'ok'}`}>{settlement(b.due, b.moved_to_ipd, b.total)}</span>
+                  <span className={`pill ${b.cancelled_at ? 'off' : b.due > 0 ? 'owed' : 'ok'}`}>{b.cancelled_at ? 'Cancelled' : settlement(b.due, b.moved_to_ipd, b.total)}</span>
                   <span className="row">
                     <button type="button" className="link" onClick={() => onOpenBill(b.id)} title="Open this bill by itself: discount, refund, or change its lines">
                       Open
@@ -182,7 +190,8 @@ export function DayBills({ patient, date, onClose, onChange, onOpenBill, onAdd }
                     )}
                   </tbody>
                 </table>
-                <p className="day-bill-foot">
+                {b.cancelled_at && <p className="day-bill-foot">Cancelled: {b.cancel_reason}</p>}
+                <p className="day-bill-foot" hidden={Boolean(b.cancelled_at)}>
                   {b.discount > 0 && <span>Discount {rupees(b.discount)}</span>}
                   <span>
                     Total <b>{rupees(b.total)}</b>

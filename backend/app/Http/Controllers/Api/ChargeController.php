@@ -86,6 +86,7 @@ class ChargeController extends Controller
                 'created_at' => $b->created_at->format('Y-m-d H:i'), 'appointment_id' => $b->appointment_id, 'doctor' => $b->appointment?->doctor?->name,
                 'subtotal' => (float) $b->subtotal, 'discount' => (float) $b->discount, 'tax' => (float) $b->tax,
                 'total' => (float) $b->total, 'paid' => (float) $b->paid, 'due' => (float) $b->due, 'moved_to_ipd' => (float) $b->moved_to_ipd,
+                'cancelled_at' => $b->cancelled_at?->format('Y-m-d H:i'), 'cancel_reason' => $b->cancel_reason,
                 'items' => $b->items->map(fn ($i) => ['id' => $i->id, 'description' => $i->description, 'quantity' => (float) $i->quantity, 'unit_price' => (float) $i->unit_price, 'discount' => (float) $i->discount, 'amount' => round((float) $i->amount + (float) $i->tax, 2)])->all(),
                 'payments' => $b->payments->map(fn (Payment $p) => ['type' => $p->type, 'mode' => $p->mode, 'amount' => (float) $p->amount])->all(),
             ])->all(),

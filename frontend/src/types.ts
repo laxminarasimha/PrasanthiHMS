@@ -172,6 +172,10 @@ export type Bill = {
   created_at: string
   items: BillItem[]
   payments: Payment[]
+  /** Set when the bill was cancelled as a mistake: it then counts for nothing, and its lines are kept only as a record. */
+  cancelled_at?: string | null
+  cancel_reason?: string | null
+  canceller?: { id: number; name: string } | null
   /** What the patient has on deposit and could use against this bill. */
   deposit_balance?: number
   patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'age_label' | 'title' | 'mobile' | 'address' | 'city'>
@@ -787,7 +791,7 @@ export type PatientOverview = {
   deposit_balance: number
   deposits: PatientDeposit[]
   visits: { id: number; scheduled_at: string; status: AppointmentStatus; doctor: { name: string }; service: { name: string } | null; consultation: { id: number; diagnosis: string | null; completed_at: string | null } | null }[]
-  bills: { id: number; bill_no: string; kind: BillKind; total: number; paid: number; due: number; moved_to_ipd: number | null; created_at: string; lab_order: { order_no: string } | null }[]
+  bills: { id: number; bill_no: string; kind: BillKind; total: number; paid: number; due: number; moved_to_ipd: number | null; created_at: string; cancelled_at?: string | null; lab_order: { order_no: string } | null }[]
   lab_orders: { id: number; order_no: string; status: string; ordered_at: string; items: { id: number; test_name: string }[] }[]
   pharmacy_bills: { id: number; bill_no: string; sold_at: string; total: number; due: number; ipd_transfer: number }[]
   admissions: { id: number; ipd_no: string; status: string; admitted_at: string; discharged_at: string | null; due: number; doctor: { name: string }; bed: { ward: string; bed_no: string } | null }[]

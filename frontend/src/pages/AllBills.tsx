@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import { BillPanel } from '../components/BillPanel'
 import { DateRange } from '../components/DateRange'
-import { clock, fullName, longDate, rupees, settlement, today } from '../format'
+import { fullName, rupees, settlement, stampDate, stampTime, today } from '../format'
 import type { BillKind, Patient, Service } from '../types'
 import { PatientLink } from '../components/PatientLink'
 
@@ -16,6 +16,8 @@ type Row = {
   due: number
   moved_to_ipd: number | null
   created_at: string
+  cancelled_at?: string | null
+  cancel_reason?: string | null
   patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'title' | 'mobile'> | null
   appointment: { doctor: { name: string } | null } | null
   lab_order: { order_no: string } | null
@@ -101,7 +103,7 @@ export function AllBills() {
                       {b.bill_no}
                     </button>
                     <small className="muted block">
-                      {longDate(b.created_at)} {clock(b.created_at)}
+                      {stampDate(b.created_at)} {stampTime(b.created_at)}
                     </small>
                   </td>
                   <td>
@@ -126,7 +128,7 @@ export function AllBills() {
                   </td>
                   <td className="num">{rupees(b.total)}</td>
                   <td className="num">{rupees(b.paid)}</td>
-                  <td className={`num ${b.due > 0 ? 'due strong' : 'settled'}`}>{settlement(b.due, b.moved_to_ipd, b.total)}</td>
+                  <td className={`num ${b.due > 0 ? 'due strong' : 'settled'}`}>{b.cancelled_at ? <span className="pill off" title={b.cancel_reason ?? ''}>Cancelled</span> : settlement(b.due, b.moved_to_ipd, b.total)}</td>
                   <td className="num actions">
                     <a className="link" href={`/bills/${b.id}/print`} target="_blank" rel="noreferrer">
                       Print

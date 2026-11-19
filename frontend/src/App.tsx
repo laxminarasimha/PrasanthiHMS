@@ -43,6 +43,7 @@ function page<M extends Record<K, ComponentType>, K extends string>(load: () => 
 }
 
 const BillPrint = page(() => import('./pages/BillPrint'), 'BillPrint')
+const DayBillsPrint = page(() => import('./pages/DayBillsPrint'), 'DayBillsPrint')
 const DoctorConsults = page(() => import('./pages/DoctorConsults'), 'DoctorConsults')
 const DoctorLibrary = page(() => import('./pages/DoctorLibrary'), 'DoctorLibrary')
 const DoctorQueue = page(() => import('./pages/DoctorQueue'), 'DoctorQueue')
@@ -139,6 +140,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/queue" element={<PrintOnly><QueueBoard /></PrintOnly>} />
           <Route path="/bills/:id/print" element={<PrintOnly><BillPrint /></PrintOnly>} />
+          <Route path="/front-desk/patients/:id/bills/:date/print" element={<PrintOnly><DayBillsPrint /></PrintOnly>} />
           <Route path="/visits/:id/print" element={<PrintOnly><PrescriptionPrint /></PrintOnly>} />
           <Route path="/lab/orders/:id/print" element={<PrintOnly><LabReportPrint /></PrintOnly>} />
           <Route path="/forms/:id/print" element={<PrintOnly><FormPrint /></PrintOnly>} />

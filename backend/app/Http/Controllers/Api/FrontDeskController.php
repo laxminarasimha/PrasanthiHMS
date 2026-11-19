@@ -32,7 +32,7 @@ class FrontDeskController extends Controller
         $term = trim((string) ($filters['q'] ?? ''));
 
         return response()->json(
-            Bill::whereNull('appointment_id')
+            Bill::whereNull('appointment_id')->whereNull('cancelled_at')
                 ->whereDate('created_at', $filters['date'] ?? today())
                 ->when($term !== '', fn ($q) => $q->whereHas('patient', fn ($p) => $p->where('name', 'like', "%{$term}%")
                     ->orWhere('mobile', 'like', "{$term}%")->orWhere('uhid', 'like', "{$term}%")))
