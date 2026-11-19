@@ -1,6 +1,6 @@
 import { useEffect, useId, useState, type KeyboardEvent, type Ref } from 'react'
 import { api } from '../api'
-import { expiryLabel, rupees } from '../format'
+import { expiryLabel, placeLabel, rupees } from '../format'
 import type { SellableMedicine } from '../types'
 
 export type SellableBatch = SellableMedicine['sellable_batches'][number]
@@ -91,6 +91,7 @@ export function MedicinePick({ onPick, inputRef, placeholder = 'Type a medicine 
                   Batch {b.batch_no} · exp {expiryLabel(b.expiry)} · {b.units_in_stock} in stock · {rupees(b.unit_mrp)} each
                   {first ? ' · sell this first' : ''}
                 </small>
+                {placeLabel(b.rack_no, b.box_no) && <small className="shelf-place">{placeLabel(b.rack_no, b.box_no)}</small>}
               </button>
             </li>
           ))}

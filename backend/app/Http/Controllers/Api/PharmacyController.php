@@ -19,8 +19,10 @@ use App\Models\StockReturn;
 use App\Support\Composition;
 use App\Support\OrderMatch;
 use App\Support\PharmacyOnIpd;
+use App\Support\ShelfPlace;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -37,7 +39,7 @@ class PharmacyController extends Controller
         // For choosing a medicine on a purchase invoice, an order or opening stock: every medicine in use, however
         // many there are, with only what those forms fill in from it. The fuller list below stops at 500.
         if ($request->boolean('list')) {
-            return response()->json(Medicine::where('is_active', true)->orderBy('name')->get(['id', 'name', 'units_per_pack', 'gst_percent', 'hsn_code']));
+            return response()->json(Medicine::where('is_active', true)->orderBy('name')->get(['id', 'name', 'units_per_pack', 'gst_percent', 'hsn_code', 'rack_no', 'box_no']));
         }
 
         return response()->json(
@@ -194,8 +196,9 @@ class PharmacyController extends Controller
         $data = $this->medicineData($request);
         $this->rememberManufacturer($data['manufacturer'] ?? null);
 
-        $medicine = Medicine::create($data);
+        $medicine = Medicine::create(Arr::except($data, ['rack_no', 'box_no']));
         Composition::apply($medicine, $data['composition'] ?? null);
+        ShelfPlace::set($medicine, $data['rack_no'] ?? null, $data['box_no'] ?? null);
 
         return response()->json($medicine, 201);
     }
@@ -208,9 +211,14 @@ class PharmacyController extends Controller
 
         // Keep a note of what was changed, for the "medicine data updated" report.
         $labels = ['name' => 'Name', 'composition' => 'Composition', 'type' => 'Type', 'manufacturer' => 'Manufacturer', 'category' => 'Category', 'sub_category' => 'Sub category', 'ved' => 'VED class', 'sde' => 'SDE class', 'fsn' => 'FSN class', 'is_scheduled' => 'Scheduled drug', 'hsn_code' => 'HSN code', 'gst_percent' => 'GST %', 'units_per_pack' => 'Units per pack', 'reorder_level' => 'Reorder level', 'is_active' => 'In use'];
+        $labels += ['rack_no' => 'Rack', 'box_no' => 'Box'];
         $before = $medicine->only(array_keys($labels));
         $label = $medicine->name;
-        $medicine->update($data);
+        $medicine->update(Arr::except($data, ['rack_no', 'box_no']));
+        // The place is only touched when the form sent one, and the stock on the shelf moves with it.
+        if (array_key_exists('rack_no', $data)) {
+            ShelfPlace::set($medicine, $data['rack_no'], $data['box_no'] ?? null);
+        }
         if (array_key_exists('composition', $data)) {
             Composition::apply($medicine, $data['composition']);
         }
@@ -245,6 +253,8 @@ class PharmacyController extends Controller
             'desired_stock' => ['nullable', 'integer', 'min:0', 'max:10000000'],
             'preferred_stockist_id' => ['nullable', 'exists:stockists,id'],
             'is_active' => ['sometimes', 'boolean'],
+            'rack_no' => ['sometimes', 'nullable', 'string', 'max:30'],
+            'box_no' => ['sometimes', 'nullable', 'string', 'max:30'],
         ], ['name.unique' => 'A medicine with this name is already in the list.']) + ['reorder_level' => 0];
     }
 
@@ -440,6 +450,53 @@ class PharmacyController extends Controller
         );
     }
 
+    /**
+     * Every medicine in use with where it is kept and how much of it is on the shelf: for arranging the racks,
+     * finding what has no place yet, and printing what belongs in each rack.
+     */
+    public function shelves(Request $request): JsonResponse
+    {
+        $this->authorizePharmacy($request);
+
+        return response()->json(
+            Medicine::where('is_active', true)
+                ->withSum(['batches as units_in_stock' => fn ($q) => $q->whereDate('expiry', '>=', today())], 'units_in_stock')
+                ->orderBy('name')->get(['id', 'name', 'type', 'rack_no', 'box_no'])
+                ->map(fn (Medicine $m) => ['id' => $m->id, 'name' => $m->name, 'type' => $m->type, 'rack_no' => $m->rack_no, 'box_no' => $m->box_no, 'units_in_stock' => (int) $m->units_in_stock])
+        );
+    }
+
+    /** Puts medicines in their racks and boxes, many at a time. The stock of each moves on record with it. */
+    public function placeMedicines(Request $request): JsonResponse
+    {
+        $this->authorizePharmacy($request);
+        $data = $request->validate([
+            'places' => ['required', 'array', 'min:1', 'max:1000'],
+            'places.*.medicine_id' => ['required', 'integer', 'distinct', 'exists:medicines,id'],
+            'places.*.rack_no' => ['nullable', 'string', 'max:30'],
+            'places.*.box_no' => ['nullable', 'string', 'max:30'],
+        ]);
+
+        $changed = DB::transaction(function () use ($data, $request) {
+            $medicines = Medicine::whereIn('id', array_column($data['places'], 'medicine_id'))->get()->keyBy('id');
+            $changed = 0;
+            foreach ($data['places'] as $place) {
+                $medicine = $medicines[$place['medicine_id']];
+                $was = ShelfPlace::label($medicine->rack_no, $medicine->box_no);
+                ShelfPlace::set($medicine, $place['rack_no'] ?? null, $place['box_no'] ?? null);
+                $now = ShelfPlace::label($medicine->rack_no, $medicine->box_no);
+                if ($was !== $now) {
+                    $changed++;
+                    PharmacyChange::create(['kind' => 'medicine', 'subject_id' => $medicine->id, 'label' => $medicine->name, 'summary' => "Kept at: {$was} → {$now}", 'created_by' => $request->user()->id]);
+                }
+            }
+
+            return $changed;
+        });
+
+        return response()->json(['changed' => $changed]);
+    }
+
     /** Medicines matching the typed text that have sellable stock, with their batches. */
     public function sellSearch(Request $request): JsonResponse
     {
@@ -452,7 +509,7 @@ class PharmacyController extends Controller
             Medicine::where('is_active', true)
                 ->where(fn ($w) => $w->where('name', 'like', "%{$term}%")->orWhere('composition', 'like', "%{$term}%"))
                 ->whereHas('sellableBatches')
-                ->with(['sellableBatches' => fn ($q) => $q->select('id', 'medicine_id', 'batch_no', 'expiry', 'unit_mrp', 'gst_percent', 'units_in_stock', 'rack_no')])
+                ->with(['sellableBatches' => fn ($q) => $q->select('id', 'medicine_id', 'batch_no', 'expiry', 'unit_mrp', 'gst_percent', 'units_in_stock', 'rack_no', 'box_no')])
                 ->orderBy('name')
                 ->limit(12)
                 ->get(['id', 'name', 'type', 'composition'])
@@ -477,7 +534,7 @@ class PharmacyController extends Controller
         $names = $consultations->flatMap->medicines->pluck('medicine')->map(fn ($name) => mb_strtolower(trim($name)))->unique();
         $stocked = Medicine::where('is_active', true)
             ->whereIn(DB::raw('LOWER(name)'), $names)
-            ->with(['sellableBatches' => fn ($q) => $q->select('id', 'medicine_id', 'batch_no', 'expiry', 'unit_mrp', 'gst_percent', 'units_in_stock', 'rack_no')])
+            ->with(['sellableBatches' => fn ($q) => $q->select('id', 'medicine_id', 'batch_no', 'expiry', 'unit_mrp', 'gst_percent', 'units_in_stock', 'rack_no', 'box_no')])
             ->get(['id', 'name', 'type'])
             ->keyBy(fn (Medicine $m) => mb_strtolower($m->name));
 

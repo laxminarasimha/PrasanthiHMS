@@ -139,6 +139,9 @@ export function PharmacyPurchases() {
             next.units_per_pack = String(medicine.units_per_pack)
             next.gst_percent = String(medicine.gst_percent)
             next.hsn_code = medicine.hsn_code ?? ''
+            // Where it is already kept. A medicine with no place yet takes the one typed here.
+            next.rack_no = medicine.rack_no ?? ''
+            next.box_no = medicine.box_no ?? ''
           }
         }
         // A scheme typed the way it is said, "10+2", fills both boxes: ten paid, two free.

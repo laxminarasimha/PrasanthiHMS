@@ -6,14 +6,14 @@ import { useAuth } from '../../auth'
 import { DateRange } from '../../components/DateRange'
 import { MedicinePick, type SellableBatch } from '../../components/MedicinePick'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
-import { PAYMENT_MODES, clock, longDate, modeLabel, rupees, today } from '../../format'
+import { PAYMENT_MODES, clock, longDate, modeLabel, placeLabel, rupees, today } from '../../format'
 import type { Payment, PharmacySale, SellableMedicine } from '../../types'
 import { PatientLink } from '../../components/PatientLink'
 import { PharmacyDay } from '../../components/PharmacyDay'
 
 type Action = 'view' | 'collect' | 'return' | 'delete' | 'edit' | 'mode'
 /** A medicine being added to a bill that is already saved. */
-type Added = { batchId: number; medicine: string; batchNo: string; unitPrice: number; available: number; quantity: string; discount: string }
+type Added = { batchId: number; medicine: string; batchNo: string; unitPrice: number; available: number; quantity: string; discount: string; place: string }
 const addedAmount = (a: Added) => Math.round(Number(a.quantity || 0) * a.unitPrice * (1 - Number(a.discount || 0) / 100) * 100) / 100
 type Edit = { customer_name: string; customer_phone: string; referred_doctor: string; discount: string; lines: Record<number, { quantity: string; discount_percent: string }> }
 
@@ -163,7 +163,7 @@ export function PharmacyBills() {
 
   const pickMedicine = (m: SellableMedicine, b: SellableBatch) => {
     setError('')
-    setAdded((rows) => (rows.some((r) => r.batchId === b.id) ? rows : [...rows, { batchId: b.id, medicine: m.name, batchNo: b.batch_no, unitPrice: b.unit_mrp, available: b.units_in_stock, quantity: '1', discount: '' }]))
+    setAdded((rows) => (rows.some((r) => r.batchId === b.id) ? rows : [...rows, { batchId: b.id, medicine: m.name, batchNo: b.batch_no, unitPrice: b.unit_mrp, available: b.units_in_stock, quantity: '1', discount: '', place: placeLabel(b.rack_no, b.box_no) }]))
     jumpTo.current = b.id
   }
   // Once a picked medicine is on the screen, the cursor goes to its quantity, with the 1 selected so a number replaces it.
@@ -393,6 +393,7 @@ export function PharmacyBills() {
                     <tr key={`new-${a.batchId}`} className="static added-line">
                       <td>
                         {a.medicine} <span className="pill ok">New</span>
+                        {a.place && <small className="shelf-place block">{a.place}</small>}
                         <button type="button" className="link danger block" onClick={() => setAdded((rows) => rows.filter((r) => r.batchId !== a.batchId))}>
                           Take off
                         </button>

@@ -231,6 +231,22 @@ a.btn { text-decoration: none; display: inline-block; }
 /* A patient's name, or a line that stands for another bill: it reads as the text it always was, with a faint dotted line under it to say it can be opened. */
 .patient-link { color: inherit; font: inherit; text-decoration: underline dotted color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 3px; cursor: pointer; }
 .patient-link:hover, .patient-link:focus-visible { color: var(--brand); text-decoration-color: currentColor; }
+/* Where a medicine is kept, wherever it is picked: a small tag that reads at a glance. */
+.shelf-place { display: inline-block; margin-top: 2px; padding: 1px 7px; border-radius: 5px; background: var(--accent-soft); color: var(--warn); font-size: 0.76rem; font-weight: 700; white-space: nowrap; }
+.shelf-place.block { display: table; }
+/* Racks and boxes: a short box to type each place in, and the bar for placing several medicines at once. */
+.shelves td input:not([type='checkbox']) { width: 8.5em; min-height: 34px; padding: 4px 8px; }
+.shelves td:first-child { width: 34px; }
+.shelf-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 10px 0; padding: 10px 12px; border-radius: 8px; background: var(--brand-soft); }
+.shelf-bulk input { width: 8.5em; }
+/* The printed sheet for a rack: its name large enough to read from the counter, then each box and what belongs in it. */
+.shelf-sheet { break-after: page; color: #000; }
+.shelf-sheet:last-child { break-after: auto; }
+.shelf-sheet h1 { font-size: 26pt; margin: 0 0 10pt; padding-bottom: 6pt; border-bottom: 2pt solid #000; }
+.shelf-box { break-inside: avoid; margin-bottom: 12pt; }
+.shelf-box h2 { font-size: 14pt; margin: 0 0 4pt; }
+.shelf-box ul { margin: 0; padding-left: 16pt; columns: 2; font-size: 11pt; }
+.shelf-box li { break-inside: avoid; padding: 1pt 0; }
 button.patient-link { background: none; border: 0; padding: 0; text-align: left; }
 button.patient-link.strong { font-weight: 700; }
 /* A part of the patient page opened by a link stops below the top bar, not under it. */

@@ -322,4 +322,45 @@ class PharmacyCompleteTest extends TestCase
         $this->getJson("/api/pharmacy/customer-bills?sale_id={$second['id']}")->assertForbidden();
         $this->postJson('/api/pharmacy/collect', ['sale_ids' => [$third['id']], 'amount' => 10, 'mode' => 'cash'])->assertForbidden();
     }
+
+    public function test_a_medicine_has_a_rack_and_box_and_its_stock_and_the_counter_follow(): void
+    {
+        $other = Medicine::create(['name' => 'Cetirizine 10mg Tablet', 'gst_percent' => 12, 'units_per_pack' => 10, 'reorder_level' => 0]);
+        $buy = fn (Medicine $m, string $batch, array $place = []) => $this->postJson('/api/pharmacy/purchases', [
+            'stockist_id' => $this->stockist->id, 'invoice_no' => "INV-{$batch}", 'invoice_date' => now()->toDateString(),
+            'items' => [$place + ['medicine_id' => $m->id, 'batch_no' => $batch, 'expiry' => now()->addYear()->format('Y-m'), 'units_per_pack' => 10, 'packs' => 2, 'pack_price' => 15, 'pack_mrp' => 28, 'gst_percent' => 12]],
+        ])->assertCreated()->json('batches.0.id');
+
+        // Nothing has a place to begin with, and the shelves list says so.
+        $this->assertNull($this->batch->rack_no);
+        $this->getJson('/api/pharmacy/shelves')->assertOk()->assertJsonCount(2)->assertJsonFragment(['name' => 'Paracetamol 650mg Tablet', 'rack_no' => null, 'units_in_stock' => 100]);
+
+        // Placing a medicine moves the stock on the shelf with it, and the counter is told where to look.
+        $this->putJson('/api/pharmacy/shelves', ['places' => [['medicine_id' => $this->medicine->id, 'rack_no' => ' A ', 'box_no' => '3']]])->assertOk()->assertJsonPath('changed', 1);
+        $this->assertSame(['A', '3'], [$this->batch->fresh()->rack_no, $this->batch->fresh()->box_no]);
+        $this->getJson('/api/pharmacy/sell-search?q=Paracetamol')->assertOk()->assertJsonPath('0.sellable_batches.0.rack_no', 'A')->assertJsonPath('0.sellable_batches.0.box_no', '3');
+        $this->assertStringContainsString('Kept at: no place → Rack A, box 3', $this->getJson('/api/pharmacy/reports/medicines-updated')->assertOk()->json('rows.0.changes'));
+
+        // New stock goes where the medicine is kept without the place being typed again.
+        $second = StockBatch::find($buy($this->medicine, 'B002'));
+        $this->assertSame(['A', '3'], [$second->rack_no, $second->box_no]);
+        // A batch set apart on the stock screen stays where it was put when the medicine is moved.
+        $this->putJson("/api/pharmacy/stock/{$second->id}", ['batch_no' => 'B002', 'expiry' => now()->addYear()->format('Y-m'), 'pack_mrp' => 28, 'rack_no' => 'Store', 'box_no' => null, 'reason' => 'Extra stock kept in the store'])->assertOk();
+        $this->putJson("/api/pharmacy/medicines/{$this->medicine->id}", ['name' => $this->medicine->name, 'gst_percent' => 12, 'units_per_pack' => 10, 'rack_no' => 'B', 'box_no' => '1'])->assertOk();
+        $this->assertSame(['B', '1', 'Store', null], [$this->batch->fresh()->rack_no, $this->batch->fresh()->box_no, $second->fresh()->rack_no, $second->fresh()->box_no]);
+        // Saving the medicine without a place in the form leaves its place alone.
+        $this->putJson("/api/pharmacy/medicines/{$this->medicine->id}", ['name' => $this->medicine->name, 'gst_percent' => 12, 'units_per_pack' => 10])->assertOk();
+        $this->assertSame('B', $this->medicine->fresh()->rack_no);
+
+        // A place typed on an invoice for a medicine with none becomes that medicine's place.
+        $buy($other, 'C001', ['rack_no' => 'C', 'box_no' => '7']);
+        $this->assertSame(['C', '7'], [$other->fresh()->rack_no, $other->fresh()->box_no]);
+
+        // Clearing the rack clears the box too; a box alone means nothing.
+        $this->putJson('/api/pharmacy/shelves', ['places' => [['medicine_id' => $other->id, 'rack_no' => '', 'box_no' => '9']]])->assertOk();
+        $this->assertSame([null, null], [$other->fresh()->rack_no, $other->fresh()->box_no]);
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->putJson('/api/pharmacy/shelves', ['places' => [['medicine_id' => $other->id, 'rack_no' => 'Z']]])->assertForbidden();
+    }
 }

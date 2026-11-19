@@ -380,6 +380,9 @@ export type LabOrder = {
 export type Medicine = {
   id: number
   name: string
+  /** Where it is kept in the pharmacy: its usual rack, and the box on that rack. */
+  rack_no?: string | null
+  box_no?: string | null
   /** What it contains, with strengths. Brands with the same composition are options for one another. */
   composition?: string | null
   type: string | null
@@ -458,7 +461,7 @@ export type SellableMedicine = {
   name: string
   composition?: string | null
   type: string | null
-  sellable_batches: Pick<StockBatch, 'id' | 'batch_no' | 'expiry' | 'unit_mrp' | 'gst_percent' | 'units_in_stock' | 'rack_no'>[]
+  sellable_batches: Pick<StockBatch, 'id' | 'batch_no' | 'expiry' | 'unit_mrp' | 'gst_percent' | 'units_in_stock' | 'rack_no' | 'box_no'>[]
 }
 
 export type PharmacySaleItem = {

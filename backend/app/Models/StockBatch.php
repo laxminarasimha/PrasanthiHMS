@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\ShelfPlace;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -22,6 +23,12 @@ class StockBatch extends Model
             'expiry' => 'date:Y-m-d', 'pack_price' => 'float', 'pack_mrp' => 'float', 'unit_mrp' => 'float',
             'discount_percent' => 'float', 'discount_amount' => 'float', 'gst_percent' => 'float', 'tax_on_free' => 'boolean',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        // However new stock comes in (an invoice, a correction to one, opening stock, a sheet), it is put where the medicine is kept.
+        static::creating(fn (StockBatch $batch) => ShelfPlace::arriving($batch));
     }
 
     /** What the stockist charges for this line before tax: the paid packs, less the trade discount in % and in rupees. */
