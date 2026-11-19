@@ -942,6 +942,10 @@ tbody tr.not-here { color: var(--muted); }
 
 /* Purchase invoice: one card a medicine, every figure labelled */
 .purchase-line { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+/* On a saved invoice being corrected: a medicine being added, and one being taken off. */
+.purchase-line.added-line { border-color: var(--ok); background: var(--ok-soft); }
+.purchase-line.added-line > .pill { display: inline-block; margin-bottom: 8px; }
+.purchase-line.taken-off { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; border-style: dashed; color: var(--muted); }
 .purchase-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 8px 10px; }
 .purchase-fields label { display: flex; flex-direction: column; gap: 3px; font-size: 0.78rem; font-weight: 600; color: var(--muted); }
 .purchase-fields label.wide { grid-column: span 2; }
