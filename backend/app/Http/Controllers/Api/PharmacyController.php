@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Admission;
 use App\Models\Consultation;
 use App\Models\DrugIngredient;
 use App\Models\Manufacturer;
@@ -17,6 +18,7 @@ use App\Models\StockMovement;
 use App\Models\StockReturn;
 use App\Support\Composition;
 use App\Support\OrderMatch;
+use App\Support\PharmacyOnIpd;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -535,6 +537,8 @@ class PharmacyController extends Controller
             'paid' => ['required', 'numeric', 'min:0'],
             'payment_mode' => ['required', Rule::in(Payment::MODES)],
             'reference' => ['nullable', 'string', 'max:255'],
+            // An inpatient's medicines: what is not paid at the counter goes on this IPD case's bill in the same step.
+            'admission_id' => ['nullable', 'integer', 'exists:admissions,id'],
             'items' => ['required', 'array', 'min:1', 'max:100'],
             'items.*.stock_batch_id' => ['required', 'integer', 'distinct', 'exists:stock_batches,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
@@ -545,6 +549,20 @@ class PharmacyController extends Controller
         ]);
 
         $sale = DB::transaction(function () use ($data, $request) {
+            // The case is held while this is saved, so it cannot be closed or its bill approved half-way through.
+            $admission = isset($data['admission_id']) ? Admission::whereKey($data['admission_id'])->lockForUpdate()->first() : null;
+            if ($admission) {
+                if ($admission->status !== 'admitted') {
+                    throw ValidationException::withMessages(['admission_id' => 'This patient is no longer admitted. Take the money at the counter, or reopen the case.']);
+                }
+                if ((int) $admission->patient_id !== (int) ($data['patient_id'] ?? 0)) {
+                    throw ValidationException::withMessages(['admission_id' => 'That IPD case belongs to another patient.']);
+                }
+                if ($admission->bill_approved_at) {
+                    throw ValidationException::withMessages(['admission_id' => "The bill of {$admission->ipd_no} has been approved, so nothing more can go on it. Withdraw the approval there, or take the money at the counter."]);
+                }
+            }
+
             // Lock the batches so two counters cannot sell the same last strip.
             $batches = StockBatch::with('medicine:id,name')
                 ->whereIn('id', array_column($data['items'], 'stock_batch_id'))
@@ -615,11 +633,33 @@ class PharmacyController extends Controller
                     'reference' => $data['reference'] ?? null, 'received_by' => $request->user()->id,
                 ]);
             }
+            if ($admission) {
+                PharmacyOnIpd::put($admission, $sale->fresh(), $request->user()->id);
+            }
 
             return $sale;
         });
 
         return response()->json($sale->fresh()->load(['items', 'patient:id,uhid,title,name', 'seller:id,name']), 201);
+    }
+
+    /**
+     * The patients admitted now, for the counter to pick from when the ward sends for medicines:
+     * who they are, where they lie, and whether their bill can still take a charge.
+     */
+    public function inpatients(Request $request): JsonResponse
+    {
+        $this->authorizePharmacy($request);
+
+        return response()->json(
+            Admission::where('status', 'admitted')->with(['patient:id,uhid,title,name,gender,date_of_birth,mobile', 'bed:id,ward,bed_no', 'doctor:id,name'])
+                ->orderBy('admitted_at')->get()
+                ->map(fn (Admission $a) => [
+                    'admission_id' => $a->id, 'ipd_no' => $a->ipd_no, 'patient' => $a->patient,
+                    'bed' => $a->bed ? "{$a->bed->ward} · Bed {$a->bed->bed_no}" : null, 'doctor' => $a->doctor?->name,
+                    'bill_approved' => $a->bill_approved_at !== null,
+                ])
+        );
     }
 
     private function authorizePharmacy(Request $request): void

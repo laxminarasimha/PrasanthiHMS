@@ -8,7 +8,7 @@ import { MedicinePick } from '../../components/MedicinePick'
 import { PatientPicker } from '../../components/PatientPicker'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { PAYMENT_MODES, clock, daysUntil, expiryLabel, longDate, rupees } from '../../format'
-import type { Patient, PharmacySale, PrescriptionForPharmacy, SellableMedicine } from '../../types'
+import type { Patient, PharmacyInpatient, PharmacySale, PrescriptionForPharmacy, SellableMedicine } from '../../types'
 
 type Line = {
   batchId: number
@@ -55,9 +55,18 @@ export function PharmacyBilling() {
       .catch(() => setTodays([]))
   }, [done])
 
+  // The patients admitted now. A bill for one of them can go on the IPD bill instead of being paid at the counter.
+  const [inpatients, setInpatients] = useState<PharmacyInpatient[]>([])
+  const [fromWard, setFromWard] = useState(false)
+  const [onIpd, setOnIpd] = useState(true)
+  useEffect(() => {
+    api.get<PharmacyInpatient[]>('/pharmacy/inpatients').then((res) => setInpatients(res.data)).catch(() => undefined)
+  }, [done])
+
   // Choosing a registered patient brings up what the doctor prescribed recently.
   const choosePatient = (next: Patient | null) => {
     setPatient(next)
+    setOnIpd(true)
     setPrescriptions([])
     if (next) {
       api.get<PrescriptionForPharmacy[]>('/pharmacy/prescriptions', { params: { patient_id: next.id } }).then((res) => {
@@ -108,6 +117,9 @@ export function PharmacyBilling() {
 
   // A bill with medicines on it that has not been saved: leaving the counter asks first.
   useUnsaved(lines.length > 0 && !saving, 'This pharmacy bill is not saved yet. Leave without saving it?')
+  // The chosen patient's IPD case, if they are admitted, and whether this bill is going onto it.
+  const admitted = !walkIn && patient ? inpatients.find((a) => a.patient.id === patient.id) : undefined
+  const toIpd = Boolean(admitted) && !admitted!.bill_approved && onIpd
   const subtotal = lines.reduce((sum, l) => sum + lineAmount(l), 0)
   const total = Math.max(0, Math.round(subtotal - Number(discount || 0)))
   // Until the cashier types an amount, assume the customer pays in full.
@@ -171,7 +183,7 @@ export function PharmacyBilling() {
     e?.preventDefault()
     const customer = walkIn ? name.trim() : patient?.name
     if (!customer) {
-      setError(walkIn ? 'Enter the customer name.' : 'Choose a patient.')
+      setError(walkIn ? 'Enter the customer name.' : fromWard ? 'Choose the inpatient.' : 'Choose a patient.')
       return
     }
     setSaving(true)
@@ -185,7 +197,9 @@ export function PharmacyBilling() {
         customer_phone: (walkIn ? phone : patient?.mobile) || null,
         referred_doctor: doctor || null,
         discount: discount || 0,
-        paid: paidValue || 0,
+        // An inpatient's medicines go on the IPD bill: nothing is taken at the counter.
+        paid: toIpd ? 0 : paidValue || 0,
+        ...(toIpd ? { admission_id: admitted!.admission_id } : {}),
         payment_mode: mode,
         reference: reference || null,
         items: lines.map((l) => ({ stock_batch_id: l.batchId, quantity: l.quantity || 0, discount_percent: l.discount || 0 })),
@@ -214,11 +228,36 @@ export function PharmacyBilling() {
           <div className="toolbar">
             <h1>Pharmacy billing</h1>
             <div className="tabs flush">
-              <button type="button" className={walkIn ? 'active' : ''} onClick={() => setWalkIn(true)}>
+              <button
+                type="button"
+                className={walkIn ? 'active' : ''}
+                onClick={() => {
+                  setWalkIn(true)
+                  setFromWard(false)
+                }}
+              >
                 Walk-in
               </button>
-              <button type="button" className={!walkIn ? 'active' : ''} onClick={() => setWalkIn(false)}>
+              <button
+                type="button"
+                className={!walkIn && !fromWard ? 'active' : ''}
+                onClick={() => {
+                  setWalkIn(false)
+                  setFromWard(false)
+                }}
+              >
                 Registered patient
+              </button>
+              <button
+                type="button"
+                className={!walkIn && fromWard ? 'active' : ''}
+                onClick={() => {
+                  setWalkIn(false)
+                  setFromWard(true)
+                  if (patient && !inpatients.some((a) => a.patient.id === patient.id)) choosePatient(null)
+                }}
+              >
+                Inpatient{inpatients.length > 0 && <span className="count">{inpatients.length}</span>}
               </button>
             </div>
           </div>
@@ -226,7 +265,7 @@ export function PharmacyBilling() {
           {done && (
             <p className="notice">
               Bill {done.bill_no} saved for {done.customer_name}: {rupees(done.total)}
-              {done.due > 0 ? `, ${rupees(done.due)} due` : ', paid'}.{' '}
+              {done.ipd_transfer > 0 ? `, ${rupees(done.ipd_transfer)} put on the IPD bill` : done.due > 0 ? `, ${rupees(done.due)} due` : ', paid'}.{' '}
               <a href={`/pharmacy/bills/${done.id}/print`} target="_blank" rel="noreferrer">
                 Print bill
               </a>
@@ -242,9 +281,55 @@ export function PharmacyBilling() {
           ) : (
             <div className="grid">
               <div>
-                <PatientPicker patient={patient} onChange={choosePatient} />
+                {fromWard ? (
+                  <label className="field">
+                    <span className="field-label">
+                      Inpatient <span className="req">*</span>
+                    </span>
+                    <select
+                      value={admitted ? String(admitted.admission_id) : ''}
+                      onChange={(e) => {
+                        const chosen = inpatients.find((a) => String(a.admission_id) === e.target.value)
+                        choosePatient(chosen?.patient ?? null)
+                        if (chosen?.doctor) setDoctor(chosen.doctor)
+                      }}
+                      autoFocus
+                    >
+                      <option value="">{inpatients.length ? 'Choose the patient' : 'Nobody is admitted just now'}</option>
+                      {inpatients.map((a) => (
+                        <option key={a.admission_id} value={a.admission_id}>
+                          {a.bed ? `${a.bed} · ` : ''}
+                          {a.patient.name} · {a.ipd_no}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <PatientPicker patient={patient} onChange={choosePatient} />
+                )}
               </div>
               <TextField label="Referred doctor" value={doctor} onChange={setDoctor} />
+            </div>
+          )}
+
+          {admitted && (
+            <div className={`ipd-choice ${toIpd ? 'on' : ''}`}>
+              <label className="check two-line">
+                <input type="checkbox" checked={toIpd} disabled={admitted.bill_approved} onChange={(e) => setOnIpd(e.target.checked)} />
+                <span>
+                  Put this bill on the IPD bill
+                  <small className="muted block">
+                    {admitted.patient.name} is admitted: {admitted.ipd_no}
+                    {admitted.bed ? ` · ${admitted.bed}` : ''}
+                    {admitted.doctor ? ` · ${admitted.doctor}` : ''}.{' '}
+                    {admitted.bill_approved
+                      ? 'That IPD bill has been approved, so nothing more can go on it: take the money here.'
+                      : toIpd
+                        ? 'Nothing is collected at the counter; the medicines are listed on the IPD bill.'
+                        : 'Unticked: the money is taken here at the counter, as for any other bill.'}
+                  </small>
+                </span>
+              </label>
             </div>
           )}
 
@@ -366,7 +451,13 @@ export function PharmacyBilling() {
           </dl>
           <p className="muted small">Prices include GST. The bill is rounded to the nearest rupee.</p>
 
-          <div className="grid gap-top">
+          {toIpd && (
+            <div className="tile gap-top ipd-tile">
+              <span>Goes on IPD bill {admitted!.ipd_no}</span>
+              <strong>{rupees(total)}</strong>
+            </div>
+          )}
+          <div className={toIpd ? 'hidden' : 'grid gap-top'}>
             <TextField
               label="Paid (₹)"
               type="number"

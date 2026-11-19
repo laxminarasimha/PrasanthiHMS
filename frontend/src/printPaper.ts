@@ -4,7 +4,7 @@ import type { BillingPreferences } from './types'
 
 const CHOICE_KEY = 'hms_bill_paper'
 
-type Prefs = Pick<BillingPreferences, 'print_on_letterhead' | 'letterhead_top_mm' | 'letterhead_bottom_mm' | 'bill_heading' | 'bill_heading_size' | 'bill_logo_size'>
+type Prefs = Pick<BillingPreferences, 'print_on_letterhead' | 'letterhead_top_mm' | 'letterhead_bottom_mm' | 'bill_heading' | 'bill_heading_size' | 'bill_logo_size' | 'ipd_print_medicines'>
 
 /** What the print pages keep of the billing preferences, with the usual values filled in. Also written by Setup when they are saved. */
 export const printPrefs = (from: BillingPreferences): Required<Prefs> => ({
@@ -14,6 +14,7 @@ export const printPrefs = (from: BillingPreferences): Required<Prefs> => ({
   bill_heading: from.bill_heading ?? 'side',
   bill_heading_size: from.bill_heading_size ?? 'small',
   bill_logo_size: from.bill_logo_size ?? 'medium',
+  ipd_print_medicines: from.ipd_print_medicines ?? true,
 })
 export const PRINT_PREFS_KEY = 'hms_bill_print'
 type Choice = 'plain' | 'letterhead' | null
@@ -30,6 +31,8 @@ export type Paper = {
   heading: 'side' | 'centre'
   headingSize: 'small' | 'medium' | 'large'
   logoSize: 'small' | 'medium' | 'large'
+  /** On the IPD bill: each medicine listed under the pharmacy bill it came on. */
+  ipdMedicines: boolean
 }
 
 const read = <T,>(key: string): T | null => {
@@ -73,6 +76,7 @@ export function usePrintPaper(): Paper {
     heading: prefs?.bill_heading ?? 'side',
     headingSize: prefs?.bill_heading_size ?? 'small',
     logoSize: prefs?.bill_logo_size ?? 'medium',
+    ipdMedicines: prefs?.ipd_print_medicines ?? true,
     choose: (letterhead) => {
       const next: Choice = letterhead ? 'letterhead' : 'plain'
       setChoice(next)

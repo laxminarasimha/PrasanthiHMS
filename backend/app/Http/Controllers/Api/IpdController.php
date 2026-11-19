@@ -19,6 +19,7 @@ use App\Models\Payment;
 use App\Models\PharmacySale;
 use App\Models\Setting;
 use App\Support\BedCharges;
+use App\Support\PharmacyOnIpd;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -770,6 +771,13 @@ class IpdController extends Controller
             $admission->makeVisible('aadhaar_no');
         }
         $admission->setAttribute('bed_charges_auto', BedCharges::settings()['auto']);
+        // Under each pharmacy bill on the IPD bill, the medicines that were on it.
+        $medicines = PharmacyOnIpd::medicines($admission->charges);
+        foreach ($admission->charges as $charge) {
+            if ($medicines->has($charge->id)) {
+                $charge->setAttribute('medicines', $medicines[$charge->id]);
+            }
+        }
         // Lines taken off the bill, kept so there is a record of what was removed and by whom.
         $admission->setRelation('deleted_charges', AdmissionCharge::onlyTrashed()->where('admission_id', $admission->id)->with('deleter:id,name')->orderByDesc('deleted_at')->get());
 

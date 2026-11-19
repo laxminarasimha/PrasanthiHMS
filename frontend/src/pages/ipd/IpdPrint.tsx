@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../../api'
 import { PaperBar, PaperFooter, PaperHeader } from '../../components/PrintPaper'
@@ -88,16 +88,32 @@ export function IpdPrint() {
         </thead>
         <tbody>
           {charges?.map((c) => (
-            <tr key={c.id}>
-              <td>{longDate(c.charged_on)}</td>
-              <td>{c.description}</td>
-              <td className="num">{c.quantity}</td>
-              <td className="num">
-                {rupees(c.unit_price)}
-                {c.discount > 0 && <small className="block">less {rupees(c.discount)}</small>}
-              </td>
-              <td className="num">{rupees(c.amount)}</td>
-            </tr>
+            <Fragment key={c.id}>
+              <tr>
+                <td>{longDate(c.charged_on)}</td>
+                <td>{c.description}</td>
+                <td className="num">{c.quantity}</td>
+                <td className="num">
+                  {rupees(c.unit_price)}
+                  {c.discount > 0 && <small className="block">less {rupees(c.discount)}</small>}
+                </td>
+                <td className="num">{rupees(c.amount)}</td>
+              </tr>
+              {/* What the pharmacy bill was for: each medicine, for the patient to see what was given. The amounts are already in the line above. */}
+              {paper.ipdMedicines &&
+                c.medicines?.map((m, i) => (
+                  <tr key={i} className="bill-medicine">
+                    <td />
+                    <td>
+                      {m.name}
+                      {m.returned > 0 ? ` (${m.returned} returned)` : ''}
+                    </td>
+                    <td className="num">{m.quantity}</td>
+                    <td className="num">{rupees(m.rate)}</td>
+                    <td className="num">({rupees(m.amount)})</td>
+                  </tr>
+                ))}
+            </Fragment>
           ))}
         </tbody>
       </table>
