@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\Role;
+use App\Workforce\Support\Permissions;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -101,6 +102,10 @@ class User extends Authenticatable
      */
     public function allows(string $ability): bool
     {
+        // The workforce module's permissions have their own presets and reach.
+        if (Permissions::has($ability)) {
+            return Permissions::allows($this, $ability);
+        }
         $default = method_exists($this->role, $ability) && $this->role->{$ability}();
 
         return $this->role === Role::Admin ? $default : (bool) ($this->permissions[$ability] ?? $default);
@@ -132,7 +137,26 @@ class User extends Authenticatable
      */
     public function getAbilitiesAttribute(): array
     {
-        return collect(self::ABILITIES)->map(fn ($label, $ability) => $this->allows($ability))->all();
+        return collect(self::catalogue())->map(fn ($text, $ability) => $this->allows($ability))->all();
+    }
+
+    /**
+     * Every permission there is, the system's own and the workforce module's: [name, what it allows, group, sensitive].
+     *
+     * @return array<string, array{0: string, 1: string, 2: string, 3: bool}>
+     */
+    public static function catalogue(): array
+    {
+        $own = collect(self::ABILITIES)->map(fn (array $text, string $key) => [$text[0], $text[1], 'Hospital system', in_array($key, self::SENSITIVE, true)]);
+        $module = collect(Permissions::CATALOGUE)->map(fn (array $text) => [$text[1], $text[2], 'Workforce · '.$text[0], $text[3]]);
+
+        return $own->all() + $module->all();
+    }
+
+    /** Whether a role gives a permission to start with, before any change made for one person. */
+    public static function roleAllows(Role $role, string $ability): bool
+    {
+        return Permissions::has($ability) ? isset(Permissions::preset($role)[$ability]) : (method_exists($role, $ability) && $role->{$ability}());
     }
 
     public function getHasSignatureAttribute(): bool

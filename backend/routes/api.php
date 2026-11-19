@@ -502,3 +502,6 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
         Route::delete('/staff/{staff}/signature', [StaffController::class, 'destroySignature']);
     });
 });
+
+// ---- Workforce: staff records, attendance, leave, payroll, advances and expenses (routes/workforce.php) ----
+Route::middleware(['auth:sanctum', 'actor:staff', 'activity'])->prefix('workforce')->group(base_path('routes/workforce.php'));

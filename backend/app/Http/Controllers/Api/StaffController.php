@@ -35,9 +35,9 @@ class StaffController extends Controller
             'data' => $staff->each->append(self::EXTRA),
             'roles' => array_map(fn (Role $r) => ['value' => $r->value, 'label' => $r->label()], Role::cases()),
             // Every permission, with what each role gets unless it is changed for a person.
-            'abilities' => collect(User::ABILITIES)->map(fn (array $text, string $key) => [
-                'key' => $key, 'label' => $text[0], 'hint' => $text[1], 'sensitive' => in_array($key, User::SENSITIVE, true),
-                'roles' => collect(Role::cases())->filter(fn (Role $r) => $r->{$key}())->map->value->values(),
+            'abilities' => collect(User::catalogue())->map(fn (array $text, string $key) => [
+                'key' => $key, 'label' => $text[0], 'hint' => $text[1], 'group' => $text[2], 'sensitive' => $text[3],
+                'roles' => collect(Role::cases())->filter(fn (Role $r) => User::roleAllows($r, $key))->map->value->values(),
             ])->values(),
         ]);
     }
@@ -98,7 +98,7 @@ class StaffController extends Controller
             $role = Role::from($data['role']);
             $data['permissions'] = collect($data['permissions'] ?? [])
                 ->map(fn ($allowed) => (bool) $allowed)
-                ->filter(fn (bool $allowed, string $ability) => $allowed !== $role->{$ability}())
+                ->filter(fn (bool $allowed, string $ability) => $allowed !== User::roleAllows($role, $ability))
                 ->all() ?: null;
         }
         if (array_key_exists('availability', $data)) {
@@ -207,14 +207,14 @@ class StaffController extends Controller
             return;
         }
         $given = collect($after)->filter(fn (bool $allowed, string $a) => $allowed && ! ($before[$a] ?? false))->keys();
-        $label = fn (string $a) => User::ABILITIES[$a][0];
+        $label = fn (string $a) => User::catalogue()[$a][0];
 
         $notHeld = $given->reject(fn (string $a) => $giver->allows($a))->map($label);
         if ($notHeld->isNotEmpty()) {
             throw ValidationException::withMessages(['permissions' => 'You cannot give what you are not allowed to do yourself: '.$notHeld->implode(', ').'. Untick these, or ask an admin.']);
         }
         $preset = Role::from($role);
-        $extra = $given->filter(fn (string $a) => in_array($a, User::SENSITIVE, true) && ! $preset->{$a}())->map($label);
+        $extra = $given->filter(fn (string $a) => User::catalogue()[$a][3] && ! User::roleAllows($preset, $a))->map($label);
         if ($extra->isNotEmpty()) {
             throw ValidationException::withMessages(['permissions' => 'Only an admin can give these on top of the role: '.$extra->implode(', ').'.']);
         }
@@ -228,7 +228,7 @@ class StaffController extends Controller
      */
     private function permissionWords(User $staff, ?Role $wasRole, array $before, array $after, ?string $reason): string
     {
-        $names = fn (bool $now) => collect(User::ABILITIES)->filter(fn ($text, $a) => ($after[$a] ?? false) === $now && ($before[$a] ?? false) !== $now)->map(fn ($text) => $text[0])->values();
+        $names = fn (bool $now) => collect(User::catalogue())->filter(fn ($text, $a) => ($after[$a] ?? false) === $now && ($before[$a] ?? false) !== $now)->map(fn ($text) => $text[0])->values();
         $parts = array_filter([
             $staff->name,
             $wasRole === null ? 'Role: '.$staff->role->label() : ($wasRole !== $staff->role ? "Role: {$wasRole->label()} → {$staff->role->label()}" : null),
@@ -280,7 +280,7 @@ class StaffController extends Controller
             'phone' => ['required', 'string', 'regex:/^[0-9+\- ]{7,20}$/'],
             'department' => ['nullable', 'string', 'max:255'],
             'signature_text' => ['nullable', 'string', 'max:255'],
-            'permissions' => ['sometimes', 'nullable', 'array:'.implode(',', array_keys(User::ABILITIES))],
+            'permissions' => ['sometimes', 'nullable', 'array:'.implode(',', array_keys(User::catalogue()))],
             'permissions.*' => ['boolean'],
             'reason' => ['sometimes', 'nullable', 'string', 'max:300'],
             'availability' => ['sometimes', 'nullable', 'array:mon,tue,wed,thu,fri,sat,sun'],

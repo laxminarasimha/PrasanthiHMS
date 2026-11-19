@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { Fragment, useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useLoadOnChange } from '../loading'
 import { SetupTabs } from '../components/SetupTabs'
 import { api, fieldErrors, type FieldErrors } from '../api'
@@ -273,12 +273,16 @@ export function Staff() {
                 </p>
               )}
               {form.role &&
-                abilities.map((a) => {
+                abilities.map((a, index) => {
                   const usual = a.roles.includes(form.role)
                   const allowed = allowedOf(a)
                   const why = form.role === 'admin' || isSelf ? '' : barred(a)
+                  // The list is long: each part of the system gets its own heading.
+                  const heading = a.group && a.group !== abilities[index - 1]?.group ? a.group : ''
                   return (
-                    <label className="check top" key={a.key}>
+                    <Fragment key={a.key}>
+                    {heading && <h3 className="permission-group">{heading}</h3>}
+                    <label className="check top">
                       <input type="checkbox" checked={allowed} disabled={form.role === 'admin' || isSelf || Boolean(why)} onChange={(e) => setPerms((p) => ({ ...p, [a.key]: e.target.checked }))} />
                       <span>
                         {a.label}
@@ -288,6 +292,7 @@ export function Staff() {
                         {why && <small className="due block">{why}</small>}
                       </span>
                     </label>
+                    </Fragment>
                   )
                 })}
               {errors.permissions && <p className="form-error">{errors.permissions}</p>}

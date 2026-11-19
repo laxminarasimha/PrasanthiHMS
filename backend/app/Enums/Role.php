@@ -9,6 +9,11 @@ enum Role: string
     // Runs the hospital for the owner: sees everything and manages the day's work, but does not write clinical notes,
     // approve results, change prices or reverse bills unless that is given to the person. Not a doctor to book with.
     case Manager = 'manager';
+    // Three desk jobs of the workforce module. What they may do there is set in App\Workforce\Support\Permissions;
+    // in the rest of the system they start with nothing but what is listed below.
+    case Hr = 'hr';
+    case Accountant = 'accountant';
+    case DeptManager = 'dept_manager';
     case Nurse = 'nurse';
     case Pharmacist = 'pharmacist';
     case LabTech = 'lab_tech';
@@ -20,6 +25,9 @@ enum Role: string
             self::Admin => 'Admin',
             self::Doctor => 'Doctor',
             self::Manager => 'Hospital Manager',
+            self::Hr => 'HR and Payroll',
+            self::Accountant => 'Accountant',
+            self::DeptManager => 'Department Manager',
             self::Nurse => 'Nurse',
             self::Pharmacist => 'Pharmacist',
             self::LabTech => 'Lab Technician',
@@ -84,7 +92,7 @@ enum Role: string
     /** Roles allowed to see the hospital's money and activity reports. */
     public function canViewReports(): bool
     {
-        return in_array($this, [self::Admin, self::Doctor, self::Manager], true);
+        return in_array($this, [self::Admin, self::Doctor, self::Manager, self::Accountant], true);
     }
 
     /** Roles allowed to delete a pharmacy bill, which restocks it and refunds the money. */
@@ -111,7 +119,7 @@ enum Role: string
     /** Roles allowed to write down money paid out of the hospital's cash and accounts: the day-to-day expenses. */
     public function canRecordExpenses(): bool
     {
-        return in_array($this, [self::Admin, self::Doctor, self::Frontdesk, self::Manager], true);
+        return in_array($this, [self::Admin, self::Doctor, self::Frontdesk, self::Manager, self::Accountant], true);
     }
 
     /** Roles allowed to admit patients, add IPD charges, take IPD money and discharge. */
@@ -150,6 +158,6 @@ enum Role: string
     /** Roles allowed to download lists and reports as a file. Everyone who could before; not a manager unless given it. */
     public function canExportData(): bool
     {
-        return $this !== self::Manager;
+        return ! in_array($this, [self::Manager, self::Hr, self::DeptManager], true);
     }
 }

@@ -1,0 +1,114 @@
+# Workforce, Attendance, Payroll and Expenses
+
+Replaces the staff attendance kept in WordPress, and adds leave, payroll, advances and an approval flow for expenses, inside the HMS. Built in five phases, each its own pull request. **This document covers Phase 1: the foundation.** Nothing here is deployed, merged or run against live data without explicit approval.
+
+Companion documents: [WordPress mapping](wordpress-mapping.md) · [Permission matrix](permission-matrix.md)
+
+## Phases
+
+| Phase | Contents | State |
+|---|---|---|
+| 1 | Data model, permissions, audit base, tenant wall, password step, WordPress mapping | **This pull request** |
+| 2 | Staff directory, shifts, holidays, attendance (daily, monthly, corrections, sheet import), leave | Not started |
+| 3 | Salary structures, payroll runs, payslips, advances and loans | Not started |
+| 4 | Expense approval flow on the existing expenses, categories, recurring templates, reports, no double counting | Not started |
+| 5 | WordPress snapshot, staging, dry-run reconciliation report, cutover tools | Not started; needs a database export |
+
+Phase 1 adds no screens of its own except the longer, grouped permission list under Setup → Staff. It changes no existing workflow.
+
+## Decisions
+
+### Where the module lives
+`backend/app/Workforce/` (models, support, HTTP), `backend/routes/workforce.php` (loaded under `/api/workforce`), tables prefixed `wf_`. It depends on the HMS for logins, branches, the department list, the expenses table and the print/branding conventions, and nothing in the HMS depends on it. Nothing in it names this hospital.
+
+### Tenant = branch, enforced on the server
+The HMS already has `branches` and puts `branch_id` on users and bills. Every `wf_` table that belongs to a hospital carries `branch_id`. `BranchScoped` (a trait on every such model) narrows **every** query to the signed-in person's branch and stamps new records, so no screen or request can read or write across hospitals. Someone signed in with no branch sees nothing rather than everything. A job with nobody signed in (the importer, a test) must name its branch with `Tenant::run()`.
+
+Honest limit: the HMS's department list (`admin_entries`) is hospital-wide today, not per branch. With one branch this is harmless; before a second hospital shares one database, that list needs a branch column. Staff, attendance, leave and pay are walled regardless.
+
+### Employee ≠ login
+`wf_employees` is the staff directory. Most employees never sign in, so an employee is not a `users` row; the two are linked (`user_id`) when both exist. Self-service works through that link. An employee who leaves is marked inactive and kept with all history; nothing is deleted.
+
+### Sensitive fields
+Bank account, IFSC, UPI, PAN, Aadhaar, UAN and ESI numbers live in a separate table (`wf_employee_private`) that ordinary lists never load, are encrypted at rest (Laravel's `encrypted` cast, keyed by `APP_KEY`), are hidden from any model-to-array conversion, need their own permissions (`wf:staff_private:view` / `:edit`), and are written to the audit trail only as masked values (last four characters). Salary amounts are protected by permission (`wf:salary:view`), not encrypted, because payroll must add them up.
+
+### Ledgers, never overwritten balances
+Leave and advances each have an append-only ledger (`wf_leave_ledger`, `wf_advance_ledger`). A balance is the sum of its lines. The models refuse update and delete; a mistake is corrected by another line. `once_key` on the leave ledger stops the same accrual or expiry being written twice.
+
+### Payroll that cannot be quietly changed or run twice
+- Lifecycle: draft → reviewed → approved → finalised → paid, plus reversed. From *finalised* the models refuse any change to figures, lines or status except "paid", "reversed" and the payment details.
+- Duplicate prevention is in the database: `wf_payslips` has a unique key on (employee, `live_period`). A standing payslip holds its period there; reversing empties it, freeing the month for a corrected run while the reversed payslip stays on record.
+- Every payslip line stores an `explanation`: how the amount was arrived at, in words and figures.
+- Salary structures are effective-dated; a rise is a new row.
+- The system records payment mode, date and reference. It never sends money anywhere.
+
+### Statutory parts are off and empty
+PF, ESI, professional tax and TDS exist only as salary components the accountant may add. They start disabled with no rule. **No rate, ceiling or slab is written anywhere in this code.** A test asserts that nothing is seeded.
+
+### Audit
+`wf_audit_events` is separate from the HMS's existing `audit_logs` because it needs what that table lacks: tenant, reason, and before/after values. It is append-only (the model refuses update and delete; there is no route that deletes). Each line carries a SHA-256 of itself and of the previous line, so `Audit::verify()` reports the first line that was altered or removed directly in the database. Sensitive reads (opening bank details, exporting payroll) will be recorded as events from Phase 2 on.
+
+### Password again for sensitive steps
+`POST /api/workforce/confirm-password` opens a ten-minute window, per sign-in, checked by the `RequireFreshPassword` middleware (answers 428 otherwise). Phases 3 to 5 put it on payroll finalising and reversal and on sensitive exports. A wrong password is recorded.
+
+### Permissions
+The module's permissions are `wf:<what>:<action>` with the eight actions asked for. They join the HMS's existing permission list, so the same Staff screen, the same per-person ticks, the same rules apply: an untick always beats the role; nobody changes their own; nobody gives more than they hold; sensitive ones are the admin's to give; every change needs a reason and is recorded. Permissions are read on every request, so a change takes hold at once.
+
+Each role preset also sets a **reach**: all staff, the person's own departments (`wf_department_managers`), or their own record. `Access::narrow()` applies it to any query on the server.
+
+Three roles are added: HR and Payroll, Accountant, Department Manager. Outside the module they start with nothing (the Accountant also sees HMS reports and may record expenses, as accountants do today). No single role can take a payroll from draft to finalised: HR prepares, the Accountant approves, the admin finalises.
+
+### Expenses (Phase 4 plan)
+The HMS already has expenses (Front Desk → Expenses) tied into the day close and the organisation report. Phase 4 **extends that table** with status, category, cost centre, tax and attachments rather than building a second expense system, and existing entries become "paid" without change. Payroll is posted to the accounts as **one** expense entry per run (`wf_payroll_runs.posted_expense_id`), in a category marked `is_payroll`; entries typed by hand in that category are then refused or flagged, so salaries are not counted twice. Phase 1 does not touch the expenses table.
+
+## Libraries considered
+
+| Need | Considered | Decision |
+|---|---|---|
+| Money arithmetic | `brick/math` (already installed with Laravel), `brick/money`, `moneyphp/money` | Use `brick/math` `BigDecimal` for all payroll sums and rounding; amounts stored as `DECIMAL`. No new dependency. `brick/money` adds currency handling the HMS does not need (single currency). |
+| Payroll rules (PF, ESI, PT, TDS) | No maintained, trustworthy open-source PHP library for Indian statutory payroll was found; hosted payroll APIs exist but would send salary data to a third party | Configurable components with accountant-entered rules. Rates are not embedded. |
+| Holiday calendars | `spatie/holidays`, `azuyalabs/yasumi` | Not used: hospital holidays are local decisions, not national lists. A plain configurable calendar table. Either library could pre-fill a calendar later. |
+| Recurring expenses | `rlanvin/php-rrule`, `simshaun/recurr` | Not needed: templates are monthly with a day of the month. |
+| Calendar views | The HMS's own month and day views | Reuse; no new front-end dependency. |
+| Payslip documents | `barryvdh/laravel-dompdf`, `spatie/laravel-pdf` (needs a headless browser, not available on the shared host) | Follow the HMS convention: a branded print page (browser "Save as PDF"). dompdf is the fallback if payslips must be generated on the server (for example to email them). |
+| CSV import/export | `league/csv`, `maatwebsite/excel` | The HMS's existing CSV helpers; `league/csv` if sheet parsing grows. |
+
+## Schema added (29 tables, all new)
+
+Foundation: `wf_settings`, `wf_audit_events`, `wf_import_snapshots`, `wf_import_records`, `wf_source_links`.
+Staff and time: `wf_shifts`, `wf_holiday_calendars`, `wf_holidays`, `wf_employees`, `wf_employee_private`, `wf_department_managers`, `wf_attendance`, `wf_attendance_corrections`, `wf_attendance_imports`, `wf_attendance_import_rows`.
+Leave: `wf_leave_types`, `wf_leave_requests`, `wf_leave_ledger`.
+Pay: `wf_salary_components`, `wf_salary_structures`, `wf_salary_structure_lines`, `wf_payroll_runs`, `wf_payslips`, `wf_payslip_lines`.
+Advances: `wf_advances`, `wf_advance_schedule`, `wf_advance_ledger`.
+Expense setup: `wf_expense_categories`, `wf_expense_templates`.
+
+No existing table is altered. The three migrations apply and roll back cleanly on MySQL and SQLite.
+
+## Backup and restore
+
+- The HMS backup (Setup → Backups) dumps the whole database, so the `wf_` tables are included with no extra step.
+- **The encrypted fields can only be read with the same `APP_KEY`** that wrote them. A database restored onto a server with a different key will open, but bank and identity numbers will be unreadable. Keep a copy of `backend/.env`'s `APP_KEY` with the backups, stored separately and safely. Never rotate the key without re-encrypting those columns first.
+- After a restore, run the audit check (`GET /api/workforce/audit/verify`, or `Audit::verify($branchId)`); it should report every line intact.
+- Receipts and other attachments (Phase 4) will be stored with the HMS's other uploaded files and are covered by "Copy everything now".
+
+## Compliance assumptions (to confirm with the hospital's accountant)
+
+1. Statutory deductions apply only as the accountant configures them; the system makes no claim of legal correctness for any rate.
+2. The system records statutory filing and bank-transfer status; it does not file or transfer.
+3. Leave year, salary month and rounding (to the rupee, or to paise) are settings, undecided until Phase 3.
+4. Staff personal data is processed for employment purposes; retention of ex-employees' records follows the hospital's policy (records are kept, not deleted).
+5. Attendance check-in from a phone is **not** built. If wanted later it will use the staff login only, with no location or biometric tracking unless explicitly asked for.
+
+## Decisions needed from the owner
+
+See also the seven items at the end of the [WordPress mapping](wordpress-mapping.md).
+
+1. Doctors start with self-service only in this module. If the owner works from a doctor login, payroll would need the admin login. Is that right?
+2. Is "HR prepares, Accountant approves, Admin finalises" the separation you want?
+3. Should the Hospital Manager see individual salaries? Today: no (run totals only).
+4. Rounding of net pay, the salary month (calendar month?) and the leave year (January or April?).
+5. Which month payroll starts in the HMS, and whether opening leave balances and outstanding advances will be typed in or come from a file.
+
+## Tests in this phase
+
+`WorkforceFoundationTest`, `WorkforcePermissionsTest` (15 tests): tenant isolation, the no-branch case, department and self reach, encryption at rest and masking, audit append-only and tamper detection, one payslip per person per month, finalised-payroll immutability and reversal, append-only ledgers, idempotent source links, the password step, no invented statutory values, role presets, explicit deny, no self-escalation, sensitive grants. All synthetic data.
