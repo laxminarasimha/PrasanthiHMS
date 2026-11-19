@@ -365,6 +365,27 @@ class WorkforcePayrollRulesTest extends TestCase
         $this->slip($run, $asha)->lines->first()->update(['amount' => 1]);
     }
 
+    public function test_working_a_draft_out_again_keeps_everyone_whose_payslip_numbers_differ_from_their_staff_numbers(): void
+    {
+        // Make the payslip ids and the staff ids differ, as they will in any real hospital.
+        $first = $this->employee('Asha Sample');
+        $this->usual($first);
+        $this->worked($first, '2026-03');
+        Payroll::start('2026-03', null, null, $this->admin);
+        $others = [$this->employee('Ravi Sample'), $this->employee('Meena Sample')];
+        foreach ($others as $e) {
+            $this->usual($e);
+            $this->worked($e, '2026-04');
+        }
+        $this->worked($first, '2026-04');
+
+        $run = Payroll::start('2026-04', null, null, $this->admin);
+        $this->assertSame(3, $run->payslips()->count());
+        $this->assertNotEquals($run->payslips()->orderBy('id')->pluck('id')->all(), $run->payslips()->orderBy('id')->pluck('employee_id')->all());
+        $this->assertSame(3, Payroll::workOut($run)->payslips()->count());
+        $this->assertSame(3, Payroll::workOut($run)->payslips()->count());
+    }
+
     public function test_money_is_exact_decimal_arithmetic_and_reads_the_indian_way(): void
     {
         $this->assertSame('0.30', Money::text(Money::of(0.1)->plus(Money::of(0.2))));

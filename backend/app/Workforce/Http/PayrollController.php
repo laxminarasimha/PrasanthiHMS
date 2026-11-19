@@ -293,6 +293,8 @@ class PayrollController extends Controller
             'lines' => $slip->lines->map(fn (PayslipLine $l) => ['id' => $l->id, 'kind' => $l->kind, 'code' => $l->code, 'name' => $l->name, 'amount' => $l->amount, 'explanation' => $l->explanation, 'one_off' => $l->source_type === 'one_off']),
             'gross' => $slip->gross, 'deductions' => $slip->deductions, 'net' => $slip->net, 'employer_cost' => $slip->employer_cost,
             'payment_status' => $slip->payment_status, 'paid_on' => $slip->paid_on?->format('Y-m-d'), 'payment_mode' => $slip->payment_mode, 'payment_reference' => $slip->payment_reference,
+            // Under a payroll run again after a reversal, part of the pay may have gone out already under the reversed one.
+            'paid_amount' => $slip->paid_amount, 'already_paid' => (string) Payroll::alreadyPaid($slip),
             'reversed' => $run?->status === 'reversed', 'final' => (bool) $run?->isLocked(),
         ];
     }

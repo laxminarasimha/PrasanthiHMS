@@ -10,6 +10,7 @@ use App\Workforce\Models\PayrollRun;
 use App\Workforce\Models\Payslip;
 use App\Workforce\Models\PayslipLine;
 use App\Workforce\Models\SalaryStructure;
+use Brick\Math\BigDecimal;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -110,7 +111,8 @@ final class Payroll
                 }
             }
             // Someone who no longer belongs in the run (their salary was withdrawn, they were held back) goes out of it.
-            foreach ($existing->except(array_keys($results)) as $gone) {
+            // (By staff member. An Eloquent collection's except() goes by the payslip's own id, which is not the same thing.)
+            foreach ($existing->reject(fn (Payslip $slip) => isset($results[$slip->employee_id])) as $gone) {
                 $gone->lines()->delete();
                 $gone->delete();
             }
@@ -261,7 +263,11 @@ final class Payroll
 
     /**
      * Writes down that salaries were paid (or are being held back). No money is moved from here: this is the record
-     * of a payment made at the bank or from the cash box.
+     * of a payment made at the bank or from the cash box. What was paid is posted as one paid expense under the
+     * salaries heading, dated the day it was paid, so the day's cash count and the reports see it once.
+     *
+     * A salary paid under a payroll that was later reversed was still paid. When the month is run again, only what
+     * had not already been paid to that person for that month is posted, and the payslip keeps both figures.
      *
      * @param  list<int>  $slipIds
      * @param  array{status: string, paid_on?: string|null, payment_mode?: string|null, payment_reference?: string|null}  $payment
@@ -273,12 +279,29 @@ final class Payroll
             if (! in_array($run->status, ['finalised', 'paid'], true)) {
                 throw ValidationException::withMessages(['status' => 'Payment is recorded only once a payroll is finalised.']);
             }
+            $slips = $run->payslips()->with('employee:id,name')->whereIn('id', $slipIds)->get();
+            $done = $slips->where('payment_status', 'paid')->map(fn (Payslip $s) => $s->employee?->name)->filter();
+            if ($done->isNotEmpty()) {
+                throw ValidationException::withMessages(['payslip_ids' => 'Already recorded as paid: '.$done->implode(', ').'. A salary recorded as paid stays paid; if that was a mistake, reverse the payroll.']);
+            }
             $paid = $payment['status'] === 'paid';
-            foreach ($run->payslips()->whereIn('id', $slipIds)->get() as $slip) {
+            $posted = BigDecimal::zero()->toScale(2);
+            $numbers = [];
+            foreach ($slips as $slip) {
+                $now = null;
+                if ($paid) {
+                    $now = BigDecimal::max(BigDecimal::zero(), Money::paise($slip->net)->minus(self::alreadyPaid($slip)))->toScale(2);
+                    $posted = $posted->plus($now);
+                    $numbers[] = $slip->slip_no;
+                }
                 $slip->update([
-                    'payment_status' => $payment['status'], 'paid_on' => $paid ? $payment['paid_on'] : null, 'payment_mode' => $paid ? $payment['payment_mode'] : null,
-                    'payment_reference' => $paid ? ($payment['payment_reference'] ?? null) : null, 'paid_by' => $paid ? $by->id : null,
+                    'payment_status' => $payment['status'], 'paid_on' => $paid ? $payment['paid_on'] : null, 'paid_amount' => $now === null ? null : (string) $now,
+                    'payment_mode' => $paid ? $payment['payment_mode'] : null, 'payment_reference' => $paid ? ($payment['payment_reference'] ?? null) : null, 'paid_by' => $paid ? $by->id : null,
                 ]);
+            }
+            if ($paid && $posted->isPositive()) {
+                ExpenseBook::post('payroll_payment', $run->id, ExpenseBook::SALARIES, $posted, $payment['paid_on'], $payment['payment_mode'], $payment['payment_reference'] ?? null, count($numbers) === 1 ? $slips->first()->employee?->name : null,
+                    'Salaries for '.Period::name($run->period).': '.count($numbers).' payslip'.(count($numbers) === 1 ? '' : 's').' ('.implode(', ', array_slice(array_filter($numbers), 0, 12)).(count($numbers) > 12 ? ', …' : '').')');
             }
             $waiting = $run->payslips()->where('payment_status', '!=', 'paid')->exists();
             if (! $waiting && $run->status === 'finalised') {
@@ -287,6 +310,13 @@ final class Payroll
 
             return $run->fresh();
         });
+    }
+
+    /** What was already paid to this person for this month under payrolls since reversed. */
+    public static function alreadyPaid(Payslip $slip): BigDecimal
+    {
+        return Money::paise(Payslip::query()->where('employee_id', $slip->employee_id)->where('period', $slip->period)->where('id', '!=', $slip->id)
+            ->where('payment_status', 'paid')->whereHas('run', fn ($q) => $q->where('status', 'reversed'))->sum(DB::raw('COALESCE(paid_amount, net)')));
     }
 
     /** Refuses to let a run go forward empty, with someone below nothing, or out of step with the records it was worked out from. */

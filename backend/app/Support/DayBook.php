@@ -241,7 +241,7 @@ class DayBook
         // ---- Paid out ----
         $out = PaidOut::between($from, $to);
         $days = [$from->toDateString(), $to->toDateString()];
-        $expenses = Expense::live()->whereBetween('spent_on', $days)->with('creator:id,name')->orderBy('id')->get();
+        $expenses = Expense::paidOut()->whereBetween('paid_on', $days)->with('creator:id,name')->orderBy('id')->get();
         $cancelled = Expense::whereBetween('cancelled_at', [$from, $to])->with('canceller:id,name')->orderBy('id')->get();
         $toSuppliers = PurchasePayment::whereBetween('paid_on', $days)->with(['invoice:id,invoice_no,stockist_id', 'invoice.stockist:id,name', 'payer:id,name'])->orderBy('id')->get();
         $by = fn (string $mode) => 'by '.str_replace('_', ' ', $mode);
@@ -252,6 +252,7 @@ class DayBook
                 self::figure('Expenses', $out['expenses'], true),
                 self::figure('Paid to medicine suppliers', $out['suppliers'], true),
                 self::figure('Of all this, in cash', $out['cash'], true),
+                ...($out['staff_repaid'] > 0 ? [self::figure('Paid back by staff on advances, in cash', $out['staff_repaid_cash'], true)] : []),
             ],
             'checks' => [
                 self::check('expenses', 'Expenses entered', false, 'Money paid out for the running of the hospital. Cash ones came out of the drawer.',
@@ -289,11 +290,11 @@ class DayBook
             'departments' => $departments,
             'paid_out' => $out,
             // Cash that should be in the drawer: every cash receipt of the day less every cash refund, less the cash
-            // paid out of it for expenses and to suppliers.
+            // paid out of it for expenses (salaries and advances among them) and to suppliers, plus cash staff paid back.
             'cash_collected' => $cashIn,
             'opening_cash' => $opening,
             'opening_from' => $opening > 0 ? $before->day->toDateString() : null,
-            'expected_cash' => round($opening + $cashIn - $out['cash'], 2),
+            'expected_cash' => round($opening + $cashIn - $out['cash'] + $out['staff_repaid_cash'], 2),
             'blocking' => $checks->where('blocking', true)->sum('count'),
             'notes' => $checks->where('blocking', false)->sum('count'),
         ];

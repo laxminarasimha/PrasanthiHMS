@@ -75,7 +75,10 @@ final class AdvanceBook
             foreach (self::plan($advance->amount, (int) $advance->instalments, $advance->first_period) as $part) {
                 $advance->schedule()->create($part + ['status' => 'due']);
             }
-            self::line($advance, 'issued', $advance->amount, $date, 'Given to the member of staff');
+            self::line($advance, 'issued', $advance->amount, $date, 'Given to the member of staff', null, $mode);
+            // The money left the hospital: one paid expense under the advances heading, counted in that day's cash.
+            ExpenseBook::post('advance', $advance->id, ExpenseBook::ADVANCES, $advance->amount, $date, (string) $mode, $reference, $advance->employee?->name,
+                ($advance->kind === 'loan' ? 'Loan ' : 'Advance ').($advance->advance_no ?? '').' given'.($advance->reason ? ': '.$advance->reason : ''));
 
             return $advance->fresh();
         });
@@ -85,9 +88,9 @@ final class AdvanceBook
      * Adds a line to the account. A plus amount means more is owed, a minus amount less. Lines are never changed:
      * a mistake is another line.
      */
-    public static function line(Advance $advance, string $kind, mixed $amount, string $date, ?string $reason = null, ?int $payslipId = null): AdvanceLedgerLine
+    public static function line(Advance $advance, string $kind, mixed $amount, string $date, ?string $reason = null, ?int $payslipId = null, ?string $mode = null): AdvanceLedgerLine
     {
-        return DB::transaction(function () use ($advance, $kind, $amount, $date, $reason, $payslipId) {
+        return DB::transaction(function () use ($advance, $kind, $amount, $date, $reason, $payslipId, $mode) {
             Advance::query()->lockForUpdate()->findOrFail($advance->id);
             $after = self::balance($advance)->plus(Money::paise($amount));
             if ($after->isNegative()) {
@@ -95,7 +98,7 @@ final class AdvanceBook
             }
 
             return AdvanceLedgerLine::create([
-                'advance_id' => $advance->id, 'entry_date' => $date, 'kind' => $kind, 'amount' => Money::text($amount), 'balance_after' => Money::text($after),
+                'advance_id' => $advance->id, 'entry_date' => $date, 'kind' => $kind, 'mode' => $mode, 'amount' => Money::text($amount), 'balance_after' => Money::text($after),
                 'payslip_id' => $payslipId, 'reason' => $reason, 'created_by' => auth()->id(), 'created_at' => now(),
             ]);
         });

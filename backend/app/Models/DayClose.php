@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Workforce\Models\AdvanceLedgerLine;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -70,13 +71,21 @@ class DayClose extends Model
         }
 
         // Money paid out counts in the closing of the day it is dated: an expense, or a payment to a medicine supplier.
-        Expense::creating(fn (Expense $e) => self::refuseIfClosed($e->spent_on ?? now()));
+        // An expense counts on the day it was paid; one still waiting for approval or payment is not money out yet.
+        Expense::creating(fn (Expense $e) => ($e->status ?? 'paid') === 'paid' ? self::refuseIfClosed($e->paid_on ?? $e->spent_on ?? now()) : null);
         Expense::updating(function (Expense $e) {
-            if ($e->isDirty(['spent_on', 'amount', 'mode', 'cancelled_at'])) {
-                self::refuseIfClosed($e->getOriginal('spent_on'));
-                self::refuseIfClosed($e->spent_on);
+            if (! $e->isDirty(['paid_on', 'spent_on', 'amount', 'mode', 'cancelled_at', 'status'])) {
+                return;
+            }
+            if ($e->getOriginal('status') === 'paid') {
+                self::refuseIfClosed($e->getOriginal('paid_on') ?? $e->getOriginal('spent_on'));
+            }
+            if ($e->status === 'paid') {
+                self::refuseIfClosed($e->paid_on ?? $e->spent_on);
             }
         });
+        // Money a member of staff hands back on an advance comes into the drawer on the day it is dated.
+        AdvanceLedgerLine::creating(fn (AdvanceLedgerLine $l) => $l->kind === 'repayment' ? self::refuseIfClosed($l->entry_date ?? now()) : null);
         PurchasePayment::creating(fn (PurchasePayment $p) => self::refuseIfClosed($p->paid_on ?? now()));
         PurchasePayment::deleting(fn (PurchasePayment $p) => self::refuseIfClosed($p->paid_on ?? now()));
 
