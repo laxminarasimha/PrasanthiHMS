@@ -15,7 +15,7 @@ class AdvanceLedgerLine extends Model
 
     public $timestamps = false;
 
-    protected $fillable = ['branch_id', 'advance_id', 'entry_date', 'kind', 'amount', 'balance_after', 'payslip_id', 'reason', 'created_by', 'created_at'];
+    protected $fillable = ['branch_id', 'advance_id', 'entry_date', 'kind', 'mode', 'amount', 'balance_after', 'payslip_id', 'reason', 'created_by', 'created_at'];
 
     /**
      * @return array<string, string>

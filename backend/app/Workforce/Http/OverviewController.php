@@ -3,6 +3,7 @@
 namespace App\Workforce\Http;
 
 use App\Http\Controllers\Controller;
+use App\Models\Expense;
 use App\Models\User;
 use App\Workforce\Models\Advance;
 use App\Workforce\Models\Attendance;
@@ -175,10 +176,14 @@ class OverviewController extends Controller
     {
         $payroll = $user->allows('wf:payroll:view');
         $advances = $user->allows('wf:advances:view');
-        if (! $payroll && ! $advances) {
+        $expenses = $user->allows('wf:expenses:approve') && $user->allows('canRecordExpenses');
+        if (! $payroll && ! $advances && ! $expenses) {
             return null;
         }
         $out = [];
+        if ($expenses) {
+            $out['expenses_waiting'] = Expense::query()->whereNull('cancelled_at')->where('status', 'submitted')->count();
+        }
         if ($payroll) {
             $unpaid = Payslip::query()->where('payment_status', '!=', 'paid')->whereNotNull('live_period')->whereHas('run', fn ($q) => $q->whereIn('status', ['finalised', 'paid']))->selectRaw('COUNT(*) as slips, COALESCE(SUM(net), 0) as net')->first();
             $out['unpaid_salaries'] = ['slips' => (int) $unpaid->slips, 'net' => Money::text($unpaid->net)];

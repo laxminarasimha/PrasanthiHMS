@@ -18,13 +18,13 @@ class Payslip extends Model
     use BranchScoped;
 
     /** What may still be written once the run is finalised: the payment, and the release of the month on reversal. */
-    private const AFTER_LOCK = ['payment_status', 'paid_on', 'payment_mode', 'payment_reference', 'paid_by', 'live_period', 'updated_at'];
+    private const AFTER_LOCK = ['payment_status', 'paid_on', 'paid_amount', 'payment_mode', 'payment_reference', 'paid_by', 'live_period', 'updated_at'];
 
     protected $table = 'wf_payslips';
 
     protected $fillable = [
         'branch_id', 'run_id', 'employee_id', 'period', 'live_period', 'slip_no', 'days', 'pay_as_set', 'gross', 'deductions', 'net', 'employer_cost',
-        'payment_status', 'paid_on', 'payment_mode', 'payment_reference', 'paid_by',
+        'payment_status', 'paid_on', 'paid_amount', 'payment_mode', 'payment_reference', 'paid_by',
     ];
 
     /**
@@ -32,7 +32,7 @@ class Payslip extends Model
      */
     protected function casts(): array
     {
-        return ['days' => 'array', 'pay_as_set' => 'array', 'gross' => 'decimal:2', 'deductions' => 'decimal:2', 'net' => 'decimal:2', 'employer_cost' => 'decimal:2', 'paid_on' => 'date:Y-m-d'];
+        return ['days' => 'array', 'pay_as_set' => 'array', 'gross' => 'decimal:2', 'deductions' => 'decimal:2', 'net' => 'decimal:2', 'employer_cost' => 'decimal:2', 'paid_amount' => 'decimal:2', 'paid_on' => 'date:Y-m-d'];
     }
 
     protected static function booted(): void

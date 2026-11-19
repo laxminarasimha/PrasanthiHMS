@@ -268,8 +268,8 @@ class WorkforcePayrollApiTest extends TestCase
         $this->assertSame([['issued', '9000.00', '9000.00']], array_map(fn ($l) => [$l['kind'], $l['amount'], $l['balance_after']], $detail['ledger']));
 
         // Part is handed back in cash; June's instalment is put off to the end, with a reason.
-        $this->postJson("/api/workforce/advances/{$id}/repay", ['amount' => 20000, 'paid_on' => '2026-05-05', 'note' => 'Cash'])->assertStatus(422)->assertJsonValidationErrors('amount');
-        $this->postJson("/api/workforce/advances/{$id}/repay", ['amount' => 1000, 'paid_on' => '2026-05-05', 'note' => 'Cash, receipt 20'])->assertOk()->assertJsonPath('owed', '8000.00');
+        $this->postJson("/api/workforce/advances/{$id}/repay", ['amount' => 20000, 'paid_on' => '2026-05-05', 'mode' => 'cash', 'note' => 'Cash'])->assertStatus(422)->assertJsonValidationErrors('amount');
+        $this->postJson("/api/workforce/advances/{$id}/repay", ['amount' => 1000, 'paid_on' => '2026-05-05', 'mode' => 'cash', 'note' => 'Cash, receipt 20'])->assertOk()->assertJsonPath('owed', '8000.00');
         $this->postJson("/api/workforce/advances/{$id}/skip", ['period' => '2026-06'])->assertStatus(422)->assertJsonValidationErrors('reason');
         $this->postJson("/api/workforce/advances/{$id}/skip", ['period' => '2026-06', 'reason' => 'Asked for one month off'])->assertOk();
         $this->assertSame([['2026-05', 'due'], ['2026-06', 'skipped'], ['2026-07', 'due']], array_map(fn ($i) => [$i['period'], $i['status']], $this->getJson("/api/workforce/advances/{$id}")->json('schedule')));

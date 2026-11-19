@@ -147,7 +147,22 @@ Screens: **Salaries** (who is paid what; parts of a salary), **Payroll** (runs, 
 - **Advances and loans**: requested, approved (the plan may be changed), recorded as given, then taken back through payroll. What is owed is the sum of the append-only account; payroll takes what the plan expects by that month less what has come back, never more than the salary leaves. Paid back by hand, skip a month, waive part, write off (own permission, a reason and the password).
 - **Who sees pay**: a run's existence and totals need "See payroll runs"; any person's figures need "See salaries" as well, and are otherwise not sent. A person sees their own payslips only once their payroll is finalised.
 
-Not yet done (Phase 4): posting a finalised payroll into the HMS expenses as one entry, and putting cash paid out for salaries and advances into the day's cash count. The figures should be checked by the accountant on a first real month before they are relied on.
+Phase 4 (below) posts salary payments and advances into expenses and the day's cash count. The figures should be checked by the accountant on a first real month before they are relied on.
 
 Tests: `WorkforcePayrollRulesTest` (rounding, unpaid days, overtime, daily pay, joining mid-month, statutory rules, advances through payroll and reversal, never below nothing, duplicate prevention, staleness, immutability) and `WorkforcePayrollApiTest` (salary entry and approval, the run through different hands, who sees what, payment, export, reversal, advances, another hospital), plus `pay.test.ts` and `Payroll.test.tsx` on the web side. Made-up staff and figures only.
+
+## Phase 4: expenses with approval, and salaries posted once
+
+The HMS's existing **expenses** table is extended, not replaced (migration `2026_12_20_100001`). Every entry already there is money already paid: its new `status` is `paid` and its `paid_on` is the date it was entered for, so no total changes.
+
+- **Stages**: draft → sent for approval → approved or refused → paid; cancelled at any point with a reason, never erased. Only a paid, not-cancelled expense is money out, counted on the day it was paid (`PaidOut`, the day close, the organisation report).
+- **Headings** (`wf_expense_categories`, under Expenses → Headings and repeats): `approval_above` (above this it is approved before it is paid; 0 = always; empty = never, as today) and `approver_limit` (above this approving needs "Approve large expenses"). A typed heading with no set-up rule behaves exactly as before: the cashier enters it as paid.
+- **Who**: anyone on the Expenses screen enters, pays approved ones and corrects or cancels their own mistakes of the same day. Approving needs `wf:expenses:approve` (or `:finalise` above the limit); nobody approves their own. Changing the money of, or cancelling, a paid expense from an earlier day needs `wf:expenses:reverse`. The day lock applies throughout.
+- **Also**: cost centre (department), bill number, the tax inside the amount, a bill photo or PDF (private disk), monthly repeating expenses that only make a draft when asked, a summary by heading, department, month and mode, and a server-side export that is written to both activity logs.
+- **No double counting**: salary payments recorded in Payroll and advances given are posted as paid expenses under the system headings "Salaries (from payroll)" and "Staff advances and loans", one entry per payment, dated the day paid. Those headings refuse hand entries; once payroll posts, the old "Staff salary or advance" heading closes to hand entries too. Posted entries are put right in Payroll or Advances, never in Expenses. A paid payslip cannot be set back to unpaid; a payroll run again after a reversal posts only what had not already been paid to that person for that month (`wf_payslips.paid_amount`).
+- **Cash**: advances given in cash and salaries paid in cash come off the drawer; cash paid back on an advance (`wf_advance_ledger.mode`) is added to the cash expected at the day close.
+
+Also fixed in this phase: working a draft payroll out again could remove payslips from the draft, because an Eloquent collection's `except()` matches by the payslip's id rather than the staff member. No payroll had been run on live.
+
+Tests: `WorkforceExpensesTest` (approval and payment, limits, own approval refused, bills, the day lock and earlier-day reversal, payroll and advances posted once, re-run after reversal, cash paid back in the drawer, headings, repeating drafts, export) and a payroll re-work test; `expenseRules.test.ts` and `Expenses.test.tsx` on the web side.
 

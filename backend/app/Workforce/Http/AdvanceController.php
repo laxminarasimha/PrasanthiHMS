@@ -130,13 +130,15 @@ class AdvanceController extends Controller
     {
         $advance = Advance::query()->with('employee.department:id,name')->findOrFail($advance);
         Access::requireFor($request->user(), 'wf:advances:approve', $advance->employee);
-        $data = $request->validate(['amount' => ['required', 'numeric', 'gt:0'], 'paid_on' => ['required', 'date_format:Y-m-d', 'before_or_equal:today'], 'note' => ['required', 'string', 'max:500']], ['note.required' => 'Say how it was paid back: cash, a transfer, the receipt number.']);
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'gt:0'], 'paid_on' => ['required', 'date_format:Y-m-d', 'before_or_equal:today'], 'mode' => ['required', Rule::in(Payroll::MODES)], 'note' => ['required', 'string', 'max:500'],
+        ], ['note.required' => 'Say how it was paid back: the receipt or transfer number.', 'mode.required' => 'Choose how it was paid back. Cash goes into the day’s cash count.']);
         if ($advance->status !== 'issued') {
             throw ValidationException::withMessages(['amount' => 'Nothing is owed on this.']);
         }
-        AdvanceBook::line($advance, 'repayment', Money::of($data['amount'])->negated(), $data['paid_on'], $data['note']);
+        AdvanceBook::line($advance, 'repayment', Money::of($data['amount'])->negated(), $data['paid_on'], $data['note'], null, $data['mode']);
         $advance = AdvanceBook::settle($advance);
-        Audit::record('advance.repaid', $advance, null, ['amount' => Money::text($data['amount']), 'paid_on' => $data['paid_on']], $data['note'], $advance->employee_id);
+        Audit::record('advance.repaid', $advance, null, ['amount' => Money::text($data['amount']), 'paid_on' => $data['paid_on'], 'mode' => $data['mode']], $data['note'], $advance->employee_id);
 
         return response()->json($this->present($advance->load('employee.department'), $this->owed(collect([$advance->id]))));
     }

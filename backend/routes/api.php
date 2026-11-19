@@ -151,11 +151,26 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
     Route::put('/bills/{bill}/payments/{payment}', [BillController::class, 'updatePayment']);
 
     // Day-to-day expenses, written down by whoever keeps the cash.
+    // Bigger ones go for approval first; salaries and advances are written in by payroll and advances themselves.
     Route::middleware('ability:canRecordExpenses')->controller(ExpenseController::class)->group(function () {
         Route::get('/expenses', 'index');
         Route::post('/expenses', 'store');
-        Route::put('/expenses/{expense}', 'update');
-        Route::post('/expenses/{expense}/cancel', 'cancel');
+        Route::get('/expenses/summary', 'summary');
+        Route::get('/expenses/export', 'export');
+        Route::get('/expenses/headings', 'headings');
+        Route::post('/expenses/headings', 'saveHeading');
+        Route::put('/expenses/headings/{heading}', 'saveHeading')->whereNumber('heading');
+        Route::get('/expenses/repeating', 'templates');
+        Route::post('/expenses/repeating', 'saveTemplate');
+        Route::put('/expenses/repeating/{template}', 'saveTemplate')->whereNumber('template');
+        Route::post('/expenses/repeating/{template}/use', 'useTemplate')->whereNumber('template');
+        Route::put('/expenses/{expense}', 'update')->whereNumber('expense');
+        Route::post('/expenses/{expense}/submit', 'submit')->whereNumber('expense');
+        Route::post('/expenses/{expense}/decide', 'decide')->whereNumber('expense');
+        Route::post('/expenses/{expense}/pay', 'pay')->whereNumber('expense');
+        Route::post('/expenses/{expense}/cancel', 'cancel')->whereNumber('expense');
+        Route::post('/expenses/{expense}/receipt', 'attachReceipt')->whereNumber('expense');
+        Route::get('/expenses/{expense}/receipt', 'receipt')->whereNumber('expense');
     });
 
     // Billing from the front desk in one go: services and lab tests together, then one payment for all of it.

@@ -3,7 +3,9 @@
 namespace App\Workforce\Models;
 
 use App\Workforce\Support\BranchScoped;
+use App\Models\AdminEntry;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /** An expense that comes round every month. It offers a draft; it never posts by itself. */
 class ExpenseTemplate extends Model
@@ -20,5 +22,15 @@ class ExpenseTemplate extends Model
     protected function casts(): array
     {
         return ['amount' => 'decimal:2', 'is_active' => 'boolean'];
+    }
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(ExpenseCategory::class, 'category_id');
+    }
+
+    public function department(): BelongsTo
+    {
+        return $this->belongsTo(AdminEntry::class, 'department_id');
     }
 }

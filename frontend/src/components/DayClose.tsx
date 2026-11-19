@@ -36,7 +36,7 @@ type Book = {
   /** Cash left in the drawer when the day before was closed, and which day that was. */
   opening_cash?: number
   opening_from?: string | null
-  paid_out?: { expenses: number; expenses_cash: number; suppliers: number; suppliers_cash: number; cash: number; total: number }
+  paid_out?: { expenses: number; expenses_cash: number; suppliers: number; suppliers_cash: number; cash: number; total: number; staff_repaid?: number; staff_repaid_cash?: number }
   blocking: number
   notes: number
   closed: Closing | null
@@ -150,6 +150,7 @@ export function DayClose() {
       lines.push(['Paid out', 'Medicine suppliers', 'All modes', book.paid_out.suppliers], ['Paid out', 'Medicine suppliers', 'In cash', book.paid_out.suppliers_cash])
       lines.push(['Cash', 'Drawer', 'Left from the day before', book.opening_cash ?? 0])
       lines.push(['Cash', 'Drawer', 'Cash collected', book.cash_collected ?? book.expected_cash], ['Cash', 'Drawer', 'Cash paid out', book.paid_out.cash])
+      if (book.paid_out.staff_repaid_cash) lines.push(['Cash', 'Drawer', 'Cash paid back by staff on advances', book.paid_out.staff_repaid_cash])
     }
     lines.push(['Cash', 'Drawer', 'Cash expected', book.expected_cash])
     if (book.closed) {
@@ -355,6 +356,12 @@ export function DayClose() {
                   {book.paid_out.suppliers > book.paid_out.suppliers_cash && <small className="muted"> · {rupees(book.paid_out.suppliers - book.paid_out.suppliers_cash)} more by other modes</small>}
                 </dt>
                 <dd>−{rupees(book.paid_out.suppliers_cash)}</dd>
+                {(book.paid_out.staff_repaid_cash ?? 0) > 0 && (
+                  <>
+                    <dt>Add cash staff paid back on advances</dt>
+                    <dd>+{rupees(book.paid_out.staff_repaid_cash!)}</dd>
+                  </>
+                )}
                 <dt className="strong">Cash expected in the drawer</dt>
                 <dd className="strong">{rupees(book.expected_cash)}</dd>
               </dl>
