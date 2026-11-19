@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
 import { useUnsaved } from '../../unsaved'
 import { useAuth } from '../../auth'
@@ -9,7 +9,7 @@ import { PatientPicker } from '../../components/PatientPicker'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { PAYMENT_MODES, clock, daysUntil, expiryLabel, longDate, rupees } from '../../format'
 import type { Patient, PharmacyInpatient, PharmacySale, PrescriptionForPharmacy, SellableMedicine } from '../../types'
-import { PatientLink } from '../../components/PatientLink'
+import { PharmacyDay } from '../../components/PharmacyDay'
 
 type Line = {
   batchId: number
@@ -49,12 +49,16 @@ export function PharmacyBilling() {
   const [prescriptions, setPrescriptions] = useState<PrescriptionForPharmacy[]>([])
   // Today's bills, newest first, shown under the counter so an earlier bill can be reopened to add medicines.
   const [todays, setTodays] = useState<PharmacySale[] | null>(null)
-  useEffect(() => {
+  // The bill whose customer is being looked at as a whole: all their bills in one window.
+  const [together, setTogether] = useState<number | null>(null)
+  const navigate = useNavigate()
+  const loadTodays = useCallback(() => {
     api
       .get<PharmacySale[]>('/pharmacy/sales')
       .then((res) => setTodays([...res.data].sort((a, b) => b.id - a.id)))
       .catch(() => setTodays([]))
-  }, [done])
+  }, [])
+  useEffect(loadTodays, [loadTodays, done])
 
   // The patients admitted now. A bill for one of them can go on the IPD bill instead of being paid at the counter.
   const [inpatients, setInpatients] = useState<PharmacyInpatient[]>([])
@@ -538,9 +542,9 @@ export function PharmacyBilling() {
                     <small className="muted block">{clock(s.sold_at)}</small>
                   </td>
                   <td>
-                    <PatientLink id={s.patient_id} bills>
+                    <button type="button" className="patient-link" onClick={() => setTogether(s.id)} title="All of this customer's pharmacy bills together">
                       {s.customer_name}
-                    </PatientLink>
+                    </button>
                     {s.customer_phone && <small className="muted block">{s.customer_phone}</small>}
                   </td>
                   <td className="num">{rupees(s.total)}</td>
@@ -566,6 +570,9 @@ export function PharmacyBilling() {
           </table>
         </div>
       </section>
+      {together !== null && (
+        <PharmacyDay saleId={together} canCollect={canSell} onClose={() => setTogether(null)} onChange={loadTodays} onOpenSale={(id) => navigate(`/pharmacy/bills?open=${id}`)} />
+      )}
     </>
   )
 }

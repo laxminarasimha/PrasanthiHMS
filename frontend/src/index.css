@@ -177,6 +177,7 @@ tbody tr.empty td { text-align: center; color: var(--muted); padding: 32px; }
 .modal { width: min(780px, 100%); background: var(--surface); color: var(--text); border-radius: 14px; padding: 20px 22px; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.3); outline: none; }
 .modal .panel-head { margin-bottom: 12px; }
 .modal .tiles { margin-bottom: 4px; }
+.modal > .tabs { margin-bottom: 12px; }
 .day-bill { border: 1px solid var(--border); border-radius: 10px; margin-top: 12px; overflow: hidden; }
 .day-bill > header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 9px 12px; background: var(--surface-2); }
 .day-bill > header > div { flex: 1; min-width: 180px; }
@@ -227,6 +228,8 @@ a.btn { text-decoration: none; display: inline-block; }
 /* A patient's name, or a line that stands for another bill: it reads as the text it always was, with a faint dotted line under it to say it can be opened. */
 .patient-link { color: inherit; font: inherit; text-decoration: underline dotted color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 3px; cursor: pointer; }
 .patient-link:hover, .patient-link:focus-visible { color: var(--brand); text-decoration-color: currentColor; }
+button.patient-link { background: none; border: 0; padding: 0; text-align: left; }
+button.patient-link.strong { font-weight: 700; }
 /* A part of the patient page opened by a link stops below the top bar, not under it. */
 .card[id] { scroll-margin-top: 84px; }
 .due { color: var(--danger); }

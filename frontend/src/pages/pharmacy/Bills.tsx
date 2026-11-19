@@ -9,6 +9,7 @@ import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { PAYMENT_MODES, clock, longDate, modeLabel, rupees, today } from '../../format'
 import type { Payment, PharmacySale, SellableMedicine } from '../../types'
 import { PatientLink } from '../../components/PatientLink'
+import { PharmacyDay } from '../../components/PharmacyDay'
 
 type Action = 'view' | 'collect' | 'return' | 'delete' | 'edit' | 'mode'
 /** A medicine being added to a bill that is already saved. */
@@ -183,6 +184,8 @@ export function PharmacyBills() {
   }
 
   // Coming from the billing screen's "Add medicines" link: that bill opens ready to be added to.
+  // The bill whose customer is being looked at as a whole: all their bills in one window.
+  const [together, setTogether] = useState<number | null>(null)
   const [params, setParams] = useSearchParams()
   // Coming from a patient's page: that bill opens to be looked at.
   const preset = params.get('add')
@@ -240,11 +243,9 @@ export function PharmacyBills() {
                       </small>
                     </td>
                     <td>
-                      <strong>
-                        <PatientLink id={s.patient_id} bills>
-                          {s.customer_name}
-                        </PatientLink>
-                      </strong>
+                      <button type="button" className="patient-link strong" onClick={() => setTogether(s.id)} title="All of this customer's pharmacy bills together">
+                        {s.customer_name}
+                      </button>
                       {s.customer_phone && <small className="muted block">{s.customer_phone}</small>}
                     </td>
                     <td className="num">
@@ -589,6 +590,18 @@ export function PharmacyBills() {
           </form>
         )}
       </div>
+      {together !== null && (
+        <PharmacyDay
+          saleId={together}
+          canCollect={canEdit}
+          onClose={() => setTogether(null)}
+          onChange={load}
+          onOpenSale={(id) => {
+            setTogether(null)
+            show({ id } as PharmacySale, 'view')
+          }}
+        />
+      )}
     </>
   )
 }
