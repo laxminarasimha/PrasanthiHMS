@@ -53,12 +53,25 @@ export function PharmacyShelves() {
   )
   const listed = (show.kind === 'rack' ? [...matching].sort((a, b) => natural(a.box_no ?? '', b.box_no ?? '') || a.name.localeCompare(b.name)) : matching).slice(0, LIMIT)
 
-  const type = (m: Row, key: keyof Place, value: string) => setTyped((t) => ({ ...t, [m.id]: { ...placeOf(m), [key]: value } }))
+  const type = (m: Row, key: keyof Place, value: string) => {
+    // What the last save said is about the last save: it goes as soon as something new is typed.
+    setNotice('')
+    setTyped((t) => ({ ...t, [m.id]: { ...placeOf(m), [key]: value } }))
+  }
   const tick = (id: number) => setTicked((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]))
   /** Puts every ticked medicine in the rack and box typed above the list. Nothing is saved until Save is pressed. */
   const putTicked = () => {
+    setNotice('')
     setTyped((t) => ({ ...t, ...Object.fromEntries(ticked.map((id) => [id, { rack: bulk.rack, box: bulk.box }])) }))
     setTicked([])
+  }
+  /** Throws away what was typed and not saved, and reads the places again from the server. */
+  const startAgain = () => {
+    setTyped({})
+    setTicked([])
+    setNotice('')
+    setError('')
+    load().catch(() => setError('Could not load the medicines.'))
   }
 
   const save = async () => {
@@ -66,10 +79,27 @@ export function PharmacyShelves() {
     setError('')
     setNotice('')
     try {
-      const res = await api.put<{ changed: number }>('/pharmacy/shelves', { places: changed.map((m) => ({ medicine_id: m.id, rack_no: typed[m.id].rack.trim() || null, box_no: typed[m.id].box.trim() || null })) })
-      setNotice(`${res.data.changed} ${res.data.changed === 1 ? 'medicine' : 'medicines'} placed. The counter now shows where to find ${res.data.changed === 1 ? 'it' : 'them'}.`)
+      // What is being done to each, so the message afterwards can say it plainly: given a place, moved, or taken off the shelves.
+      const sent = changed.map((m) => ({ medicine_id: m.id, rack_no: typed[m.id].rack.trim() || null, box_no: typed[m.id].rack.trim() ? typed[m.id].box.trim() || null : null }))
+      const cleared = changed.filter((m) => !typed[m.id].rack.trim()).length
+      const moved = changed.filter((m) => typed[m.id].rack.trim() && m.rack_no).length
+      const placed = changed.length - cleared - moved
+      const where = [...new Set(sent.filter((s) => s.rack_no).map((s) => placeLabel(s.rack_no, s.box_no)))]
+      const res = await api.put<{ changed: number }>('/pharmacy/shelves', { places: sent })
+      const count = (n: number, what: string) => (n > 0 ? `${n} ${n === 1 ? 'medicine' : 'medicines'} ${what}` : '')
+      setNotice(
+        res.data.changed === 0
+          ? 'Nothing needed changing: those medicines were already at the places typed.'
+          : `Saved. ${[count(placed, 'given a place'), count(moved, 'moved'), count(cleared, `no longer ${cleared === 1 ? 'has' : 'have'} a place`)].filter(Boolean).join(', ')}.` +
+              (where.length > 0 ? ` Now at: ${where.slice(0, 6).join('; ')}${where.length > 6 ? ' and more' : ''}.` : '') +
+              (cleared > 0 ? ' The ones without a place are listed again under "No place yet" if they have stock.' : ''),
+      )
       setTyped({})
-      await load()
+      setTicked([])
+      const fresh = (await api.get<Row[]>('/pharmacy/shelves')).data
+      setRows(fresh)
+      // The rack being looked at may have just been emptied: fall back to the whole list rather than an empty screen.
+      setShow((now) => (now.kind === 'rack' && !fresh.some((m) => m.rack_no === now.rack) ? { kind: 'all' } : now))
     } catch (err) {
       setError(Object.values(fieldErrors(err))[0] ?? 'The places were not saved. Please try again.')
     } finally {
@@ -94,6 +124,11 @@ export function PharmacyShelves() {
           <button type="button" className="btn ghost" onClick={() => window.print()} disabled={racks.length === 0} title="A sheet for each rack, listing what belongs in each box">
             {show.kind === 'rack' ? `Print rack ${show.rack}` : 'Print all racks'}
           </button>
+          {changed.length > 0 && (
+            <button type="button" className="btn ghost" onClick={startAgain} disabled={saving} title="Forget what was typed and not saved">
+              Undo typing
+            </button>
+          )}
           <button type="button" className="btn primary" onClick={save} disabled={saving || changed.length === 0}>
             {saving ? 'Saving…' : changed.length > 0 ? `Save ${changed.length} ${changed.length === 1 ? 'place' : 'places'}` : 'Save'}
           </button>
@@ -153,8 +188,14 @@ export function PharmacyShelves() {
           </div>
         )}
 
-        {notice && <p className="notice">{notice}</p>}
-        {error && <p className="form-error">{error}</p>}
+        {notice && <p className="notice" role="status">{notice}</p>}
+        {error && <p className="form-error" role="alert">{error}</p>}
+        {changed.length > 0 && !saving && (
+          <p className="muted small" role="status">
+            {changed.length} {changed.length === 1 ? 'change is' : 'changes are'} typed and <strong>not saved yet</strong> (the green rows). Press Save at the top.
+          </p>
+        )}
+        {!rows && !error && <p className="loading">Loading the medicines…</p>}
 
         <div className="table-wrap">
           <table className="compact">

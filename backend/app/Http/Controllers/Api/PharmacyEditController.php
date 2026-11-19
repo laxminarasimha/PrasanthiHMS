@@ -313,6 +313,7 @@ class PharmacyEditController extends Controller
             'cash_discount' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
             'round_off' => ['nullable', 'numeric', 'between:-10,10'],
         ], [
+            'stockist_id.required' => 'Choose the stockist the invoice is from.',
             'invoice_no.unique' => 'This invoice number is already entered for this stockist.',
             'reason.required' => 'Say why this invoice is being changed.',
         ]);
