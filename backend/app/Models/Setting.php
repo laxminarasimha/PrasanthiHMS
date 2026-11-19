@@ -34,6 +34,7 @@ class Setting extends Model
         'department_on_new_page' => false, // each section starts on a fresh page
         'print_method' => true, // the method under each parameter, where one is set
         'print_end_mark' => true, // "End of report" after the last result
+        'print_template_version' => true, // which version of its template each test was reported on
         'report_note' => '', // a line of the lab's own at the foot of every report
     ];
 

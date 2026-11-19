@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\Bill;
 use App\Models\LabOrder;
 use App\Models\LabOrderFile;
@@ -12,6 +13,7 @@ use App\Models\LabResult;
 use App\Models\LabTest;
 use App\Models\Setting;
 use App\Support\LabDepartments;
+use App\Support\LabTemplate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -130,18 +132,40 @@ class LabController extends Controller
             'parameters.*.name.required' => 'Name every parameter or remove the empty row.',
         ]);
 
-        return DB::transaction(function () use ($test, $data, $text) {
+        return DB::transaction(function () use ($test, $data, $text, $request) {
             $parameters = $text ? [] : ($data['parameters'] ?? []);
             unset($data['parameters']);
             $test->fill($data + ['print_order' => 0, 'kind' => 'values'])->save();
 
+            // These rows are the template as it stands now. What it was before is kept in its versions.
             $test->parameters()->delete();
             foreach (array_values($parameters) as $position => $row) {
                 $test->parameters()->create($row + ['position' => $position]);
             }
+            $test->load('parameters');
 
-            return $test->load('parameters');
+            // A change to what the report reads as becomes the next version; a change of price or filing does not.
+            $version = LabTemplate::current($test, $request->user(), 'saved');
+            if ($version->wasRecentlyCreated) {
+                AuditLog::record('lab.template', null, $test, "{$test->name} · version {$version->version} · {$version->change}");
+            }
+
+            return $test;
         });
+    }
+
+    /** Every version of one test's report template, newest first, with how many reports were made with each. */
+    public function versions(LabTest $test): JsonResponse
+    {
+        $reports = LabOrderItem::where('lab_test_id', $test->id)->whereNotNull('template_version')
+            ->selectRaw('template_version, COUNT(*) as reports, SUM(approved_at IS NOT NULL) as approved')->groupBy('template_version')->get()->keyBy('template_version');
+
+        return response()->json($test->versions()->with('author:id,name')->get()->map(fn ($v) => [
+            'version' => $v->version, 'is_current' => (int) $v->version === (int) $test->version,
+            'name' => $v->name, 'kind' => $v->kind, 'default_comment' => $v->default_comment, 'parameters' => $v->parameters,
+            'source' => $v->source, 'change' => $v->change, 'created_at' => $v->created_at?->format('Y-m-d H:i'), 'by' => $v->author?->name,
+            'reports' => (int) ($reports[$v->version]->reports ?? 0), 'approved' => (int) ($reports[$v->version]->approved ?? 0),
+        ]));
     }
 
     // ---- Packages: several tests sold together for one price ----
@@ -270,6 +294,7 @@ class LabController extends Controller
             'department_on_new_page' => ['sometimes', 'boolean'],
             'print_method' => ['sometimes', 'boolean'],
             'print_end_mark' => ['sometimes', 'boolean'],
+            'print_template_version' => ['sometimes', 'boolean'],
             'report_note' => ['sometimes', 'nullable', 'string', 'max:500'],
         ], ['departments.*.distinct' => 'The same department is in the list twice.']);
         if (array_key_exists('departments', $data)) {
@@ -367,6 +392,8 @@ class LabController extends Controller
 
                 $item = $order->items()->create([
                     'lab_test_id' => $test->id,
+                    // The version of the template these result lines are copied from, written down if it is new.
+                    'template_version' => LabTemplate::current($test)->version,
                     'test_name' => $test->name,
                     'kind' => $test->kind,
                     'package_name' => $package,
@@ -403,6 +430,9 @@ class LabController extends Controller
 
             return $order;
         });
+
+        $made = $order->items()->get(['test_name', 'template_version'])->map(fn (LabOrderItem $i) => $this->withVersion($i))->implode(', ');
+        AuditLog::record('lab.ordered', $order->patient_id, $order, "{$order->order_no} · {$made}");
 
         return response()->json($this->present($order), 201);
     }
@@ -491,6 +521,7 @@ class LabController extends Controller
         }
 
         $item->update(['approved_at' => $approved ? now() : null, 'approved_by' => $approved ? $request->user()->id : null]);
+        AuditLog::record($approved ? 'lab.approved' : 'lab.unapproved', $order->patient_id, $order, "{$order->order_no} · ".$this->withVersion($item));
 
         return response()->json($this->present($order));
     }
@@ -517,7 +548,9 @@ class LabController extends Controller
         if (! $waiting->exists()) {
             throw ValidationException::withMessages(['approved' => 'Nothing on this order is waiting for approval.']);
         }
+        $approved = (clone $waiting)->get(['test_name', 'template_version'])->map(fn (LabOrderItem $i) => $this->withVersion($i))->implode(', ');
         $waiting->update(['approved_at' => now(), 'approved_by' => $request->user()->id]);
+        AuditLog::record('lab.approved', $order->patient_id, $order, "{$order->order_no} · {$approved}");
 
         return response()->json($this->present($order));
     }
@@ -559,6 +592,12 @@ class LabController extends Controller
         $file->delete();
 
         return response()->json($this->present($order));
+    }
+
+    /** A test named with the version of its template, as written in the record of who did what. */
+    private function withVersion(LabOrderItem $item): string
+    {
+        return $item->test_name.($item->template_version ? " (template version {$item->template_version})" : '');
     }
 
     private function authorizeLab(Request $request): void

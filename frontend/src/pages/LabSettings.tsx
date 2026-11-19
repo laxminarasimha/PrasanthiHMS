@@ -22,6 +22,7 @@ const LAYOUT: Toggle[] = [
   ['print_sample_date', 'Print the sample collection date', ''],
   ['print_approved_date', 'Print the approval date', ''],
   ['print_end_mark', 'Print "End of report" after the last result', ''],
+  ['print_template_version', 'Print the template version beside each test', 'A small “Template v2” after the test name, so a printed report says which version of its template it was made with.'],
 ]
 
 export function LabSettings() {

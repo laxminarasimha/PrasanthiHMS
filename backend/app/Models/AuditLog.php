@@ -61,6 +61,10 @@ class AuditLog extends Model
         'expense.added' => 'Entered an expense',
         'expense.changed' => 'Changed an expense',
         'expense.cancelled' => 'Cancelled an expense',
+        'lab.ordered' => 'Made a lab order',
+        'lab.approved' => 'Approved a lab result',
+        'lab.unapproved' => 'Withdrew approval of a lab result',
+        'lab.template' => 'Saved a version of a lab report template',
         'day.closed' => 'Closed the day',
         'day.reopened' => 'Reopened a closed day',
     ];
