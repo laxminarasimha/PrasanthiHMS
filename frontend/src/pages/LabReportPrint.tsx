@@ -34,27 +34,43 @@ function byDepartment(items: LabOrderItem[], order: string[]): Group[] {
  * (haematology, biochemistry and so on), then who reported them.
  *
  * `?letterhead=1` leaves the top and bottom of each page blank for pre-printed paper; `?items=1,2` prints only
- * those tests; `?tabular=1` puts everything in one compact table.
+ * those tests; `?tabular=1` puts everything in one compact table; `?with=8,9` adds the same patient's other
+ * orders, so a day's tests come out as one report instead of one for each order.
  */
 export function LabReportPrint() {
   const { id } = useParams()
   const [params] = useSearchParams()
-  const [order, setOrder] = useState<LabOrder | null>(null)
+  const [orders, setOrders] = useState<LabOrder[] | null>(null)
   const [settings, setSettings] = useState<LabSettings | null>(null)
+  const others = params.get('with') ?? ''
 
   useEffect(() => {
-    Promise.all([api.get<LabOrder>(`/lab/orders/${id}`), api.get<LabSettings>('/lab/settings')]).then(([o, s]) => {
-      setOrder(o.data)
-      setSettings(s.data)
+    const ids = [...new Set([Number(id), ...others.split(',').map(Number).filter((n) => n > 0)])]
+    Promise.all([api.get<LabSettings>('/lab/settings'), ...ids.map((one) => api.get<LabOrder>(`/lab/orders/${one}`))]).then(([s, ...list]) => {
+      setSettings(s.data as LabSettings)
+      setOrders(list.map((o) => o.data as LabOrder).sort((a, b) => a.ordered_at.localeCompare(b.ordered_at) || a.id - b.id))
     })
-  }, [id])
+  }, [id, others])
+
+  // Several orders are read as one: their numbers side by side, the earliest time, and every test of all of them.
+  const mixed = Boolean(orders && orders.some((o) => o.patient.id !== orders[0].patient.id))
+  const owing = (orders ?? []).filter((o) => o.bill && o.bill.due > 0)
+  const order: LabOrder | null =
+    orders && orders.length > 0
+      ? {
+          ...orders[0],
+          order_no: orders.map((o) => o.order_no).join(', '),
+          referred_by: [...new Set(orders.map((o) => o.referred_by).filter(Boolean))].join(', ') || null,
+          items: orders.flatMap((o) => o.items),
+        }
+      : null
 
   const letterhead = params.get('letterhead') === '1'
   const tabular = params.get('tabular') === '1'
   const only = params.get('items')?.split(',').map(Number)
   const ready = (order?.items ?? []).filter((item) => (settings?.approval_required ? item.approved_at : item.reported_at))
   const printed = ready.filter((item) => !only || only.includes(item.id))
-  const unpaid = Boolean(order && settings && !settings.allow_print_without_payment && order.bill && order.bill.due > 0)
+  const unpaid = Boolean(order && settings && !settings.allow_print_without_payment && owing.length > 0)
   const canPrint = printed.length > 0 && !unpaid
   const lastPrinted = printed[printed.length - 1]
   const signerSignature = useSignature((lastPrinted?.approver ?? lastPrinted?.reporter)?.id)
@@ -65,10 +81,13 @@ export function LabReportPrint() {
     return () => clearTimeout(timer)
   }, [canPrint])
 
-  if (!order || !settings) return <p className="loading">Loading report…</p>
-  if (unpaid) return <p className="loading">The bill for this order has to be paid before the report can be printed.</p>
+  if (!order || !orders || !settings) return <p className="loading">Loading report…</p>
+  if (mixed) return <p className="loading">These orders belong to different patients, so they cannot be printed as one report.</p>
+  if (unpaid) {
+    return <p className="loading">{orders.length > 1 ? `The bill for ${owing.map((o) => o.order_no).join(', ')} has to be paid before these reports can be printed.` : 'The bill for this order has to be paid before the report can be printed.'}</p>
+  }
   if (printed.length === 0) {
-    return <p className="loading">{settings.approval_required ? 'No test in this order has been approved yet.' : 'No test in this order has been marked as reported yet.'}</p>
+    return <p className="loading">{settings.approval_required ? 'No test here has been approved yet.' : 'No test here has been marked as reported yet.'}</p>
   }
 
   const last = printed[printed.length - 1]
@@ -250,7 +269,7 @@ export function LabReportPrint() {
         </section>
       ))}
 
-      {pending > 0 && <p className="lab-pending">{pending === 1 ? '1 test' : `${pending} tests`} in this order {pending === 1 ? 'is' : 'are'} still pending and will follow.</p>}
+      {pending > 0 && <p className="lab-pending">{pending === 1 ? '1 test' : `${pending} tests`} {orders.length > 1 ? 'of these orders' : 'in this order'} {pending === 1 ? 'is' : 'are'} still pending and will follow.</p>}
       {flagged && <p className="lab-legend">Results outside the reference range are in bold: H = above the range, L = below it.</p>}
       {settings.print_end_mark && <p className="lab-end">End of report</p>}
       {settings.report_note && <p className="lab-note">{settings.report_note}</p>}
