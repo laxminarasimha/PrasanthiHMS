@@ -88,6 +88,106 @@ class PharmacySalesController extends Controller
         ]));
     }
 
+    /**
+     * All the pharmacy bills of one customer together, found from any one of them: the bills of that day, or for
+     * someone admitted, every bill of the stay. With each bill come its medicines, and the medicines of all the
+     * bills are also added up into one list, so the counter and the ward see what was given without opening each bill.
+     */
+    public function customerBills(Request $request): JsonResponse
+    {
+        $this->authorizePharmacy($request);
+        $data = $request->validate(['sale_id' => ['required', 'exists:pharmacy_sales,id'], 'scope' => ['nullable', Rule::in(['day', 'stay'])]]);
+        $anchor = PharmacySale::findOrFail($data['sale_id']);
+        $day = $anchor->sold_at->copy();
+
+        // Whose bills: a registered patient's, or a walk-in's with the same name and phone. A walk-in who left no phone is one bill.
+        $theirs = fn ($q) => $anchor->patient_id
+            ? $q->where('patient_id', $anchor->patient_id)
+            : ($anchor->customer_phone
+                ? $q->whereNull('patient_id')->where('customer_name', $anchor->customer_name)->where('customer_phone', $anchor->customer_phone)
+                : $q->whereKey($anchor->id));
+
+        // The stay this bill fell in, if the patient was admitted then.
+        $admission = $anchor->patient_id
+            ? Admission::where('patient_id', $anchor->patient_id)->where('admitted_at', '<=', $day)
+                ->where(fn ($q) => $q->whereNull('discharged_at')->orWhere('discharged_at', '>=', $day))->latest('admitted_at')->first()
+            : null;
+        $stay = ($data['scope'] ?? 'day') === 'stay' && $admission;
+        [$from, $to] = $stay ? [$admission->admitted_at, $admission->discharged_at ?? now()] : [$day->copy()->startOfDay(), $day->copy()->endOfDay()];
+
+        $sales = PharmacySale::query()->where($theirs)->whereNull('voided_at')->whereBetween('sold_at', [$from, $to])
+            ->with(['items', 'payments', 'seller:id,name'])->oldest('sold_at')->oldest('id')->get();
+
+        $medicines = $sales->flatMap->items->groupBy('medicine_name')->map(function ($lines, $name) {
+            $given = (int) $lines->sum('quantity');
+            $back = (int) $lines->sum('returned_quantity');
+
+            return ['name' => $name, 'quantity' => $given - $back, 'returned' => $back,
+                'amount' => round((float) $lines->sum(fn (PharmacySaleItem $i) => $i->quantity > 0 ? (float) $i->amount * ($i->quantity - $i->returned_quantity) / $i->quantity : 0), 2)];
+        })->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)->values();
+
+        return response()->json([
+            'scope' => $stay ? 'stay' : 'day',
+            'date' => $day->toDateString(),
+            'customer' => ['name' => $anchor->customer_name, 'phone' => $anchor->customer_phone, 'patient' => $anchor->patient()->first(['id', 'uhid', 'title', 'name'])],
+            'admission' => $admission ? ['id' => $admission->id, 'ipd_no' => $admission->ipd_no, 'status' => $admission->status,
+                'admitted_at' => $admission->admitted_at->format('Y-m-d H:i'), 'discharged_at' => $admission->discharged_at?->format('Y-m-d H:i')] : null,
+            'sales' => $sales->map(fn (PharmacySale $s) => [
+                'id' => $s->id, 'bill_no' => $s->bill_no, 'sold_at' => $s->sold_at->format('Y-m-d H:i'), 'seller' => $s->seller?->name,
+                'total' => $s->total, 'returned' => $s->returned, 'paid' => $s->paid, 'ipd_transfer' => $s->ipd_transfer, 'due' => $s->due,
+                'modes' => $s->payments->where('type', 'payment')->pluck('mode')->unique()->values()->all(),
+                'items' => $s->items->map(fn (PharmacySaleItem $i) => ['id' => $i->id, 'name' => $i->medicine_name, 'batch_no' => $i->batch_no,
+                    'quantity' => (int) $i->quantity, 'returned' => (int) $i->returned_quantity, 'unit_price' => (float) $i->unit_price, 'amount' => (float) $i->amount])->all(),
+            ])->all(),
+            'medicines' => $medicines,
+            'billed' => round((float) $sales->sum('total') - (float) $sales->sum('returned'), 2), 'paid' => round((float) $sales->sum('paid'), 2),
+            'on_ipd' => round((float) $sales->sum('ipd_transfer'), 2), 'due' => round((float) $sales->sum('due'), 2),
+        ]);
+    }
+
+    /**
+     * Takes one payment and puts it against several bills of one customer, in the order given.
+     * Each bill gets its own payment line, exactly as if it had been paid on its own.
+     */
+    public function collectMany(Request $request): JsonResponse
+    {
+        $this->authorizePharmacy($request);
+        $data = $request->validate([
+            'sale_ids' => ['required', 'array', 'min:1', 'max:30'],
+            'sale_ids.*' => ['integer', 'distinct'],
+            'amount' => ['required', 'numeric', 'gt:0'],
+            'mode' => ['required', Rule::in(Payment::MODES)],
+            'reference' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $sales = PharmacySale::whereIn('id', $data['sale_ids'])->lockForUpdate()->get()->keyBy('id');
+        $first = $sales->first();
+        $same = $first && $sales->every(fn (PharmacySale $s) => $s->patient_id === $first->patient_id
+            && ($s->patient_id || ($s->customer_name === $first->customer_name && $s->customer_phone === $first->customer_phone)));
+        if ($sales->count() !== count($data['sale_ids']) || ! $same) {
+            throw ValidationException::withMessages(['sale_ids' => 'These bills are not all the same customer’s. Close this and open it again.']);
+        }
+        $sales->each(fn (PharmacySale $s) => $this->refuseIfVoided($s));
+        $owed = round((float) $sales->sum('due'), 2);
+        $left = round((float) $data['amount'], 2);
+        if ($left > $owed + 0.004) {
+            throw ValidationException::withMessages(['amount' => 'Only ₹'.rtrim(rtrim(number_format($owed, 2, '.', ''), '0'), '.').' is due on these bills.']);
+        }
+
+        foreach ($data['sale_ids'] as $id) {
+            $sale = $sales[$id];
+            $part = min($left, round((float) $sale->due, 2));
+            if ($part <= 0) {
+                continue;
+            }
+            $sale->payments()->create(['type' => 'payment', 'amount' => $part, 'mode' => $data['mode'], 'reference' => $data['reference'] ?? null, 'received_by' => $request->user()->id]);
+            $sale->recalculatePaid();
+            $left = round($left - $part, 2);
+        }
+
+        return response()->json(['paid' => round((float) $data['amount'], 2)]);
+    }
+
     /** Takes money against a bill that was left part-paid or unpaid. */
     public function collect(Request $request, PharmacySale $sale): JsonResponse
     {

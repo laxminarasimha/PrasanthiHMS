@@ -303,6 +303,8 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
 
     Route::prefix('pharmacy')->controller(PharmacySalesController::class)->group(function () {
         Route::get('/dashboard', 'dashboard');
+        Route::get('/customer-bills', 'customerBills');
+        Route::post('/collect', 'collectMany');
         Route::get('/orders', 'orders');
         Route::post('/sales/{sale}/payments', 'collect');
         Route::post('/sales/{sale}/returns', 'returnMedicines');

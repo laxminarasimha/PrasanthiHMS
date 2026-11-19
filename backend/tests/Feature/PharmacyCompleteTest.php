@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Admission;
 use App\Models\Appointment;
 use App\Models\DayClose;
 use App\Models\Medicine;
@@ -279,5 +280,46 @@ class PharmacyCompleteTest extends TestCase
         $this->getJson('/api/pharmacy/reports/no-such-report')->assertNotFound();
         Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
         $this->getJson('/api/pharmacy/reports/billing')->assertForbidden();
+    }
+
+    public function test_a_customers_bills_come_back_together_and_are_paid_in_one_step(): void
+    {
+        $patient = Patient::factory()->create();
+        $doctor = User::factory()->create(['role' => 'doctor']);
+        // Three bills for the patient today (one part paid), and two for a walk-in who left a phone number.
+        $first = $this->sell(10, 28, ['patient_id' => $patient->id, 'customer_name' => $patient->name]);   // 28, paid
+        $second = $this->sell(20, 16, ['patient_id' => $patient->id, 'customer_name' => $patient->name]);  // 56, 40 due
+        $third = $this->sell(5, 0, ['patient_id' => $patient->id, 'customer_name' => $patient->name]);     // 14, 14 due
+        $walkA = $this->sell(10, 0, ['customer_name' => 'Ravi', 'customer_phone' => '9000000001']);
+        $this->sell(10, 0, ['customer_name' => 'Ravi', 'customer_phone' => '9000000001']);
+        $alone = $this->sell(10, 0);
+        // Five of the twenty on the second bill come back.
+        $this->postJson("/api/pharmacy/sales/{$second['id']}/returns", ['refund_mode' => 'cash', 'items' => [['id' => $second['items'][0]['id'], 'quantity' => 5]]])->assertSuccessful();
+
+        $this->getJson("/api/pharmacy/customer-bills?sale_id={$second['id']}")->assertOk()
+            ->assertJsonCount(3, 'sales')->assertJsonPath('scope', 'day')->assertJsonPath('admission', null)
+            ->assertJsonPath('customer.patient.id', $patient->id)
+            ->assertJsonPath('billed', 84)->assertJsonPath('paid', 44)->assertJsonPath('due', 40)
+            ->assertJsonCount(1, 'medicines')->assertJsonPath('medicines.0.quantity', 30)->assertJsonPath('medicines.0.returned', 5)->assertJsonPath('medicines.0.amount', 84);
+        $this->getJson("/api/pharmacy/customer-bills?sale_id={$walkA['id']}")->assertOk()->assertJsonCount(2, 'sales')->assertJsonPath('customer.patient', null);
+        $this->getJson("/api/pharmacy/customer-bills?sale_id={$alone['id']}")->assertOk()->assertJsonCount(1, 'sales');
+
+        // Bills of two different people cannot be paid as one, and not more than is owed.
+        $this->postJson('/api/pharmacy/collect', ['sale_ids' => [$second['id'], $walkA['id']], 'amount' => 10, 'mode' => 'cash'])->assertStatus(422)->assertJsonValidationErrors('sale_ids');
+        $this->postJson('/api/pharmacy/collect', ['sale_ids' => [$second['id'], $third['id']], 'amount' => 41, 'mode' => 'cash'])->assertStatus(422)->assertJsonValidationErrors('amount');
+        // 30 against 26 + 14: the first is settled, the rest goes on the second.
+        $this->postJson('/api/pharmacy/collect', ['sale_ids' => [$second['id'], $third['id']], 'amount' => 30, 'mode' => 'upi'])->assertOk();
+        $this->assertSame([0.0, 10.0], [PharmacySale::find($second['id'])->due, PharmacySale::find($third['id'])->due]);
+        $this->assertSame(28.0, PharmacySale::find($first['id'])->paid);
+
+        // Admitted: the whole stay can be asked for, and yesterday's bill is then in it.
+        $admission = Admission::create(['patient_id' => $patient->id, 'doctor_id' => $doctor->id, 'admitted_at' => now()->subDays(2), 'status' => 'admitted']);
+        PharmacySale::whereKey($first['id'])->update(['sold_at' => now()->subDay()]);
+        $this->getJson("/api/pharmacy/customer-bills?sale_id={$second['id']}")->assertOk()->assertJsonCount(2, 'sales')->assertJsonPath('admission.id', $admission->id);
+        $this->getJson("/api/pharmacy/customer-bills?sale_id={$second['id']}&scope=stay")->assertOk()->assertJsonCount(3, 'sales')->assertJsonPath('scope', 'stay');
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->getJson("/api/pharmacy/customer-bills?sale_id={$second['id']}")->assertForbidden();
+        $this->postJson('/api/pharmacy/collect', ['sale_ids' => [$third['id']], 'amount' => 10, 'mode' => 'cash'])->assertForbidden();
     }
 }
