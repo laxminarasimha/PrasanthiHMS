@@ -86,6 +86,9 @@ export type Slip = {
   paid_on: string | null
   payment_mode: string | null
   payment_reference: string | null
+  /** Paid out on this payslip; less than the net when part was paid under a reversed payroll. */
+  paid_amount: string | null
+  already_paid: string
   reversed: boolean
   final: boolean
 }

@@ -310,7 +310,7 @@ function RunPage({ id, onBack, onOpen }: { id: number; onBack: () => void; onOpe
 
         {final && run.can.approve && unpaid.length > 0 && !paying && (
           <div className="toolbar minor">
-            <span className="muted small grow">Tick the payslips that have been paid at the bank or in cash, then record the payment. This only writes it down: it moves no money, and cash paid out is not yet added to the day’s cash count.</span>
+            <span className="muted small grow">Tick the payslips that have been paid at the bank or in cash, then record the payment. This only writes it down: it moves no money. What is paid is posted once to Expenses under “Salaries (from payroll)”, and cash comes off that day’s drawer.</span>
             <button className="btn primary" disabled={ticked.length === 0} onClick={() => setAsking('pay')}>
               Record payment for {ticked.length || 'the ticked'}
             </button>
@@ -548,6 +548,13 @@ function SlipPanel({ id, run, onClose, onChanged }: { id: number; run: RunDetail
             <p className="muted small gap-top">
               Paid on {longDate(slip.paid_on!)} by {payModeLabel(slip.payment_mode).toLowerCase()}
               {slip.payment_reference ? ` (${slip.payment_reference})` : ''}.
+              {Number(slip.already_paid) > 0 && ` ${inr(slip.already_paid)} of it had already been paid under a reversed payroll for this month, so ${inr(slip.paid_amount)} was paid now.`}
+            </p>
+          )}
+          {slip.payment_status !== 'paid' && Number(slip.already_paid) > 0 && (
+            <p className="muted small gap-top">
+              {inr(slip.already_paid)} was already paid to this person for {slip.period_name} under a reversed payroll. Recording this payslip as paid posts only the rest
+              {Number(slip.already_paid) > Number(slip.net) ? `; it is ${inr(Number(slip.already_paid) - Number(slip.net))} more than this payslip, which could be taken back as an advance` : ''}.
             </p>
           )}
           {slip.final && !slip.reversed && (

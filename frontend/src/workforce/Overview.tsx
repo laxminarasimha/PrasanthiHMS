@@ -9,7 +9,7 @@ import { WorkforceTabs } from './WorkforceTabs'
 
 type Person = StaffBrief & { late_minutes: number; leave_type: string | null }
 type Board = {
-  pay: { unpaid_salaries?: { slips: number; net: string }; runs_in_hand?: number; advances?: { count: number; owed: string; waiting: number } } | null
+  pay: { unpaid_salaries?: { slips: number; net: string }; runs_in_hand?: number; advances?: { count: number; owed: string; waiting: number }; expenses_waiting?: number } | null
   date: string
   is_today: boolean
   staff: number
@@ -120,6 +120,12 @@ export function WorkforceOverview() {
                       {shown.pay.unpaid_salaries.slips} {shown.pay.unpaid_salaries.slips === 1 ? 'payslip' : 'payslips'}
                       {shown.pay.runs_in_hand ? ` · ${shown.pay.runs_in_hand} payroll ${shown.pay.runs_in_hand === 1 ? 'run' : 'runs'} in hand` : ''}
                     </small>
+                  </Link>
+                )}
+                {Boolean(shown.pay.expenses_waiting) && (
+                  <Link className="tile" to="/expenses?show=waiting">
+                    <span>Expenses waiting for approval</span>
+                    <strong className="due">{shown.pay.expenses_waiting}</strong>
                   </Link>
                 )}
                 {shown.pay.advances && (

@@ -255,7 +255,7 @@ function AdvancePanel({ id, onClose, onChanged }: { id: number; onClose: () => v
       case 'issue':
         return send('issue', { issued_on: form.date, payment_mode: form.payment_mode, payment_reference: form.payment_reference || undefined }, 'Recorded as given. It is now owed, and payroll will take it back month by month.')
       case 'repay':
-        return send('repay', { amount: form.amount, paid_on: form.date, note: form.note }, 'Written into the account.')
+        return send('repay', { amount: form.amount, paid_on: form.date, mode: form.payment_mode, note: form.note }, 'Written into the account.')
       case 'skip':
         return send('skip', { period: form.period, reason: form.note }, 'That month is skipped and added to the end of the plan.')
       case 'waiver':
@@ -365,7 +365,7 @@ function AdvancePanel({ id, onClose, onChanged }: { id: number; onClose: () => v
               )}
               {doing === 'issue' && (
                 <>
-                  <p className="muted small">This writes down a payment already made. It moves no money, and it is not yet added to the day’s cash count.</p>
+                  <p className="muted small">This writes down a payment already made; it moves no money. It is posted to Expenses under “Staff advances and loans”, and cash comes off that day’s drawer.</p>
                   <div className="grid">
                     <TextField label="Given on" required type="date" max={today()} value={form.date} onChange={set('date')} error={errors.issued_on} />
                     <SelectField label="How" value={form.payment_mode} onChange={set('payment_mode')} options={PAY_MODES} />
@@ -377,13 +377,15 @@ function AdvancePanel({ id, onClose, onChanged }: { id: number; onClose: () => v
                 <div className="grid">
                   <TextField label="Amount (₹)" required type="number" min="1" value={form.amount} onChange={set('amount')} error={errors.amount} />
                   {doing === 'repay' && <TextField label="Paid back on" required type="date" max={today()} value={form.date} onChange={set('date')} error={errors.paid_on} />}
+                  {doing === 'repay' && <SelectField label="How" value={form.payment_mode} onChange={set('payment_mode')} options={PAY_MODES} error={errors.mode} />}
                 </div>
               )}
+              {doing === 'repay' && form.payment_mode === 'cash' && <p className="muted small">Cash handed back goes into the drawer’s expected cash for that day.</p>}
               {doing === 'skip' && <SelectField label="Month to skip" value={form.period} onChange={set('period')} options={due.map((s) => ({ value: s.period, label: `${s.period_name} · ${inr(s.amount)}` }))} error={errors.period} />}
               {doing === 'write_off' && <p className="muted small">All {inr(a.owed)} still owed is let go. The account is closed and keeps this line and its reason.</p>}
               {doing !== 'issue' && (
                 <TextField
-                  label={{ approve: 'Note (optional)', refuse: 'Why it is refused', repay: 'How it was paid back', skip: 'Why this month is skipped', waiver: 'Why it is waived', write_off: 'Why it is written off' }[doing]}
+                  label={{ approve: 'Note (optional)', refuse: 'Why it is refused', repay: 'Receipt or note', skip: 'Why this month is skipped', waiver: 'Why it is waived', write_off: 'Why it is written off' }[doing]}
                   required={doing !== 'approve'}
                   value={form.note}
                   onChange={set('note')}
