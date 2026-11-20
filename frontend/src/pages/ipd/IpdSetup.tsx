@@ -58,6 +58,19 @@ export function IpdSetup() {
     }
   }
 
+  // Only for a bed set up by mistake: the server refuses one that patients have stayed in.
+  const deleteBed = async () => {
+    if (!editing?.id || !window.confirm(`Delete bed ${bed.ward} ${bed.bed_no}?\n\nThis removes it for good.`)) return
+    try {
+      await api.delete(`/ipd/beds/${editing.id}`)
+      setNotice('Bed deleted.')
+      setEditing(null)
+      load()
+    } catch (err) {
+      setErrors(fieldErrors(err))
+    }
+  }
+
   const occupied = beds.filter((b) => b.current_admission).length
 
   return (
@@ -207,7 +220,12 @@ export function IpdSetup() {
             </div>
           )}
           {errors._ && <p className="form-error">{errors._}</p>}
-          <div className="panel-foot">
+          <div className={editing.kind === 'bed' && editing.id ? 'panel-foot between' : 'panel-foot'}>
+            {editing.kind === 'bed' && editing.id && (
+              <button type="button" className="btn ghost danger" onClick={() => void deleteBed()}>
+                Delete bed
+              </button>
+            )}
             <button className="btn primary">Save</button>
           </div>
         </form>

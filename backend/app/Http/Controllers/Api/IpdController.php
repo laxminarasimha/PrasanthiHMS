@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\Admission;
+use App\Models\AdmissionBed;
 use App\Models\AdmissionBill;
 use App\Models\AdmissionCharge;
 use App\Models\AdmissionPayment;
@@ -60,6 +61,22 @@ class IpdController extends Controller
         $bed->update($data);
 
         return response()->json($bed);
+    }
+
+    /**
+     * Removes a bed set up by mistake. Only a bed no patient has ever been in: a bed with past stays is named on those
+     * patients' cases and bills, so it stays and can only be switched off ("In use" unticked).
+     */
+    public function destroyBed(Bed $bed): JsonResponse
+    {
+        if (Admission::where('bed_id', $bed->id)->exists() || AdmissionBed::where('bed_id', $bed->id)->exists()) {
+            throw ValidationException::withMessages(['_' => 'Patients have stayed in this bed, so it is kept for their records. Untick "In use" to stop offering it.']);
+        }
+
+        $bed->delete();
+        AuditLog::record('ipd.bed_deleted', null, null, "Bed deleted: {$bed->ward} {$bed->bed_no}");
+
+        return response()->json(null, 204);
     }
 
     /**

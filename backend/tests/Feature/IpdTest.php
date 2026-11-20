@@ -117,6 +117,27 @@ class IpdTest extends TestCase
         $this->getJson('/api/ipd/services')->assertOk()->assertJsonCount(1);
     }
 
+    public function test_a_bed_set_up_by_mistake_can_be_deleted_but_not_one_patients_have_stayed_in(): void
+    {
+        $spare = Bed::create(['ward' => 'Day Care', 'bed_no' => '1', 'daily_charge' => 800]);
+        $this->admit()->assertCreated();
+
+        // Not by someone who cannot change the setup.
+        $this->deleteJson("/api/ipd/beds/{$spare->id}")->assertForbidden();
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $this->deleteJson("/api/ipd/beds/{$this->bed->id}")->assertStatus(422)->assertJsonValidationErrors('_');
+        $this->deleteJson("/api/ipd/beds/{$spare->id}")->assertNoContent();
+
+        $this->assertModelMissing($spare);
+        $this->assertModelExists($this->bed);
+        $this->assertSame('Bed deleted: Day Care 1', AuditLog::where('action', 'ipd.bed_deleted')->sole()->summary);
+
+        // A bed a patient has left (discharged or moved) is still kept for their records.
+        $this->postJson('/api/ipd/admissions/'.Admission::sole()->id.'/discharge', ['discharged_at' => now()->format('Y-m-d H:i')]);
+        $this->deleteJson("/api/ipd/beds/{$this->bed->id}")->assertStatus(422);
+    }
+
     public function test_admitting_gives_a_case_number_and_occupies_the_bed(): void
     {
         $admission = $this->admit()->assertCreated()->json();

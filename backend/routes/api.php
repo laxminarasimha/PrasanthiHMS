@@ -413,6 +413,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
         Route::middleware('ability:canManageSetup')->group(function () {
             Route::post('/beds', 'storeBed')->middleware(KeepPrices::class);
             Route::put('/beds/{bed}', 'updateBed')->middleware(KeepPrices::class);
+            Route::delete('/beds/{bed}', 'destroyBed');
             Route::post('/services', 'storeService')->middleware(KeepPrices::class);
             Route::put('/services/{service}', 'updateService')->middleware(KeepPrices::class);
             Route::put('/round-times', 'saveRoundTimes');
