@@ -238,6 +238,47 @@ class PatientAppController extends Controller
         return response()->json($this->presentAppointment($appointment->load(['doctor:id,name,department', 'patient:id,name'])));
     }
 
+    /**
+     * Moves an upcoming appointment to another free time with the same doctor, in one step: the new time is taken
+     * only if it is free, and the old one is let go at the same moment. The checks are the same as for booking.
+     */
+    public function move(Request $request, Appointment $appointment): JsonResponse
+    {
+        abort_unless(in_array($appointment->patient_id, $request->user()->patientIds(), true), 404);
+        if ($appointment->status !== 'booked' || $appointment->scheduled_at->isPast()) {
+            throw ValidationException::withMessages(['appointment' => 'Only an upcoming appointment that has not started can be moved here. Please call the hospital.']);
+        }
+        $data = $request->validate(['scheduled_at' => ['required', 'date_format:Y-m-d H:i']]);
+        $at = Carbon::parse($data['scheduled_at']);
+        if ($at->equalTo($appointment->scheduled_at)) {
+            throw ValidationException::withMessages(['scheduled_at' => 'That is the time already booked.']);
+        }
+        $doctor = User::find($appointment->doctor_id);
+        abort_unless($doctor && $doctor->is_active, 422, 'This doctor is not taking appointments now. Please book with another doctor.');
+
+        DB::transaction(function () use ($appointment, $at, $doctor) {
+            Appointment::where('doctor_id', $doctor->id)->whereDate('scheduled_at', $at->toDateString())->lockForUpdate()->get(['id']);
+            $slot = collect($this->slotsFor($doctor, $at))->firstWhere('time', $at->format('H:i'));
+            if (! $slot) {
+                throw ValidationException::withMessages(['scheduled_at' => 'The doctor does not see patients at that time. Choose one of the times shown.']);
+            }
+            if (! $slot['available']) {
+                throw ValidationException::withMessages(['scheduled_at' => 'That time has just been taken or has passed. Choose another.']);
+            }
+            $sameDay = $at->isSameDay($appointment->scheduled_at);
+            if (! $sameDay && Appointment::where('patient_id', $appointment->patient_id)->where('doctor_id', $doctor->id)->whereDate('scheduled_at', $at->toDateString())->where('status', '!=', 'cancelled')->exists()) {
+                throw ValidationException::withMessages(['scheduled_at' => 'There is already an appointment with this doctor on that day.']);
+            }
+            $appointment->update([
+                'scheduled_at' => $at->format('Y-m-d H:i'),
+                // A new day gives a new place in that day's queue; the same day keeps the token already given.
+                'token_no' => $sameDay ? $appointment->token_no : (int) Appointment::where('doctor_id', $doctor->id)->whereDate('scheduled_at', $at->toDateString())->max('token_no') + 1,
+            ]);
+        });
+
+        return response()->json($this->presentAppointment($appointment->fresh(['doctor:id,name,department', 'patient:id,name'])));
+    }
+
     // ---- Monthly medicines ----
 
     /** Medicine names to choose from while typing. Names only: no prices or stock. */

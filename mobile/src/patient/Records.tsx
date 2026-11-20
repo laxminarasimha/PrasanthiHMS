@@ -1,3 +1,4 @@
+import { MyHealth } from './Health'
 import { useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { api, ApiError, niceDate, type Person, type Records } from '../api'
@@ -6,10 +7,10 @@ import { Card, Choice, Empty, Loading, Notice, Switch, text } from '../ui'
 import { PatientBills } from './Bills'
 
 /** The patient's own prescriptions and lab reports, once the hospital has verified the account. */
-export function PatientRecords({ people, first, section }: { people: Person[]; /** Whose records to open on, when a notice led here. */ first?: number; section?: 'visits' | 'lab' | 'bills' }) {
+export function PatientRecords({ people, first, section }: { people: Person[]; /** Whose records to open on, when a notice led here. */ first?: number; section?: 'visits' | 'lab' | 'bills' | 'health' }) {
   const [who, setWho] = useState(String(people.find((p) => p.patient_id === first)?.patient_id ?? people[0].patient_id))
   const [records, setRecords] = useState<Records | null>(null)
-  const [show, setShow] = useState<'visits' | 'lab' | 'bills'>(section ?? 'visits')
+  const [show, setShow] = useState<'visits' | 'lab' | 'bills' | 'health'>(section ?? 'visits')
   const [open, setOpen] = useState<string | null>(null)
   const [error, setError] = useState('')
   const person = people.find((p) => String(p.patient_id) === who) ?? people[0]
@@ -43,8 +44,9 @@ export function PatientRecords({ people, first, section }: { people: Person[]; /
   return (
     <>
       {picker}
-      <Switch value={show} onChange={setShow} options={[{ value: 'visits', label: 'Prescriptions' }, { value: 'lab', label: 'Lab reports' }, { value: 'bills', label: 'Bills' }]} />
+      <Switch value={show} onChange={setShow} options={[{ value: 'visits', label: 'Prescriptions' }, { value: 'lab', label: 'Lab reports' }, { value: 'health', label: 'My health' }, { value: 'bills', label: 'Bills' }]} />
       {show === 'bills' && <PatientBills patientId={person.patient_id} />}
+      {show === 'health' && <MyHealth patientId={person.patient_id} />}
 
       {show === 'visits' && records.visits.length === 0 && <Empty text="No prescriptions yet. They appear here after a doctor finishes your visit." />}
       {show === 'visits' &&
