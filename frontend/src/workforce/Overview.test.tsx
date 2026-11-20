@@ -56,7 +56,7 @@ describe('the day overview', () => {
     show()
 
     await waitFor(() => expect(screen.getByText('Everyone expected is in.')).toBeTruthy())
-    expect(screen.getByText('Nobody has been marked in.')).toBeTruthy()
+    expect(screen.getByText('Nobody is checked in right now.')).toBeTruthy()
     expect(screen.getByText('Nobody is on leave.')).toBeTruthy()
   })
 
