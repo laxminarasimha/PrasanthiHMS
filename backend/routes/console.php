@@ -1,5 +1,9 @@
 <?php
 
+use App\Models\Branch;
+use App\Models\User;
+use App\Support\DatabaseBackup;
+use App\Support\DrugReference;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 
@@ -50,7 +54,7 @@ Artisan::command('hms:admin {email} {--name=Administrator} {--remote : Act on th
         return 1;
     }
 
-    $users = App\Models\User::on($connection);
+    $users = User::on($connection);
     $admin = $users->firstOrNew(['email' => $email]);
     $admin->setConnection($connection);
     $admin->fill([
@@ -60,12 +64,12 @@ Artisan::command('hms:admin {email} {--name=Administrator} {--remote : Act on th
         'is_active' => true,
         'gender' => $admin->gender ?? 'other',
         'phone' => $admin->phone ?? '0000000000',
-        'branch_id' => $admin->branch_id ?? App\Models\Branch::on($connection)->value('id'),
+        'branch_id' => $admin->branch_id ?? Branch::on($connection)->value('id'),
     ])->save();
     $this->info(($admin->wasRecentlyCreated ? 'Created' : 'Updated').' admin '.$email.' on the '.$connection.' database.');
 
     if ($this->option('disable-samples')) {
-        $samples = App\Models\User::on($connection)->where('email', 'like', '%@prasanthi.test')->where('email', '!=', $email);
+        $samples = User::on($connection)->where('email', 'like', '%@prasanthi.test')->where('email', '!=', $email);
         $ids = $samples->pluck('id');
         $samples->update(['is_active' => false]);
         DB::connection($connection)->table('personal_access_tokens')->whereIn('tokenable_id', $ids)->delete();
@@ -254,10 +258,10 @@ Artisan::command('hms:clear-test-data {--remote : Act on the remote database} {-
  */
 Artisan::command('hms:backup {--remote : Back up the hosting database to this computer} {--keep=30 : How many backups to keep}', function () {
     $remote = (bool) $this->option('remote');
-    $folder = $remote ? base_path('../db-export/backups') : App\Support\DatabaseBackup::folder();
+    $folder = $remote ? base_path('../db-export/backups') : DatabaseBackup::folder();
 
     try {
-        $made = App\Support\DatabaseBackup::run($remote ? 'remote' : null, $folder, max(1, (int) $this->option('keep')));
+        $made = DatabaseBackup::run($remote ? 'remote' : null, $folder, max(1, (int) $this->option('keep')));
     } catch (Throwable $e) {
         $this->error('Backup failed: '.$e->getMessage());
 
@@ -319,6 +323,61 @@ Artisan::command('hms:import-icd {file? : Tab-separated file of code and name} {
 })->purpose('Load the ICD-10 diagnosis code list');
 
 /*
+ * Loads the national drug list, Common Drug Codes for India (Flat Files Package) from NRCeS: the zip as downloaded from
+ * nrces.in, or the folder it unpacks to. Run it again with each new release; entries are added or brought up to date
+ * and never removed, so medicines already linked stay linked.
+ */
+Artisan::command('hms:import-cdci {path : The CommonDrugCodesForIndia_FlatFilePackage zip, or its unpacked folder} {--remote : Load into the remote database}', function () {
+    $path = (string) $this->argument('path');
+    $folder = $path;
+    $unpacked = null;
+    if (is_file($path)) {
+        $zip = new ZipArchive;
+        if ($zip->open($path) !== true) {
+            $this->error('Could not open '.basename($path).' as a zip file.');
+
+            return 1;
+        }
+        $unpacked = storage_path('app/cdci-'.bin2hex(random_bytes(4)));
+        // Only the package's own text files are taken out, by name, so nothing else in the zip lands anywhere.
+        $wanted = ['SubstanceMaster.txt', 'GenericMaster.txt', 'BrandMaster.txt', 'ProductMaster.txt', 'SupplierMaster.txt', 'DrugFormMaster.txt', 'RouteOfAdministrationMaster.txt'];
+        @mkdir($unpacked, 0700, true);
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $name = (string) $zip->getNameIndex($i);
+            if (in_array(basename($name), $wanted, true)) {
+                file_put_contents($unpacked.'/'.basename($name), $zip->getFromIndex($i));
+            }
+        }
+        $zip->close();
+        $folder = $unpacked;
+    } elseif (! is_dir($path)) {
+        $this->error('Could not find '.$path);
+
+        return 1;
+    }
+
+    $connection = $this->option('remote') ? 'remote' : config('database.default');
+    try {
+        $counts = DrugReference::load($folder, $connection);
+    } catch (RuntimeException $e) {
+        $this->error($e->getMessage());
+
+        return 1;
+    } finally {
+        if ($unpacked) {
+            array_map('unlink', glob($unpacked.'/*') ?: []);
+            @rmdir($unpacked);
+        }
+    }
+
+    $db = DB::connection($connection);
+    $this->info("Read {$counts['brands']} brands, {$counts['generics']} generics and {$counts['substances']} substances. The {$connection} database now has "
+        .$db->table('drug_ref_brands')->count().' brands on the national drug list.');
+
+    return 0;
+})->purpose('Load the national drug list (Common Drug Codes for India)');
+
+/*
  * Proves a backup can be put back. It loads a backup file into an empty scratch database on this
  * computer, counts what arrived, and compares that with what the backup says it holds. The scratch
  * database is removed afterwards; the real databases are never touched.
@@ -330,7 +389,7 @@ Artisan::command('hms:backup-check {file? : A .sql.gz backup file}', function ()
     $path = $this->argument('file');
     if (! $path) {
         $newest = fn (string $dir) => collect(glob($dir.'/hms-*.sql.gz') ?: [])->sort()->last();
-        $path = $newest(base_path('../db-export/backups')) ?: $newest(App\Support\DatabaseBackup::folder());
+        $path = $newest(base_path('../db-export/backups')) ?: $newest(DatabaseBackup::folder());
     }
     if (! $path || ! is_file($path)) {
         $this->error('No backup file found. Make one first with: php artisan hms:backup --remote');
@@ -392,4 +451,3 @@ Artisan::command('hms:backup-check {file? : A .sql.gz backup file}', function ()
 
     return 0;
 })->purpose('Prove that a backup file can be restored');
-

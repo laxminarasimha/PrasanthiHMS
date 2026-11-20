@@ -12,7 +12,8 @@ use App\Models\Medicine;
  */
 class Composition
 {
-    private const UNIT = '(?:mcg|µg|mg|g|kg|ml|l|iu|units?|%|meq|mmol|million\s+iu|lakh\s+iu|billion\s+cfu|cfu)';
+    // Also the "per" words of the national drug list's strengths: "100 mcg/actuation", "4 mg/sachet", "1 g/vial".
+    private const UNIT = '(?:mcg|µg|mg|g|kg|ml|l|iu|units?|%|meq|mmol|million\s+iu|million\s+units?|lakh\s+iu|billion\s+cfu|cfu|actuations?|doses?|vials?|sachets?)';
 
     /**
      * The drugs named in a composition as typed, each with its strength if one is written.

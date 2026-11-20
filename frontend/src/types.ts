@@ -407,6 +407,9 @@ export type Medicine = {
   box_no?: string | null
   /** What it contains, with strengths. Brands with the same composition are options for one another. */
   composition?: string | null
+  /** Its codes on the national drug list (Common Drug Codes for India), once staff have linked it. */
+  ref_brand_code?: string | null
+  ref_generic_code?: string | null
   type: string | null
   manufacturer: string | null
   category: string | null
