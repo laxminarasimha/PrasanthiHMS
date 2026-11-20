@@ -1,3 +1,5 @@
+import { BillDiscountBox } from '../../components/BillDiscountBox'
+import { discountRupees, noDiscount, type BillDiscount } from '../../components/billDiscount'
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
@@ -37,7 +39,7 @@ export function PharmacyBilling() {
   // and kept on the bill for the prescription-medicines register.
   const [doctor, setDoctor] = useState('')
   const [lines, setLines] = useState<Line[]>([])
-  const [discount, setDiscount] = useState('')
+  const [discount, setDiscount] = useState<BillDiscount>(noDiscount())
   const [paid, setPaid] = useState('')
   const [paidTouched, setPaidTouched] = useState(false)
   const [mode, setMode] = useState('cash')
@@ -138,7 +140,8 @@ export function PharmacyBilling() {
   const admitted = !walkIn && patient ? inpatients.find((a) => a.patient.id === patient.id) : undefined
   const toIpd = Boolean(admitted) && !admitted!.bill_approved && onIpd
   const subtotal = lines.reduce((sum, l) => sum + lineAmount(l), 0)
-  const total = Math.max(0, Math.round(subtotal - Number(discount || 0)))
+  const discountAmount = discountRupees(discount, subtotal)
+  const total = Math.max(0, Math.round(subtotal - discountAmount))
   // Until the cashier types an amount, assume the customer pays in full.
   const paidValue = paidTouched ? paid : String(total)
 
@@ -187,7 +190,8 @@ export function PharmacyBilling() {
     setName('')
     setPhone('')
     setDoctor('')
-    setDiscount('')
+    // The next bill starts with no discount, typed the same way as the last one.
+    setDiscount((d) => noDiscount(d.mode))
     setPaid('')
     setPaidTouched(false)
     setReference('')
@@ -213,7 +217,7 @@ export function PharmacyBilling() {
         customer_name: customer,
         customer_phone: (walkIn ? phone : patient?.mobile) || null,
         referred_doctor: walkIn ? null : doctor || null,
-        discount: discount || 0,
+        discount: discountAmount,
         // An inpatient's medicines go on the IPD bill: nothing is taken at the counter.
         paid: toIpd ? 0 : paidValue || 0,
         ...(toIpd ? { admission_id: admitted!.admission_id } : {}),
@@ -461,9 +465,9 @@ export function PharmacyBilling() {
             <dd>{lines.length}</dd>
             <dt>Amount</dt>
             <dd>{rupees(Math.round(subtotal * 100) / 100)}</dd>
-            <dt>Discount (₹)</dt>
+            <dt>Discount</dt>
             <dd>
-              <input className="qty" type="number" min={0} step="0.01" value={discount} onChange={(e) => setDiscount(e.target.value)} aria-label="Bill discount" />
+              <BillDiscountBox value={discount} onChange={setDiscount} subtotal={subtotal} />
             </dd>
             <dt className="strong">Bill amount</dt>
             <dd className="strong bill-total">{rupees(total)}</dd>
