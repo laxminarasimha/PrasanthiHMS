@@ -1,3 +1,5 @@
+import { NewMedicine } from '../../components/NewMedicine'
+import { NEW_MEDICINE } from './medicineChoices'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors } from '../../api'
 import { useAuth } from '../../auth'
@@ -23,6 +25,13 @@ export function PharmacyPurchaseOrders() {
   const [date, setDate] = useState(today())
   const [remarks, setRemarks] = useState('')
   const [lines, setLines] = useState<Line[]>([emptyLine()])
+  // The line a new medicine is being added for, from its medicine list.
+  const [newFor, setNewFor] = useState<number | null>(null)
+  const adopt = (m: Medicine, index: number) => {
+    setMedicines((list) => [...list.filter((x) => x.id !== m.id), { ...m, units_in_stock: 0 }].sort((a, b) => a.name.localeCompare(b.name)))
+    setLines((rows) => rows.map((row, i) => (i === index ? { ...row, medicine_id: String(m.id), units_per_pack: String(m.units_per_pack) } : row)))
+    setNewFor(null)
+  }
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
@@ -141,8 +150,9 @@ export function PharmacyPurchaseOrders() {
             </div>
             {lines.map((l, i) => (
               <div className="po-row" key={i}>
-                <select value={l.medicine_id} onChange={(e) => setLine(i, 'medicine_id', e.target.value)} aria-label={`Medicine ${i + 1}`}>
+                <select value={l.medicine_id} onChange={(e) => (e.target.value === NEW_MEDICINE ? setNewFor(i) : setLine(i, 'medicine_id', e.target.value))} aria-label={`Medicine ${i + 1}`}>
                   <option value="">Select medicine</option>
+                      <option value={NEW_MEDICINE}>＋ Add a new medicine…</option>
                   {medicines.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.name} ({m.units_in_stock} in stock)
@@ -340,6 +350,7 @@ export function PharmacyPurchaseOrders() {
           )}
         </div>
       )}
+      {newFor !== null && <NewMedicine start={{ units_per_pack: lines[newFor].units_per_pack }} onClose={() => setNewFor(null)} onAdded={(m) => adopt(m, newFor)} />}
     </>
   )
 }

@@ -1,3 +1,5 @@
+import { NewMedicine } from '../../components/NewMedicine'
+import { NEW_MEDICINE } from './medicineChoices'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors } from '../../api'
 import { canLeave, UnsavedGuard } from '../../unsaved'
@@ -65,6 +67,13 @@ export function PharmacyPurchases() {
   const [remarks, setRemarks] = useState('')
   const [extras, setExtras] = useState({ other_charges: '', cash_discount: '', round_off: '' })
   const [lines, setLines] = useState<Line[]>([emptyLine()])
+  // The line a new medicine is being added for, from its medicine list.
+  const [newFor, setNewFor] = useState<number | null>(null)
+  const adopt = (m: Medicine, index: number) => {
+    setMedicines((list) => [...list.filter((x) => x.id !== m.id), { ...m, units_in_stock: 0 }].sort((a, b) => a.name.localeCompare(b.name)))
+    setLines((rows) => rows.map((row, i) => (i === index ? { ...row, medicine_id: String(m.id), units_per_pack: String(m.units_per_pack), gst_percent: String(m.gst_percent), hsn_code: m.hsn_code ?? '', rack_no: m.rack_no ?? row.rack_no, box_no: m.box_no ?? row.box_no } : row)))
+    setNewFor(null)
+  }
   const [errors, setErrors] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
@@ -317,8 +326,9 @@ export function PharmacyPurchases() {
                 <div className="purchase-fields">
                   <label className="wide">
                     Medicine
-                    <select value={l.medicine_id} disabled={Boolean(saved)} onChange={(e) => setLine(i, 'medicine_id', e.target.value)} aria-label={`Medicine ${i + 1}`}>
+                    <select value={l.medicine_id} disabled={Boolean(saved)} onChange={(e) => (e.target.value === NEW_MEDICINE ? setNewFor(i) : setLine(i, 'medicine_id', e.target.value))} aria-label={`Medicine ${i + 1}`}>
                       <option value="">Select medicine</option>
+                      <option value={NEW_MEDICINE}>＋ Add a new medicine…</option>
                       {medicines.map((m) => (
                         <option key={m.id} value={m.id}>
                           {m.name}
@@ -652,6 +662,7 @@ export function PharmacyPurchases() {
           )}
         </div>
       )}
+      {newFor !== null && <NewMedicine start={{ units_per_pack: lines[newFor].units_per_pack, gst_percent: lines[newFor].gst_percent, hsn_code: lines[newFor].hsn_code, rack_no: lines[newFor].rack_no, box_no: lines[newFor].box_no }} onClose={() => setNewFor(null)} onAdded={(m) => adopt(m, newFor)} />}
     </>
   )
 }

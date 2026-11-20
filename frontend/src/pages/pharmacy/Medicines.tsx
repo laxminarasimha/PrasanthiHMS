@@ -1,3 +1,4 @@
+import { MEDICINE_CATEGORIES, MEDICINE_TYPES } from './medicineChoices'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useLoadOnChange } from '../../loading'
 import { api, fieldErrors, type FieldErrors } from '../../api'
@@ -10,8 +11,8 @@ import { downloadCsv, placeLabel, rupees, today } from '../../format'
 import type { Manufacturer, Medicine, Stockist } from '../../types'
 
 // The dosage forms offered. The three joined ones are how the medicine list first loaded names them, so a medicine filed that way shows its form here instead of a blank.
-const TYPES = ['Tablet', 'Capsule', 'Chewable Tablet', 'Dispersible Tablet', 'Syrup', 'Suspension', 'Solution', 'Injection', 'IV fluid', 'Cream / ointment', 'Ointment', 'Cream', 'Gel', 'Lotion', 'Drops', 'Powder', 'Sachet', 'Inhaler / spray', 'Inhaler', 'Spray', 'Suppository', 'Surgical', 'Other'].map((t) => ({ value: t, label: t }))
-const CATEGORIES = ['General', 'Scheduled Drug H', 'Scheduled Drug H1', 'Scheduled Drug X', 'Fast Moving', 'Emergency Medicine', 'High Risk Medicine', 'Surgical and consumables']
+const TYPES = MEDICINE_TYPES
+const CATEGORIES = MEDICINE_CATEGORIES
 const VED = [{ value: 'V', label: 'Vital' }, { value: 'E', label: 'Essential' }, { value: 'D', label: 'Desirable' }]
 const SDE = [{ value: 'S', label: 'Scarce' }, { value: 'D', label: 'Difficult to get' }, { value: 'E', label: 'Easy to get' }]
 const FSN = [{ value: 'F', label: 'Fast moving' }, { value: 'S', label: 'Slow moving' }, { value: 'N', label: 'Non-moving' }]
