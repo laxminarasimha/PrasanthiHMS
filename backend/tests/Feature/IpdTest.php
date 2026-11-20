@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Admission;
 use App\Models\AdmissionPayment;
 use App\Models\AuditLog;
 use App\Models\Bed;
@@ -217,5 +218,18 @@ class IpdTest extends TestCase
         Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
         $this->putJson("/api/ipd/beds/{$third->id}", ['ward' => 'AC Room', 'bed_no' => '1', 'is_active' => false])
             ->assertStatus(422)->assertJsonValidationErrors('is_active');
+    }
+
+    public function test_the_case_list_puts_patients_still_admitted_above_those_who_have_left(): void
+    {
+        $doctor = User::factory()->create(['role' => 'doctor']);
+        $make = fn (string $admitted, string $status) => Admission::create(['patient_id' => Patient::factory()->create()->id, 'doctor_id' => $doctor->id, 'admitted_at' => $admitted, 'status' => $status, 'discharged_at' => $status === 'admitted' ? null : now()])->id;
+        $leftRecently = $make(now()->subDay()->format('Y-m-d H:i'), 'discharged');
+        $inLong = $make(now()->subDays(9)->format('Y-m-d H:i'), 'admitted');
+        $inNew = $make(now()->subDays(2)->format('Y-m-d H:i'), 'admitted');
+        $leftLong = $make(now()->subDays(20)->format('Y-m-d H:i'), 'discharged');
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+
+        $this->assertSame([$inNew, $inLong, $leftRecently, $leftLong], array_column($this->getJson('/api/ipd/admissions?status=all')->assertOk()->json(), 'id'));
     }
 }

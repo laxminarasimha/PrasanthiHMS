@@ -143,9 +143,25 @@ class ConsultationTest extends TestCase
 
         $queue = $this->getJson('/api/doctor/queue')->assertOk()->assertJsonCount(2)->json();
 
+        // The patient still waiting comes first; the one already seen goes to the bottom.
+        $this->assertSame($second->id, $queue[0]['id']);
         $this->assertSame(1, $queue[0]['visits']);
         $this->assertSame(now()->toDateString(), $queue[0]['last_visit']);
-        $this->assertSame($second->id, $queue[1]['id']);
+        $this->assertSame($this->appointment->id, $queue[1]['id']);
+    }
+
+    public function test_the_doctor_sees_who_needs_them_first_and_those_already_seen_at_the_bottom(): void
+    {
+        $this->appointment->delete();
+        $at = fn (string $time, string $status) => Appointment::create(['patient_id' => Patient::factory()->create()->id, 'doctor_id' => $this->doctor->id, 'scheduled_at' => today()->setTimeFromTimeString($time), 'status' => $status])->id;
+        $seen = $at('09:00', 'reviewed');
+        $late = $at('09:30', 'booked');
+        $waitingLater = $at('10:00', 'arrived');
+        $withDoctor = $at('10:30', 'ongoing');
+        $waitingEarlier = $at('09:15', 'arrived');
+        $at('09:45', 'cancelled');
+
+        $this->assertSame([$withDoctor, $waitingEarlier, $waitingLater, $late, $seen], array_column($this->getJson('/api/doctor/queue')->assertOk()->json(), 'id'));
     }
 
     public function test_history_lists_completed_visits_and_medicines_are_suggested(): void

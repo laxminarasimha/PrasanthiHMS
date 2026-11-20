@@ -167,6 +167,8 @@ class IpdController extends Controller
                         ->orWhere('mobile', 'like', "{$term}%")
                         ->orWhere('uhid', 'like', "{$term}%"))))
                 ->with(self::LIST_WITH)
+                // Patients still in a bed first; those who have left below them. Newest first within each.
+                ->orderByRaw("CASE WHEN status = 'admitted' THEN 0 ELSE 1 END")
                 ->latest('admitted_at')->latest('id')
                 ->limit(300)
                 ->get()
