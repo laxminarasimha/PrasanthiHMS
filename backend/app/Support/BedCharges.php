@@ -165,13 +165,13 @@ class BedCharges
                     break;
                 }
 
-                $rate = (float) ($stay ? ($beds->get($stay->bed_id)?->daily_charge ?? 0) : 0);
+                $rate = $stay ? (float) ($beds->get($stay->bed_id)?->rateFor($locked) ?? 0) : 0.0;
                 $wanted = $settings['auto'] && $locked->auto_bed_charge && $rate > 0 && (! $settings['from'] || $starts->gte(Carbon::parse($settings['from'])));
                 if ($wanted) {
                     // A day whose accounts are already closed cannot take a new line, so it goes on today and says which day it is for.
                     $late = DayClose::isClosed($starts);
                     $locked->charges()->create([
-                        'description' => "Bed charge, day {$n} ({$stay->ward} · Bed {$stay->bed_no})",
+                        'description' => "Bed charge, day {$n} ({$stay->ward} · Bed {$stay->bed_no}".($locked->is_day_care ? ', day care' : '').')',
                         'category' => 'Bed',
                         'charged_on' => $late ? today() : $starts->toDateString(),
                         'quantity' => 1, 'unit_price' => $rate, 'amount' => $rate,

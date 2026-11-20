@@ -9,7 +9,7 @@ import { IpdBillTemplates } from './IpdBillTemplates'
 import { IpdBedCharging } from './IpdBedCharging'
 import { IpdRoundTimes } from './IpdRoundTimes'
 
-const blankBed = { ward: '', bed_no: '', daily_charge: '', is_active: true }
+const blankBed = { ward: '', bed_no: '', daily_charge: '', day_care_charge: '', is_active: true }
 const blankService = { name: '', category: '', price: '', is_active: true }
 type Editing = { kind: 'bed' | 'service'; id: number | null } | null
 
@@ -34,7 +34,7 @@ export function IpdSetup() {
     setEditing({ kind: 'bed', id: b?.id ?? null })
     setErrors({})
     setNotice('')
-    setBed(b ? { ward: b.ward, bed_no: b.bed_no, daily_charge: String(b.daily_charge), is_active: b.is_active } : blankBed)
+    setBed(b ? { ward: b.ward, bed_no: b.bed_no, daily_charge: String(b.daily_charge), day_care_charge: b.day_care_charge == null ? '' : String(b.day_care_charge), is_active: b.is_active } : blankBed)
   }
   const openService = (s: IpdService | null) => {
     setEditing({ kind: 'service', id: s?.id ?? null })
@@ -47,7 +47,7 @@ export function IpdSetup() {
     e.preventDefault()
     if (!editing) return
     const base = editing.kind === 'bed' ? '/ipd/beds' : '/ipd/services'
-    const payload = editing.kind === 'bed' ? { ...bed, daily_charge: bed.daily_charge || 0 } : service
+    const payload = editing.kind === 'bed' ? { ...bed, daily_charge: bed.daily_charge || 0, day_care_charge: bed.day_care_charge === '' ? null : bed.day_care_charge } : service
     try {
       await (editing.id ? api.put(`${base}/${editing.id}`, payload) : api.post(base, payload))
       setNotice('Saved.')
@@ -98,7 +98,10 @@ export function IpdSetup() {
                       <strong>{b.ward}</strong>
                     </td>
                     <td>{b.bed_no}</td>
-                    <td className="num">{rupees(b.daily_charge)}</td>
+                    <td className="num">
+                      {rupees(b.daily_charge)}
+                      {b.day_care_charge != null && <small className="muted block">{rupees(b.day_care_charge)} day care</small>}
+                    </td>
                     <td>{b.current_admission ? `${b.current_admission.patient.name} (${b.current_admission.ipd_no})` : '—'}</td>
                     <td>
                       <span className={`pill ${!b.is_active ? 'off' : b.current_admission ? 'status-ongoing' : 'ok'}`}>{!b.is_active ? 'Not in use' : b.current_admission ? 'Occupied' : 'Free'}</span>
@@ -176,6 +179,10 @@ export function IpdSetup() {
               </div>
               <TextField label="Bed number" required value={bed.bed_no} onChange={(v) => setBed((b) => ({ ...b, bed_no: v }))} error={errors.bed_no} />
               <TextField label="Charge per day (₹)" type="number" min={0} value={bed.daily_charge} onChange={(v) => setBed((b) => ({ ...b, daily_charge: v }))} error={errors.daily_charge} disabled={!canPrice} title={canPrice ? undefined : 'Only someone allowed to set prices can change this'} />
+              <div className="span-2">
+                <TextField label="Day-care charge per day (₹, optional)" type="number" min={0} value={bed.day_care_charge} onChange={(v) => setBed((b) => ({ ...b, day_care_charge: v }))} placeholder="Same as above" error={errors.day_care_charge} disabled={!canPrice} title={canPrice ? undefined : 'Only someone allowed to set prices can change this'} />
+                <small className="muted">For a ward bed also used for day care. A patient admitted as day care in this bed is charged this instead. Leave empty if day care costs the same.</small>
+              </div>
               {editing.id && (
                 <label className="check span-2">
                   <input type="checkbox" checked={bed.is_active} onChange={(e) => setBed((b) => ({ ...b, is_active: e.target.checked }))} />
