@@ -89,6 +89,42 @@ class WorkforceRosterTest extends TestCase
         $this->postJson('/api/workforce/attendance/check-in', ['employee_id' => $asha->id])->assertCreated()->assertJsonPath('work_date', '2026-06-02')->assertJsonPath('late_minutes', 280);
     }
 
+    public function test_staff_today_shows_as_in_only_those_in_the_hospital_right_now(): void
+    {
+        $asha = $this->employee('Asha Sample', ['shift_id' => $this->shift['night']]);
+        $ravi = $this->employee('Ravi Sample');
+        $in = fn () => array_column($this->getJson('/api/workforce/dashboard')->assertOk()->json('in'), 'name');
+
+        // Asha's night duty begins at 8 PM; Ravi works the morning duty.
+        $this->travelTo('2026-06-01 20:00:00');
+        $night = $this->postJson('/api/workforce/attendance/check-in', ['employee_id' => $asha->id])->assertCreated()->json('id');
+        $this->travelTo('2026-06-02 02:00:00');
+        // After midnight she is still in the hospital, and her open night duty is not a forgotten check-out.
+        $this->getJson('/api/workforce/dashboard')->assertOk()->assertJsonPath('in.0.name', 'Asha Sample')->assertJsonPath('in.0.note', 'since yesterday 8:00 PM')
+            ->assertJsonCount(0, 'missing_check_outs')->assertJsonCount(0, 'not_in');
+
+        $this->travelTo('2026-06-02 08:00:00');
+        $morning = $this->postJson('/api/workforce/attendance/check-in', ['employee_id' => $ravi->id])->assertCreated()->json('id');
+        $this->assertSame(['Asha Sample', 'Ravi Sample'], $in());
+        $this->travelTo('2026-06-02 08:10:00');
+        $this->postJson("/api/workforce/attendance/{$night}/check-out")->assertOk();
+        $this->assertSame(['Ravi Sample'], $in());
+
+        // Once Ravi has gone home he is no longer "in": he shows among those who came and left.
+        $this->travelTo('2026-06-02 18:05:00');
+        $this->postJson("/api/workforce/attendance/{$morning}/check-out")->assertOk();
+        $this->travelTo('2026-06-02 19:00:00');
+        $this->getJson('/api/workforce/dashboard')->assertOk()->assertJsonCount(0, 'in')->assertJsonPath('left.0.name', 'Ravi Sample');
+        // Looking back at the day, everyone who came is still listed.
+        $this->getJson('/api/workforce/dashboard?date=2026-06-01')->assertOk()->assertJsonPath('in.0.name', 'Asha Sample')->assertJsonPath('left', null);
+
+        // A spell left open from an earlier day is a forgotten check-out, not someone in the hospital.
+        $this->travelTo('2026-06-03 09:00:00');
+        $this->postJson('/api/workforce/attendance/check-in', ['employee_id' => $ravi->id])->assertCreated();
+        $this->travelTo('2026-06-04 09:30:00');
+        $this->getJson('/api/workforce/dashboard')->assertOk()->assertJsonCount(0, 'in')->assertJsonPath('missing_check_outs.0.employee.name', 'Ravi Sample');
+    }
+
     public function test_the_roster_moves_a_day_off_and_changing_it_measures_recorded_attendance_again(): void
     {
         $ravi = $this->employee('Ravi Sample');

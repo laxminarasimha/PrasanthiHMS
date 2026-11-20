@@ -13,7 +13,10 @@ type Board = {
   date: string
   is_today: boolean
   staff: number
+  /** Today: in the hospital right now. An earlier day: everyone who came. */
   in: Person[]
+  /** Today only: came in and has already gone. */
+  left?: Person[] | null
   not_in: Person[]
   later?: Person[]
   on_leave: Person[]
@@ -89,7 +92,7 @@ export function WorkforceOverview() {
           <>
             <div className="tiles">
               <div className="tile">
-                <span>In</span>
+                <span>{shown.is_today ? 'In now' : 'In'}</span>
                 <strong className="settled">{shown.in.length}</strong>
                 <small className="muted">of {shown.staff} staff</small>
               </div>
@@ -173,7 +176,10 @@ export function WorkforceOverview() {
               {list(shown.is_today ? 'Not in yet' : 'Absent', shown.not_in, 'Everyone expected is in.')}
               {list('Came late', shown.late, 'Nobody was late.', (p) => `${p.late_minutes} min late`)}
               {list('On leave', shown.on_leave, 'Nobody is on leave.', (p) => p.leave_type ?? '')}
-              {list('In', shown.in, 'Nobody has been marked in.', (p) => p.shift ?? '')}
+              {shown.is_today
+                ? list('In the hospital now', shown.in, 'Nobody is checked in right now.', (p) => [p.shift, p.note].filter(Boolean).join(' · '))
+                : list('In', shown.in, 'Nobody has been marked in.', (p) => p.shift ?? '')}
+              {shown.is_today && (shown.left?.length ?? 0) > 0 && list('Came and left', shown.left ?? [], '', (p) => p.shift ?? '')}
               {shown.is_today && (shown.later?.length ?? 0) > 0 && list('On duty later today', shown.later ?? [], '', (p) => [p.shift, p.note?.replace('On duty from ', 'from ')].filter(Boolean).join(' '))}
             </div>
           </>
