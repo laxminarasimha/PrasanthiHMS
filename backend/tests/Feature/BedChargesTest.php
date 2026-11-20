@@ -203,4 +203,47 @@ class BedChargesTest extends TestCase
         $this->travel(30)->hours();
         $this->assertSame([], $this->bedLines($other['id']));
     }
+
+    public function test_a_discharge_time_entered_wrongly_is_corrected_and_the_bed_charges_follow(): void
+    {
+        $this->putJson('/api/ipd/bed-charging', ['auto' => true])->assertOk();
+        $case = $this->admit();
+        $url = "/api/ipd/admissions/{$case['id']}";
+
+        // Discharged at 9 PM on day 3 when it should have been entered as day 4: three bed days were charged.
+        $this->travelTo('2026-03-14 12:00:00');
+        $this->postJson("{$url}/discharge", ['status' => 'discharged', 'discharged_at' => '2026-03-12 21:00'])->assertOk();
+        $this->assertEquals([1 => 800, 2 => 800, 3 => 800], $this->bedLines($case['id']));
+
+        // Only a closed case, with a reason, within the stay and not in the future.
+        $this->postJson("{$url}/discharge-time", ['discharged_at' => '2026-03-13 11:30'])->assertStatus(422)->assertJsonValidationErrors('reason');
+        $this->postJson("{$url}/discharge-time", ['discharged_at' => '2026-03-09 11:30', 'reason' => 'Typed wrongly'])->assertStatus(422)->assertJsonValidationErrors('discharged_at');
+        $this->postJson("{$url}/discharge-time", ['discharged_at' => '2026-03-15 11:30', 'reason' => 'Typed wrongly'])->assertStatus(422)->assertJsonValidationErrors('discharged_at');
+
+        // Later: the fourth day began before the patient left, so it is charged; the bed is held until the new time.
+        $this->postJson("{$url}/discharge-time", ['discharged_at' => '2026-03-13 11:30', 'reason' => 'Left the next morning; the evening time was typed by mistake'])
+            ->assertOk()->assertJsonPath('discharged_at', '2026-03-13 11:30')->assertJsonPath('bed_stays.0.to_at', '2026-03-13 11:30');
+        $this->assertEquals([1 => 800, 2 => 800, 3 => 800, 4 => 800], $this->bedLines($case['id']));
+
+        // Earlier: the days that no longer began come off, and are kept on record as removed lines.
+        $this->postJson("{$url}/discharge-time", ['discharged_at' => '2026-03-11 10:00', 'reason' => 'Went home on day 2 morning'])->assertOk()->assertJsonPath('bed_stays.0.to_at', '2026-03-11 10:00');
+        $this->assertEquals([1 => 800, 2 => 800], $this->bedLines($case['id']));
+        $this->assertSame(2, AdmissionCharge::onlyTrashed()->where('admission_id', $case['id'])->where('source_type', 'bed')->count());
+        $this->assertSame(2, \App\Models\AuditLog::where('action', 'ipd.discharge_time')->count());
+        // Leaving before a day began means that day is not owed: 8 AM on the 11th is before day 2 began at 9.
+        $this->assertSame(1, $this->postJson("{$url}/discharge-time", ['discharged_at' => '2026-03-11 08:00', 'reason' => 'Checked the register'])->assertOk()->json('bed_days_done'));
+        $this->postJson("{$url}/discharge-time", ['discharged_at' => '2026-03-11 10:00', 'reason' => 'Register was right the first time'])->assertOk();
+        $this->assertEquals([1 => 800, 2 => 800], $this->bedLines($case['id']));
+
+        // A day whose accounts are closed keeps its charges: the correction is refused rather than change that day's money.
+        DayClose::create(['day' => '2026-03-11', 'closed_by_name' => 'Admin', 'closed_at' => now(), 'expected_cash' => 0, 'counted_cash' => 0, 'variance' => 0, 'snapshot' => []]);
+        $this->postJson("{$url}/discharge-time", ['discharged_at' => '2026-03-10 18:00', 'reason' => 'Went home on day 1'])->assertStatus(423);
+        $this->assertEquals([1 => 800, 2 => 800], $this->bedLines($case['id']));
+
+        // A case still in the hospital is discharged, not corrected; an approved bill is final.
+        $other = $this->admit();
+        $this->postJson("/api/ipd/admissions/{$other['id']}/discharge-time", ['discharged_at' => '2026-03-14 10:00', 'reason' => 'x x x'])->assertStatus(422);
+        $this->postJson("{$url}/approve-bill", ["approved" => true])->assertOk();
+        $this->postJson("{$url}/discharge-time", ['discharged_at' => '2026-03-11 09:00', 'reason' => 'One more fix'])->assertStatus(422)->assertJsonValidationErrors('bill');
+    }
 }

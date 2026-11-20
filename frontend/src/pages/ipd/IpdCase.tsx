@@ -7,6 +7,7 @@ import { api, fieldErrors } from '../../api'
 import { canLeave } from '../../unsaved'
 import { useAuth } from '../../auth'
 import { SelectField, TextField } from '../../components/Field'
+import { Popup } from '../../components/Popup'
 import { ADMISSION_STATUS, PAYMENT_MODES, clock, longDate, modeLabel, nowLocal, rupees, today } from '../../format'
 import type { Admission, Bed, IpdBillTemplate, IpdService, OutstandingBill } from '../../types'
 import { FormsPanel } from '../../components/FormsPanel'
@@ -48,6 +49,7 @@ export function IpdCase() {
   /** True while something is being saved, so the money buttons cannot be pressed a second time meanwhile. */
   const [busy, setBusy] = useState(false)
   const [reopening, setReopening] = useState('')
+  const [leftAt, setLeftAt] = useState<{ at: string; reason: string } | null>(null)
   const [charge, setCharge] = useState({ ipd_service_id: '', description: '', charged_on: today(), quantity: '1', unit_price: '', discount: '', remarks: '' })
   /** The charge being corrected, when the form is editing one instead of adding. */
   const [editingCharge, setEditingCharge] = useState<number | null>(null)
@@ -814,7 +816,45 @@ export function IpdCase() {
             <>
               <p className="muted">
                 {ADMISSION_STATUS[admission.status]} on {longDate(admission.discharged_at!)} {clock(admission.discharged_at!)}
+                {canEdit && !billLocked && (
+                  <>
+                    {' · '}
+                    <button type="button" className="link" onClick={() => setLeftAt({ at: admission.discharged_at!.replace(' ', 'T'), reason: '' })}>
+                      Correct the time
+                    </button>
+                  </>
+                )}
               </p>
+              {canEdit && billLocked && <p className="muted small">The bill is approved, so the discharge time is fixed. Withdraw the approval to correct it.</p>}
+              {leftAt && (
+                <Popup
+                  title="Correct the discharge time"
+                  sub={`IPD ${admission.ipd_no} · admitted ${longDate(admission.admitted_at)} ${clock(admission.admitted_at)}`}
+                  size="slim"
+                  onClose={() => setLeftAt(null)}
+                  onSubmit={async (e) => {
+                    e.preventDefault()
+                    if (await run(api.post(`${url}/discharge-time`, { discharged_at: leftAt.at.replace('T', ' '), reason: leftAt.reason }), 'Discharge time corrected. The bed and the daily bed charges follow the new time.')) setLeftAt(null)
+                  }}
+                  foot={
+                    <>
+                      <button type="button" className="btn ghost" onClick={() => setLeftAt(null)}>
+                        Cancel
+                      </button>
+                      <button className="btn primary" disabled={busy || !leftAt.at || leftAt.reason.trim().length < 3}>
+                        Save the correct time
+                      </button>
+                    </>
+                  }
+                >
+                  <p className="muted small">
+                    Now recorded: {longDate(admission.discharged_at!)} {clock(admission.discharged_at!)}. The bed is given up at the new time; if the stay is now shorter or longer, the automatic daily bed charges are taken off or added to match. The
+                    change and its reason are kept in the record.
+                  </p>
+                  <TextField label="Correct date and time" required type="datetime-local" min={admission.admitted_at.replace(' ', 'T')} max={nowLocal()} value={leftAt.at} onChange={(v) => setLeftAt((f) => f && { ...f, at: v })} />
+                  <TextField label="Why it is being corrected" required value={leftAt.reason} onChange={(v) => setLeftAt((f) => f && { ...f, reason: v })} placeholder="Typed wrongly at discharge" />
+                </Popup>
+              )}
               <button type="button" className="btn ghost" onClick={() => canLeave() && setTab('summary')}>
                 Open the discharge summary
               </button>
