@@ -248,7 +248,12 @@ export function VisitPad() {
     }
   }
 
-  const save = async (complete: boolean) => {
+  /**
+   * 'draft' keeps the visit open as it is; 'waiting' saves it and marks the patient as gone for lab reports; 'end'
+   * finishes the consultation, whether or not anything has been written.
+   */
+  const save = async (how: 'draft' | 'waiting' | 'end') => {
+    const complete = how === 'end'
     setSaving(true)
     setErrors({})
     setNotice('')
@@ -258,6 +263,7 @@ export function VisitPad() {
     payload.diagnosis_codes = codes.map((c) => ({ code: c.code }))
     payload.investigations = investigations.filter((row) => row.name.trim() || row.result.trim()).map((row) => ({ name: row.name.trim(), result: row.result.trim() || null, date: row.date || null }))
     if (complete) payload.complete = true
+    if (how === 'waiting') payload.awaiting_reports = true
     // Vitals the doctor did not touch are not sent, so a blank box here cannot wipe what the desk has entered since.
     // The two blood pressure values travel together.
     const changed = (key: string) => String(form[key] ?? '') !== String(loadedVitals.current[key] ?? '')
@@ -279,7 +285,13 @@ export function VisitPad() {
         setForm((f) => ({ ...f, ...Object.fromEntries(VITALS.filter((v) => String(f[v.key] ?? '') === String(before[v.key] ?? '')).map((v) => [v.key, now[v.key]])) }))
         setSavedPad(sent)
       }
-      setNotice(complete ? 'Visit completed. You can print the prescription now.' : 'Draft saved.')
+      setNotice(
+        complete
+          ? 'Consultation ended. You can print the prescription now.'
+          : how === 'waiting'
+            ? 'Saved. The patient is shown as waiting for lab reports; open this visit again when the reports are in.'
+            : 'Draft saved.',
+      )
       if (complete) {
         api.get<Consultation[]>(`/patients/${res.data.patient.id}/consultations`).then((h) => setHistory(h.data))
         reloadLibrary()
@@ -291,8 +303,22 @@ export function VisitPad() {
     }
   }
 
+  // The two ways out of an open visit, at the top of the pad and again at the bottom.
+  const padEnd = !completed && (
+    <>
+      {!(visit.appointment.status === 'ongoing' && visit.appointment.awaiting_reports) && (
+        <button type="button" className="btn ghost" disabled={saving} onClick={() => save('waiting')} title="Save, and show the patient as gone for lab reports">
+          Waiting for lab reports
+        </button>
+      )}
+      <button type="button" className="btn primary" disabled={saving} onClick={() => save('end')} title="Finish the visit, even if nothing is written">
+        End consultation
+      </button>
+    </>
+  )
+
   saveNow.current = () => {
-    if (canWrite && !saving) void save(false)
+    if (canWrite && !saving) void save('draft')
   }
 
   const orderTests = async () => {
@@ -605,6 +631,7 @@ export function VisitPad() {
             </div>
             {visit.patient.allergies && <span className="pill off">Allergic to {visit.patient.allergies}</span>}
             {completed && <span className="pill ok">Completed</span>}
+            {!completed && visit.appointment.status === 'ongoing' && visit.appointment.awaiting_reports && <span className="pill status-arrived">Waiting for lab reports</span>}
             {canWrite && <span className={`save-state ${unsaved ? 'unsaved' : ''}`}>{saving ? 'Saving…' : unsaved ? 'Not saved yet' : visit.consultation ? 'All saved' : ''}</span>}
             {visit.consultation && (
               <a className="btn ghost" href={`/visits/${visit.appointment.id}/print`} target="_blank" rel="noreferrer">
@@ -613,14 +640,10 @@ export function VisitPad() {
             )}
             {canWrite && (
               <>
-                <button type="button" className="btn ghost" disabled={saving} onClick={() => save(false)} title="Ctrl + S">
+                <button type="button" className="btn ghost" disabled={saving} onClick={() => save('draft')} title="Ctrl + S">
                   {completed ? 'Save changes' : 'Save draft'}
                 </button>
-                {!completed && (
-                  <button type="button" className="btn primary" disabled={saving} onClick={() => save(true)}>
-                    Complete visit
-                  </button>
-                )}
+                {padEnd}
               </>
             )}
           </div>
@@ -695,14 +718,10 @@ export function VisitPad() {
 
         {canWrite ? (
           <div className="panel-foot row">
-            <button className="btn ghost" disabled={saving} onClick={() => save(false)}>
+            <button className="btn ghost" disabled={saving} onClick={() => save('draft')}>
               {completed ? 'Save changes' : 'Save draft'}
             </button>
-            {!completed && (
-              <button className="btn primary" disabled={saving} onClick={() => save(true)}>
-                Complete visit
-              </button>
-            )}
+            {padEnd}
           </div>
         ) : (
           !locked && <p className="muted gap-top">You can view this visit but not change it.</p>

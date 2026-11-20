@@ -204,7 +204,7 @@ export function DoctorHome({ user, onSignOut }: { user: StaffUser; onSignOut: ()
                 {q.patient.age_label} / {q.patient.gender.charAt(0).toUpperCase()} · {q.patient.uhid}
               </Text>
             </View>
-            <Pill status={q.status} />
+            <Pill status={q.status === 'ongoing' && q.awaiting_reports ? 'lab' : q.status} />
           </View>
           <Text style={text.body}>
             {niceTime(q.scheduled_at)}
@@ -213,7 +213,7 @@ export function DoctorHome({ user, onSignOut }: { user: StaffUser; onSignOut: ()
           </Text>
           <Text style={text.link}>{q.status === 'reviewed' ? 'Open the visit' : q.status === 'cancelled' ? 'See the patient' : 'Open the visit pad'}</Text>
           <Text style={text.muted}>
-            {[q.visits ? `${q.visits} earlier visit${q.visits === 1 ? '' : 's'}` : 'First visit', waiting(q), q.vitals_ready && q.status !== 'reviewed' ? 'Vitals taken' : '', q.booked_via === 'app' ? 'Booked from the app' : ''].filter(Boolean).join(' · ')}
+            {[q.visits ? `${q.visits} earlier visit${q.visits === 1 ? '' : 's'}` : 'First visit', waiting(q), q.vitals_ready && q.status !== 'reviewed' ? 'Vitals taken' : '', q.reports === 'ready' ? 'Reports ready' : q.reports === 'pending' ? 'Reports not ready yet' : '', q.booked_via === 'app' ? 'Booked from the app' : ''].filter(Boolean).join(' · ')}
           </Text>
         </Card>
         </Pressable>

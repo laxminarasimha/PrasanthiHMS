@@ -8,6 +8,7 @@ use App\Models\Appointment;
 use App\Models\AuditLog;
 use App\Models\Consultation;
 use App\Models\IcdCode;
+use App\Models\LabOrder;
 use App\Models\Medicine;
 use App\Models\Patient;
 use App\Models\PrescriptionItem;
@@ -49,11 +50,15 @@ class ConsultationController extends Controller
             ->where('status', '!=', 'cancelled')
             ->when($doctorId, fn ($q, $id) => $q->where('doctor_id', $id))
             ->with([self::PATIENT, 'doctor:id,name', 'service:id,name', 'consultation:id,appointment_id,completed_at,weight_kg,bp_systolic,pulse,temperature_f,spo2'])
-            // Who needs the doctor first: the patient with them now, then those waiting, then those not here yet; those
-            // already seen go to the bottom. Within each, by appointment time.
-            ->orderByRaw("CASE status WHEN 'ongoing' THEN 0 WHEN 'arrived' THEN 1 WHEN 'booked' THEN 2 ELSE 3 END")
+            // Who needs the doctor first: the patient with them now, then those waiting, then those away at the lab for
+            // reports, then those not here yet; those already seen go to the bottom. Within each, by appointment time.
+            ->orderByRaw("CASE WHEN status = 'ongoing' AND awaiting_reports THEN 2 WHEN status = 'ongoing' THEN 0 WHEN status = 'arrived' THEN 1 WHEN status = 'booked' THEN 3 ELSE 4 END")
             ->orderBy('scheduled_at')->orderBy('id')
             ->get();
+
+        // For a visit waiting on the lab: whether the reports it is waiting for are all in yet.
+        $waiting = $appointments->where('awaiting_reports', true)->pluck('id');
+        $orders = $waiting->isEmpty() ? collect() : LabOrder::query()->whereIn('appointment_id', $waiting)->where('status', '!=', 'cancelled')->get(['appointment_id', 'status'])->groupBy('appointment_id');
 
         // Earlier completed visits per patient, for the "visits" and "last seen" columns.
         $past = Consultation::query()
@@ -68,6 +73,8 @@ class ConsultationController extends Controller
             'last_visit' => isset($past[$a->patient_id]) ? substr((string) $past[$a->patient_id]->last_visit, 0, 10) : null,
             // True once the desk or a nurse has recorded any vital sign for this visit.
             'vitals_ready' => (bool) collect($a->consultation?->only(['weight_kg', 'bp_systolic', 'pulse', 'temperature_f', 'spo2']))->filter()->count(),
+            // null: not waiting, or no lab order made for this visit; otherwise 'ready' once every one is reported.
+            'reports' => $a->awaiting_reports && $orders->has($a->id) ? ($orders[$a->id]->every(fn ($o) => $o->status === 'completed') ? 'ready' : 'pending') : null,
         ]));
     }
 
@@ -118,6 +125,8 @@ class ConsultationController extends Controller
             'advice' => ['nullable', 'string', 'max:5000'],
             'follow_up_on' => ['nullable', 'date', 'after_or_equal:today'],
             'complete' => ['sometimes', 'boolean'],
+            // Saved and paused: the patient has gone for tests and comes back with the reports.
+            'awaiting_reports' => ['sometimes', 'boolean'],
             'medicines' => ['sometimes', 'array', 'max:40'],
             'medicines.*.medicine' => ['required', 'string', 'max:255'],
             'medicines.*.dose' => ['nullable', 'string', 'max:50'],
@@ -138,6 +147,7 @@ class ConsultationController extends Controller
         ]);
 
         $complete = (bool) ($data['complete'] ?? false);
+        $awaiting = array_key_exists('awaiting_reports', $data) ? (bool) $data['awaiting_reports'] : null;
         $medicines = $data['medicines'] ?? null;
         $allergies = array_key_exists('allergies', $data) ? ['allergies' => $data['allergies']] : null;
         // Keep only the signs that were actually marked.
@@ -152,9 +162,9 @@ class ConsultationController extends Controller
         if (array_key_exists('investigations', $data)) {
             $data['investigations'] = collect($data['investigations'] ?? [])->map(fn ($row) => ['name' => $row['name'], 'result' => $row['result'] ?? null, 'date' => $row['date'] ?? null])->values()->all() ?: null;
         }
-        unset($data['complete'], $data['medicines'], $data['allergies']);
+        unset($data['complete'], $data['awaiting_reports'], $data['medicines'], $data['allergies']);
 
-        DB::transaction(function () use ($appointment, $data, $medicines, $complete, $allergies) {
+        DB::transaction(function () use ($appointment, $data, $medicines, $complete, $awaiting, $allergies) {
             if ($allergies) {
                 $appointment->patient()->update($allergies);
             }
@@ -186,6 +196,8 @@ class ConsultationController extends Controller
             }
             if ($complete && ! $wasComplete) {
                 AuditLog::record('visit.completed', $appointment->patient_id, $appointment, $summary);
+            } elseif ($awaiting && ! $complete && ! $appointment->awaiting_reports) {
+                AuditLog::record('visit.awaiting_reports', $appointment->patient_id, $appointment, $summary);
             } elseif ($summary) {
                 AuditLog::record('visit.saved', $appointment->patient_id, $appointment, $summary.($wasComplete ? ' (after the visit was finished)' : ''));
             }
@@ -194,8 +206,9 @@ class ConsultationController extends Controller
             if ($complete) {
                 DoctorLibraryController::learn($appointment->doctor_id, $consultation, $consultation->medicines()->get()->toArray());
                 $appointment->update(['status' => 'reviewed']);
-            } elseif (in_array($appointment->status, ['booked', 'arrived'], true)) {
-                $appointment->update(['status' => 'ongoing', 'arrived_at' => $appointment->arrived_at ?? now()]);
+            } elseif (in_array($appointment->status, ['booked', 'arrived', 'ongoing'], true)) {
+                // A plain save leaves "waiting for reports" as it was; the doctor's choice of button changes it.
+                $appointment->update(['status' => 'ongoing', 'arrived_at' => $appointment->arrived_at ?? now()] + ($awaiting === null ? [] : ['awaiting_reports' => $awaiting]));
             }
         });
 
@@ -341,7 +354,7 @@ class ConsultationController extends Controller
 
         return [
             // attributesToArray applies the model's date formats; only() would hand back raw UTC timestamps.
-            'appointment' => array_intersect_key($appointment->attributesToArray(), array_flip(['id', 'scheduled_at', 'status', 'notes'])),
+            'appointment' => array_intersect_key($appointment->attributesToArray(), array_flip(['id', 'scheduled_at', 'status', 'awaiting_reports', 'notes'])),
             'patient' => $appointment->patient,
             'doctor' => $appointment->doctor,
             'service' => $appointment->service,

@@ -80,6 +80,9 @@ export type QueueEntry = {
   visits: number
   last_visit: string | null
   vitals_ready: boolean
+  /** Paused by the doctor while the patient is at the lab; `reports` says whether the lab has them all ready. */
+  awaiting_reports?: boolean
+  reports?: 'pending' | 'ready' | null
   booked_via?: string | null
   patient: { id: number; uhid: string; name: string; title?: string | null; gender: string; age_label: string; mobile: string }
   service: { name: string } | null
@@ -246,7 +249,7 @@ export type PadConsultation = {
   amendments?: { id: number; body: string; created_at: string; author?: { name: string } | null }[]
 }
 export type Visit = {
-  appointment: { id: number; scheduled_at: string; status: Appointment['status']; notes: string | null }
+  appointment: { id: number; scheduled_at: string; status: Appointment['status']; awaiting_reports?: boolean; notes: string | null }
   patient: { id: number; uhid: string; title?: string | null; name: string; gender: string; age_label: string; allergies: string | null; mobile?: string | null }
   doctor: { id: number; name: string } | null
   consultation: PadConsultation | null

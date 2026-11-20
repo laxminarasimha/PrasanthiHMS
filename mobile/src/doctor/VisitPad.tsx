@@ -47,7 +47,7 @@ export function VisitPad({ appointmentId, onBack, onHistory }: { appointmentId: 
   const [templates, setTemplates] = useState(false)
   const [message, setMessage] = useState<{ text: string; kind: 'ok' | 'error' | 'info' }>({ text: '', kind: 'ok' })
   const [warnings, setWarnings] = useState<string[] | null>(null)
-  const [busy, setBusy] = useState<'save' | 'finish' | 'amend' | null>(null)
+  const [busy, setBusy] = useState<'save' | 'waiting' | 'finish' | 'amend' | null>(null)
   const [amendment, setAmendment] = useState('')
 
   // The vitals as the server last gave them. The desk may enter vitals while this pad is open, so only the ones
@@ -108,7 +108,8 @@ export function VisitPad({ appointmentId, onBack, onHistory }: { appointmentId: 
   const phrases = (kind: 'complaint' | 'diagnosis' | 'advice') => (library && !Array.isArray(library.phrases) ? (library.phrases[kind] ?? []).slice(0, 8) : [])
   const addPhrase = (key: string, phrase: string) => setForm((f) => (f[key]?.toLowerCase().includes(phrase.toLowerCase()) ? f : { ...f, [key]: f[key]?.trim() ? `${f[key].trim()}\n${phrase}` : phrase }))
 
-  const save = async (complete: boolean) => {
+  /** Finishing works even with nothing written; `waiting` saves and shows the patient as gone for lab reports. */
+  const save = async (complete: boolean, waiting = false) => {
     setMessage({ text: '', kind: 'ok' })
     if (complete && warnings === null && body.medicines.length) {
       // Look the prescription over for allergies and repeats before the visit is finished.
@@ -119,18 +120,25 @@ export function VisitPad({ appointmentId, onBack, onHistory }: { appointmentId: 
         // The check is a help, not a gate: if it cannot be reached the doctor's own judgement stands.
       }
     }
-    setBusy(complete ? 'finish' : 'save')
+    setBusy(complete ? 'finish' : waiting ? 'waiting' : 'save')
     try {
       const changed = (key: string) => (form[key] ?? '').trim() !== (loadedVitals.current[key] ?? '').trim()
       const bpChanged = changed('bp_systolic') || changed('bp_diastolic')
-      const sending: Record<string, unknown> = { ...body, ...(complete ? { complete: true } : {}) }
+      const sending: Record<string, unknown> = { ...body, ...(complete ? { complete: true } : {}), ...(waiting ? { awaiting_reports: true } : {}) }
       for (const [key] of VITALS) {
         if (!(key.startsWith('bp_') ? bpChanged : changed(key))) delete sending[key]
       }
       const next = await api.put<Visit>(`/appointments/${appointmentId}/consultation`, sending)
       show(next)
       setWarnings(null)
-      setMessage({ text: complete ? 'The visit is finished. The prescription can be printed at the front desk, and the patient sees it in the app.' : 'Saved.', kind: 'ok' })
+      setMessage({
+        text: complete
+          ? 'Consultation ended. The prescription can be printed at the front desk, and the patient sees it in the app.'
+          : waiting
+            ? 'Saved. The patient is shown as waiting for lab reports; open this visit again when the reports are in.'
+            : 'Saved.',
+        kind: 'ok',
+      })
     } catch (e) {
       setMessage({ text: (e as ApiError).message, kind: 'error' })
     } finally {
@@ -197,13 +205,16 @@ export function VisitPad({ appointmentId, onBack, onHistory }: { appointmentId: 
                 <Text style={text.muted}>Change the prescription, or finish if this is what you intend.</Text>
               </View>
             )}
+            {!finished && !(visit?.appointment.status === 'ongoing' && visit.appointment.awaiting_reports) && (
+              <Button label="Waiting for lab reports" kind="ghost" onPress={() => save(false, true)} busy={busy === 'waiting'} disabled={busy !== null} />
+            )}
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <Button label={finished ? 'Save changes' : 'Save'} kind="ghost" onPress={() => save(false)} busy={busy === 'save'} disabled={busy !== null || !dirty} />
               </View>
               {!finished && (
                 <View style={{ flex: 1.3 }}>
-                  <Button label={warnings?.length ? 'Finish anyway' : 'Finish visit'} onPress={() => save(true)} busy={busy === 'finish'} disabled={busy !== null} />
+                  <Button label={warnings?.length ? 'End anyway' : 'End consultation'} onPress={() => save(true)} busy={busy === 'finish'} disabled={busy !== null} />
                 </View>
               )}
             </View>

@@ -136,7 +136,15 @@ export function DoctorQueue() {
                 <td className="num">{q.visits}</td>
                 <td>{waiting(q, now)}</td>
                 <td>
-                  <span className={`pill status-${q.status}`}>{STATUS_LABELS[q.status]}</span>
+                  {q.status === 'ongoing' && q.awaiting_reports ? (
+                    <>
+                      <span className="pill status-arrived">Waiting for lab reports</span>
+                      {q.reports === 'ready' && <small className="settled block">Reports ready</small>}
+                      {q.reports === 'pending' && <small className="muted block">Reports not ready yet</small>}
+                    </>
+                  ) : (
+                    <span className={`pill status-${q.status}`}>{STATUS_LABELS[q.status]}</span>
+                  )}
                   {q.vitals_ready && q.status !== 'reviewed' && <small className="settled block">Vitals taken</small>}
                 </td>
                 <td className="num">
