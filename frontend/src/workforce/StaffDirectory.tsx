@@ -19,7 +19,7 @@ type Options = {
   statuses: string[]
   next_employee_no: string
 }
-type Private = { bank_name: string | null; tax_regime: string | null; bank_account_no: string | null; bank_ifsc: string | null; upi_id: string | null; pan: string | null; aadhaar: string | null; uan: string | null; esi_no: string | null; revealed: boolean; can_edit: boolean }
+type Private = { bank_name: string | null; tax_regime: string | null; bank_account_no: string | null; bank_ifsc: string | null; upi_id: string | null; pan: string | null; aadhaar: string | null; uan: string | null; esi_no: string | null; revealed: boolean; can_edit: boolean; unreadable?: string[] }
 
 const blank = {
   employee_no: '', name: '', status: 'active', phone: '', email: '', gender: '', emergency_contact_name: '', emergency_contact_phone: '', department_id: '', designation: '', manager_id: '',
@@ -336,6 +336,11 @@ function PrivateDetails({ employeeId }: { employeeId: number }) {
           </button>
         )}
       </p>
+      {(data.unreadable?.length ?? 0) > 0 && (
+        <p className="form-error">
+          These were saved before 20 Nov 2026 and can no longer be read: {data.unreadable!.map((f) => PRIVATE_FIELDS.find(([key]) => key === f)?.[1] ?? f).join(', ')}. Please type them again and save.
+        </p>
+      )}
       <fieldset disabled={!data.can_edit}>
         <div className="grid">
           <TextField label="Bank" value={form.bank_name ?? ''} onChange={(v) => setForm((f) => ({ ...f, bank_name: v }))} error={errors.bank_name} />

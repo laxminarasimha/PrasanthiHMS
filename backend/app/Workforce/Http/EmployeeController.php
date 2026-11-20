@@ -129,7 +129,9 @@ class EmployeeController extends Controller
 
         return response()->json([
             'bank_name' => $private->bank_name, 'tax_regime' => $private->tax_regime, 'revealed' => $reveal,
-            ...collect(EmployeePrivate::SECRET)->mapWithKeys(fn (string $field) => [$field => $reveal ? $private->{$field} : EmployeePrivate::masked($private->{$field})])->all(),
+            ...collect(EmployeePrivate::SECRET)->mapWithKeys(fn (string $field) => [$field => $reveal ? $private->readable($field) : EmployeePrivate::masked($private->readable($field))])->all(),
+            // Entered before the live site kept its key from one deploy to the next: these must be typed again.
+            'unreadable' => $private->exists ? $private->unreadable() : [],
             'can_edit' => $user->allows('wf:staff_private:edit'),
         ]);
     }
@@ -153,7 +155,12 @@ class EmployeeController extends Controller
         unset($data['reason']);
 
         $private = EmployeePrivate::query()->firstOrNew(['employee_id' => $employee->id]);
-        $was = $private->only(array_keys($data));
+        // A value that can no longer be read counts as empty here, so typing it again replaces it cleanly.
+        $lost = $private->exists ? $private->unreadable() : [];
+        if ($lost !== []) {
+            $private->setRawAttributes(array_merge($private->getAttributes(), array_fill_keys($lost, null)), true);
+        }
+        $was = collect(array_keys($data))->mapWithKeys(fn (string $field) => [$field => in_array($field, EmployeePrivate::SECRET, true) ? $private->readable($field) : $private->{$field}])->all();
         $private->fill($data + ['updated_by' => $user->id])->save();
         [$before, $after] = Audit::difference($was, $private->only(array_keys($data)));
         Audit::record('staff.private.changed', $employee, $before, $after, $reason, $employee->id);

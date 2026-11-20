@@ -10,8 +10,10 @@ use App\Workforce\Models\AttendanceCorrection;
 use App\Workforce\Models\AuditEvent;
 use App\Workforce\Models\DepartmentManager;
 use App\Workforce\Models\Employee;
+use App\Workforce\Models\EmployeePrivate;
 use App\Workforce\Models\Shift;
 use App\Workforce\Support\Tenant;
+use Illuminate\Encryption\Encrypter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
@@ -283,5 +285,20 @@ class WorkforceStaffAndAttendanceApiTest extends TestCase
         // Bringing in sheets is for those who reach all staff.
         Sanctum::actingAs($this->user('dept_manager'));
         $this->postJson('/api/workforce/attendance/imports', $sheet)->assertForbidden();
+    }
+
+    public function test_details_written_under_an_earlier_key_are_named_for_typing_again_not_an_error(): void
+    {
+        $asha = $this->employee('Asha Sample');
+        Tenant::run($asha->branch_id, fn () => EmployeePrivate::create(['employee_id' => $asha->id, 'bank_name' => 'Sample Bank', 'pan' => 'ABCDE1234F', 'uan' => '100200300400']));
+        // As if the site's key had been changed since: the stored PAN no longer opens.
+        DB::table('wf_employee_private')->update(['pan' => (new Encrypter(random_bytes(32), 'AES-256-CBC'))->encryptString('ABCDE1234F')]);
+        $admin = $this->user('admin', ['password' => bcrypt('Sample-Passw0rd')]);
+        Sanctum::actingAs($admin);
+
+        $this->getJson("/api/workforce/employees/{$asha->id}/private")->assertOk()->assertJsonPath('pan', null)->assertJsonPath('unreadable', ['pan'])->assertJsonPath('uan', '••••••••0400');
+        $this->postJson('/api/workforce/confirm-password', ['password' => 'Sample-Passw0rd'])->assertOk();
+        $this->putJson("/api/workforce/employees/{$asha->id}/private", ['pan' => 'ABCDE1234F', 'reason' => 'Typed again after the key change'])->assertOk();
+        $this->getJson("/api/workforce/employees/{$asha->id}/private")->assertJsonPath('unreadable', [])->assertJsonPath('pan', '••••••234F');
     }
 }
