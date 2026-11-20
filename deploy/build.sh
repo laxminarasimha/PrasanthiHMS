@@ -7,7 +7,9 @@
 # Result: deploy/package/prasanthihms/      the whole app; its "public" folder is the web root
 #         deploy/package/prasanthihms.zip   the same thing, zipped for upload
 #
-# The package contains a production .env with a fresh APP_KEY. Database settings are copied
+# The package contains a production .env with the live site's APP_KEY, the same on every deploy
+# (PROD_APP_KEY in backend/.env): data the site encrypts, such as staff bank and ID numbers, can
+# only be read back with the key it was written with. Database settings are copied
 # from the REMOTE_DB_* lines of backend/.env, with the host set to localhost because on the
 # server the database is on the same machine.
 
@@ -22,6 +24,22 @@ fi
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/deploy/package"
 APP="$OUT/prasanthihms"
+
+# The live site's key. Never a new one: a new key would make everything already encrypted on the live
+# site unreadable. Taken from backend/.env; failing that, kept from the last package built here.
+KEY="$(grep -E '^PROD_APP_KEY=' "$ROOT/backend/.env" | head -1 | cut -d= -f2-)"
+if [[ -z "$KEY" && -f "$APP/.env" ]]; then
+  KEY="$(grep -E '^APP_KEY=' "$APP/.env" | head -1 | cut -d= -f2-)"
+  if [[ -n "$KEY" ]]; then
+    printf '\n# The production APP_KEY. deploy/build.sh writes this into every package. Never change or share it.\nPROD_APP_KEY=%s\n' "$KEY" >> "$ROOT/backend/.env"
+    echo "==> Kept the live key from the last package in backend/.env (PROD_APP_KEY)"
+  fi
+fi
+if [[ -z "$KEY" ]]; then
+  echo "No PROD_APP_KEY in backend/.env and no earlier package to take it from." >&2
+  echo "For a first deploy only, add one: cd backend && echo \"PROD_APP_KEY=\$(php artisan key:generate --show)\" >> .env" >&2
+  exit 1
+fi
 
 echo "==> Building the web app"
 (cd "$ROOT/frontend" && npm ci --silent && npm run build --silent)
@@ -55,7 +73,6 @@ find "$ROOT/frontend/dist" -maxdepth 1 -type f ! -name 'index.html' -exec cp {} 
 
 echo "==> Writing the production settings"
 remote() { grep -E "^REMOTE_DB_$1=" "$ROOT/backend/.env" | head -1 | cut -d= -f2-; }
-KEY="$(cd "$ROOT/backend" && php artisan key:generate --show --no-ansi)"
 cat > "$APP/.env" <<ENV
 APP_NAME="Prasanthi HMS"
 APP_ENV=production

@@ -3,6 +3,7 @@
 namespace App\Workforce\Models;
 
 use App\Workforce\Support\BranchScoped;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -24,6 +25,29 @@ class EmployeePrivate extends Model
     protected function casts(): array
     {
         return ['bank_account_no' => 'encrypted', 'bank_ifsc' => 'encrypted', 'upi_id' => 'encrypted', 'pan' => 'encrypted', 'aadhaar' => 'encrypted', 'uan' => 'encrypted', 'esi_no' => 'encrypted'];
+    }
+
+    /**
+     * A field's value, or null when it cannot be read: written under an earlier key of the live site (before the key
+     * was kept the same from one deploy to the next). The screen then asks for it to be typed again.
+     */
+    public function readable(string $field): ?string
+    {
+        try {
+            return $this->{$field};
+        } catch (DecryptException) {
+            return null;
+        }
+    }
+
+    /**
+     * The fields that hold something that can no longer be read.
+     *
+     * @return list<string>
+     */
+    public function unreadable(): array
+    {
+        return array_values(array_filter(self::SECRET, fn (string $field) => $this->getRawOriginal($field) !== null && $this->getRawOriginal($field) !== '' && $this->readable($field) === null));
     }
 
     /** The fields that identify a person or their bank account. */
