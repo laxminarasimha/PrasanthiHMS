@@ -62,7 +62,7 @@ class PharmacyTest extends TestCase
         $this->getJson('/api/pharmacy/medicines')->assertOk()->assertJsonCount(500);
         $list = $this->getJson('/api/pharmacy/medicines?list=1')->assertOk()->assertJsonCount($before + 520)->json();
         $this->assertSame('Zinc Sample 520', end($list)['name']);
-        $this->assertSame(['id', 'name', 'units_per_pack', 'gst_percent', 'hsn_code', 'rack_no', 'box_no'], array_keys($list[0]));
+        $this->assertSame(['id', 'name', 'composition', 'type', 'manufacturer', 'units_per_pack', 'gst_percent', 'hsn_code', 'rack_no', 'box_no'], array_keys($list[0]));
     }
 
     public function test_medicines_and_stockists_can_be_added_and_duplicates_are_refused(): void
