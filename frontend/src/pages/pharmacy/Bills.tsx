@@ -1,3 +1,5 @@
+import { BillDiscountBox } from '../../components/BillDiscountBox'
+import { discountRupees, type BillDiscount } from '../../components/billDiscount'
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useLoadOnChange } from '../../loading'
 import { useRangeInAddress } from '../../rangeInAddress'
@@ -17,7 +19,7 @@ type Action = 'view' | 'collect' | 'return' | 'delete' | 'edit' | 'mode'
 /** A medicine being added to a bill that is already saved. */
 type Added = { batchId: number; medicine: string; batchNo: string; unitPrice: number; available: number; quantity: string; discount: string; place: string }
 const addedAmount = (a: Added) => Math.round(Number(a.quantity || 0) * a.unitPrice * (1 - Number(a.discount || 0) / 100) * 100) / 100
-type Edit = { customer_name: string; customer_phone: string; referred_doctor: string; discount: string; lines: Record<number, { quantity: string; discount_percent: string }> }
+type Edit = { customer_name: string; customer_phone: string; referred_doctor: string; discount: BillDiscount; lines: Record<number, { quantity: string; discount_percent: string }> }
 
 const ModeSelect = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
   <select value={value} onChange={(e) => onChange(e.target.value)} aria-label="Mode">
@@ -85,7 +87,7 @@ export function PharmacyBills() {
         customer_name: res.data.customer_name,
         customer_phone: res.data.customer_phone ?? '',
         referred_doctor: res.data.referred_doctor ?? '',
-        discount: String(res.data.discount),
+        discount: { mode: 'amount', typed: res.data.discount ? String(res.data.discount) : '' },
         lines: Object.fromEntries((res.data.items ?? []).map((i) => [i.id, { quantity: String(i.quantity), discount_percent: String(i.discount_percent) }])),
       })
     })
@@ -120,7 +122,7 @@ export function PharmacyBills() {
           customer_name: edit.customer_name,
           customer_phone: edit.customer_phone || null,
           referred_doctor: edit.referred_doctor || null,
-          discount: Number(edit.discount || 0),
+          discount: editedDiscount,
           refund_mode: mode,
           reason: reason.trim() || null,
           items,
@@ -136,14 +138,12 @@ export function PharmacyBills() {
 
   // What the bill will come to with the quantities and discounts typed so far, and the medicines being added.
   const toAdd = added.filter((a) => Number(a.quantity) > 0)
-  const editedTotal =
+  const editedSubtotal =
     open && edit
-      ? Math.round(
-          (open.items ?? []).reduce((sum, i) => sum + Number(edit.lines[i.id]?.quantity || 0) * i.unit_price * (1 - Number(edit.lines[i.id]?.discount_percent || 0) / 100), 0) +
-            toAdd.reduce((sum, a) => sum + addedAmount(a), 0) -
-            Number(edit.discount || 0),
-        )
+      ? (open.items ?? []).reduce((sum, i) => sum + Number(edit.lines[i.id]?.quantity || 0) * i.unit_price * (1 - Number(edit.lines[i.id]?.discount_percent || 0) / 100), 0) + toAdd.reduce((sum, a) => sum + addedAmount(a), 0)
       : 0
+  const editedDiscount = edit ? discountRupees(edit.discount, editedSubtotal) : 0
+  const editedTotal = open && edit ? Math.round(editedSubtotal - editedDiscount) : 0
   // Whether anything already on the bill was changed. That needs a reason; only adding medicines does not.
   const corrected = Boolean(
     open &&
@@ -151,7 +151,7 @@ export function PharmacyBills() {
       (edit.customer_name !== open.customer_name ||
         edit.customer_phone !== (open.customer_phone ?? '') ||
         edit.referred_doctor !== (open.referred_doctor ?? '') ||
-        Number(edit.discount || 0) !== open.discount ||
+        editedDiscount !== open.discount ||
         (open.items ?? []).some((i) => Number(edit.lines[i.id]?.quantity || 0) !== i.quantity || Number(edit.lines[i.id]?.discount_percent || 0) !== i.discount_percent)),
   )
   // What will be owed after the change. A bill that was fully paid is offered in full; one already carrying a balance, only what is being added.
@@ -523,10 +523,10 @@ export function PharmacyBills() {
                       <span className="field-label">Doctor</span>
                       <input value={edit.referred_doctor} onChange={(e) => setEdit({ ...edit, referred_doctor: e.target.value })} />
                     </label>
-                    <label className="field">
-                      <span className="field-label">Bill discount (₹)</span>
-                      <input type="number" min={0} step="0.01" value={edit.discount} onChange={(e) => setEdit({ ...edit, discount: e.target.value })} />
-                    </label>
+                    <div className="field">
+                      <span className="field-label">Bill discount</span>
+                      <BillDiscountBox value={edit.discount} onChange={(d) => setEdit({ ...edit, discount: d })} subtotal={editedSubtotal} />
+                    </div>
                   </div>
                 </details>
                 <p className="net">
