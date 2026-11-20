@@ -529,6 +529,8 @@ export type Bed = {
   ward: string
   bed_no: string
   daily_charge: number
+  /** For a ward bed also used for day care: what a day-care stay is charged a day instead. */
+  day_care_charge?: number | null
   is_active: boolean
   current_admission?: { id: number; ipd_no: string; admitted_at: string; patient: { id: number; name: string; uhid: string } } | null
 }
@@ -650,6 +652,8 @@ export type Admission = {
   bed_stays?: BedStay[]
   /** Whether the app adds this patient's bed charge each day (when the hospital has that switched on at all). */
   auto_bed_charge?: boolean
+  /** A day-care stay: its bed charges use the bed's day-care rate, where it has one. */
+  is_day_care?: boolean
   /** Whether the hospital has automatic bed charges switched on. */
   bed_charges_auto?: boolean
   status: AdmissionStatus
@@ -670,7 +674,7 @@ export type Admission = {
   due: number
   patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'age_label' | 'title' | 'mobile' | 'address' | 'city' | 'blood_group'>
   doctor: { id: number; name: string; department?: string | null; signature_text?: string | null }
-  bed: { id: number; ward: string; bed_no: string; daily_charge?: number } | null
+  bed: { id: number; ward: string; bed_no: string; daily_charge?: number; day_care_charge?: number | null } | null
   charges?: AdmissionCharge[]
   /** Numbered bills made from the charges, oldest first. */
   bills?: { id: number; bill_no: string; billed_on: string; notes: string | null; total: number; creator?: { id: number; name: string } | null }[]

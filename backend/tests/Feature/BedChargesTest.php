@@ -247,4 +247,31 @@ class BedChargesTest extends TestCase
         $this->postJson("{$url}/approve-bill", ['approved' => true])->assertOk();
         $this->postJson("{$url}/discharge-time", ['discharged_at' => '2026-03-11 09:00', 'reason' => 'One more fix'])->assertStatus(422)->assertJsonValidationErrors('bill');
     }
+
+    public function test_a_ward_bed_used_for_day_care_charges_its_day_care_rate_for_a_day_care_stay(): void
+    {
+        $this->putJson('/api/ipd/bed-charging', ['auto' => true])->assertOk();
+        // The general ward bed carries a day-care rate beside its usual one. Setting it is a price change.
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->putJson("/api/ipd/beds/{$this->general->id}", ['ward' => 'General Ward', 'bed_no' => '1', 'daily_charge' => 800, 'day_care_charge' => 500])->assertForbidden();
+        Sanctum::actingAs($this->doctor);
+        $this->putJson("/api/ipd/beds/{$this->general->id}", ['ward' => 'General Ward', 'bed_no' => '1', 'daily_charge' => 800, 'day_care_charge' => 500])->assertOk()->assertJsonPath('day_care_charge', 500);
+
+        // A day-care admission in it is charged the day-care rate, and the line says so.
+        $case = $this->admit(['is_day_care' => true]);
+        $this->assertTrue($case['is_day_care']);
+        $this->assertEquals([1 => 500], $this->bedLines($case['id']));
+        $this->assertStringContainsString('day care', AdmissionCharge::where('admission_id', $case['id'])->value('description'));
+
+        // An ordinary admission to the same kind of bed pays the usual rate.
+        $this->postJson("/api/ipd/admissions/{$case['id']}/discharge", ['status' => 'discharged', 'discharged_at' => now()->format('Y-m-d H:i')])->assertOk();
+        $other = $this->admit();
+        $this->assertFalse($other['is_day_care']);
+        $this->assertEquals([1 => 800], $this->bedLines($other['id']));
+
+        // Switched to day care during the stay: days already begun keep their charge, the next day is at the day-care rate.
+        $this->putJson("/api/ipd/admissions/{$other['id']}", ['is_day_care' => true])->assertOk();
+        $this->travel(25)->hours();
+        $this->assertEquals([1 => 800, 2 => 500], $this->bedLines($other['id']));
+    }
 }

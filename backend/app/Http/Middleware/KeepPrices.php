@@ -15,7 +15,7 @@ use Symfony\Component\HttpFoundation\Response;
 class KeepPrices
 {
     /** What a price is called on the things that have one. */
-    private const FIELDS = ['price', 'daily_charge'];
+    private const FIELDS = ['price', 'daily_charge', 'day_care_charge'];
 
     public function handle(Request $request, Closure $next): Response
     {

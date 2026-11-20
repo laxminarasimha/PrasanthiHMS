@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
     'branch_id', 'patient_id', 'doctor_id', 'payer_id', 'bed_id', 'admitted_at', 'discharged_at', 'status', 'reason',
-    'auto_bed_charge', 'attendant_name', 'attendant_phone', 'aadhaar_no', 'gst_no', 'discharge_summary', 'discount', 'created_by', 'bill_approved_at', 'bill_approved_by',
+    'auto_bed_charge', 'is_day_care', 'attendant_name', 'attendant_phone', 'aadhaar_no', 'gst_no', 'discharge_summary', 'discount', 'created_by', 'bill_approved_at', 'bill_approved_by',
 ])]
 class Admission extends Model
 {
@@ -28,7 +28,7 @@ class Admission extends Model
     {
         return [
             'admitted_at' => 'datetime:Y-m-d H:i', 'discharged_at' => 'datetime:Y-m-d H:i',
-            'total' => 'float', 'discount' => 'float', 'paid' => 'float', 'bill_approved_at' => 'datetime:Y-m-d H:i', 'auto_bed_charge' => 'boolean', 'bed_days_done' => 'integer',
+            'total' => 'float', 'discount' => 'float', 'paid' => 'float', 'bill_approved_at' => 'datetime:Y-m-d H:i', 'auto_bed_charge' => 'boolean', 'is_day_care' => 'boolean', 'bed_days_done' => 'integer',
         ];
     }
 

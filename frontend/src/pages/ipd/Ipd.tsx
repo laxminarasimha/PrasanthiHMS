@@ -43,6 +43,7 @@ export function Ipd() {
   const [payers, setPayers] = useState<AdminEntry[]>([])
   const [payerId, setPayerId] = useState('')
   const [form, setForm] = useState({ doctor_id: '', bed_id: '', admitted_at: nowLocal(), reason: '', attendant_name: '', attendant_phone: '' })
+  const [dayCare, setDayCare] = useState(false)
   const [errors, setErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
 
@@ -122,6 +123,7 @@ export function Ipd() {
         doctor_id: form.doctor_id || null,
         payer_id: payerId || null,
         admitted_at: form.admitted_at.replace('T', ' '),
+        is_day_care: dayCare,
       })
       navigate(`/ipd/${res.data.id}`)
     } catch (err) {
@@ -297,7 +299,10 @@ export function Ipd() {
                         {c.patient.uhid} · {c.patient.age_label} / {c.patient.gender.charAt(0).toUpperCase()}
                       </small>
                     </td>
-                    <td>{c.bed ? `${c.bed.ward} · ${c.bed.bed_no}` : '—'}</td>
+                    <td>
+                      {c.bed ? `${c.bed.ward} · ${c.bed.bed_no}` : '—'}
+                      {c.is_day_care && <small className="muted block">Day care</small>}
+                    </td>
                     <td>
                       {c.doctor.name}
                       {c.payer && <small className="muted block">{c.payer.name}</small>}
@@ -340,10 +345,20 @@ export function Ipd() {
               label="Bed"
               value={form.bed_id}
               onChange={set('bed_id')}
-              options={freeBeds.map((b) => ({ value: String(b.id), label: `${b.ward} · Bed ${b.bed_no}${b.daily_charge ? ` (₹${b.daily_charge}/day)` : ''}` }))}
+              options={freeBeds.map((b) => {
+                const rate = dayCare && b.day_care_charge != null ? b.day_care_charge : b.daily_charge
+                return { value: String(b.id), label: `${b.ward} · Bed ${b.bed_no}${rate ? ` (₹${rate}/day${dayCare && b.day_care_charge != null ? ', day care' : ''})` : ''}` }
+              })}
               placeholder={freeBeds.length ? 'Assign later' : 'No free beds'}
               error={errors.bed_id}
             />
+            <label className="check span-2 two-line">
+              <input type="checkbox" checked={dayCare} onChange={(e) => setDayCare(e.target.checked)} />
+              <span>
+                Day care
+                <small className="muted block">A same-day stay in a ward bed. Beds with a day-care rate are charged at that rate.</small>
+              </span>
+            </label>
             <div className="span-2">
               <TextField label="Admission date and time" required type="datetime-local" value={form.admitted_at} onChange={set('admitted_at')} error={errors.admitted_at} />
             </div>

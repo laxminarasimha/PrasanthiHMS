@@ -127,13 +127,16 @@ export function IpdCase() {
     }
   }
 
+  // A day-care stay is charged the bed's day-care rate, where the bed has one.
+  const dayCareRate = admission.is_day_care && admission.bed?.day_care_charge != null
+  const bedRate = dayCareRate ? admission.bed!.day_care_charge! : (admission.bed?.daily_charge ?? 0)
   const addBedCharge = () =>
     setCharge({
       ipd_service_id: '',
-      description: `Bed charges: ${admission.bed!.ward} bed ${admission.bed!.bed_no}`,
+      description: `Bed charges: ${admission.bed!.ward} bed ${admission.bed!.bed_no}${dayCareRate ? ' (day care)' : ''}`,
       charged_on: today(),
       quantity: String(stayDays(admission)),
-      unit_price: String(admission.bed!.daily_charge ?? 0),
+      unit_price: String(bedRate),
       discount: '',
       remarks: '',
     })
@@ -403,9 +406,9 @@ export function IpdCase() {
           )}
         </form>
         {/* With automatic bed charges on for this patient, each day's line is already there; filling them in by hand would bill twice. */}
-        {admission.bed && (admission.bed.daily_charge ?? 0) > 0 && !(admission.bed_charges_auto && admission.auto_bed_charge) && (
+        {admission.bed && bedRate > 0 && !(admission.bed_charges_auto && admission.auto_bed_charge) && (
           <button type="button" className="link add-medicine" onClick={addBedCharge}>
-            Fill in bed charges for {stayDays(admission)} day(s) at {rupees(admission.bed.daily_charge!)} a day
+            Fill in bed charges for {stayDays(admission)} day(s) at {rupees(bedRate)} a day{dayCareRate ? ' (day care)' : ''}
           </button>
         )}
         {templates.length > 0 && (
@@ -742,6 +745,22 @@ export function IpdCase() {
             </form>
           ) : (
             <p className="muted">{admission.bed ? `Was in ${admission.bed.ward}, bed ${admission.bed.bed_no}. The bed is free again.` : 'No bed was assigned.'}</p>
+          )}
+          {open && canEdit && (
+            <label className="check two-line">
+              <input
+                type="checkbox"
+                checked={Boolean(admission.is_day_care)}
+                disabled={busy || billLocked}
+                onChange={(e) => run(api.put(url, { is_day_care: e.target.checked }), e.target.checked ? 'Marked as day care: the bed is charged at its day-care rate.' : 'No longer day care: the bed is charged at its usual rate.')}
+              />
+              <span>
+                Day care
+                <small className="muted block">
+                  {admission.bed?.day_care_charge != null ? `This bed is ${rupees(admission.bed.day_care_charge)} a day for day care, ${rupees(admission.bed.daily_charge ?? 0)} otherwise.` : 'This bed has no separate day-care rate.'}
+                </small>
+              </span>
+            </label>
           )}
           {open && admission.bed_charges_auto && (
             <label className="check two-line">

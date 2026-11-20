@@ -74,6 +74,8 @@ class IpdController extends Controller
                 Rule::unique('beds')->where('branch_id', $request->user()->branch_id)->where('ward', $request->input('ward'))->ignore($bed),
             ],
             'daily_charge' => ['nullable', 'numeric', 'min:0'],
+            // For a ward bed also used for day care: what a day-care stay is charged instead. Empty: the usual rate.
+            'day_care_charge' => ['nullable', 'numeric', 'min:0'],
             'is_active' => ['sometimes', 'boolean'],
         ], ['bed_no.unique' => 'This ward already has a bed with that number.']) + ['daily_charge' => 0];
     }
@@ -201,6 +203,7 @@ class IpdController extends Controller
         $data = $request->validate($this->detailRules() + [
             'patient_id' => ['required', 'exists:patients,id'],
             'admitted_at' => ['required', 'date', 'before_or_equal:now'],
+            'is_day_care' => ['sometimes', 'boolean'],
         ]);
 
         if (Admission::where('patient_id', $data['patient_id'])->where('status', 'admitted')->exists()) {
@@ -233,6 +236,7 @@ class IpdController extends Controller
             'aadhaar_no' => ['sometimes', 'nullable', 'regex:/^[0-9]{12}$/'],
             'gst_no' => ['sometimes', 'nullable', 'string', 'max:20'],
             'auto_bed_charge' => ['sometimes', 'boolean'],
+            'is_day_care' => ['sometimes', 'boolean'],
         ], ['aadhaar_no.regex' => 'An Aadhaar number has 12 digits.']);
 
         if (isset($data['discount'])) {
@@ -249,7 +253,8 @@ class IpdController extends Controller
                 BedCharges::bringUpToDate($admission);
                 $this->claimBed($data['bed_id']);
             }
-            if (array_key_exists('auto_bed_charge', $data) && (bool) $data['auto_bed_charge'] !== $admission->auto_bed_charge) {
+            if ((array_key_exists('auto_bed_charge', $data) && (bool) $data['auto_bed_charge'] !== $admission->auto_bed_charge)
+                || (array_key_exists('is_day_care', $data) && (bool) $data['is_day_care'] !== $admission->is_day_care)) {
                 // Days up to now are dealt with under the old choice; the new one applies from the next day of stay.
                 BedCharges::bringUpToDate($admission);
             }
@@ -801,7 +806,7 @@ class IpdController extends Controller
         $admission = $admission->fresh()->load([
             'bedStays.mover:id,name',
             'patient:id,uhid,title,name,gender,date_of_birth,mobile,address,city,blood_group', 'doctor:id,name,department,signature_text',
-            'bed:id,ward,bed_no,daily_charge', 'charges.creator:id,name', 'payments.receiver:id,name', 'billApprover:id,name', 'payer:id,name,details', 'bills.creator:id,name', 'bills.charges:id,admission_bill_id,amount',
+            'bed:id,ward,bed_no,daily_charge,day_care_charge', 'charges.creator:id,name', 'payments.receiver:id,name', 'billApprover:id,name', 'payer:id,name,details', 'bills.creator:id,name', 'bills.charges:id,admission_bill_id,amount',
         ]);
         $admission->bills->each->makeHidden('charges');
         if (request()->user()?->allows('canWorkIpd')) {
