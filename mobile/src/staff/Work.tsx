@@ -22,7 +22,7 @@ export function Work({ user, refreshKey }: { user: StaffUser; refreshKey: number
     <>
       {sections.length > 1 && <Switch options={sections} value={section} onChange={setSection} />}
       {section === 'desk' && <FrontDeskBoard refreshKey={refreshKey} />}
-      {section === 'lab' && <LabBoard canRun={Boolean(user.can_run_lab)} refreshKey={refreshKey} />}
+      {section === 'lab' && <LabBoard canRun={Boolean(user.can_run_lab)} canApprove={Boolean(user.can_approve_lab)} refreshKey={refreshKey} />}
       {section === 'pharmacy' && <PharmacyCounter refreshKey={refreshKey} />}
     </>
   )
