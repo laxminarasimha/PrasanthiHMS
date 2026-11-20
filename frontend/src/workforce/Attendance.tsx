@@ -1,3 +1,4 @@
+import { Popup } from '../components/Popup'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { SelectField, TextField } from '../components/Field'
@@ -251,18 +252,7 @@ function SpellForm({ editing, onClose, onSaved }: { editing: Editing; onClose: (
   const other = Object.entries(errors).filter(([key]) => !['check_in', 'check_out', 'reason'].includes(key))
 
   return (
-    <form className="card panel" onSubmit={save} noValidate>
-      <div className="panel-head">
-        <div>
-          <h2>{record ? (asks ? 'Ask for a correction' : 'Correct attendance') : 'Enter attendance'}</h2>
-          <span className="muted">
-            {person.name} · {longDate(date)}
-          </span>
-        </div>
-        <button type="button" className="btn ghost" onClick={onClose}>
-          Close
-        </button>
-      </div>
+    <Popup title={record ? (asks ? 'Ask for a correction' : 'Correct attendance') : 'Enter attendance'} sub={<>{person.name} · {longDate(date)}</>} onClose={onClose} onSubmit={save} size="slim">
       <TextField label="Checked in" required type="datetime-local" value={checkIn} onChange={setCheckIn} error={errors.check_in} max={`${today()}T23:59`} />
       <TextField label="Checked out" type="datetime-local" value={checkOut} onChange={setCheckOut} error={errors.check_out} max={`${today()}T23:59`} />
       <p className="muted small">For a night shift the check-out is on the next morning; the day stays the one the shift started.</p>
@@ -286,7 +276,7 @@ function SpellForm({ editing, onClose, onSaved }: { editing: Editing; onClose: (
           {saving ? 'Saving…' : asks ? 'Send for approval' : 'Save'}
         </button>
       </div>
-    </form>
+    </Popup>
   )
 }
 

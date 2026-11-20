@@ -21,14 +21,19 @@ type Props = {
  */
 export function Popup({ title, sub, onClose, onSubmit, size, children, foot }: Props) {
   const box = useRef<HTMLDivElement & HTMLFormElement>(null)
+  // The latest close, without re-running the opening below each time the page draws (that would pull the cursor back).
+  const close = useRef(onClose)
   useEffect(() => {
-    // Into the first box to type in, or the window itself, so the keyboard is where the work is.
+    close.current = onClose
+  })
+  useEffect(() => {
+    // Once, on opening: into the first box to type in, or the window itself, so the keyboard is where the work is.
     const first = box.current?.querySelector<HTMLElement>('input:not([type=hidden]):not([disabled]), select, textarea')
     ;(first ?? box.current)?.focus()
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && close.current()
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
-  }, [onClose])
+  }, [])
 
   const inner = (
     <>

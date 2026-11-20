@@ -1,3 +1,4 @@
+import { Popup } from '../components/Popup'
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../api'
@@ -108,13 +109,7 @@ function LeavePanel({ date, doctorId, doctors, blocks, onClose, onChange }: { da
   }
 
   return (
-    <form className="card panel" onSubmit={save} noValidate>
-      <div className="panel-head">
-        <h2>Doctor leave</h2>
-        <button type="button" className="btn ghost" onClick={onClose}>
-          Close
-        </button>
-      </div>
+    <Popup title={'Doctor leave'} onClose={onClose} onSubmit={save}>
       <div className="grid">
         <div className="span-2">
           <SelectField label="Doctor" required value={form.doctor_id} onChange={set('doctor_id')} options={doctors.map((d) => ({ value: String(d.id), label: d.name }))} placeholder="Select doctor" error={errors.doctor_id} />
@@ -163,7 +158,7 @@ function LeavePanel({ date, doctorId, doctors, blocks, onClose, onChange }: { da
           ))}
         </ul>
       )}
-    </form>
+    </Popup>
   )
 }
 

@@ -118,6 +118,9 @@ h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color
 .modal.popup.slim { width: min(440px, 100%); }
 .modal.popup.wide { width: min(780px, 100%); }
 .modal.popup .panel-foot { margin-top: 16px; gap: 8px; }
+.modal.popup .panel-head { display: flex; flex-wrap: nowrap; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.modal.popup .panel-head > div { min-width: 0; }
+.modal.popup .panel-head > .btn { flex: none; }
 /* Workforce duty roster: a week of duties per person, a day box coloured by duty, and the counts at the foot. */
 .wf-roster-grid td.wf-duty { min-width: 118px; padding: 3px; text-align: left; vertical-align: top; }
 .wf-roster-grid td.wf-duty select { width: 100%; min-height: 32px; padding: 3px 6px; font-size: 0.8rem; }

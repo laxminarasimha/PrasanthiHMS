@@ -1,3 +1,4 @@
+import { Popup } from '../components/Popup'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { SelectField, TextField } from '../components/Field'
@@ -330,13 +331,7 @@ export function WorkforceSetup() {
         </section>
 
         {editing && (
-          <form className="card panel" onSubmit={save} noValidate>
-            <div className="panel-head">
-              <h2>{{ shift: 'Shift', calendar: 'Holiday calendar', holiday: 'Holiday', leave: 'Kind of leave' }[editing.what]}</h2>
-              <button type="button" className="btn ghost" onClick={() => setEditing(null)}>
-                Close
-              </button>
-            </div>
+          <Popup title={<>{{ shift: 'Shift', calendar: 'Holiday calendar', holiday: 'Holiday', leave: 'Kind of leave' }[editing.what]}</>} onClose={() => setEditing(null)} onSubmit={save}>
             {editing.what === 'shift' && (
               <>
                 <TextField label="Name" required value={text('name')} onChange={set('name')} error={errors.name} autoFocus />
@@ -391,7 +386,7 @@ export function WorkforceSetup() {
                 {saving ? 'Saving…' : 'Save'}
               </button>
             </div>
-          </form>
+          </Popup>
         )}
       </div>
     </>

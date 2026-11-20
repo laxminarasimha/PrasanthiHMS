@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Admission;
 use App\Models\AdmissionBed;
 use App\Models\AdmissionCharge;
+use App\Models\AuditLog;
 use App\Models\Bed;
 use App\Models\DayClose;
 use App\Models\Patient;
@@ -229,7 +230,7 @@ class BedChargesTest extends TestCase
         $this->postJson("{$url}/discharge-time", ['discharged_at' => '2026-03-11 10:00', 'reason' => 'Went home on day 2 morning'])->assertOk()->assertJsonPath('bed_stays.0.to_at', '2026-03-11 10:00');
         $this->assertEquals([1 => 800, 2 => 800], $this->bedLines($case['id']));
         $this->assertSame(2, AdmissionCharge::onlyTrashed()->where('admission_id', $case['id'])->where('source_type', 'bed')->count());
-        $this->assertSame(2, \App\Models\AuditLog::where('action', 'ipd.discharge_time')->count());
+        $this->assertSame(2, AuditLog::where('action', 'ipd.discharge_time')->count());
         // Leaving before a day began means that day is not owed: 8 AM on the 11th is before day 2 began at 9.
         $this->assertSame(1, $this->postJson("{$url}/discharge-time", ['discharged_at' => '2026-03-11 08:00', 'reason' => 'Checked the register'])->assertOk()->json('bed_days_done'));
         $this->postJson("{$url}/discharge-time", ['discharged_at' => '2026-03-11 10:00', 'reason' => 'Register was right the first time'])->assertOk();
@@ -243,7 +244,7 @@ class BedChargesTest extends TestCase
         // A case still in the hospital is discharged, not corrected; an approved bill is final.
         $other = $this->admit();
         $this->postJson("/api/ipd/admissions/{$other['id']}/discharge-time", ['discharged_at' => '2026-03-14 10:00', 'reason' => 'x x x'])->assertStatus(422);
-        $this->postJson("{$url}/approve-bill", ["approved" => true])->assertOk();
+        $this->postJson("{$url}/approve-bill", ['approved' => true])->assertOk();
         $this->postJson("{$url}/discharge-time", ['discharged_at' => '2026-03-11 09:00', 'reason' => 'One more fix'])->assertStatus(422)->assertJsonValidationErrors('bill');
     }
 }

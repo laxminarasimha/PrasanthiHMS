@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { Popup } from './Popup'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { useAuth } from '../auth'
 import { STATUS_LABELS, longDate, rupees, today } from '../format'
@@ -48,19 +49,29 @@ export function VitalsPanel({ appointment, onClose }: { appointment: Appointment
     }
   }
 
+  // A pop-up: the vitals are typed with the whole attention on them, and the day list behind keeps its full width.
   return (
-    <form className="card panel" onSubmit={save} noValidate>
-      <Head title="Vitals" sub={`${appointment.patient.name} · ${appointment.patient.uhid}`} onClose={onClose} />
+    <Popup
+      title="Vitals"
+      sub={`${appointment.patient.name} · ${appointment.patient.uhid}`}
+      onClose={onClose}
+      onSubmit={save}
+      foot={
+        <>
+          <button type="button" className="btn ghost" onClick={onClose}>
+            {saved ? 'Done' : 'Cancel'}
+          </button>
+          <button className="btn primary">Save vitals</button>
+        </>
+      }
+    >
       {saved && <p className="notice">Vitals saved. The doctor will see them on the visit pad.</p>}
-      <div className="grid">
+      <div className="grid three">
         {VITALS.map(([key, label]) => (
           <TextField key={key} label={label} type="number" step="any" value={form[key] ?? ''} onChange={(v) => { setSaved(false); setForm((f) => ({ ...f, [key]: v })) }} error={errors[key]} />
         ))}
       </div>
-      <div className="panel-foot">
-        <button className="btn primary">Save vitals</button>
-      </div>
-    </form>
+    </Popup>
   )
 }
 
@@ -185,8 +196,20 @@ export function EditAppointmentPanel({ appointment, doctors, services, onClose, 
   }
 
   return (
-    <form className="card panel" onSubmit={save} noValidate>
-      <Head title="Edit appointment" sub={`${appointment.patient.name} · token ${appointment.token_no ?? '—'}`} onClose={onClose} />
+    <Popup
+      title="Edit appointment"
+      sub={`${appointment.patient.name} · token ${appointment.token_no ?? '—'}`}
+      onClose={onClose}
+      onSubmit={save}
+      foot={
+        <>
+          <button type="button" className="btn ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn primary">Save changes</button>
+        </>
+      }
+    >
       <div className="grid">
         <SelectField label="Doctor" required value={doctorId} onChange={setDoctorId} options={doctors.map((d) => ({ value: String(d.id), label: d.name }))} error={errors.doctor_id} />
         <SelectField label="Service" value={serviceId} onChange={setServiceId} options={services.filter((s) => s.type === 'appointment').map((s) => ({ value: String(s.id), label: s.name }))} placeholder="None" error={errors.service_id} />
@@ -197,10 +220,7 @@ export function EditAppointmentPanel({ appointment, doctors, services, onClose, 
       </div>
       <p className="muted small">Changing the service here does not change a bill already made; edit the bill for that.</p>
       {errors._ && <p className="form-error">{errors._}</p>}
-      <div className="panel-foot">
-        <button className="btn primary">Save changes</button>
-      </div>
-    </form>
+    </Popup>
   )
 }
 

@@ -1,3 +1,4 @@
+import { Popup } from '../components/Popup'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { useAuth } from '../auth'
@@ -112,13 +113,7 @@ export function LabPackages() {
         </section>
 
         {editing && (
-          <form className="card panel" onSubmit={save} noValidate>
-            <div className="panel-head">
-              <h2>{editing === 'new' ? 'Add package' : editing.name}</h2>
-              <button type="button" className="btn ghost" onClick={() => setEditing(null)}>
-                Close
-              </button>
-            </div>
+          <Popup title={editing === 'new' ? 'Add package' : editing.name} onClose={() => setEditing(null)} onSubmit={save}>
             <fieldset disabled={!canEdit}>
               <TextField label="Package name" required placeholder="Master health check" value={name} onChange={setName} error={errors.name} autoFocus />
               <TextField label="Package price (₹)" required type="number" min={0} step="0.01" value={price} onChange={setPrice} error={errors.price} />
@@ -154,7 +149,7 @@ export function LabPackages() {
                 </button>
               </div>
             )}
-          </form>
+          </Popup>
         )}
       </div>
     </>
