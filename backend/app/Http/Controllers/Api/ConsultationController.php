@@ -49,6 +49,9 @@ class ConsultationController extends Controller
             ->where('status', '!=', 'cancelled')
             ->when($doctorId, fn ($q, $id) => $q->where('doctor_id', $id))
             ->with([self::PATIENT, 'doctor:id,name', 'service:id,name', 'consultation:id,appointment_id,completed_at,weight_kg,bp_systolic,pulse,temperature_f,spo2'])
+            // Who needs the doctor first: the patient with them now, then those waiting, then those not here yet; those
+            // already seen go to the bottom. Within each, by appointment time.
+            ->orderByRaw("CASE status WHEN 'ongoing' THEN 0 WHEN 'arrived' THEN 1 WHEN 'booked' THEN 2 ELSE 3 END")
             ->orderBy('scheduled_at')->orderBy('id')
             ->get();
 
