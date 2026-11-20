@@ -1,4 +1,5 @@
 import { useEffect, useRef, type FormEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 type Props = {
   title: ReactNode
@@ -51,10 +52,23 @@ export function Popup({ title, sub, onClose, onSubmit, size, children, foot }: P
     </>
   )
   const cls = `modal popup ${size ?? ''}`
-  return (
+  // Drawn at the end of the page, not inside whatever opened it: a pop-up opened from within a form (an invoice being
+  // typed) is then never part of that form, and its own submit stops here instead of saving the form behind it.
+  return createPortal(
     <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       {onSubmit ? (
-        <form className={cls} role="dialog" aria-modal="true" tabIndex={-1} ref={box} onSubmit={onSubmit} noValidate>
+        <form
+          className={cls}
+          role="dialog"
+          aria-modal="true"
+          tabIndex={-1}
+          ref={box}
+          noValidate
+          onSubmit={(e) => {
+            e.stopPropagation()
+            onSubmit(e)
+          }}
+        >
           {inner}
         </form>
       ) : (
@@ -62,6 +76,7 @@ export function Popup({ title, sub, onClose, onSubmit, size, children, foot }: P
           {inner}
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   )
 }
