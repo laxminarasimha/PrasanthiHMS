@@ -1,6 +1,7 @@
 import { useCallback, useState, type FormEvent } from 'react'
 import { useLoadOnChange } from '../../loading'
 import { Link } from 'react-router-dom'
+import { Popup } from '../../components/Popup'
 import { api, fieldErrors } from '../../api'
 import { useAuth } from '../../auth'
 import { REASONS } from './auditTypes'
@@ -87,7 +88,7 @@ export function PharmacyStock() {
   return (
     <>
       <PharmacyTabs />
-      <div className="split">
+      <div>
         <section className="card">
           <div className="toolbar">
             <h1>Stock by batch</h1>
@@ -169,21 +170,12 @@ export function PharmacyStock() {
         </section>
 
         {adjusting && (
-          <div className="card panel">
+          <Popup
+            title="Correct the stock"
+            sub={`${adjusting.medicine?.name ?? ''} · batch ${adjusting.batch_no} · expires ${expiryLabel(adjusting.expiry)} · system count ${adjusting.units_in_stock}`}
+            onClose={() => setAdjusting(null)}
+          >
           <form onSubmit={adjust}>
-            <div className="panel-head">
-              <h2>Correct the stock</h2>
-              <button type="button" className="btn ghost" onClick={() => setAdjusting(null)}>
-                Close
-              </button>
-            </div>
-            <p>
-              <strong>{adjusting.medicine?.name}</strong>
-              <br />
-              <span className="muted">
-                Batch {adjusting.batch_no} · expires {expiryLabel(adjusting.expiry)} · system count {adjusting.units_in_stock}
-              </span>
-            </p>
             <label className="field">
               <span className="field-label">Actual units on the shelf</span>
               <input type="number" min={0} value={count} onChange={(e) => setCount(e.target.value)} autoFocus />
@@ -255,7 +247,7 @@ export function PharmacyStock() {
               </button>
             </div>
           </form>
-          </div>
+          </Popup>
         )}
       </div>
     </>

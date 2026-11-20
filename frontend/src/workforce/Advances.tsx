@@ -1,3 +1,4 @@
+import { Popup } from '../components/Popup'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { SelectField, TextField } from '../components/Field'
@@ -38,7 +39,7 @@ export function WorkforceAdvances() {
   return (
     <>
       <WorkforceTabs />
-      <div className={open || adding ? 'split' : ''}>
+      <div className={open ? 'split' : ''}>
         <section className="card grow">
           <div className="toolbar">
             <h1>Advances and loans</h1>
@@ -170,14 +171,7 @@ function RequestForm({ onClose, onSaved }: { onClose: () => void; onSaved: (adva
   }
 
   return (
-    <aside className="card panel">
-      <form onSubmit={save} noValidate>
-        <div className="panel-head">
-          <h2>New request</h2>
-          <button type="button" className="btn ghost" onClick={onClose}>
-            Close
-          </button>
-        </div>
+    <Popup title="New request" onClose={onClose} onSubmit={save}>
         <SelectField label="For" required value={form.employee_id} onChange={set('employee_id')} options={staff.map((s) => ({ value: String(s.id), label: `${s.name} (${s.employee_no})` }))} placeholder="Choose a member of staff" error={errors.employee_id} />
         <div className="grid">
           <SelectField label="It is" value={form.kind} onChange={set('kind')} options={[{ value: 'advance', label: 'An advance on salary' }, { value: 'loan', label: 'A loan' }]} />
@@ -201,8 +195,7 @@ function RequestForm({ onClose, onSaved }: { onClose: () => void; onSaved: (adva
             {saving ? 'Saving…' : 'Put in the request'}
           </button>
         </div>
-      </form>
-    </aside>
+    </Popup>
   )
 }
 

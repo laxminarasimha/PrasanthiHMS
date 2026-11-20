@@ -10,6 +10,7 @@ use App\Models\Setting;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /**
@@ -51,6 +52,48 @@ class BedCharges
     public static function leave(Admission $admission, Carbon $at): void
     {
         AdmissionBed::where('admission_id', $admission->id)->whereNull('to_at')->update(['to_at' => $at]);
+    }
+
+    /**
+     * The time a closed stay ended was entered wrongly and is put right. The last bed is given up at the new time; if
+     * the stay is now shorter, the automatic bed charges for days that no longer began are taken off (kept on record as
+     * removed lines), and if it is longer, the days now begun are charged. Refused when a bed move happened after the
+     * new time, or when a charge to come off is already on a numbered bill.
+     */
+    public static function endMoved(Admission $admission, Carbon $was, Carbon $now, int $by): void
+    {
+        if (AdmissionBed::where('admission_id', $admission->id)->where('from_at', '>', $now)->exists()) {
+            throw ValidationException::withMessages(['discharged_at' => 'The patient was moved to a bed after that time. The discharge cannot be before the last bed move.']);
+        }
+        AdmissionBed::where('admission_id', $admission->id)->where(fn ($q) => $q->whereNull('to_at')->orWhere('to_at', $was))->update(['to_at' => $now]);
+
+        if ($now->lt($was)) {
+            $days = 1;
+            while (self::begun($admission, $days + 1, $now)) {
+                $days++;
+            }
+            $gone = $admission->charges()->where('source_type', 'bed')->where('source_id', '>', $days)->get();
+            foreach ($gone as $charge) {
+                if ($charge->admission_bill_id) {
+                    throw ValidationException::withMessages(['discharged_at' => "The bed charge for day {$charge->source_id} is on bill {$charge->bill?->bill_no}. Cancel that bill first, then correct the time."]);
+                }
+            }
+            if ($gone->isNotEmpty() && round($admission->total - $gone->sum('amount'), 2) < (float) $admission->discount) {
+                throw ValidationException::withMessages(['discharged_at' => 'The discount would be more than the remaining charges. Reduce the discount first.']);
+            }
+            foreach ($gone as $charge) {
+                $charge->update(['deleted_by' => $by]);
+                $charge->delete();
+            }
+            if ($admission->bed_days_done > $days) {
+                // Not a fillable field: the count of days dealt with is only ever set here and by the daily charge.
+                $admission->bed_days_done = $days;
+                $admission->save();
+            }
+            $admission->recalculate();
+        } else {
+            self::bringUpToDate($admission);
+        }
     }
 
     /**

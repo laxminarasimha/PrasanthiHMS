@@ -609,6 +609,38 @@ class IpdController extends Controller
     }
 
     /**
+     * Puts right a discharge time entered wrongly, on a case already closed, with the reason. The bed and the daily
+     * bed charges follow the new time. Not once the bill is approved: withdraw the approval first.
+     */
+    public function correctDischarge(Request $request, Admission $admission): JsonResponse
+    {
+        if ($admission->status === 'admitted') {
+            throw ValidationException::withMessages(['discharged_at' => 'This patient is still admitted. Use Discharge to close the case.']);
+        }
+        $this->refuseIfBillApproved($admission);
+        $data = $request->validate([
+            'discharged_at' => ['required', 'date', 'before_or_equal:now', 'after_or_equal:'.$admission->admitted_at->format('Y-m-d H:i')],
+            'reason' => ['required', 'string', 'min:3', 'max:255'],
+        ], [
+            'discharged_at.after_or_equal' => 'The discharge time cannot be before the admission time ('.$admission->admitted_at->format('j M Y, g:i A').').',
+            'discharged_at.before_or_equal' => 'The discharge time cannot be in the future.', 'reason.required' => 'Say why the time is being corrected.',
+        ]);
+        $was = $admission->discharged_at->copy();
+        $now = Carbon::parse($data['discharged_at'])->seconds(0);
+        if ($now->equalTo($was)) {
+            throw ValidationException::withMessages(['discharged_at' => 'That is the time already recorded.']);
+        }
+        DB::transaction(function () use ($admission, $was, $now, $request) {
+            $admission->update(['discharged_at' => $now]);
+            BedCharges::endMoved($admission->fresh(), $was, $now, $request->user()->id);
+        });
+        AuditLog::record('ipd.discharge_time', $admission->patient_id, $admission,
+            'IPD '.$admission->ipd_no.': discharge time changed from '.$was->format('j M Y, g:i A').' to '.$now->format('j M Y, g:i A').'. Reason: '.$data['reason']);
+
+        return response()->json($this->present($admission));
+    }
+
+    /**
      * Opens a closed case again: one closed by mistake, or under the wrong outcome. Only those who approve IPD bills may,
      * and the reason is kept in the record. The patient goes back to their bed if it is still free.
      */

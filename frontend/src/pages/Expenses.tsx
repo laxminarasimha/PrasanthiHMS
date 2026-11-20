@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { DateRange } from '../components/DateRange'
+import { Popup } from '../components/Popup'
 import { SelectField, TextField } from '../components/Field'
 import { PAYMENT_MODES, longDate, modeLabel, rupees, today } from '../format'
 import { useLoadOnChange } from '../loading'
@@ -394,9 +395,11 @@ export function Expenses() {
       )}
 
       {acting && (
-        <form
-          className="card panel"
-          noValidate
+        <Popup
+          title={`${acting.what === 'cancel' ? 'Cancel' : acting.what === 'refuse' ? 'Refuse' : 'Pay'} ${acting.row.expense_no}`}
+          sub={`${acting.row.category}${acting.row.paid_to ? ` · ${acting.row.paid_to}` : ''} · ${rupees(acting.row.amount)}`}
+          size="slim"
+          onClose={() => setActing(null)}
           onSubmit={(e) => {
             e.preventDefault()
             const r = acting.row
@@ -405,18 +408,6 @@ export function Expenses() {
             if (acting.what === 'pay') void step(r, 'pay', payment, `${r.expense_no} paid.`)
           }}
         >
-          <div className="panel-head">
-            <h2>
-              {acting.what === 'cancel' ? 'Cancel' : acting.what === 'refuse' ? 'Refuse' : 'Pay'} {acting.row.expense_no}
-            </h2>
-            <button type="button" className="btn ghost" onClick={() => setActing(null)}>
-              Close
-            </button>
-          </div>
-          <p>
-            <strong>{acting.row.category}</strong>
-            {acting.row.paid_to ? ` · ${acting.row.paid_to}` : ''} · {rupees(acting.row.amount)}
-          </p>
           {acting.what === 'pay' ? (
             <>
               <p className="muted small">This writes down a payment made at the counter or the bank. Cash comes off the drawer on the day it is paid.</p>
@@ -438,7 +429,7 @@ export function Expenses() {
               {acting.what === 'cancel' ? 'Cancel this expense' : acting.what === 'refuse' ? 'Refuse' : 'Record the payment'}
             </button>
           </div>
-        </form>
+        </Popup>
       )}
     </div>
   )

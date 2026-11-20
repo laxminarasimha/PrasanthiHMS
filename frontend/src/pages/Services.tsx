@@ -1,3 +1,4 @@
+import { Popup } from '../components/Popup'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { SetupTabs } from '../components/SetupTabs'
 import { api, fieldErrors, type FieldErrors } from '../api'
@@ -135,13 +136,7 @@ export function Services() {
       </section>
 
       {editing && (
-        <form className="card panel" onSubmit={save} noValidate>
-          <div className="panel-head">
-            <h2>{editing === 'new' ? 'Add service' : `Edit ${editing.name}`}</h2>
-            <button type="button" className="btn ghost" onClick={() => setEditing(null)}>
-              Close
-            </button>
-          </div>
+        <Popup title={<>{editing === 'new' ? 'Add service' : `Edit ${editing.name}`}</>} onClose={() => setEditing(null)} onSubmit={save}>
           <div className="grid">
             <div className="span-2">
               <TextField label="Service name" required value={form.name} onChange={set('name')} error={errors.name} autoFocus />
@@ -174,7 +169,7 @@ export function Services() {
               {saving ? 'Saving…' : editing === 'new' ? 'Add service' : 'Save changes'}
             </button>
           </div>
-        </form>
+        </Popup>
       )}
     </div>
     </>

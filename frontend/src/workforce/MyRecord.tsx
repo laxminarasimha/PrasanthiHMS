@@ -1,3 +1,4 @@
+import { Popup } from '../components/Popup'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { TextField } from '../components/Field'
@@ -313,13 +314,7 @@ function CorrectionForm({ records, onClose, onSaved }: { records: Spell[]; onClo
   const other = Object.entries(errors).filter(([key]) => !['check_in', 'check_out', 'reason', 'work_date'].includes(key))
 
   return (
-    <form className="card panel" onSubmit={save} noValidate>
-      <div className="panel-head">
-        <h2>Ask for a correction</h2>
-        <button type="button" className="btn ghost" onClick={onClose}>
-          Close
-        </button>
-      </div>
+    <Popup title={'Ask for a correction'} onClose={onClose} onSubmit={save} size="slim">
       <TextField
         label="Which day"
         required
@@ -349,6 +344,6 @@ function CorrectionForm({ records, onClose, onSaved }: { records: Spell[]; onClo
           {saving ? 'Sending…' : 'Send for approval'}
         </button>
       </div>
-    </form>
+    </Popup>
   )
 }

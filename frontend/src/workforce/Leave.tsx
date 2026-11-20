@@ -1,3 +1,4 @@
+import { Popup } from '../components/Popup'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { SelectField, TextField } from '../components/Field'
@@ -226,13 +227,7 @@ export function LeaveForm({ own, types: given, onClose, onSaved }: { own?: boole
   const other = Object.entries(errors).filter(([key]) => !(key in form))
 
   return (
-    <form className="card panel" onSubmit={save} noValidate>
-      <div className="panel-head">
-        <h2>{own ? 'Ask for leave' : 'Enter leave for staff'}</h2>
-        <button type="button" className="btn ghost" onClick={onClose}>
-          Close
-        </button>
-      </div>
+    <Popup title={own ? 'Ask for leave' : 'Enter leave for staff'} onClose={onClose} onSubmit={save}>
       {!own && <SelectField label="Member of staff" required value={form.employee_id} onChange={set('employee_id')} options={staff.map((s) => ({ value: String(s.id), label: `${s.name} (${s.employee_no})` }))} placeholder="Choose" error={errors.employee_id} />}
       <SelectField
         label="Kind of leave"
@@ -267,7 +262,7 @@ export function LeaveForm({ own, types: given, onClose, onSaved }: { own?: boole
           {saving ? 'Saving…' : 'Send'}
         </button>
       </div>
-    </form>
+    </Popup>
   )
 }
 

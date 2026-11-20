@@ -1,3 +1,4 @@
+import { Popup } from '../../components/Popup'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useLoadOnChange } from '../../loading'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
@@ -331,13 +332,7 @@ export function Ipd() {
       </section>
 
       {admitting && (
-        <form className="card panel" onSubmit={admit} noValidate>
-          <div className="panel-head">
-            <h2>Admit patient</h2>
-            <button type="button" className="btn ghost" onClick={() => setAdmitting(false)}>
-              Close
-            </button>
-          </div>
+        <Popup title={'Admit patient'} onClose={() => setAdmitting(false)} onSubmit={admit}>
           <PatientPicker patient={patient} onChange={setPatient} error={errors.patient_id} recent />
           <div className="grid gap-top">
             <SelectField label="Doctor" required value={form.doctor_id} onChange={set('doctor_id')} options={doctors.map((d) => ({ value: String(d.id), label: d.name }))} placeholder="Select doctor" error={errors.doctor_id} />
@@ -369,7 +364,7 @@ export function Ipd() {
               {saving ? 'Admitting…' : 'Admit'}
             </button>
           </div>
-        </form>
+        </Popup>
       )}
     </div>
   )
