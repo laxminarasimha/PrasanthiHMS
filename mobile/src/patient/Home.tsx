@@ -25,8 +25,8 @@ export function PatientHome({ account, onSignOut }: { account: Account; onSignOu
   const [people, setPeople] = useState<Person[]>(account.people)
   const [home, setHome] = useState<HomeData | null>(null)
   // Where a notice on the first screen leads: whose records, and which part of them.
-  const [recordsAt, setRecordsAt] = useState<{ first?: number; section?: 'visits' | 'lab' | 'bills' }>({})
-  const [page, setPage] = useState<{ kind: 'book' } | { kind: 'subscription'; existing: Subscription | null } | null>(null)
+  const [recordsAt, setRecordsAt] = useState<{ first?: number; section?: 'visits' | 'lab' | 'bills' | 'health' }>({})
+  const [page, setPage] = useState<{ kind: 'book'; doctorId?: number; patientId?: number; moving?: Appointment } | { kind: 'subscription'; existing: Subscription | null } | null>(null)
   const [appointments, setAppointments] = useState<Appointment[] | null>(null)
   const [subscriptions, setSubscriptions] = useState<Subscription[] | null>(null)
   const [message, setMessage] = useState<{ text: string; kind: 'ok' | 'error' }>({ text: '', kind: 'ok' })
@@ -48,11 +48,15 @@ export function PatientHome({ account, onSignOut }: { account: Account; onSignOu
     return (
       <BookAppointment
         people={people}
+        doctorId={page.doctorId}
+        patientId={page.patientId}
+        moving={page.moving}
         onBack={() => setPage(null)}
         onBooked={(a) => {
+          const moved = Boolean(page.moving)
           setPage(null)
           setTab('appointments')
-          setMessage({ text: `Booked with ${a.doctor?.name} on ${niceDate(a.scheduled_at)} at ${niceTime(a.scheduled_at)}${a.patient && a.patient.id !== account.patient.id ? ` for ${a.patient.name}` : ''}. The token number is ${a.token_no}.`, kind: 'ok' })
+          setMessage({ text: `${moved ? 'Moved: now' : 'Booked'} with ${a.doctor?.name} on ${niceDate(a.scheduled_at)} at ${niceTime(a.scheduled_at)}${a.patient && a.patient.id !== account.patient.id ? ` for ${a.patient.name}` : ''}. The token number is ${a.token_no}.`, kind: 'ok' })
           void load()
         }}
       />
@@ -102,6 +106,11 @@ export function PatientHome({ account, onSignOut }: { account: Account; onSignOu
           onBook={() => setPage({ kind: 'book' })}
           onOpen={(n) => {
             setMessage({ text: '', kind: 'ok' })
+            // A visit the doctor asked for: straight to booking with that doctor and person chosen.
+            if (n.kind === 'follow_up' && n.doctor_id) {
+              setPage({ kind: 'book', doctorId: n.doctor_id, patientId: n.patient_id })
+              return
+            }
             if (n.tab === 'bills') setRecordsAt({ section: 'bills' })
             else if (n.tab === 'records') setRecordsAt({ first: n.patient_id, section: 'lab' })
             setTab(n.tab === 'bills' ? 'records' : n.tab)
@@ -130,6 +139,7 @@ export function PatientHome({ account, onSignOut }: { account: Account; onSignOu
               {a.doctor?.department ? <Text style={text.muted}>{a.doctor.department}</Text> : null}
               {a.patient && a.patient.id !== account.patient.id ? <Text style={text.strong}>For {a.patient.name}</Text> : null}
               {a.notes ? <Text style={text.muted}>{a.notes}</Text> : null}
+              {a.can_cancel && <Button label="Move to another time" kind="ghost" small onPress={() => setPage({ kind: 'book', moving: a })} />}
               {a.can_cancel && (
                 <Button
                   label="Cancel this appointment"

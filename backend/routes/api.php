@@ -78,6 +78,7 @@ Route::prefix('app')->controller(PatientAppController::class)->group(function ()
         Route::get('/appointments', 'appointments');
         Route::post('/appointments', 'book')->middleware('throttle:20,1');
         Route::delete('/appointments/{appointment}', 'cancel');
+        Route::put('/appointments/{appointment}', 'move')->middleware('throttle:20,1');
         Route::get('/medicines', 'medicines');
         Route::get('/subscriptions', 'subscriptions');
         Route::post('/subscriptions', 'storeSubscription');
@@ -87,6 +88,7 @@ Route::prefix('app')->controller(PatientAppController::class)->group(function ()
 });
 Route::prefix('app')->middleware(['auth:sanctum', 'actor:patient'])->controller(PatientAppExtrasController::class)->group(function () {
     Route::get('/home', 'home');
+    Route::get('/health', 'health');
     Route::get('/bills', 'bills');
     Route::get('/family', 'family');
     Route::post('/family', 'addMember')->middleware('throttle:20,1');

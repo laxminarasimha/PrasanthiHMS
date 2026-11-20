@@ -4,9 +4,19 @@ import { addDays, api, ApiError, niceDate, shortDay, todayIso, type Appointment,
 import { colors, space } from '../theme'
 import { Button, Card, Choice, Empty, Field, Loading, Notice, Screen, text } from '../ui'
 
-/** Choose a doctor, a day and a free time, then confirm. */
-export function BookAppointment({ people, onBack, onBooked }: { people: Person[]; onBack: () => void; onBooked: (a: Appointment) => void }) {
-  const [who, setWho] = useState(String(people[0].patient_id))
+/**
+ * Choose a doctor, a day and a free time, then confirm. Opened from a "visit due" notice, it starts with that doctor
+ * and person chosen. Given an appointment to move, the doctor and person stay as they are and only the time changes.
+ */
+export function BookAppointment({ people, onBack, onBooked, doctorId, patientId, moving }: {
+  people: Person[]
+  onBack: () => void
+  onBooked: (a: Appointment) => void
+  doctorId?: number
+  patientId?: number
+  moving?: Appointment
+}) {
+  const [who, setWho] = useState(String(moving?.patient?.id ?? people.find((p) => p.patient_id === patientId)?.patient_id ?? people[0].patient_id))
   const [doctors, setDoctors] = useState<Doctor[] | null>(null)
   const [doctor, setDoctor] = useState<Doctor | null>(null)
   const [date, setDate] = useState(todayIso())
@@ -20,9 +30,12 @@ export function BookAppointment({ people, onBack, onBooked }: { people: Person[]
   useEffect(() => {
     api.get<Doctor[]>('/app/doctors').then((list) => {
       setDoctors(list)
-      if (list.length === 1) setDoctor(list[0])
+      const wanted = list.find((d) => d.id === (moving?.doctor?.id ?? doctorId))
+      if (wanted) setDoctor(wanted)
+      else if (list.length === 1) setDoctor(list[0])
+      if (moving) setDate(moving.scheduled_at.slice(0, 10))
     }).catch((e: ApiError) => setError(e.message))
-  }, [])
+  }, [doctorId, moving])
 
   useEffect(() => {
     if (!doctor) return
@@ -40,7 +53,11 @@ export function BookAppointment({ people, onBack, onBooked }: { people: Person[]
     setBusy(true)
     setError('')
     try {
-      onBooked(await api.post<Appointment>('/app/appointments', { doctor_id: doctor.id, scheduled_at: `${date} ${time}`, notes: notes.trim() || null, patient_id: Number(who) }))
+      onBooked(
+        moving
+          ? await api.put<Appointment>(`/app/appointments/${moving.id}`, { scheduled_at: `${date} ${time}` })
+          : await api.post<Appointment>('/app/appointments', { doctor_id: doctor.id, scheduled_at: `${date} ${time}`, notes: notes.trim() || null, patient_id: Number(who) }),
+      )
     } catch (e) {
       setError((e as ApiError).message)
       // The time may have just been taken: show the day afresh.
@@ -56,7 +73,7 @@ export function BookAppointment({ people, onBack, onBooked }: { people: Person[]
 
   return (
     <Screen
-      title="Book an appointment"
+      title={moving ? 'Move the appointment' : 'Book an appointment'}
       onBack={onBack}
       footer={
         doctor && time ? (
@@ -64,13 +81,19 @@ export function BookAppointment({ people, onBack, onBooked }: { people: Person[]
             <Text style={text.body}>
               {doctor.name} · {niceDate(date)} · <Text style={{ fontWeight: '700' }}>{picked?.label}</Text>
             </Text>
-            <Button label="Confirm booking" onPress={book} busy={busy} />
+            <Button label={moving ? 'Move to this time' : 'Confirm booking'} onPress={book} busy={busy} />
           </View>
         ) : undefined
       }
     >
       <Notice text={error} />
-      {people.length > 1 && (
+      {moving && (
+        <Card>
+          <Text style={text.strong}>Now booked: {niceDate(moving.scheduled_at)}</Text>
+          <Text style={text.muted}>Choose the new day and time below. The old time is let go only once the new one is yours.</Text>
+        </Card>
+      )}
+      {people.length > 1 && !moving && (
         <Card>
           <Text style={text.h2}>Who is it for?</Text>
           <Choice value={who} onChange={setWho} options={people.map((p) => ({ value: String(p.patient_id), label: p.relation === 'Self' ? 'Me' : `${p.name} (${p.relation})` }))} />
@@ -80,8 +103,8 @@ export function BookAppointment({ people, onBack, onBooked }: { people: Person[]
         <Text style={text.h2}>1. Doctor</Text>
         {!doctors && !error && <Loading />}
         {doctors?.length === 0 && <Empty text="No doctor is open for booking yet. Please call the hospital." />}
-        {doctors?.map((d) => (
-          <Pressable key={d.id} onPress={() => setDoctor(d)} accessibilityRole="radio" accessibilityState={{ selected: doctor?.id === d.id }} style={[styles.doctor, doctor?.id === d.id && styles.doctorOn]}>
+        {doctors?.filter((d) => !moving || d.id === moving.doctor?.id).map((d) => (
+          <Pressable key={d.id} onPress={() => !moving && setDoctor(d)} accessibilityRole="radio" accessibilityState={{ selected: doctor?.id === d.id }} style={[styles.doctor, doctor?.id === d.id && styles.doctorOn]}>
             <Text style={text.strong}>{d.name}</Text>
             {d.department ? <Text style={text.muted}>{d.department}</Text> : null}
           </Pressable>
@@ -123,7 +146,7 @@ export function BookAppointment({ people, onBack, onBooked }: { people: Person[]
         </Card>
       )}
 
-      {doctor && time ? (
+      {doctor && time && !moving ? (
         <Card>
           <Field label="Reason for the visit (optional)" value={notes} onChangeText={setNotes} maxLength={255} placeholder="e.g. sugar check, fever for 3 days" />
           <Text style={text.muted}>The consultation fee is paid at the hospital front desk when you arrive.</Text>

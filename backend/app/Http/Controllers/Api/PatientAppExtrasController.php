@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Admission;
 use App\Models\Appointment;
+use App\Models\AuditLog;
 use App\Models\Bill;
 use App\Models\Consultation;
 use App\Models\LabOrder;
+use App\Models\LabResult;
 use App\Models\MedicineSubscription;
 use App\Models\Patient;
 use App\Models\PatientAccountMember;
@@ -89,7 +91,7 @@ class PatientAppExtrasController extends Controller
         }
 
         DB::transaction(function () use ($account) {
-            \App\Models\AuditLog::record('app.deleted', $account->patient_id, null, "Mobile {$account->mobile}", null, $account->name);
+            AuditLog::record('app.deleted', $account->patient_id, null, "Mobile {$account->mobile}", null, $account->name);
             $account->tokens()->delete();
             $account->delete();
         });
@@ -140,6 +142,52 @@ class PatientAppExtrasController extends Controller
      * The few things worth knowing when the app is opened: an appointment coming up, a lab report
      * that is ready, a visit the doctor asked for, medicines due, money owed.
      */
+    /**
+     * A person's readings over time, for "My health": the vitals taken at their visits, and every lab value that has
+     * been measured at least twice, oldest first. Only what the person may already see in their records: nothing
+     * before the account is verified, and lab values only once reported (and approved, where the lab approves).
+     */
+    public function health(Request $request): JsonResponse
+    {
+        $account = $request->user();
+        $patientId = $account->patientFor($request->query('patient_id'));
+        if (! $account->verified_at) {
+            return response()->json(['verified' => false, 'vitals' => [], 'lab' => []]);
+        }
+
+        $visits = Consultation::where('patient_id', $patientId)
+            ->where(fn ($q) => $q->whereNotNull('bp_systolic')->orWhereNotNull('weight_kg')->orWhereNotNull('pulse')->orWhereNotNull('spo2')->orWhereNotNull('temperature_f'))
+            ->orderBy('created_at')->limit(200)->get(['created_at', 'completed_at', 'bp_systolic', 'bp_diastolic', 'pulse', 'weight_kg', 'spo2', 'temperature_f']);
+        $series = function (string $key, string $label, string $unit) use ($visits) {
+            $points = $visits->filter(fn ($v) => $v->{$key} !== null)->map(fn ($v) => ['date' => ($v->completed_at ?? $v->created_at)->format('Y-m-d'), 'value' => (float) $v->{$key}])->values();
+
+            return $points->isEmpty() ? null : ['key' => $key, 'label' => $label, 'unit' => $unit, 'points' => $points];
+        };
+        $bp = $visits->filter(fn ($v) => $v->bp_systolic !== null && $v->bp_diastolic !== null)
+            ->map(fn ($v) => ['date' => ($v->completed_at ?? $v->created_at)->format('Y-m-d'), 'value' => (float) $v->bp_systolic, 'low' => (float) $v->bp_diastolic])->values();
+        $vitals = collect([
+            $bp->isEmpty() ? null : ['key' => 'bp', 'label' => 'Blood pressure', 'unit' => 'mmHg', 'points' => $bp],
+            $series('weight_kg', 'Weight', 'kg'), $series('pulse', 'Pulse', '/min'), $series('spo2', 'Oxygen (SpO₂)', '%'), $series('temperature_f', 'Temperature', '°F'),
+        ])->filter()->values();
+
+        $needsApproval = (bool) Setting::group('lab', Setting::LAB_DEFAULTS)['approval_required'];
+        $rows = LabResult::query()->join('lab_order_items as i', 'i.id', '=', 'lab_results.lab_order_item_id')->join('lab_orders as o', 'o.id', '=', 'i.lab_order_id')
+            ->where('o.patient_id', $patientId)->whereNotNull('i.reported_at')->when($needsApproval, fn ($q) => $q->whereNotNull('i.approved_at'))
+            ->where('lab_results.is_heading', false)->whereNotNull('lab_results.value')
+            ->orderBy('o.ordered_at')->limit(3000)
+            ->get(['lab_results.parameter', 'lab_results.value', 'lab_results.unit', 'lab_results.reference_range', 'lab_results.flag', 'o.ordered_at']);
+        $lab = $rows->filter(fn ($r) => is_numeric(trim((string) $r->value)))
+            ->groupBy(fn ($r) => mb_strtolower(trim((string) $r->parameter)))
+            ->filter(fn ($list) => $list->count() >= 2)
+            ->map(fn ($list) => [
+                'name' => trim((string) $list->last()->parameter), 'unit' => $list->last()->unit, 'range' => $list->last()->reference_range,
+                'points' => $list->map(fn ($r) => ['date' => Carbon::parse($r->ordered_at)->format('Y-m-d'), 'value' => (float) trim((string) $r->value), 'flag' => $r->flag])->values(),
+            ])
+            ->sortByDesc(fn ($s) => Carbon::parse($s['points']->last()['date'])->timestamp)->values()->take(30);
+
+        return response()->json(['verified' => true, 'vitals' => $vitals, 'lab' => $lab]);
+    }
+
     public function home(Request $request): JsonResponse
     {
         $account = $request->user();
@@ -184,7 +232,7 @@ class PatientAppExtrasController extends Controller
             // Only an appointment still to come counts; the visit that gave this advice does not.
             $booked = Appointment::where('patient_id', $c->patient_id)->where('doctor_id', $c->doctor_id)->where('status', 'booked')->where('scheduled_at', '>=', now())->exists();
             if (! $booked) {
-                $notices->push(['kind' => 'follow_up', 'tone' => 'info', 'tab' => 'appointments', 'title' => 'Visit due '.$day($c->follow_up_on).$who($c->patient_id),
+                $notices->push(['kind' => 'follow_up', 'tone' => 'info', 'tab' => 'appointments', 'doctor_id' => $c->doctor_id, 'patient_id' => $c->patient_id, 'title' => 'Visit due '.$day($c->follow_up_on).$who($c->patient_id),
                     'text' => ($c->doctor?->name ?? 'The doctor').' asked to see '.($c->patient_id === $account->patient_id ? 'you' : $names[$c->patient_id]).' again. No appointment is booked yet.']);
             }
         }

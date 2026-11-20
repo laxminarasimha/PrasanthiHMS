@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Appointment;
 use App\Models\DoctorBlock;
+use App\Models\LabOrder;
 use App\Models\Medicine;
 use App\Models\MedicineSubscription;
 use App\Models\Patient;
@@ -11,6 +12,7 @@ use App\Models\PatientAccount;
 use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\PersonalAccessToken;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -188,10 +190,10 @@ class PatientAppTest extends TestCase
         $this->putJson("/api/appointments/{$visit}/consultation", ['diagnosis' => 'Type 2 diabetes', 'advice' => 'Walk daily', 'quick_notes' => 'private note', 'complete' => true, 'medicines' => [['medicine' => 'Metformin 500', 'frequency' => '1-0-1', 'duration' => '30 days']]])->assertOk();
         $draft = $this->postJson('/api/doctor/visits', ['patient_id' => $patient->id])->json('id');
         $this->putJson("/api/appointments/{$draft}/consultation", ['diagnosis' => 'Not finished yet'])->assertOk();
-        $order = \App\Models\LabOrder::create(['patient_id' => $patient->id, 'status' => 'partial', 'ordered_at' => now()]);
+        $order = LabOrder::create(['patient_id' => $patient->id, 'status' => 'partial', 'ordered_at' => now()]);
         $order->items()->create(['test_name' => 'HbA1c', 'price' => 400, 'reported_at' => now()])->results()->create(['parameter' => 'HbA1c', 'unit' => '%', 'reference_range' => '4 - 5.6', 'value' => '8.1', 'flag' => 'high']);
         $order->items()->create(['test_name' => 'Lipid profile', 'price' => 600])->results()->create(['parameter' => 'Cholesterol', 'value' => '999']);
-        $other = \App\Models\LabOrder::create(['patient_id' => $stranger->id, 'status' => 'completed', 'ordered_at' => now()]);
+        $other = LabOrder::create(['patient_id' => $stranger->id, 'status' => 'completed', 'ordered_at' => now()]);
         $other->items()->create(['test_name' => 'Secret', 'price' => 1, 'reported_at' => now()])->results()->create(['parameter' => 'Secret', 'value' => '1']);
 
         Sanctum::actingAs($account);
@@ -232,7 +234,7 @@ class PatientAppTest extends TestCase
         $this->postJson('/api/app/password', ['current_password' => 'wrong'] + $new, $auth)->assertStatus(422)->assertJsonValidationErrors('current_password');
         $this->postJson('/api/app/password', ['current_password' => 'Health2026', 'password' => 'short', 'password_confirmation' => 'short'], $auth)->assertStatus(422);
         $this->postJson('/api/app/password', ['current_password' => 'Health2026'] + $new, $auth)->assertOk();
-        $this->assertNull(\Laravel\Sanctum\PersonalAccessToken::findToken($second)); // other devices are signed out
+        $this->assertNull(PersonalAccessToken::findToken($second)); // other devices are signed out
         $this->postJson('/api/app/login', ['mobile' => '9876543210', 'password' => 'Health2026'])->assertStatus(422);
         $this->postJson('/api/app/login', ['mobile' => '9876543210', 'password' => 'Better2027'])->assertOk();
 
@@ -251,5 +253,73 @@ class PatientAppTest extends TestCase
         $this->postJson('/api/app/login', ['mobile' => '9876543210', 'password' => $temporary])->assertStatus(422);
         $this->postJson("/api/patients/{$account->patient_id}/app-account/active", ['active' => true])->assertOk();
         $this->postJson('/api/app/login', ['mobile' => '9876543210', 'password' => $temporary])->assertOk();
+    }
+
+    public function test_a_patient_moves_their_appointment_to_another_free_time(): void
+    {
+        $this->travelTo(now()->startOfDay()->addHours(9));
+        $doctor = User::factory()->create(['role' => 'doctor']);
+        $account = $this->account();
+        Sanctum::actingAs($account);
+        $day = today()->addDay()->toDateString();
+        $later = today()->addDays(2)->toDateString();
+        $id = $this->postJson('/api/app/appointments', ['doctor_id' => $doctor->id, 'scheduled_at' => "{$day} 10:45"])->assertCreated()->json('id');
+
+        // Same day, another time: the token stays. Not to a time the doctor does not sit, nor to the same time.
+        $this->putJson("/api/app/appointments/{$id}", ['scheduled_at' => "{$day} 03:00"])->assertStatus(422)->assertJsonValidationErrors('scheduled_at');
+        $this->putJson("/api/app/appointments/{$id}", ['scheduled_at' => "{$day} 10:45"])->assertStatus(422);
+        $this->putJson("/api/app/appointments/{$id}", ['scheduled_at' => "{$day} 11:15"])->assertOk()->assertJsonPath('token_no', 1);
+        $this->assertSame("{$day} 11:15", Appointment::find($id)->scheduled_at->format('Y-m-d H:i'));
+
+        // Someone else holds 11:00 on the later day: that time is refused, another is given with that day's next token.
+        $second = $this->account('9000000001');
+        Sanctum::actingAs($second);
+        $this->postJson('/api/app/appointments', ['doctor_id' => $doctor->id, 'scheduled_at' => "{$later} 11:00"])->assertCreated();
+        $this->putJson("/api/app/appointments/{$id}", ['scheduled_at' => "{$later} 11:30"])->assertNotFound(); // not theirs
+        Sanctum::actingAs($account);
+        $this->putJson("/api/app/appointments/{$id}", ['scheduled_at' => "{$later} 11:00"])->assertStatus(422);
+        $this->putJson("/api/app/appointments/{$id}", ['scheduled_at' => "{$later} 11:30"])->assertOk()->assertJsonPath('token_no', 2);
+        $this->assertSame(1, Appointment::where('patient_id', $account->patient_id)->count());
+
+        // A cancelled appointment is not moved.
+        $this->deleteJson("/api/app/appointments/{$id}")->assertOk();
+        $this->putJson("/api/app/appointments/{$id}", ['scheduled_at' => "{$day} 12:00"])->assertStatus(422);
+    }
+
+    public function test_my_health_shows_readings_over_time_only_once_the_account_is_verified(): void
+    {
+        $doctor = User::factory()->create(['role' => 'doctor']);
+        $account = $this->account();
+        $patient = $account->patient;
+        Sanctum::actingAs($doctor);
+        foreach ([['2026-01-10', 150, 95, 82.5], ['2026-03-12', 138, 88, 80.0]] as [$date, $sys, $dia, $kg]) {
+            $this->travelTo("{$date} 11:00:00");
+            $visit = $this->postJson('/api/doctor/visits', ['patient_id' => $patient->id])->json('id');
+            $this->putJson("/api/appointments/{$visit}/consultation", ['bp_systolic' => $sys, 'bp_diastolic' => $dia, 'weight_kg' => $kg, 'complete' => true])->assertOk();
+        }
+        foreach ([['2026-01-10', '8.1', 'high'], ['2026-03-12', '7.2', 'high']] as [$date, $value, $flag]) {
+            $order = LabOrder::create(['patient_id' => $patient->id, 'status' => 'completed', 'ordered_at' => "{$date} 10:00:00"]);
+            $item = $order->items()->create(['test_name' => 'HbA1c', 'price' => 400, 'reported_at' => "{$date} 12:00:00"]);
+            $item->results()->create(['parameter' => 'HbA1c', 'unit' => '%', 'reference_range' => '4 - 5.6', 'value' => $value, 'flag' => $flag]);
+            $item->results()->create(['parameter' => 'Remarks', 'value' => 'See doctor']);
+        }
+        // Measured once only, or not yet reported: not a trend.
+        $once = LabOrder::create(['patient_id' => $patient->id, 'status' => 'partial', 'ordered_at' => '2026-03-12 10:00:00']);
+        $once->items()->create(['test_name' => 'TSH', 'price' => 300, 'reported_at' => '2026-03-12 12:00:00'])->results()->create(['parameter' => 'TSH', 'value' => '2.1']);
+        $once->items()->create(['test_name' => 'HbA1c', 'price' => 400])->results()->create(['parameter' => 'HbA1c', 'value' => '99']);
+
+        Sanctum::actingAs($account);
+        $this->getJson('/api/app/health')->assertOk()->assertJsonPath('verified', false)->assertJsonCount(0, 'vitals')->assertJsonCount(0, 'lab');
+        $account->update(['verified_at' => now()]);
+
+        $health = $this->getJson('/api/app/health')->assertOk()->json();
+        $bp = collect($health['vitals'])->firstWhere('key', 'bp');
+        $this->assertEquals([[150, 95], [138, 88]], array_map(fn ($p) => [$p['value'], $p['low']], $bp['points']));
+        $this->assertEquals([82.5, 80], array_column(collect($health['vitals'])->firstWhere('key', 'weight_kg')['points'], 'value'));
+        $this->assertSame(['HbA1c'], array_column($health['lab'], 'name'));
+        $this->assertEquals([[8.1, 'high', '2026-01-10'], [7.2, 'high', '2026-03-12']], array_map(fn ($p) => [$p['value'], $p['flag'], $p['date']], $health['lab'][0]['points']));
+
+        // Only the account's own people.
+        $this->getJson('/api/app/health?patient_id='.Patient::factory()->create()->id)->assertNotFound();
     }
 }

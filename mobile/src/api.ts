@@ -132,7 +132,7 @@ export type BedsideVital = { id: number; recorded_at: string; temperature_f: num
 
 export type BillRow = { kind: string; bill_no: string; date: string; total: number; paid: number; due: number; patient_id: number }
 export type Bills = { verified: boolean; bills: BillRow[]; due: number }
-export type HomeNotice = { kind: string; tone: 'info' | 'ok' | 'warn' | 'note'; tab: 'appointments' | 'medicines' | 'records' | 'bills' | 'account'; title: string; text: string; patient_id?: number }
+export type HomeNotice = { kind: string; tone: 'info' | 'ok' | 'warn' | 'note'; tab: 'appointments' | 'medicines' | 'records' | 'bills' | 'account'; title: string; text: string; patient_id?: number; doctor_id?: number }
 export type HomeData = { verified: boolean; notices: HomeNotice[]; due: number }
 
 /** Rupees the way a bill prints them: ₹1,25,000 or ₹45.50. */
