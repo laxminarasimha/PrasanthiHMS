@@ -70,7 +70,7 @@ export type MedicineName = { id: number; name: string; type: string | null }
 export type SubscriptionItem = { medicine_id: number | null; name: string; quantity: number }
 export type Subscription = { id: number; title: string; items: SubscriptionItem[]; day_of_month: number; status: 'active' | 'paused' | 'cancelled'; next_due_on: string; last_prepared_on: string | null; notes: string | null }
 
-export type StaffUser = { id: number; name: string; role: string; role_label: string; can_consult: boolean; can_view_reports?: boolean; can_front_desk?: boolean; can_run_lab?: boolean; can_run_pharmacy?: boolean; can_audit_pharmacy?: boolean; can_ipd?: boolean; branch: { name: string } | null }
+export type StaffUser = { id: number; name: string; role: string; role_label: string; can_consult: boolean; can_view_reports?: boolean; can_front_desk?: boolean; can_run_lab?: boolean; can_run_pharmacy?: boolean; can_view_pharmacy?: boolean; can_approve_lab?: boolean; can_audit_pharmacy?: boolean; can_ipd?: boolean; abilities?: Record<string, string | boolean>; branch: { name: string } | null }
 export type QueueEntry = {
   id: number
   scheduled_at: string

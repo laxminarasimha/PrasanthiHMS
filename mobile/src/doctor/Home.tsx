@@ -1,3 +1,4 @@
+import { MyRecord } from '../staff/MyRecord'
 import { useCallback, useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { addDays, api, ApiError, niceDate, niceTime, todayIso, type Inpatient, type QueueEntry, type StaffUser } from '../api'
@@ -13,8 +14,8 @@ import { PatientView, type PatientRef } from './PatientView'
 import { VisitPad } from './VisitPad'
 import { Work, workSections } from '../staff/Work'
 
-type Tab = 'appointments' | 'inpatients' | 'alerts' | 'find' | 'work' | 'hospital'
-const TITLES: Record<Tab, string> = { appointments: 'My appointments', inpatients: 'My inpatients', alerts: 'Results to see', find: 'Find a patient', work: 'Today’s work', hospital: 'Hospital' }
+type Tab = 'appointments' | 'inpatients' | 'alerts' | 'find' | 'work' | 'hospital' | 'me'
+const TITLES: Record<Tab, string> = { appointments: 'My appointments', inpatients: 'My inpatients', alerts: 'Results to see', find: 'Find a patient', work: 'Today’s work', hospital: 'Hospital', me: 'My record' }
 /** The owner's side of the app: the day, the wards, the pharmacy and the money. */
 type Section = 'day' | 'ipd' | 'pharmacy' | 'reports'
 
@@ -29,7 +30,9 @@ export function DoctorHome({ user, onSignOut }: { user: StaffUser; onSignOut: ()
     // The front desk, the lab and the pharmacy each get their working screens; a person who does several gets them all.
     ...(workSections(user).length > 0 ? [{ key: 'work' as const, label: 'Work' }] : []),
     // The wards are open to those who work in IPD; the day's figures and the reports to those who see reports.
-    ...(user.can_view_reports || user.can_ipd ? [{ key: 'hospital' as const, label: 'Hospital' }] : []),
+    ...(user.can_view_reports || user.can_ipd || user.can_view_pharmacy ? [{ key: 'hospital' as const, label: 'Hospital' }] : []),
+    // Every member of staff with a staff record: duties, attendance, leave and payslips.
+    ...(user.abilities?.['wf:self:view'] ? [{ key: 'me' as const, label: 'Me' }] : []),
   ]
   const [tab, setTab] = useState<Tab>(tabs[0]?.key ?? 'hospital')
   const [refreshKey, setRefreshKey] = useState(0)
@@ -37,7 +40,7 @@ export function DoctorHome({ user, onSignOut }: { user: StaffUser; onSignOut: ()
   const sections: { value: Section; label: string }[] = [
     ...(user.can_view_reports ? [{ value: 'day' as const, label: 'Today' }] : []),
     ...(user.can_view_reports || user.can_ipd ? [{ value: 'ipd' as const, label: 'IPD' }] : []),
-    ...(user.can_run_pharmacy ? [{ value: 'pharmacy' as const, label: 'Pharmacy' }] : []),
+    ...(user.can_run_pharmacy || user.can_view_pharmacy ? [{ value: 'pharmacy' as const, label: 'Pharmacy' }] : []),
     ...(user.can_view_reports ? [{ value: 'reports' as const, label: 'Reports' }] : []),
   ]
   const [section, setSection] = useState<Section>(sections[0]?.value ?? 'ipd')
@@ -124,6 +127,7 @@ export function DoctorHome({ user, onSignOut }: { user: StaffUser; onSignOut: ()
       {tab === 'alerts' && <AbnormalResults key={refreshKey} onOpen={(patient) => setViewing({ patient })} />}
       {tab === 'find' && <FindPatient onOpen={(patient) => setViewing({ patient })} />}
       {tab === 'work' && <Work user={user} refreshKey={refreshKey} />}
+      {tab === 'me' && <MyRecord refreshKey={refreshKey} />}
       {tab === 'hospital' && (
         <>
           {sections.length > 1 && <Switch options={sections} value={section} onChange={setSection} />}

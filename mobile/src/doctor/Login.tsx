@@ -16,7 +16,7 @@ export function DoctorLogin({ onBack, onSignedIn }: { onBack: () => void; onSign
     try {
       const res = await api.post<{ token: string; user: StaffUser }>('/login', { email: email.trim(), password })
       const u = res.user
-      if (!u.can_consult && !u.can_view_reports && !u.can_front_desk && !u.can_run_lab && !u.can_run_pharmacy && !u.can_ipd) {
+      if (!u.can_consult && !u.can_view_reports && !u.can_front_desk && !u.can_run_lab && !u.can_run_pharmacy && !u.can_view_pharmacy && !u.can_ipd && !u.abilities?.['wf:self:view']) {
         // Signed in, but this app has nothing for them yet: give the sign-in back.
         setToken(res.token)
         await api.post('/logout').catch(() => undefined)

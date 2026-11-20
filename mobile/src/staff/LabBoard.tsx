@@ -45,7 +45,7 @@ const STAGE: Record<Stage, { label: string; tone: 'todo' | 'waiting' | 'done' }>
  * be read, and reported results approved. Typing in the values stays on the web system, where the whole sheet
  * and the patient's earlier values are in view.
  */
-export function LabBoard({ canRun, refreshKey }: { canRun: boolean; refreshKey: number }) {
+export function LabBoard({ canRun, canApprove, refreshKey }: { canRun: boolean; canApprove: boolean; refreshKey: number }) {
   const [date, setDate] = useState(todayIso())
   const [orders, setOrders] = useState<Order[] | null>(null)
   const [approval, setApproval] = useState(false)
@@ -123,7 +123,7 @@ export function LabBoard({ canRun, refreshKey }: { canRun: boolean; refreshKey: 
           {canRun && toCollect > 0 && (
             <Button label={toCollect === 1 ? 'Mark the sample collected' : `Mark all ${toCollect} samples collected`} busy={busy === `collect-${open.id}`} onPress={() => void act(`collect-${open.id}`, `/lab/orders/${open.id}/collect`, 'Marked as collected.', open.id)} />
           )}
-          {canRun && approval && waiting > 0 && (
+          {canApprove && approval && waiting > 0 && (
             <Button label={waiting === 1 ? 'Approve the reported result' : `Approve all ${waiting} reported results`} busy={busy === `approve-${open.id}`} onPress={() => void act(`approve-${open.id}`, `/lab/orders/${open.id}/approve`, 'Approved.', open.id)} />
           )}
         </Card>
