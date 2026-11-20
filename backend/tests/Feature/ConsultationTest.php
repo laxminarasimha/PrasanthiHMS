@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Appointment;
+use App\Models\LabOrder;
 use App\Models\Patient;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -162,6 +163,37 @@ class ConsultationTest extends TestCase
         $at('09:45', 'cancelled');
 
         $this->assertSame([$withDoctor, $waitingEarlier, $waitingLater, $late, $seen], array_column($this->getJson('/api/doctor/queue')->assertOk()->json(), 'id'));
+    }
+
+    public function test_a_visit_can_be_ended_with_nothing_written(): void
+    {
+        $this->putJson($this->url(), ['complete' => true])->assertOk()
+            ->assertJsonPath('appointment.status', 'reviewed')->assertJsonPath('appointment.awaiting_reports', false);
+        $this->assertNotNull($this->appointment->consultation()->value('completed_at'));
+    }
+
+    public function test_a_visit_waiting_for_lab_reports_is_listed_after_those_waiting_and_says_when_reports_are_in(): void
+    {
+        $waiting = $this->appointmentFor($this->doctor);
+        $this->putJson($this->url(), ['complaints' => 'Fever', 'awaiting_reports' => true])->assertOk()
+            ->assertJsonPath('appointment.status', 'ongoing')->assertJsonPath('appointment.awaiting_reports', true);
+
+        // A plain save keeps it waiting; the patient who has arrived since is seen before them.
+        $this->putJson($this->url(), ['complaints' => 'Fever for 3 days'])->assertOk()->assertJsonPath('appointment.awaiting_reports', true);
+        $queue = $this->getJson('/api/doctor/queue')->assertOk()->json();
+        $this->assertSame([$waiting->id, $this->appointment->id], array_column($queue, 'id'));
+        $this->assertNull($queue[1]['reports']); // no lab order made for this visit
+
+        $order = LabOrder::create(['patient_id' => $this->appointment->patient_id, 'appointment_id' => $this->appointment->id, 'status' => 'pending', 'ordered_at' => now()]);
+        $this->assertSame('pending', $this->getJson('/api/doctor/queue')->json('1.reports'));
+        $order->update(['status' => 'completed']);
+        $this->assertSame('ready', $this->getJson('/api/doctor/queue')->json('1.reports'));
+
+        // Seen again with the reports: picking it up takes it off waiting, and ending it finishes the visit.
+        $this->putJson($this->url(), ['awaiting_reports' => false])->assertOk()->assertJsonPath('appointment.awaiting_reports', false);
+        $this->assertSame($this->appointment->id, $this->getJson('/api/doctor/queue')->json('0.id'));
+        $this->putJson($this->url(), ['awaiting_reports' => true])->assertOk();
+        $this->putJson($this->url(), ['complete' => true])->assertOk()->assertJsonPath('appointment.status', 'reviewed')->assertJsonPath('appointment.awaiting_reports', false);
     }
 
     public function test_history_lists_completed_visits_and_medicines_are_suggested(): void

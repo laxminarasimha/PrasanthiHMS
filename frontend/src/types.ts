@@ -118,6 +118,8 @@ export type Appointment = {
   scheduled_at: string
   duration_minutes: number
   status: AppointmentStatus
+  /** On-going, paused while the patient is at the lab for the reports the doctor asked for. */
+  awaiting_reports?: boolean
   token_no: number | null
   /** When the front desk marked the patient as here. */
   arrived_at?: string | null
@@ -266,7 +268,7 @@ export type RxPrint = {
 export type Visit = {
   /** How the visit's doctor wants prescriptions printed. */
   rx_print?: Pick<RxSettings, 'print_language' | 'translations' | 'capitalize_name' | 'print'>
-  appointment: { id: number; scheduled_at: string; status: AppointmentStatus; notes: string | null }
+  appointment: { id: number; scheduled_at: string; status: AppointmentStatus; awaiting_reports?: boolean; notes: string | null }
   patient: VisitPatient
   doctor: { id: number; name: string; department: string | null; signature_text: string | null }
   service: { id: number; name: string } | null
@@ -286,6 +288,10 @@ export type QueueEntry = {
   consultation: { id: number; completed_at: string | null } | null
   token_no: number | null
   vitals_ready: boolean
+  /** The doctor saved the visit to wait for lab reports; the patient is away at the lab. */
+  awaiting_reports?: boolean
+  /** For a visit waiting on the lab: whether its lab orders are all reported. Null when not waiting or none ordered. */
+  reports?: 'pending' | 'ready' | null
   visits: number
   last_visit: string | null
 }

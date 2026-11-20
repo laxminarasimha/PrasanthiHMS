@@ -337,6 +337,7 @@ export function FrontDesk() {
                           </option>
                         ))}
                       </select>
+                      {a.status === 'ongoing' && a.awaiting_reports && <small className="muted block">Waiting for lab reports</small>}
                     </td>
                     <td>{a.doctor.name}</td>
                     <td>{a.service?.name ?? '—'}</td>

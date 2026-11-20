@@ -112,6 +112,8 @@ const STATUS: Record<string, { label: string; bg: string; fg: string }> = {
   booked: { label: 'Booked', bg: '#ece6f3', fg: colors.brandDark },
   arrived: { label: 'Arrived', bg: colors.warnSoft, fg: '#8a4a08' },
   ongoing: { label: 'With doctor', bg: '#e1ecfa', fg: '#1d4f91' },
+  // An on-going visit the doctor has paused while the patient is at the lab.
+  lab: { label: 'Waiting for lab reports', bg: colors.warnSoft, fg: '#8a4a08' },
   reviewed: { label: 'Seen', bg: colors.okSoft, fg: colors.ok },
   cancelled: { label: 'Cancelled', bg: colors.dangerSoft, fg: colors.danger },
   active: { label: 'Active', bg: colors.okSoft, fg: colors.ok },
