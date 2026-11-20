@@ -1852,3 +1852,12 @@ h2 .count { display: inline-block; min-width: 1.6em; margin-left: 6px; padding: 
 .payments-list li { align-items: baseline; }
 .payments-list li > span:first-child { flex: 1; }
 .payments-list li .link { font-size: 0.86rem; white-space: nowrap; }
+
+/* National drug list: one medicine at a time, with the list's likeliest brands to choose from. */
+.ref-medicine h2 { margin: 12px 0 4px; }
+.ref-medicine h3 { margin: 16px 0 6px; font-size: 0.95rem; }
+.ref-choices { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.ref-choice { display: flex; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.ref-choice .grow { min-width: 0; }
+.ref-linked { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; }
+.ref-linked p { margin: 6px 0; }

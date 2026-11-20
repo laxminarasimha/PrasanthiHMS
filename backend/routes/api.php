@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\ChargeController;
 use App\Http\Controllers\Api\ConsultationController;
 use App\Http\Controllers\Api\DayCloseController;
 use App\Http\Controllers\Api\DoctorLibraryController;
+use App\Http\Controllers\Api\DrugReferenceController;
 use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\FormController;
 use App\Http\Controllers\Api\FrontDeskController;
@@ -301,6 +302,16 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
     Route::delete('/lab/settings/signature/{slot}', [LabController::class, 'destroySignature']);
     Route::get('/lab/settings', [LabController::class, 'settings']);
     Route::put('/lab/settings', [LabController::class, 'saveSettings']);
+
+    // The national drug list (Common Drug Codes for India) and linking medicines to it.
+    Route::prefix('pharmacy')->controller(DrugReferenceController::class)->group(function () {
+        Route::get('/national-list', 'status');
+        Route::get('/national-list/next', 'next');
+        Route::get('/national-list/search', 'search');
+        Route::get('/national-list/medicines/{medicine}', 'show');
+        Route::post('/medicines/{medicine}/national-link', 'link');
+        Route::delete('/medicines/{medicine}/national-link', 'unlink');
+    });
 
     Route::prefix('pharmacy')->controller(PharmacyController::class)->group(function () {
         Route::get('/medicines', 'medicines');

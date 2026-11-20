@@ -4,7 +4,7 @@ import { useLoadOnChange } from '../../loading'
 import { api, fieldErrors, type FieldErrors } from '../../api'
 import { useAuth } from '../../auth'
 import { SelectField, TextField } from '../../components/Field'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { MedicineOptions } from '../../components/MedicineOptions'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { downloadCsv, placeLabel, rupees, today } from '../../format'
@@ -177,6 +177,9 @@ export function PharmacyMedicines() {
                       <td>
                         <strong>{m.name}</strong> {m.is_scheduled && <span className="pill status-ongoing">Scheduled</span>}
                         {m.composition && <small className="muted block">{m.composition}</small>}
+                        <Link className="link small block" to={`/pharmacy/national-list?medicine=${m.id}`} onClick={(e) => e.stopPropagation()}>
+                          {m.ref_brand_code || m.ref_generic_code ? 'On the national drug list' : 'Link to the national drug list'}
+                        </Link>
                         {placeLabel(m.rack_no, m.box_no) && <small className="shelf-place block">{placeLabel(m.rack_no, m.box_no)}</small>}
                       </td>
                       <td>{m.type ?? '—'}</td>
