@@ -1880,7 +1880,6 @@ th.sortable button:focus-visible { outline: 3px solid var(--ring); outline-offse
   th.stock-actions, td.stock-actions { display: none; }
 }
 .count-why .chip { font-size: 0.9rem; padding: 6px 12px; }
-.pill.as-button { border: 0; font-family: inherit; cursor: pointer; }
 .count-step { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .count-step input { width: 120px; text-align: center; font-size: 1.3rem; font-weight: 700; }
 .count-step .btn { width: 44px; padding: 0; font-size: 1.2rem; }

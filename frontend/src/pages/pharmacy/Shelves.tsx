@@ -136,7 +136,7 @@ export function PharmacyShelves() {
         </div>
         <p className="muted small">
           Give every medicine a rack and, if you use them, a box on that rack. Name them the way they are labelled in the pharmacy: A, B, 1, 2, Fridge, Counter. The place then shows wherever the medicine is picked: on the
-          billing screen, the stock list and the stock counts. New stock of the medicine goes to the same place by itself.
+          billing screen, the inventory and the stock counts. New stock of the medicine goes to the same place by itself.
         </p>
 
         <div className="tiles small">

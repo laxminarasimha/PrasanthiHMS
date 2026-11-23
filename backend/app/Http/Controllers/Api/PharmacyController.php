@@ -456,16 +456,22 @@ class PharmacyController extends Controller
     {
         $term = trim((string) $request->query('q'));
 
-        return response()->json(
-            StockBatch::query()
-                ->with(['medicine:id,name,reorder_level', 'invoice:id,invoice_no'])
-                ->when(! $request->boolean('show_empty'), fn ($q) => $q->where('units_in_stock', '>', 0))
-                ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('batch_no', 'like', "{$term}%")
-                    ->orWhereHas('medicine', fn ($m) => $m->where('name', 'like', "%{$term}%"))))
-                ->orderBy('expiry')->orderBy('id')
-                ->limit(3000)
-                ->get()
-        );
+        $batches = StockBatch::query()
+            ->with(['medicine:id,name,reorder_level,type,composition,manufacturer', 'invoice:id,invoice_no'])
+            ->when(! $request->boolean('show_empty'), fn ($q) => $q->where('units_in_stock', '>', 0))
+            // Found by its batch, its own name, or a drug inside it.
+            ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('batch_no', 'like', "{$term}%")
+                ->orWhereHas('medicine', fn ($m) => $m->where('name', 'like', "%{$term}%")->orWhere('composition', 'like', "%{$term}%"))))
+            ->orderBy('expiry')->orderBy('id')
+            ->limit(3000)
+            ->get();
+
+        // What the pharmacy can still sell of each medicine across all its batches, whichever of them are listed:
+        // the figure the low-stock level is held against.
+        $sellable = StockBatch::whereIn('medicine_id', $batches->pluck('medicine_id')->unique())->whereDate('expiry', '>=', today())
+            ->selectRaw('medicine_id, sum(units_in_stock) as units')->groupBy('medicine_id')->pluck('units', 'medicine_id');
+
+        return response()->json($batches->each(fn (StockBatch $b) => $b->setAttribute('medicine_units', (int) ($sellable[$b->medicine_id] ?? 0))));
     }
 
     /**

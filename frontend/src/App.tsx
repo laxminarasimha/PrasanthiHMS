@@ -90,7 +90,6 @@ const PharmacyPurchaseOrders = page(() => import('./pages/pharmacy/PurchaseOrder
 const PharmacyPurchases = page(() => import('./pages/pharmacy/Purchases'), 'PharmacyPurchases')
 const PharmacyReports = page(() => import('./pages/pharmacy/Reports'), 'PharmacyReports')
 const PharmacySalePrint = page(() => import('./pages/pharmacy/SalePrint'), 'PharmacySalePrint')
-const PharmacyStock = page(() => import('./pages/pharmacy/Stock'), 'PharmacyStock')
 const PharmacyStockists = page(() => import('./pages/pharmacy/Stockists'), 'PharmacyStockists')
 const PharmacyStockist = page(() => import('./pages/pharmacy/Stockists'), 'PharmacyStockist')
 const PharmacyStockReturns = page(() => import('./pages/pharmacy/StockReturns'), 'PharmacyStockReturns')
@@ -203,7 +202,8 @@ export default function App() {
             <Route path="/pharmacy/stock-returns" element={<Only when="can_view_pharmacy"><PharmacyStockReturns /></Only>} />
             <Route path="/pharmacy/purchase-orders" element={<Only when="can_view_pharmacy"><PharmacyPurchaseOrders /></Only>} />
             <Route path="/pharmacy/reports" element={<Only when="can_view_pharmacy"><PharmacyReports /></Only>} />
-            <Route path="/pharmacy/stock" element={<Only when="can_view_pharmacy"><PharmacyStock /></Only>} />
+            {/* "Stock by batch" became part of the inventory page; an old bookmark still lands in the right place. */}
+            <Route path="/pharmacy/stock" element={<Navigate to="/pharmacy/inventory" replace />} />
             <Route path="/pharmacy/purchases" element={<Only when="can_view_pharmacy"><PharmacyPurchases /></Only>} />
             <Route path="/pharmacy/stockists" element={<Only when="can_view_pharmacy"><PharmacyStockists /></Only>} />
             <Route path="/pharmacy/stockists/:id" element={<Only when="can_view_pharmacy"><PharmacyStockist /></Only>} />

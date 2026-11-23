@@ -5,7 +5,7 @@ import { useAuth } from '../auth'
 const GROUPS: [string, [string, string][]][] = [
   ['Today', [['/pharmacy/manager', 'Manager']]],
   ['Billing', [['/pharmacy/dashboard', 'Dashboard'], ['/pharmacy', 'Billing'], ['/pharmacy/bills', 'All bills'], ['/pharmacy/orders', 'Prescriptions'], ['/pharmacy/subscriptions', 'Monthly medicines']]],
-  ['Inventory', [['/pharmacy/stock', 'Stock by batch'], ['/pharmacy/inventory', 'Inventory'], ['/pharmacy/opening-stock', 'Opening stock'], ['/pharmacy/medicines', 'Medicines'], ['/pharmacy/national-list', 'National drug list'], ['/pharmacy/shelves', 'Racks and boxes']]],
+  ['Inventory', [['/pharmacy/inventory', 'Inventory'], ['/pharmacy/opening-stock', 'Opening stock'], ['/pharmacy/medicines', 'Medicines'], ['/pharmacy/national-list', 'National drug list'], ['/pharmacy/shelves', 'Racks and boxes']]],
   ['Stock audit', [['/pharmacy/audit', 'Stock audit']]],
   ['Purchases', [['/pharmacy/purchases', 'Invoices'], ['/pharmacy/stockists', 'Stockists'], ['/pharmacy/stock-returns', 'Stock returns'], ['/pharmacy/purchase-orders', 'Purchase orders']]],
   ['Reports', [['/pharmacy/reports', 'Reports']]],
