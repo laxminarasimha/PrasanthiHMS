@@ -8,7 +8,7 @@ import { daysUntil, downloadCsv, expiryLabel, placeLabel, rupees, today } from '
 import type { StockBatch } from '../../types'
 import { AddStockPopup, DetailsPopup, QuantityPopup } from './StockEdits'
 
-type SortBy = 'medicine' | 'batch' | 'expiry' | 'units' | 'invoice'
+type SortBy = 'medicine' | 'batch' | 'expiry' | 'units'
 const text = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
 /** How two batches compare under each heading. Batches of one medicine stay together, the first to expire on top. */
 const ORDER: Record<SortBy, (a: StockBatch, b: StockBatch) => number> = {
@@ -16,7 +16,6 @@ const ORDER: Record<SortBy, (a: StockBatch, b: StockBatch) => number> = {
   batch: (a, b) => text(a.batch_no, b.batch_no),
   expiry: (a, b) => text(a.expiry, b.expiry),
   units: (a, b) => a.units_in_stock - b.units_in_stock,
-  invoice: (a, b) => text(a.invoice?.invoice_no ?? '', b.invoice?.invoice_no ?? ''),
 }
 
 type Tab = 'all' | 'expiring' | 'low'
@@ -160,17 +159,17 @@ export function PharmacyInventory() {
           {cut && <p className="form-error">Only the first 3,000 batches are shown, so this total and the export are not the whole stock. Type a medicine name to narrow the list.</p>}
           {notice && <p className="notice">{notice}</p>}
           <div className="table-wrap">
-            <table>
+            {/* Names and what they contain wrap, and the type is a size smaller, so the whole row fits the screen. */}
+            <table className="inventory-table">
               <thead>
                 <tr>
                   {heading('medicine', 'Medicine')}
-                  {heading('batch', 'Batch')}
+                  {heading('batch', 'Batch and invoice')}
                   {heading('expiry', 'Expiry')}
                   {heading('units', 'Units in stock', true)}
-                  <th className="num">Pack price</th>
+                  <th className="num col-price">Pack price</th>
                   <th className="num">MRP</th>
-                  <th className="num">GST %</th>
-                  {heading('invoice', 'Invoice')}
+                  <th className="num col-gst">GST %</th>
                   {canEdit && <th className="stock-actions">Change</th>}
                 </tr>
               </thead>
@@ -188,8 +187,11 @@ export function PharmacyInventory() {
                         {/* On a phone the last column is a long way to the right, so the two changes also sit under the name. */}
                         {canEdit && <span className="stock-actions under-name">{changes(b)}</span>}
                       </td>
-                      <td>{b.batch_no}</td>
-                      <td>
+                      <td className="batch">
+                        {b.batch_no}
+                        <small className="muted block">{b.invoice?.invoice_no ?? 'Opening stock'}</small>
+                      </td>
+                      <td className="expiry">
                         {expiryLabel(b.expiry)}{' '}
                         {days < 0 ? <span className="pill off">Expired</span> : days <= 90 ? <span className="pill status-arrived">{days} days</span> : null}
                       </td>
@@ -208,7 +210,7 @@ export function PharmacyInventory() {
                           </small>
                         )}
                       </td>
-                      <td className="num">
+                      <td className="num col-price">
                         {rupees(b.pack_price)}
                         {b.units_per_pack > 1 && <small className="muted block">pack of {b.units_per_pack}</small>}
                       </td>
@@ -216,15 +218,14 @@ export function PharmacyInventory() {
                         {rupees(b.pack_mrp)}
                         {b.units_per_pack > 1 && <small className="muted block">{rupees(b.unit_mrp)} a unit</small>}
                       </td>
-                      <td className="num">{b.gst_percent}</td>
-                      <td>{b.invoice?.invoice_no ?? 'Opening stock'}</td>
+                      <td className="num col-gst">{b.gst_percent}</td>
                       {canEdit && <td className="stock-actions">{changes(b)}</td>}
                     </tr>
                   )
                 })}
                 {batches && rows.length === 0 && (
                   <tr className="empty">
-                    <td colSpan={canEdit ? 9 : 8}>
+                    <td colSpan={canEdit ? 8 : 7}>
                       {batches.length === 0 ? 'No stock found. Stock comes in through purchase invoices or with “Add stock”.' : tab === 'low' ? 'Nothing is running low.' : 'Nothing expires in the next 90 days.'}
                     </td>
                   </tr>
