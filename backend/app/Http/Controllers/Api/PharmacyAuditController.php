@@ -105,6 +105,10 @@ class PharmacyAuditController extends Controller
         foreach (StockCount::where('scope', 'reported')->where('created_at', '>=', $since)->selectRaw('started_by, count(*) as n')->groupBy('started_by')->get() as $r) {
             $add($r->started_by, 'reported', (int) $r->n);
         }
+        // Quantities changed straight on the stock list count against the person who changed them.
+        foreach (StockAdjustment::whereNull('stock_count_id')->where('created_at', '>=', $since)->selectRaw('created_by, count(*) as n')->groupBy('created_by')->get() as $r) {
+            $add($r->created_by, 'reported', (int) $r->n);
+        }
 
         $names = User::whereIn('id', array_keys($rows))->pluck('name', 'id');
 
@@ -333,9 +337,8 @@ class PharmacyAuditController extends Controller
     // ---- A single correction, outside a full count ----
 
     /**
-     * Someone has counted one batch and it is not what the records say.
-     * A person who approves counts corrects it there and then; from anyone else it waits for approval,
-     * so stock cannot be written off by the person who handles it.
+     * Someone has counted one batch and it is not what the records say. Whoever works in the pharmacy corrects it
+     * there and then; the ledger keeps who, when, by how much and what kind of difference it was.
      */
     public function correctBatch(Request $request, StockBatch $batch): JsonResponse
     {
@@ -360,23 +363,11 @@ class PharmacyAuditController extends Controller
                 throw ValidationException::withMessages(['units_in_stock' => 'This batch is on a stock count that is still open. Approve or cancel that count first.']);
             }
 
-            if ($request->user()->allows('canAuditPharmacy')) {
-                $this->correct($locked, $difference, $data['category'], $data['reason'], null, $request->user()->id);
+            // Anyone who works in the pharmacy changes the quantity there and then (the owner's choice, 2026-11-23).
+            // Who changed it, by how much and why is kept in the ledger and counted against their name on the audit overview.
+            $this->correct($locked, $difference, $data['category'], $data['reason'], null, $request->user()->id);
 
-                return ['applied' => true];
-            }
-
-            $locked->load('medicine:id,name');
-            $count = StockCount::create([
-                'title' => "Reported: {$locked->medicine?->name}", 'scope' => 'reported', 'blind' => false, 'status' => 'submitted',
-                'started_by' => $request->user()->id, 'submitted_by' => $request->user()->id, 'submitted_at' => now(),
-            ]);
-            $count->lines()->create($this->lineFor($locked) + [
-                'expected_units' => $locked->units_in_stock, 'counted_units' => $data['units_in_stock'], 'counted_by' => $request->user()->id,
-                'counted_at' => now(), 'reason' => $data['category'], 'note' => $data['reason'],
-            ]);
-
-            return ['applied' => false, 'count_no' => $count->count_no];
+            return ['applied' => true];
         });
 
         return response()->json($result + ['batch' => $batch->fresh()->load(['medicine:id,name,reorder_level', 'invoice:id,invoice_no'])]);

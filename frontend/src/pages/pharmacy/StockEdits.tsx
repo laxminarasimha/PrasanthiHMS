@@ -1,7 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
-import { useAuth } from '../../auth'
 import { MedicineChoose } from '../../components/MedicineChoose'
 import { NewMedicine } from '../../components/NewMedicine'
 import { Popup } from '../../components/Popup'
@@ -21,8 +20,6 @@ const two = (n: number) => Math.round(n * 100) / 100
  * and shown, and one tap says what kind of difference it is.
  */
 export function QuantityPopup({ batch, onClose, onDone }: { batch: StockBatch; onClose: () => void; onDone: (message: string) => void }) {
-  const { user } = useAuth()
-  const direct = Boolean(user?.can_audit_pharmacy)
   const [count, setCount] = useState(String(batch.units_in_stock))
   const [picked, setPicked] = useState('')
   const [note, setNote] = useState('')
@@ -44,12 +41,8 @@ export function QuantityPopup({ batch, onClose, onDone }: { batch: StockBatch; o
     setSaving(true)
     setError('')
     try {
-      const res = await api.post<{ applied: boolean; count_no?: string }>(`/pharmacy/stock/${batch.id}/adjust`, { units_in_stock: typed, category, reason: note.trim() || null })
-      onDone(
-        res.data.applied
-          ? `${batch.medicine?.name} batch ${batch.batch_no} is now ${typed} units.`
-          : `Sent for approval as ${res.data.count_no}: ${batch.medicine?.name} batch ${batch.batch_no} counted as ${typed}. The stock changes when it is approved under Stock audit.`,
-      )
+      await api.post(`/pharmacy/stock/${batch.id}/adjust`, { units_in_stock: typed, category, reason: note.trim() || null })
+      onDone(`${batch.medicine?.name} batch ${batch.batch_no} is now ${typed} units.`)
     } catch (err) {
       setError(Object.values(fieldErrors(err))[0] ?? 'Could not save. Please try again.')
       setSaving(false)
@@ -69,7 +62,7 @@ export function QuantityPopup({ batch, onClose, onDone }: { batch: StockBatch; o
             Cancel
           </button>
           <button className="btn primary" disabled={!ready}>
-            {saving ? 'Saving…' : direct ? 'Save quantity' : 'Send for approval'}
+            {saving ? 'Saving…' : 'Save quantity'}
           </button>
         </>
       }
@@ -112,7 +105,7 @@ export function QuantityPopup({ batch, onClose, onDone }: { batch: StockBatch; o
         </>
       )}
       <p className="muted small gap-top">
-        {direct ? 'The stock changes at once and the change is kept in the stock history.' : 'This goes for approval; the stock changes once it is approved under Stock audit.'}{' '}
+        The stock changes at once, and the change is kept in the stock history under your name.{' '}
         {difference !== null && difference > 0 && (
           <>
             New stock from a stockist is entered under{' '}

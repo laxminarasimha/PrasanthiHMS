@@ -282,6 +282,23 @@ class PharmacyController extends Controller
         }));
     }
 
+    /** One stockist with every bill from them and everything sent back, newest first: the stockist's own page. */
+    public function showStockist(Stockist $stockist): JsonResponse
+    {
+        $invoices = PurchaseInvoice::where('stockist_id', $stockist->id)->withCount('batches')->latest('invoice_date')->latest('id')
+            ->get(['id', 'invoice_no', 'invoice_date', 'due_date', 'total', 'paid', 'remarks']);
+        $returns = StockReturn::where('stockist_id', $stockist->id)->latest('returned_on')->latest('id')->get(['id', 'return_no', 'returned_on', 'total', 'remarks']);
+        $billed = round((float) $invoices->sum('total'), 2);
+        $paid = round((float) $invoices->sum('paid'), 2);
+        $returned = round((float) $returns->sum('total'), 2);
+
+        return response()->json([
+            'stockist' => $stockist,
+            'totals' => ['invoices' => $invoices->count(), 'billed' => $billed, 'paid' => $paid, 'returned' => $returned, 'balance' => round($billed - $paid - $returned, 2)],
+            'invoices' => $invoices, 'returns' => $returns,
+        ]);
+    }
+
     public function storeStockist(Request $request): JsonResponse
     {
         $this->authorizePharmacy($request);

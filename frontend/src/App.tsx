@@ -91,6 +91,8 @@ const PharmacyPurchases = page(() => import('./pages/pharmacy/Purchases'), 'Phar
 const PharmacyReports = page(() => import('./pages/pharmacy/Reports'), 'PharmacyReports')
 const PharmacySalePrint = page(() => import('./pages/pharmacy/SalePrint'), 'PharmacySalePrint')
 const PharmacyStock = page(() => import('./pages/pharmacy/Stock'), 'PharmacyStock')
+const PharmacyStockists = page(() => import('./pages/pharmacy/Stockists'), 'PharmacyStockists')
+const PharmacyStockist = page(() => import('./pages/pharmacy/Stockists'), 'PharmacyStockist')
 const PharmacyStockReturns = page(() => import('./pages/pharmacy/StockReturns'), 'PharmacyStockReturns')
 const PrescriptionPrint = page(() => import('./pages/PrescriptionPrint'), 'PrescriptionPrint')
 const QueueBoard = page(() => import('./pages/QueueBoard'), 'QueueBoard')
@@ -203,6 +205,8 @@ export default function App() {
             <Route path="/pharmacy/reports" element={<Only when="can_view_pharmacy"><PharmacyReports /></Only>} />
             <Route path="/pharmacy/stock" element={<Only when="can_view_pharmacy"><PharmacyStock /></Only>} />
             <Route path="/pharmacy/purchases" element={<Only when="can_view_pharmacy"><PharmacyPurchases /></Only>} />
+            <Route path="/pharmacy/stockists" element={<Only when="can_view_pharmacy"><PharmacyStockists /></Only>} />
+            <Route path="/pharmacy/stockists/:id" element={<Only when="can_view_pharmacy"><PharmacyStockist /></Only>} />
             <Route path="/pharmacy/medicines" element={<Only when="can_view_pharmacy"><PharmacyMedicines /></Only>} />
             <Route path="/pharmacy/national-list" element={<Only when="can_view_pharmacy"><PharmacyNationalList /></Only>} />
             <Route path="/pharmacy/shelves" element={<Only when="can_view_pharmacy"><PharmacyShelves /></Only>} />
