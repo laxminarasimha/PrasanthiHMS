@@ -343,8 +343,10 @@ class PharmacyAuditController extends Controller
         $data = $request->validate([
             'units_in_stock' => ['required', 'integer', 'min:0', 'max:1000000'],
             'category' => ['required', Rule::in(array_keys(StockCount::REASONS))],
-            'reason' => ['required', 'string', 'min:3', 'max:255'],
-        ], ['reason.required' => 'Say what was found.', 'category.required' => 'Choose what kind of difference this is.']);
+            // The kind of difference is always chosen; a note in words is for when there is something to add.
+            'reason' => ['nullable', 'string', 'max:255'],
+        ], ['category.required' => 'Choose what kind of difference this is.']);
+        $data['reason'] = trim((string) ($data['reason'] ?? '')) ?: null;
 
         $result = DB::transaction(function () use ($batch, $data, $request) {
             $locked = StockBatch::whereKey($batch->id)->lockForUpdate()->first();

@@ -450,8 +450,13 @@ class PharmacyEditController extends Controller
             'pack_mrp' => ['required', 'numeric', 'gt:0'],
             'rack_no' => ['nullable', 'string', 'max:30'],
             'box_no' => ['sometimes', 'nullable', 'string', 'max:30'],
-            'reason' => self::REASON,
-        ], ['reason.required' => 'Say why the batch details are being changed.']);
+            'hsn_code' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'pack_price' => ['sometimes', 'numeric', 'min:0'],
+            'units_per_pack' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+            'gst_percent' => ['sometimes', 'numeric', 'min:0', 'max:40'],
+            // What changed, from what to what and by whom is recorded either way; the note is for anything worth adding.
+            'reason' => ['nullable', 'string', 'max:255'],
+        ]);
 
         $new = [
             'batch_no' => $data['batch_no'],
@@ -462,9 +467,27 @@ class PharmacyEditController extends Controller
         if (array_key_exists('box_no', $data)) {
             $new['box_no'] = $new['rack_no'] === null ? null : ShelfPlace::tidy($data['box_no']);
         }
+        if (array_key_exists('hsn_code', $data)) {
+            $new['hsn_code'] = trim((string) $data['hsn_code']) ?: null;
+        }
+
+        // What was paid, the pack size and the GST of a batch bought on an invoice belong to that invoice: its totals
+        // and the stockist's account are worked out from them. Only stock entered without an invoice keeps them here.
+        $costing = array_filter([
+            'pack_price' => isset($data['pack_price']) ? (float) $data['pack_price'] : null,
+            'units_per_pack' => isset($data['units_per_pack']) ? (int) $data['units_per_pack'] : null,
+            'gst_percent' => isset($data['gst_percent']) ? (float) $data['gst_percent'] : null,
+        ], fn ($v) => $v !== null);
+        $costing = array_filter($costing, fn ($v, $field) => (float) $batch->{$field} !== (float) $v, ARRAY_FILTER_USE_BOTH);
+        if ($costing && $batch->purchase_invoice_id !== null) {
+            $batch->load('invoice:id,invoice_no');
+            throw ValidationException::withMessages([array_key_first($costing) => "The purchase rate, pack size and GST of this batch come from invoice {$batch->invoice?->invoice_no}. Correct them on the invoice, under Purchases."]);
+        }
+        $new += $costing;
+
         $batch->load('medicine:id,name');
         $changes = PharmacyChange::differences(
-            ['batch_no' => 'Batch', 'expiry' => 'Expiry', 'pack_mrp' => 'Pack MRP ₹', 'rack_no' => 'Rack', 'box_no' => 'Box'],
+            ['batch_no' => 'Batch', 'expiry' => 'Expiry', 'pack_mrp' => 'Pack MRP ₹', 'pack_price' => 'Purchase rate / pack ₹', 'units_per_pack' => 'Units in a pack', 'gst_percent' => 'GST %', 'hsn_code' => 'HSN code', 'rack_no' => 'Rack', 'box_no' => 'Box'],
             ['expiry' => $batch->expiry->toDateString()] + $batch->only(array_keys($new)),
             $new,
         );
@@ -473,8 +496,11 @@ class PharmacyEditController extends Controller
         }
 
         $label = "{$batch->medicine->name} · batch {$batch->batch_no}";
-        $batch->update($new + ['unit_mrp' => round($new['pack_mrp'] / max(1, $batch->units_per_pack), 2)]);
-        $this->log('stock', $batch->id, $label, $changes, $data['reason'], $request);
+        $perPack = max(1, (int) ($new['units_per_pack'] ?? $batch->units_per_pack));
+        $batch->update($new + ['unit_mrp' => round($new['pack_mrp'] / $perPack, 2)]
+            // Stock entered without an invoice was typed in single units; its packs follow from the pack size.
+            + (isset($new['units_per_pack']) ? ['packs' => (int) ceil($batch->units_received / $perPack)] : []));
+        $this->log('stock', $batch->id, $label, $changes, trim((string) ($data['reason'] ?? '')) ?: null, $request);
 
         return response()->json($batch->fresh()->load(['medicine:id,name,reorder_level', 'invoice:id,invoice_no']));
     }

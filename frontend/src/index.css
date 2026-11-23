@@ -1867,3 +1867,24 @@ h2 .count { display: inline-block; min-width: 1.6em; margin-left: 6px; padding: 
 .or-line::before, .or-line::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
 .google-button { display: flex; justify-content: center; min-height: 44px; width: 100%; }
 .narrow-box { max-width: 360px; }
+
+/* Stock by batch: headings that sort, the two changes on each row, and the count in the quantity window. */
+th.sortable button { all: unset; cursor: pointer; }
+th.sortable button:hover { text-decoration: underline; }
+th.sortable button:focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; }
+.stock-actions { white-space: nowrap; }
+.stock-actions .link + .link { margin-left: 14px; }
+.stock-actions.under-name { display: none; margin-top: 4px; }
+@media (max-width: 700px) {
+  .stock-actions.under-name { display: block; }
+  th.stock-actions, td.stock-actions { display: none; }
+}
+.count-why .chip { font-size: 0.9rem; padding: 6px 12px; }
+.pill.as-button { border: 0; font-family: inherit; cursor: pointer; }
+.count-step { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.count-step input { width: 120px; text-align: center; font-size: 1.3rem; font-weight: 700; }
+.count-step .btn { width: 44px; padding: 0; font-size: 1.2rem; }
+.count-diff { margin: 10px 0 0; font-weight: 700; }
+.count-diff.less { color: var(--danger); }
+.count-diff.more { color: var(--ok); }
+.count-diff .muted { font-weight: 400; }

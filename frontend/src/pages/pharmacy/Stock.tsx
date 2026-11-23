@@ -1,13 +1,22 @@
-import { useCallback, useState, type FormEvent } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useLoadOnChange } from '../../loading'
-import { Link } from 'react-router-dom'
-import { Popup } from '../../components/Popup'
-import { api, fieldErrors } from '../../api'
+import { api } from '../../api'
 import { useAuth } from '../../auth'
-import { REASONS } from './auditTypes'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { daysUntil, downloadCsv, expiryLabel, placeLabel, rupees, today } from '../../format'
 import type { StockBatch } from '../../types'
+import { AddStockPopup, DetailsPopup, QuantityPopup } from './StockEdits'
+
+type SortBy = 'medicine' | 'batch' | 'expiry' | 'units' | 'invoice'
+const text = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+/** How two batches compare under each heading. Batches of one medicine stay together, the first to expire on top. */
+const ORDER: Record<SortBy, (a: StockBatch, b: StockBatch) => number> = {
+  medicine: (a, b) => text(a.medicine?.name ?? '', b.medicine?.name ?? '') || text(a.expiry, b.expiry),
+  batch: (a, b) => text(a.batch_no, b.batch_no),
+  expiry: (a, b) => text(a.expiry, b.expiry),
+  units: (a, b) => a.units_in_stock - b.units_in_stock,
+  invoice: (a, b) => text(a.invoice?.invoice_no ?? '', b.invoice?.invoice_no ?? ''),
+}
 
 export function PharmacyStock() {
   const { user } = useAuth()
@@ -15,13 +24,10 @@ export function PharmacyStock() {
   const [query, setQuery] = useState('')
   const [showEmpty, setShowEmpty] = useState(false)
   const [batches, setBatches] = useState<StockBatch[] | null>(null)
-  const [adjusting, setAdjusting] = useState<StockBatch | null>(null)
-  const [count, setCount] = useState('')
-  const [reason, setReason] = useState('')
-  const [category, setCategory] = useState('')
-  const [error, setError] = useState('')
-  const [details, setDetails] = useState({ batch_no: '', expiry: '', pack_mrp: '', rack_no: '', box_no: '', reason: '' })
-  const [detailsError, setDetailsError] = useState('')
+  // The one small window open over the list: a batch's quantity, a batch's details, or new stock.
+  const [editing, setEditing] = useState<{ batch: StockBatch; what: 'quantity' | 'details' } | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [sort, setSort] = useState<{ by: SortBy; down: boolean }>({ by: 'medicine', down: false })
   const [notice, setNotice] = useState('')
 
   const load = useCallback(() => {
@@ -31,58 +37,52 @@ export function PharmacyStock() {
   // At once when the screen opens; after a short pause when a search or filter changes.
   useLoadOnChange(load)
 
+  const rows = useMemo(() => {
+    const sorted = [...(batches ?? [])].sort(ORDER[sort.by])
+    return sort.down ? sorted.reverse() : sorted
+  }, [batches, sort])
+
   const expired = batches?.filter((b) => b.units_in_stock > 0 && daysUntil(b.expiry) < 0).length ?? 0
   const expiring = batches?.filter((b) => b.units_in_stock > 0 && daysUntil(b.expiry) >= 0 && daysUntil(b.expiry) <= 90).length ?? 0
   const value = batches?.reduce((sum, b) => sum + b.units_in_stock * b.unit_mrp, 0) ?? 0
   // The list stops at 3,000 batches. Beyond that the total and the export would be short, and the page says so.
   const cut = (batches?.length ?? 0) >= 3000
 
-  const startAdjust = (batch: StockBatch) => {
-    setAdjusting(batch)
-    setCount(String(batch.units_in_stock))
-    setReason('')
-    setCategory('')
-    setError('')
+  const open = (batch: StockBatch, what: 'quantity' | 'details') => {
     setNotice('')
-    setDetails({ batch_no: batch.batch_no, expiry: batch.expiry.slice(0, 7), pack_mrp: String(batch.pack_mrp), rack_no: batch.rack_no ?? '', box_no: batch.box_no ?? '', reason: '' })
-    setDetailsError('')
+    setEditing({ batch, what })
+  }
+  const done = (message: string) => {
+    setNotice(message)
+    setEditing(null)
+    load()
   }
 
-  const saveDetails = async (e: FormEvent) => {
-    e.preventDefault()
-    if (!adjusting) return
-    try {
-      await api.put(`/pharmacy/stock/${adjusting.id}`, { ...details, rack_no: details.rack_no || null, box_no: details.box_no || null })
-      setNotice(`Details of ${adjusting.medicine?.name} batch ${details.batch_no} corrected. The change is recorded in the Stock data update report.`)
-      setAdjusting(null)
-      load()
-    } catch (err) {
-      setDetailsError(Object.values(fieldErrors(err))[0])
-    }
-  }
+  const changes = (b: StockBatch) => (
+    <>
+      <button className="link" onClick={() => open(b, 'quantity')} aria-label={`Change the quantity of ${b.medicine?.name} batch ${b.batch_no}`}>
+        Quantity
+      </button>
+      <button className="link" onClick={() => open(b, 'details')} aria-label={`Edit the details of ${b.medicine?.name} batch ${b.batch_no}`}>
+        Details
+      </button>
+    </>
+  )
 
-  const adjust = async (e: FormEvent) => {
-    e.preventDefault()
-    if (!adjusting) return
-    try {
-      const res = await api.post<{ applied: boolean; count_no?: string }>(`/pharmacy/stock/${adjusting.id}/adjust`, { units_in_stock: count, reason, category })
-      setNotice(
-        res.data.applied
-          ? `${adjusting.medicine?.name} batch ${adjusting.batch_no} is now ${count} units.`
-          : `Reported as ${res.data.count_no}: ${adjusting.medicine?.name} batch ${adjusting.batch_no} counted as ${count}. The stock changes when it is approved under Stock audit.`,
-      )
-      setAdjusting(null)
-      load()
-    } catch (err) {
-      setError(Object.values(fieldErrors(err))[0])
-    }
-  }
+  const heading = (by: SortBy, label: string, num = false) => (
+    <th className={`sortable ${num ? 'num' : ''}`} aria-sort={sort.by === by ? (sort.down ? 'descending' : 'ascending') : undefined}>
+      <button type="button" title={`Sort by ${label.toLowerCase()}`} onClick={() => setSort((s) => ({ by, down: s.by === by ? !s.down : false }))}>
+        {label}
+        <span aria-hidden="true">{sort.by === by ? (sort.down ? ' ▼' : ' ▲') : ''}</span>
+      </button>
+    </th>
+  )
 
   const exportCsv = () =>
     downloadCsv(
       `pharmacy-stock-${today()}.csv`,
       ['Medicine', 'Batch', 'Expiry', 'Units in stock', 'Units received', 'Units per pack', 'Pack price', 'Pack MRP', 'Unit MRP', 'GST %', 'Invoice', 'Rack', 'Box'],
-      (batches ?? []).map((b) => [b.medicine?.name, b.batch_no, b.expiry, b.units_in_stock, b.units_received, b.units_per_pack, b.pack_price, b.pack_mrp, b.unit_mrp, b.gst_percent, b.invoice?.invoice_no ?? 'Opening stock', b.rack_no, b.box_no]),
+      rows.map((b) => [b.medicine?.name, b.batch_no, b.expiry, b.units_in_stock, b.units_received, b.units_per_pack, b.pack_price, b.pack_mrp, b.unit_mrp, b.gst_percent, b.invoice?.invoice_no ?? 'Opening stock', b.rack_no, b.box_no]),
     )
 
   return (
@@ -97,14 +97,19 @@ export function PharmacyStock() {
               <input type="checkbox" checked={showEmpty} onChange={(e) => setShowEmpty(e.target.checked)} />
               Show empty batches
             </label>
+            {canEdit && (
+              <button className="btn primary" onClick={() => { setNotice(''); setAdding(true) }}>
+                + Add stock
+              </button>
+            )}
             <button className="btn ghost" onClick={exportCsv}>
               Export
             </button>
           </div>
           <p className="muted small">
             Stock value at MRP <strong className="loads">{rupees(Math.round(value))}</strong>
-            {expiring > 0 && <> · <span className="pill status-arrived">{expiring} expiring in 90 days</span></>}
-            {expired > 0 && <> · <span className="pill off">{expired} expired</span></>}
+            {expiring > 0 && <> · <button type="button" className="pill status-arrived as-button" title="Show the first to expire on top" onClick={() => setSort({ by: 'expiry', down: false })}>{expiring} expiring in 90 days</button></>}
+            {expired > 0 && <> · <button type="button" className="pill off as-button" title="Show the first to expire on top" onClick={() => setSort({ by: 'expiry', down: false })}>{expired} expired</button></>}
           </p>
           {cut && <p className="form-error">Only the first 3,000 batches are shown, so this total and the export are not the whole stock. Type a medicine name to narrow the list.</p>}
           {notice && <p className="notice">{notice}</p>}
@@ -112,27 +117,28 @@ export function PharmacyStock() {
             <table>
               <thead>
                 <tr>
-                  <th>Medicine</th>
-                  <th>Batch</th>
-                  <th>Expiry</th>
-                  <th className="num">Units in stock</th>
+                  {heading('medicine', 'Medicine')}
+                  {heading('batch', 'Batch')}
+                  {heading('expiry', 'Expiry')}
+                  {heading('units', 'Units in stock', true)}
                   <th className="num">Per pack</th>
                   <th className="num">Pack price</th>
-                  <th className="num">Pack MRP</th>
-                  <th className="num">Unit MRP</th>
+                  <th className="num">MRP</th>
                   <th className="num">GST %</th>
-                  <th>Invoice</th>
-                  <th />
+                  {heading('invoice', 'Invoice')}
+                  {canEdit && <th className="stock-actions">Change</th>}
                 </tr>
               </thead>
               <tbody>
-                {batches?.map((b) => {
+                {rows.map((b) => {
                   const days = daysUntil(b.expiry)
                   return (
-                    <tr key={b.id} className={`static ${b.units_in_stock === 0 ? 'faded' : ''} ${adjusting?.id === b.id ? 'selected' : ''}`}>
+                    <tr key={b.id} className={`static ${b.units_in_stock === 0 ? 'faded' : ''} ${editing?.batch.id === b.id ? 'selected' : ''}`}>
                       <td>
                         <strong>{b.medicine?.name}</strong>
                         {placeLabel(b.rack_no, b.box_no) && <small className="shelf-place block">{placeLabel(b.rack_no, b.box_no)}</small>}
+                        {/* On a phone the last column is a long way to the right, so the two changes also sit under the name. */}
+                        {canEdit && <span className="stock-actions under-name">{changes(b)}</span>}
                       </td>
                       <td>{b.batch_no}</td>
                       <td>
@@ -145,23 +151,19 @@ export function PharmacyStock() {
                       </td>
                       <td className="num">{b.units_per_pack}</td>
                       <td className="num">{rupees(b.pack_price)}</td>
-                      <td className="num">{rupees(b.pack_mrp)}</td>
-                      <td className="num">{rupees(b.unit_mrp)}</td>
+                      <td className="num">
+                        {rupees(b.pack_mrp)}
+                        {b.units_per_pack > 1 && <small className="muted block">{rupees(b.unit_mrp)} a unit</small>}
+                      </td>
                       <td className="num">{b.gst_percent}</td>
                       <td>{b.invoice?.invoice_no ?? 'Opening stock'}</td>
-                      <td className="num">
-                        {canEdit && (
-                          <button className="link" onClick={() => startAdjust(b)}>
-                            Adjust / edit
-                          </button>
-                        )}
-                      </td>
+                      {canEdit && <td className="stock-actions">{changes(b)}</td>}
                     </tr>
                   )
                 })}
                 {batches && batches.length === 0 && (
                   <tr className="empty">
-                    <td colSpan={11}>No stock found. Stock comes in through purchase invoices or opening stock.</td>
+                    <td colSpan={canEdit ? 10 : 9}>No stock found. Stock comes in through purchase invoices or opening stock.</td>
                   </tr>
                 )}
               </tbody>
@@ -169,85 +171,16 @@ export function PharmacyStock() {
           </div>
         </section>
 
-        {adjusting && (
-          <Popup
-            title="Correct the stock"
-            sub={`${adjusting.medicine?.name ?? ''} · batch ${adjusting.batch_no} · expires ${expiryLabel(adjusting.expiry)} · system count ${adjusting.units_in_stock}`}
-            onClose={() => setAdjusting(null)}
-          >
-          <form onSubmit={adjust}>
-            <label className="field">
-              <span className="field-label">Actual units on the shelf</span>
-              <input type="number" min={0} value={count} onChange={(e) => setCount(e.target.value)} autoFocus />
-            </label>
-            <label className="field gap-top">
-              <span className="field-label">What kind of difference is it?</span>
-              <select value={category} onChange={(e) => setCategory(e.target.value)} required>
-                <option value="">Choose…</option>
-                {REASONS.map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field gap-top">
-              <span className="field-label">What was found</span>
-              <input placeholder="For example: two strips crushed at the back of the rack" value={reason} onChange={(e) => setReason(e.target.value)} />
-            </label>
-            <p className="muted small">
-              {user?.can_audit_pharmacy ? 'The stock is corrected now, and the correction shows in the stock history and the missing-stock report.' : 'This is sent for approval. The stock changes once it is approved under Stock audit.'}{' '}
-              <Link className="link" to={`/pharmacy/audit?tab=history&medicine=${adjusting.medicine_id}`}>
-                See this medicine's stock history
-              </Link>
-            </p>
-            {error && <p className="form-error">{error}</p>}
-            <div className="panel-foot">
-              <button className="btn primary" disabled={count === '' || category === '' || reason.trim().length < 3}>
-                {user?.can_audit_pharmacy ? 'Correct the stock' : 'Report for approval'}
-              </button>
-            </div>
-          </form>
-
-          <form onSubmit={saveDetails}>
-            <h3>Correct batch details</h3>
-            <div className="grid">
-              <label className="field">
-                <span className="field-label">Batch number</span>
-                <input value={details.batch_no} onChange={(e) => setDetails({ ...details, batch_no: e.target.value })} />
-              </label>
-              <label className="field">
-                <span className="field-label">Expiry</span>
-                <input type="month" value={details.expiry} onChange={(e) => setDetails({ ...details, expiry: e.target.value })} />
-              </label>
-              <label className="field">
-                <span className="field-label">MRP per pack (₹)</span>
-                <input type="number" min={0} step="0.01" value={details.pack_mrp} onChange={(e) => setDetails({ ...details, pack_mrp: e.target.value })} />
-              </label>
-              <label className="field">
-                <span className="field-label">Rack</span>
-                <input maxLength={30} value={details.rack_no} onChange={(e) => setDetails({ ...details, rack_no: e.target.value })} />
-              </label>
-              <label className="field">
-                <span className="field-label">Box</span>
-                <input maxLength={30} value={details.box_no} onChange={(e) => setDetails({ ...details, box_no: e.target.value })} />
-              </label>
-              <p className="muted small span-2">
-                Only for a batch kept apart from the rest. To move the medicine itself, use Inventory → Racks and boxes.
-              </p>
-              <label className="field span-2">
-                <span className="field-label">Reason</span>
-                <input placeholder="Label read wrongly, price revised…" value={details.reason} onChange={(e) => setDetails({ ...details, reason: e.target.value })} />
-              </label>
-            </div>
-            {detailsError && <p className="form-error">{detailsError}</p>}
-            <div className="panel-foot">
-              <button className="btn primary" disabled={!details.batch_no.trim() || !details.expiry || details.reason.trim().length < 3}>
-                Save details
-              </button>
-            </div>
-          </form>
-          </Popup>
+        {editing?.what === 'quantity' && <QuantityPopup key={editing.batch.id} batch={editing.batch} onClose={() => setEditing(null)} onDone={done} />}
+        {editing?.what === 'details' && <DetailsPopup key={editing.batch.id} batch={editing.batch} onClose={() => setEditing(null)} onDone={done} />}
+        {adding && (
+          <AddStockPopup
+            onClose={() => setAdding(false)}
+            onAdded={(message) => {
+              setNotice(message)
+              load()
+            }}
+          />
         )}
       </div>
     </>
