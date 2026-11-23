@@ -1907,3 +1907,11 @@ th.sortable button:focus-visible { outline: 3px solid var(--ring); outline-offse
 /* On a small laptop or a tablet the two least-read columns give way (both are in Details and in the export). */
 @media (max-width: 1000px) { .inventory-table .col-gst { display: none; } }
 @media (max-width: 860px) { .inventory-table .col-price { display: none; } }
+
+/* Money by how it was paid: cash (handed over by staff) and UPI (straight to the bank) stand out from the rest. */
+.money-by-mode { margin: 6px 0 10px; }
+.money-by-mode h3 { margin: 10px 0 8px; }
+.money-by-mode .tiles { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.money-by-mode .tile.mode-cash { border-color: var(--accent); background: var(--accent-soft); }
+.money-by-mode .tile.mode-upi { border-color: var(--brand); background: var(--brand-soft); }
+.money-by-mode .tile small { font-size: 0.76rem; }

@@ -8,6 +8,14 @@ import { Line, PeriodPicker, periods, Tile, Tiles, whole } from './parts'
 const CLASS: Record<string, string> = { out: 'Out of stock', urgent: 'Will run out before a delivery', low: 'Below the minimum' }
 
 /** The pharmacy as the owner wants to see it: what was sold, what the shelves are worth, what is owed, and what needs doing. Read-only. */
+/** "cash ₹1,200 · UPI ₹800 · card ₹300": cash is handed over by the staff, UPI and card reach the bank on their own. */
+function collectedAs(dash: PharmacyDash): string {
+  const by = dash.collected_by_mode
+  if (!by) return [dash.collected_cash ? `cash ${whole(dash.collected_cash)}` : '', dash.collected_card ? `card ${whole(dash.collected_card)}` : '', dash.collected_other ? `other ${whole(dash.collected_other)}` : ''].filter(Boolean).join(' · ')
+  const names: Record<string, string> = { cash: 'cash', upi: 'UPI', card: 'card', cheque: 'cheque', bank_transfer: 'bank', insurance: 'insurance' }
+  return Object.keys(names).filter((mode) => by[mode]).map((mode) => `${names[mode]} ${whole(by[mode])}`).join(' · ')
+}
+
 export function PharmacyBoard({ user, refreshKey }: { user: StaffUser; refreshKey: number }) {
   const options = useMemo(() => periods().filter((p) => p.key !== 'last'), [])
   const [period, setPeriod] = useState('today')
@@ -46,7 +54,7 @@ export function PharmacyBoard({ user, refreshKey }: { user: StaffUser; refreshKe
           <Tiles>
             <Tile label="Bills" value={String(dash.sales)} note={range.label.toLowerCase()} />
             <Tile label="Billed" value={whole(dash.billed)} note="less returns" />
-            <Tile label="Collected" value={whole(dash.collected)} tone="ok" note={[dash.collected_cash ? `cash ${whole(dash.collected_cash)}` : '', dash.collected_card ? `card ${whole(dash.collected_card)}` : '', dash.collected_other ? `other ${whole(dash.collected_other)}` : ''].filter(Boolean).join(' · ') || undefined} />
+            <Tile label="Collected" value={whole(dash.collected)} tone="ok" note={collectedAs(dash) || undefined} />
             <Tile label="Stock on the shelves" value={whole(dash.statistics.inventory_cost)} note={`at cost · ${whole(dash.statistics.inventory_mrp)} at MRP`} />
           </Tiles>
 

@@ -196,6 +196,8 @@ export type PharmacyDash = {
   collected_cash: number
   collected_card: number
   collected_other: number
+  /** Each way of paying on its own (cash, upi, card, …); absent from a server older than this app. */
+  collected_by_mode?: Record<string, number>
   statistics: { medicines: number; inventory_cost: number; inventory_mrp: number; units_in_stock: number; out_of_stock: number }
   latest_sales: { id: number; bill_no: string; customer_name: string; sold_at: string; total: number; returned: number; paid: number; ipd_transfer: number }[]
   fast_moving: { medicine_name: string; sold: number }[]

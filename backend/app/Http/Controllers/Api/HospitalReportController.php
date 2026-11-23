@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AdmissionPayment;
 use App\Models\Appointment;
+use App\Models\AuditLog;
 use App\Models\Bill;
 use App\Models\BillItem;
 use App\Models\Consultation;
@@ -11,12 +13,16 @@ use App\Models\LabOrder;
 use App\Models\LabOrderItem;
 use App\Models\LabResult;
 use App\Models\Patient;
+use App\Models\PatientDeposit;
 use App\Models\Payment;
+use App\Models\PharmacyPayment;
 use App\Models\PrescriptionItem;
+use App\Support\MoneyFigures;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Front desk and doctor reports. Each answers in the same shape as the pharmacy and IPD reports
@@ -69,7 +75,7 @@ class HospitalReportController extends Controller
         return response()->json([
             'type' => $type, 'title' => self::REPORTS[$type], 'from' => $from->toDateString(), 'to' => $to->toDateString(),
             'columns' => $columns, 'rows' => $rows, 'totals' => $totals, 'reports' => self::REPORTS,
-        ]);
+        ] + (in_array($type, ['bills', 'bill-lines', 'collections'], true) ? ['received' => MoneyFigures::received('front_desk', $from, $to)] : []));
     }
 
     private static function col(string $key, string $label, string $type = 'text', bool $total = true): array
@@ -127,7 +133,7 @@ class HospitalReportController extends Controller
             });
 
         // Deposits taken or handed back are money at the desk too.
-        $deposits = \App\Models\PatientDeposit::whereBetween('created_at', [$from, $to])->whereIn('type', ['deposit', 'refund'])->with(['receiver:id,name', 'patient:id,name'])->get()
+        $deposits = PatientDeposit::whereBetween('created_at', [$from, $to])->whereIn('type', ['deposit', 'refund'])->with(['receiver:id,name', 'patient:id,name'])->get()
             ->map(fn ($d) => [
                 'date' => $d->created_at->format('Y-m-d H:i'), 'bill_no' => null, 'patient' => $d->patient?->name, 'counter' => 'Deposit',
                 'type' => $d->type === 'refund' ? 'Deposit refund' : 'Deposit', 'amount' => $d->type === 'refund' ? -1 * $d->amount : $d->amount,
@@ -154,9 +160,9 @@ class HospitalReportController extends Controller
             }
         };
         $add(Payment::whereBetween('created_at', [$from, $to])->whereNotIn('mode', ['ipd', 'deposit'])->with('receiver:id,name')->get(), 'Front desk and lab');
-        $add(\App\Models\PatientDeposit::whereBetween('created_at', [$from, $to])->whereIn('type', ['deposit', 'refund'])->with('receiver:id,name')->get(), 'Deposits');
-        $add(\App\Models\PharmacyPayment::whereBetween('created_at', [$from, $to])->with('receiver:id,name')->get(), 'Pharmacy');
-        $add(\App\Models\AdmissionPayment::whereBetween('created_at', [$from, $to])->with('receiver:id,name')->get(), 'IPD');
+        $add(PatientDeposit::whereBetween('created_at', [$from, $to])->whereIn('type', ['deposit', 'refund'])->with('receiver:id,name')->get(), 'Deposits');
+        $add(PharmacyPayment::whereBetween('created_at', [$from, $to])->with('receiver:id,name')->get(), 'Pharmacy');
+        $add(AdmissionPayment::whereBetween('created_at', [$from, $to])->with('receiver:id,name')->get(), 'IPD');
 
         $rows = $entries->groupBy(fn ($e) => $e['person'].'|'.$e['counter'])->map(function (Collection $group) {
             $by = fn (array $modes) => round($group->whereIn('mode', $modes)->sum('amount'), 2);
@@ -349,7 +355,7 @@ class HospitalReportController extends Controller
     /** Tests ordered from the lab for visits in the period, plus tests written as advised. */
     private function testsAdvised(Carbon $from, Carbon $to): array
     {
-        $ordered = LabOrderItem::whereIn('lab_order_id', \App\Models\LabOrder::whereBetween('ordered_at', [$from, $to])->select('id'))->pluck('test_name');
+        $ordered = LabOrderItem::whereIn('lab_order_id', LabOrder::whereBetween('ordered_at', [$from, $to])->select('id'))->pluck('test_name');
         $advised = $this->completed($from, $to)->whereNotNull('tests_advised')->pluck('tests_advised')->flatMap(fn ($text) => preg_split('/[\r\n,]+/', $text));
         $count = fn (Collection $names) => $names->map(fn ($n) => trim($n))->filter()->groupBy(fn ($n) => mb_strtolower($n))->map(fn ($g) => [$g->first(), $g->count()]);
         $o = $count($ordered);
@@ -384,14 +390,14 @@ class HospitalReportController extends Controller
     /** Who opened or changed which record. */
     private function activity(Carbon $from, Carbon $to): array
     {
-        $rows = \App\Models\AuditLog::whereBetween('created_at', [$from, $to])->latest('id')->limit(5000)->get();
+        $rows = AuditLog::whereBetween('created_at', [$from, $to])->latest('id')->limit(5000)->get();
         $patients = Patient::whereIn('id', $rows->pluck('patient_id')->filter()->unique())->get(['id', 'uhid', 'name'])->keyBy('id');
 
         return [[
             self::col('when', 'When'), self::col('who', 'Who'), self::col('action', 'What they did'), self::col('patient', 'Patient'), self::col('details', 'Details'),
         ], $rows->map(fn ($r) => [
             'when' => $r->created_at->format('Y-m-d H:i'), 'who' => $r->user_name, 'patient' => isset($patients[$r->patient_id]) ? $patients[$r->patient_id]->uhid.' '.$patients[$r->patient_id]->name : null,
-        ] + \App\Models\AuditLog::words($r))];
+        ] + AuditLog::words($r))];
     }
 
     // ---- Lab and referrals ----
@@ -468,10 +474,10 @@ class HospitalReportController extends Controller
         ]);
         // Each limit may be given alone; only a pair has to be the right way round.
         if (isset($f['age_from'], $f['age_to']) && $f['age_to'] < $f['age_from']) {
-            throw \Illuminate\Validation\ValidationException::withMessages(['age_to' => 'The upper age cannot be below the lower age.']);
+            throw ValidationException::withMessages(['age_to' => 'The upper age cannot be below the lower age.']);
         }
         if (isset($f['value_from'], $f['value_to']) && $f['value_to'] < $f['value_from']) {
-            throw \Illuminate\Validation\ValidationException::withMessages(['value_to' => 'The upper value cannot be below the lower value.']);
+            throw ValidationException::withMessages(['value_to' => 'The upper value cannot be below the lower value.']);
         }
         $like = fn (string $text) => '%'.str_replace(['%', '_'], ['\%', '\_'], trim($text)).'%';
         $from = isset($f['visit_from']) ? Carbon::parse($f['visit_from'])->startOfDay() : null;

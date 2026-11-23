@@ -127,7 +127,13 @@ class PharmacyCompleteTest extends TestCase
             ->assertJsonPath('payments.1.mode', 'cash')->assertJsonPath('payment_mode', 'upi')->assertJsonPath('paid', 28)->assertJsonPath('due', 0);
         // A later payment changes only itself.
         $this->putJson("{$url}/{$second['id']}", ['mode' => 'card', 'reason' => 'Swiped, not cash'])->assertOk()->assertJsonPath('payments.1.mode', 'card')->assertJsonPath('payment_mode', 'upi');
-        $this->getJson('/api/pharmacy/dashboard')->assertOk()->assertJsonPath('collected', 28)->assertJsonPath('collected_cash', 0)->assertJsonPath('collected_card', 8)->assertJsonPath('collected_other', 20);
+        $this->getJson('/api/pharmacy/dashboard')->assertOk()->assertJsonPath('collected', 28)->assertJsonPath('collected_cash', 0)->assertJsonPath('collected_card', 8)->assertJsonPath('collected_other', 20)
+            // UPI is told apart from the rest: it goes straight to the bank, cash is handed over by the staff.
+            ->assertJsonPath('collected_by_mode.upi', 20)->assertJsonPath('collected_by_mode.card', 8)->assertJsonPath('collected_by_mode.cash', 0)->assertJsonPath('collected_by_mode.cheque', 0);
+        // The same breakup heads the list of bills and the billing report.
+        $this->getJson('/api/pharmacy/money')->assertOk()->assertJsonPath('received.upi', 20)->assertJsonPath('received.card', 8)->assertJsonPath('received.cash', 0);
+        $this->getJson('/api/pharmacy/reports/billing')->assertOk()->assertJsonPath('received.upi', 20)->assertJsonPath('received.card', 8);
+        $this->getJson('/api/pharmacy/reports/item-wise')->assertOk()->assertJsonMissingPath('received');
 
         // Both changes are in the Bill modified report, with the reason.
         $changes = $this->getJson('/api/pharmacy/reports/bills-modified')->assertOk()->json('rows');

@@ -41,7 +41,12 @@ class DepositsTempPatientsTest extends TestCase
         $this->getJson('/api/reports/summary')->assertOk()
             ->assertJsonPath('departments.consultation.collected.upi', 1000)->assertJsonPath('departments.consultation.collected.cash', -400)
             ->assertJsonPath('departments.consultation.collected_total', 600)->assertJsonPath('departments.consultation.billed', 600);
-        $this->getJson('/api/front-desk/summary')->assertOk()->assertJsonPath('deposits.received', 1000)->assertJsonPath('deposits.used', 600)->assertJsonPath('bills.all.collected', 0);
+        $this->getJson('/api/front-desk/summary')->assertOk()->assertJsonPath('deposits.received', 1000)->assertJsonPath('deposits.used', 600)->assertJsonPath('bills.all.collected', 0)
+            // By how it was paid, deposits included: the UPI went to the bank, the cash refund came out of the drawer.
+            ->assertJsonPath('received.upi', 1000)->assertJsonPath('received.cash', -400);
+        $this->getJson('/api/front-desk/money')->assertOk()->assertJsonPath('received.upi', 1000)->assertJsonPath('received.cash', -400)->assertJsonPath('received.card', 0);
+        $this->getJson('/api/reports/list/collections')->assertOk()->assertJsonPath('received.upi', 1000)->assertJsonPath('received.cash', -400);
+        $this->getJson('/api/reports/list/appointments')->assertOk()->assertJsonMissingPath('received');
         $collections = $this->getJson('/api/reports/list/collections')->assertOk()->json();
         $this->assertCount(2, $collections['rows']);
         $this->assertEquals(600, $collections['totals']['amount']);

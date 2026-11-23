@@ -1,3 +1,4 @@
+import { MoneyByMode } from './MoneyByMode'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Popup } from './Popup'
 import { api, fieldErrors, type FieldErrors } from '../api'
@@ -266,6 +267,7 @@ export function SummaryPanel({ date, onClose }: { date: string; onClose: () => v
               ))}
             </tbody>
           </table>
+          <MoneyByMode amounts={data.received} title="Money received, by how it was paid" note="On bills and as deposits, less refunds." />
           <h3>Appointments</h3>
           <table className="compact">
             <thead>

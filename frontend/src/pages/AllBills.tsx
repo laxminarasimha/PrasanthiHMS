@@ -1,3 +1,4 @@
+import { MoneyByMode } from '../components/MoneyByMode'
 import { useCallback, useEffect, useState } from 'react'
 import { useLoadOnChange } from '../loading'
 import { useRangeInAddress } from '../rangeInAddress'
@@ -50,6 +51,11 @@ export function AllBills() {
   useEffect(() => {
     api.get<Service[]>('/services').then((res) => setServices(res.data))
   }, [])
+  // Money that came in at the desk in the dates shown, by how it was paid. A search runs over all dates, so it has none.
+  const [received, setReceived] = useState<{ key: string; amounts: Record<string, number> } | null>(null)
+  useEffect(() => {
+    api.get<{ received: Record<string, number> }>('/front-desk/money', { params: { from, to } }).then((res) => setReceived({ key: `${from}|${to}`, amounts: res.data.received })).catch(() => undefined)
+  }, [from, to, bills])
 
   const sum = (key: 'total' | 'paid' | 'due') => Math.round((bills ?? []).reduce((total, b) => total + b[key], 0) * 100) / 100
 
@@ -81,6 +87,9 @@ export function AllBills() {
           <div className="tile"><span>Paid</span><strong>{rupees(sum('paid'))}</strong></div>
           <div className="tile"><span>Due</span><strong className={sum('due') > 0 ? 'due' : ''}>{rupees(sum('due'))}</strong></div>
         </div>
+        {!searching && received?.key === `${from}|${to}` && (
+          <MoneyByMode amounts={received.amounts} title="Money received in these dates, by how it was paid" note="At the front desk and lab, on bills and as deposits, less refunds. It counts money by the day it came in, so it can differ from “Paid”, which is about the bills listed." />
+        )}
         <div className="table-wrap">
           <table>
             <thead>

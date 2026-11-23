@@ -116,6 +116,7 @@ class FrontDeskCompleteTest extends TestCase
             ->assertJsonPath('bills.other.billed', 600)->assertJsonPath('bills.other.collected', 600)->assertJsonPath('bills.other.outstanding', 0)
             ->assertJsonPath('bills.lab.billed', 350)->assertJsonPath('bills.lab.orders', 1)
             ->assertJsonPath('bills.all.billed', 1450)->assertJsonPath('bills.all.collected', 600)
+            ->assertJsonPath('received.card', 600)->assertJsonPath('received.cash', 0)->assertJsonPath('received.upi', 0)
             ->assertJsonPath('appointments.0.total', 1)->assertJsonPath('appointments.0.arrived', 1);
     }
 

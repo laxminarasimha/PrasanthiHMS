@@ -6,6 +6,7 @@ import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { clock, rupees } from '../../format'
 import type { PharmacyDashboard as Data } from '../../types'
 import { PatientLink } from '../../components/PatientLink'
+import { MoneyByMode } from '../../components/MoneyByMode'
 
 export function PharmacyDashboard() {
   const [from, to, setRange] = useRangeInAddress('today')
@@ -32,9 +33,6 @@ export function PharmacyDashboard() {
                 ['Total sales', String(data.sales)],
                 ['Total billed', rupees(data.billed)],
                 ['Total collected', rupees(data.collected)],
-                ['Collected by cash', rupees(data.collected_cash)],
-                ['Collected by card', rupees(data.collected_card)],
-                ['Collected by others', rupees(data.collected_other)],
               ].map(([label, value]) => (
                 <div className="tile" key={label}>
                   <span>{label}</span>
@@ -42,6 +40,7 @@ export function PharmacyDashboard() {
                 </div>
               ))}
             </div>
+            <MoneyByMode amounts={data.collected_by_mode} note="Money received at the pharmacy counter in this period, net of refunds." />
 
             <div className="three-up">
               <div>

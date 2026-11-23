@@ -718,6 +718,8 @@ export type PharmacyDashboard = {
   collected_cash: number
   collected_card: number
   collected_other: number
+  /** Money collected in the period by each way of paying: cash, upi, card, cheque, bank_transfer, insurance. */
+  collected_by_mode: Record<string, number>
   statistics: { medicines: number; manufacturers: number; inventory_cost: number; inventory_mrp: number; units_in_stock: number; out_of_stock: number }
   latest_sales: PharmacySale[]
   fast_moving: { medicine_name: string; sold: number }[]
@@ -783,6 +785,8 @@ export type PharmacyReport = {
   rows: Record<string, string | number | null>[]
   totals: Record<string, number>
   reports: Record<string, string>
+  /** On reports about bills and payments: the money that counter received in the period, by how it was paid. */
+  received?: Record<string, number>
 }
 
 export type WalkInBill = {
@@ -803,6 +807,8 @@ type DeptTotals = { billed: number; collected: number; refunded: number; orders:
 export type DaySummary = {
   date: string
   bills: Record<'all' | 'appointment' | 'lab' | 'other', DeptTotals>
+  /** All the money that came in at the desk that day, on bills and as deposits, by how it was paid. */
+  received: Record<string, number>
   appointments: { doctor: string; total: number; booked: number; arrived: number; ongoing: number; reviewed: number }[]
 }
 

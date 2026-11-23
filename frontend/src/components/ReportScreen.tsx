@@ -1,3 +1,4 @@
+import { MoneyByMode } from './MoneyByMode'
 import { useEffect, useState, type ReactNode } from 'react'
 import { api } from '../api'
 import { downloadCsv, rupees } from '../format'
@@ -65,6 +66,7 @@ export function ReportScreen({ base, first, firstLabel, lead }: Props) {
           <p className="muted small">
             {report.from} to {report.to} · {report.rows.length} row(s)
           </p>
+          <MoneyByMode amounts={report.received} title="Money received in this period, by how it was paid" />
           <div className="table-wrap">
             <table>
               <thead>

@@ -10,6 +10,7 @@ use App\Models\AdmissionPayment;
 use App\Models\Bed;
 use App\Models\DischargeSummary;
 use App\Models\IpdBillTemplate;
+use App\Support\MoneyFigures;
 use App\Support\StaySummary;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -205,7 +206,7 @@ class IpdRecordsController extends Controller
         return response()->json([
             'type' => $type, 'title' => self::REPORTS[$type], 'from' => $from->toDateString(), 'to' => $to->toDateString(),
             'columns' => $columns, 'rows' => $rows, 'totals' => $totals, 'reports' => self::REPORTS,
-        ]);
+        ] + ($type === 'payments' ? ['received' => MoneyFigures::received('ipd', $from, $to)] : []));
     }
 
     private static function col(string $key, string $label, string $type = 'text', bool $total = true): array
