@@ -248,6 +248,9 @@ export function PharmacyMedicines() {
                     <tr key={s.id} onClick={() => openStockist(s)} className={editing?.kind === 'stockist' && editing.id === s.id ? 'selected' : ''}>
                       <td>
                         <strong>{s.name}</strong>
+                        <Link className="link small block" to={`/pharmacy/stockists/${s.id}`} onClick={(e) => e.stopPropagation()}>
+                          All bills from this stockist
+                        </Link>
                       </td>
                       <td className="mono">
                         {s.phone ?? '—'}

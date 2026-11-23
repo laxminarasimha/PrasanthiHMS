@@ -191,22 +191,20 @@ class PharmacyAuditTest extends TestCase
         $this->getJson('/api/pharmacy/audit/counts')->assertForbidden();
     }
 
-    public function test_a_correction_from_the_counter_waits_for_approval_and_shows_against_their_name(): void
+    public function test_a_correction_from_the_counter_applies_at_once_and_shows_against_their_name(): void
     {
-        // The pharmacist finds 8 pantoprazole gone to the ward without a bill.
-        $this->postJson("/api/pharmacy/stock/{$this->panto->id}/adjust", ['units_in_stock' => 42, 'category' => 'unbilled', 'reason' => 'Given to the ward at night'])
-            ->assertOk()->assertJsonPath('applied', false)->assertJsonPath('batch.units_in_stock', 50);
-        $this->assertSame(0, StockAdjustment::count());
+        // The pharmacist finds 8 pantoprazole gone to the ward without a bill, and says so without a note.
+        $this->postJson("/api/pharmacy/stock/{$this->panto->id}/adjust", ['units_in_stock' => 42, 'category' => 'unbilled'])
+            ->assertOk()->assertJsonPath('applied', true)->assertJsonPath('batch.units_in_stock', 42);
+        $this->assertSame(1, StockAdjustment::count());
+        $this->assertSame($this->pharmacist->id, StockAdjustment::first()->created_by);
+        $this->assertSame(0, StockCount::count());
 
         Sanctum::actingAs($this->owner);
-        $overview = $this->getJson('/api/pharmacy/audit/overview')->assertOk()->assertJsonPath('waiting.0.scope', 'reported')->assertJsonPath('waiting.0.short_value', 32)->json();
+        $overview = $this->getJson('/api/pharmacy/audit/overview')->assertOk()->assertJsonCount(0, 'waiting')->json();
         $this->assertSame(1, collect($overview['signals'])->firstWhere('user', $this->pharmacist->name)['reported']);
-
-        $count = StockCount::first();
-        $this->postJson("/api/pharmacy/audit/counts/{$count->id}/approve")->assertOk(); // the reason came with the report
-        $this->assertSame(42, $this->panto->fresh()->units_in_stock);
         $this->getJson('/api/pharmacy/audit/missing')->assertOk()->assertJsonPath('loss_value', 32)->assertJsonPath('unexplained_value', 0)
-            ->assertJsonPath('rows.0.category', 'unbilled')->assertJsonPath('rows.0.reason', 'Given without a bill (ward, OT, staff): Given to the ward at night');
+            ->assertJsonPath('rows.0.category', 'unbilled')->assertJsonPath('rows.0.reason', 'Given without a bill (ward, OT, staff)');
 
         // Stock cannot be written off below nothing.
         $this->postJson("/api/pharmacy/stock/{$this->panto->id}/adjust", ['units_in_stock' => 42, 'category' => 'miscount', 'reason' => 'Same count'])->assertStatus(422);

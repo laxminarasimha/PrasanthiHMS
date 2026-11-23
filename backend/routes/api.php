@@ -328,6 +328,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
         Route::put('/medicines/{medicine}', 'updateMedicine');
         Route::put('/medicines/{medicine}/composition', 'setComposition');
         Route::get('/stockists', 'stockists');
+        Route::get('/stockists/{stockist}', 'showStockist');
         Route::post('/stockists', 'storeStockist');
         Route::put('/stockists/{stockist}', 'updateStockist');
         Route::get('/purchases', 'purchases');

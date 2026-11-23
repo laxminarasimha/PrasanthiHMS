@@ -268,7 +268,7 @@ function OverviewTab({ go }: { go: (tab: Tab, extra?: Record<string, string>) =>
               <th className="num">Bills deleted</th>
               <th className="num">Medicines taken back</th>
               <th className="num">Bills changed later</th>
-              <th className="num">Stock differences reported</th>
+              <th className="num">Stock quantities changed</th>
             </tr>
           </thead>
           <tbody>

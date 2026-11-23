@@ -181,15 +181,10 @@ class PharmacyCompleteTest extends TestCase
         // The kind of difference must be chosen; a note in words is optional.
         $this->postJson("/api/pharmacy/stock/{$this->batch->id}/adjust", ['units_in_stock' => 96])->assertStatus(422)->assertJsonValidationErrors('category')->assertJsonMissingValidationErrors('reason');
         $this->postJson("/api/pharmacy/stock/{$this->batch->id}/adjust", ['units_in_stock' => 96, 'reason' => '4 tablets damaged'])->assertStatus(422)->assertJsonValidationErrors('category');
-        // From a pharmacist the correction waits for approval, and the stock stays as it was.
-        $this->postJson("/api/pharmacy/stock/{$this->batch->id}/adjust", ['units_in_stock' => 96, 'reason' => '4 tablets damaged', 'category' => 'damaged'])
-            ->assertOk()->assertJsonPath('applied', false)->assertJsonPath('batch.units_in_stock', 100);
-        // Someone trusted with the audit corrects it there and then.
-        Sanctum::actingAs(User::factory()->create(['role' => 'doctor']));
-        $this->postJson("/api/pharmacy/stock/{$this->batch->id}/adjust", ['units_in_stock' => 96, 'reason' => '4 tablets damaged', 'category' => 'damaged'])->assertStatus(422); // already on the pharmacist's report
-        StockCount::query()->update(['status' => 'cancelled']);
+        // The pharmacist's correction changes the stock there and then.
         $this->postJson("/api/pharmacy/stock/{$this->batch->id}/adjust", ['units_in_stock' => 96, 'reason' => '4 tablets damaged', 'category' => 'damaged'])
             ->assertOk()->assertJsonPath('applied', true)->assertJsonPath('batch.units_in_stock', 96);
+        $this->assertSame(0, StockCount::count());
         $this->getJson('/api/pharmacy/reports/stock-adjustments')->assertOk()
             ->assertJsonPath('rows.0.before', 100)->assertJsonPath('rows.0.after', 96)->assertJsonPath('rows.0.difference', -4)->assertJsonPath('totals.difference', -4);
     }

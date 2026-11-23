@@ -1,6 +1,7 @@
 import { MedicineChoose } from '../../components/MedicineChoose'
 import { NewMedicine } from '../../components/NewMedicine'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
 import { canLeave, UnsavedGuard } from '../../unsaved'
 import { useAuth } from '../../auth'
@@ -52,14 +53,17 @@ export function PharmacyPurchases() {
   const canEdit = Boolean(user?.can_run_pharmacy)
   const [invoices, setInvoices] = useState<PurchaseInvoice[]>([])
   const [viewing, setViewing] = useState<PurchaseInvoice | null>(null)
-  const [adding, setAdding] = useState(false)
+  // Arriving from a stockist's page: with one of their invoices to open, or to add a new one for them.
+  const [params, setParams] = useSearchParams()
+  const [arrived] = useState(() => ({ invoice: params.get('invoice'), add: canEdit ? params.get('add') : null }))
+  const [adding, setAdding] = useState(Boolean(arrived.add))
   const [editing, setEditing] = useState<PurchaseInvoice | null>(null)
   const [reason, setReason] = useState('')
   /** On an invoice being corrected: the saved lines that are to come off it. */
   const [removed, setRemoved] = useState<number[]>([])
   const [stockists, setStockists] = useState<Stockist[]>([])
   const [medicines, setMedicines] = useState<Medicine[]>([])
-  const [stockistId, setStockistId] = useState('')
+  const [stockistId, setStockistId] = useState(arrived.add ?? '')
   const [invoiceNo, setInvoiceNo] = useState('')
   const [invoiceDate, setInvoiceDate] = useState(today())
   const [orders, setOrders] = useState<PurchaseOrder[]>([])
@@ -88,6 +92,12 @@ export function PharmacyPurchases() {
     api.get<PurchaseInvoice[]>('/pharmacy/purchases').then((res) => setInvoices(res.data))
   }, [])
   useEffect(load, [load])
+  useEffect(() => {
+    if (arrived.invoice) api.get<PurchaseInvoice>(`/pharmacy/purchases/${arrived.invoice}`).then((res) => setViewing(res.data)).catch(() => undefined)
+    if (arrived.add) api.get<Medicine[]>('/pharmacy/medicines', { params: { list: 1 } }).then((res) => setMedicines(res.data))
+    // The address goes back to the plain page, so a refresh does not open the same thing again.
+    if (arrived.invoice || arrived.add) setParams({}, { replace: true })
+  }, [arrived, setParams])
 
   // The lists the form chooses from are fetched as the page opens, so they are there by the time "Add invoice" is
   // pressed, and fetched again each time the form opens in case a stockist or medicine was added meanwhile.
@@ -471,7 +481,11 @@ export function PharmacyPurchases() {
                       <td>
                         <strong>{inv.invoice_no}</strong>
                       </td>
-                      <td>{inv.stockist.name}</td>
+                      <td>
+                        <Link className="link" to={`/pharmacy/stockists/${inv.stockist.id}`} title={`All bills from ${inv.stockist.name}`} onClick={(e) => e.stopPropagation()}>
+                          {inv.stockist.name}
+                        </Link>
+                      </td>
                       <td>{longDate(inv.invoice_date)}</td>
                       <td className="num">{inv.batches_count}</td>
                       <td className="num">{rupees(inv.total)}</td>
@@ -510,7 +524,10 @@ export function PharmacyPurchases() {
                 <div>
                   <h2>Invoice {viewing.invoice_no}</h2>
                   <span className="muted">
-                    {viewing.stockist.name} · {longDate(viewing.invoice_date)}
+                    <Link className="link" to={`/pharmacy/stockists/${viewing.stockist.id}`} title={`All bills from ${viewing.stockist.name}`}>
+                      {viewing.stockist.name}
+                    </Link>{' '}
+                    · {longDate(viewing.invoice_date)}
                   </span>
                 </div>
                 <div className="row">

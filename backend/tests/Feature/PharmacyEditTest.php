@@ -254,6 +254,18 @@ class PharmacyEditTest extends TestCase
         $this->assertStringContainsString('HSN code: — → 3004', $changes);
     }
 
+    public function test_a_stockist_has_a_page_with_all_their_bills(): void
+    {
+        $other = Stockist::create(['name' => 'Another Agency']);
+        $page = $this->getJson("/api/pharmacy/stockists/{$this->stockist->id}")->assertOk()
+            ->assertJsonPath('stockist.id', $this->stockist->id)->assertJsonPath('totals.invoices', 1)
+            ->assertJsonPath('invoices.0.invoice_no', 'INV-1')->assertJsonPath('invoices.0.batches_count', 1)->json();
+        $this->assertEqualsWithDelta($this->invoice['total'], $page['totals']['billed'], 0.001);
+        $this->assertEqualsWithDelta($page['totals']['billed'] - $page['totals']['paid'], $page['totals']['balance'], 0.001);
+        // Someone else's bills are not mixed in.
+        $this->getJson("/api/pharmacy/stockists/{$other->id}")->assertOk()->assertJsonPath('totals.invoices', 0)->assertJsonCount(0, 'invoices');
+    }
+
     public function test_batch_details_and_medicine_changes_are_logged(): void
     {
         $this->putJson("/api/pharmacy/stock/{$this->batch->id}", ['batch_no' => 'B001', 'expiry' => now()->addYears(2)->format('Y-m'), 'pack_mrp' => 32, 'rack_no' => 'R4', 'reason' => 'Label read wrongly'])
