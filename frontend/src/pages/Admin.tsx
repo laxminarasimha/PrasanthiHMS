@@ -361,12 +361,12 @@ function ReferralDoctors({ direction }: { direction: 'by' | 'to' }) {
           <tbody>
             {shown.map((d) => (
               <tr key={d.id} className="static">
-                <td>
+                <td className="fit-wrap">
                   <strong>{d.name}</strong>
                 </td>
-                <td>{d.specialization ?? '—'}</td>
+                <td className="wrap">{d.specialization ?? '—'}</td>
                 <td className="mono">{d.phone ?? '—'}</td>
-                <td>{d.place ?? '—'}</td>
+                <td className="wrap">{d.place ?? '—'}</td>
                 <td className="num actions">
                   <button className="link" onClick={() => open(d)}>
                     Edit
@@ -455,14 +455,14 @@ function MergePatients() {
             {log.map((m) => (
               <tr key={m.id} className="static">
                 <td>{longDate(m.created_at)}</td>
-                <td>
+                <td className="fit-wrap">
                   {m.from_name} <small className="muted mono">{m.from_uhid}</small>
                 </td>
-                <td>
+                <td className="fit-wrap">
                   {m.to_name} <small className="muted mono">{m.to_uhid}</small>
                 </td>
                 <td className="wrap">{moved(m)}</td>
-                <td>{m.staff?.name ?? '—'}</td>
+                <td className="wrap">{m.staff?.name ?? '—'}</td>
               </tr>
             ))}
             {log.length === 0 && (

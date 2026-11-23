@@ -481,7 +481,7 @@ export function PharmacyPurchases() {
                       <td>
                         <strong>{inv.invoice_no}</strong>
                       </td>
-                      <td>
+                      <td className="fit-wrap">
                         <Link className="link" to={`/pharmacy/stockists/${inv.stockist.id}`} title={`All bills from ${inv.stockist.name}`} onClick={(e) => e.stopPropagation()}>
                           {inv.stockist.name}
                         </Link>

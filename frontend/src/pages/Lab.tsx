@@ -192,7 +192,7 @@ export function Lab() {
                         </span>
                       ))}
                     </td>
-                    <td>
+                    <td className="fit-wrap">
                       <strong>{o.patient.name}</strong>
                       <small className="muted block">
                         {o.patient.uhid} · {o.patient.age_label} / {o.patient.gender.charAt(0).toUpperCase()}

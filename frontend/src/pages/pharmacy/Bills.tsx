@@ -228,7 +228,7 @@ export function PharmacyBills() {
             <MoneyByMode amounts={received.amounts} title="Money received in these dates, by how it was paid" note="At the pharmacy counter, less refunds. It counts money by the day it came in, so it can differ from “Collected”, which is about the bills listed." />
           )}
           <div className="table-wrap">
-            <table>
+            <table className="fit-table">
               <thead>
                 <tr>
                   <th>Bill</th>
@@ -250,7 +250,7 @@ export function PharmacyBills() {
                         {longDate(s.sold_at)} {clock(s.sold_at)}
                       </small>
                     </td>
-                    <td>
+                    <td className="fit-wrap">
                       <button type="button" className="patient-link strong" onClick={() => setTogether(s.id)} title="All of this customer's pharmacy bills together">
                         {s.customer_name}
                       </button>

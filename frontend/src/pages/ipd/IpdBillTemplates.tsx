@@ -104,7 +104,7 @@ export function IpdBillTemplates({ services }: { services: IpdService[] }) {
           <tbody>
             {templates.map((t) => (
               <tr key={t.id} className="static">
-                <td>
+                <td className="fit-wrap">
                   <strong>{t.name}</strong>
                 </td>
                 <td className="wrap">{t.items.map((i) => `${services.find((s) => s.id === i.ipd_service_id)?.name ?? 'Removed service'} × ${i.quantity}`).join(', ')}</td>

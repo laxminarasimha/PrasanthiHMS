@@ -274,7 +274,7 @@ export function Ipd() {
           </div>
         ) : (
           <div className="table-wrap">
-            <table>
+            <table className="fit-table">
               <thead>
                 <tr>
                   <th>IPD no.</th>
@@ -293,21 +293,21 @@ export function Ipd() {
                     <td className="mono">
                       <strong>{c.ipd_no}</strong>
                     </td>
-                    <td>
+                    <td className="fit-wrap">
                       <strong>{c.patient.name}</strong>
                       <small className="muted block">
                         {c.patient.uhid} · {c.patient.age_label} / {c.patient.gender.charAt(0).toUpperCase()}
                       </small>
                     </td>
-                    <td>
+                    <td className="wrap">
                       {c.bed ? `${c.bed.ward} · ${c.bed.bed_no}` : '—'}
                       {c.is_day_care && <small className="muted block">Day care</small>}
                     </td>
-                    <td>
+                    <td className="wrap">
                       {c.doctor.name}
                       {c.payer && <small className="muted block">{c.payer.name}</small>}
                     </td>
-                    <td>
+                    <td className="wrap">
                       {longDate(c.admitted_at)} <span className="muted">{clock(c.admitted_at)}</span>
                       <small className="muted block">
                         {c.discharged_at ? `to ${longDate(c.discharged_at)} · ` : 'Day '}

@@ -91,7 +91,7 @@ export function LabPackages() {
               <tbody>
                 {packages.map((p) => (
                   <tr key={p.id} onClick={() => open(p)} className={editing !== 'new' && editing?.id === p.id ? 'selected' : ''}>
-                    <td>
+                    <td className="fit-wrap">
                       <strong>{p.name}</strong>
                     </td>
                     <td className="wrap">{p.tests.map((t) => t.name).join(', ')}</td>

@@ -134,7 +134,7 @@ export function AdminList({ kind }: { kind: keyof typeof LISTS }) {
           <tbody>
             {rows.map((row) => (
               <tr key={row.id} onClick={() => open(row)} className={editing === row.id ? 'selected' : ''}>
-                <td>
+                <td className="fit-wrap">
                   <strong>{row.name}</strong>
                 </td>
                 {config.fields.map((f) => (

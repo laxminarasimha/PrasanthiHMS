@@ -214,11 +214,11 @@ export function Staff() {
             <tbody>
               {staff.map((s) => (
                 <tr key={s.id} onClick={() => open(s)} className={editing !== 'new' && editing?.id === s.id ? 'selected' : ''}>
-                  <td>
+                  <td className="fit-wrap">
                     <strong>{s.name}</strong>
                   </td>
-                  <td>{roleLabel(s.role)}</td>
-                  <td>{s.email}</td>
+                  <td className="wrap">{roleLabel(s.role)}</td>
+                  <td className="fit-wrap">{s.email}</td>
                   <td className="mono">{s.phone ?? '—'}</td>
                   <td>
                     <span className={s.is_active ? 'pill ok' : 'pill off'}>{s.is_active ? 'Active' : 'Deactivated'}</span>

@@ -107,7 +107,7 @@ export function IpdSetup() {
               <tbody>
                 {beds.map((b) => (
                   <tr key={b.id} onClick={() => openBed(b)} className={editing?.kind === 'bed' && editing.id === b.id ? 'selected' : ''}>
-                    <td>
+                    <td className="wrap">
                       <strong>{b.ward}</strong>
                     </td>
                     <td>{b.bed_no}</td>
@@ -115,7 +115,7 @@ export function IpdSetup() {
                       {rupees(b.daily_charge)}
                       {b.day_care_charge != null && <small className="muted block">{rupees(b.day_care_charge)} day care</small>}
                     </td>
-                    <td>{b.current_admission ? `${b.current_admission.patient.name} (${b.current_admission.ipd_no})` : '—'}</td>
+                    <td className="fit-wrap">{b.current_admission ? `${b.current_admission.patient.name} (${b.current_admission.ipd_no})` : '—'}</td>
                     <td>
                       <span className={`pill ${!b.is_active ? 'off' : b.current_admission ? 'status-ongoing' : 'ok'}`}>{!b.is_active ? 'Not in use' : b.current_admission ? 'Occupied' : 'Free'}</span>
                     </td>
@@ -151,10 +151,10 @@ export function IpdSetup() {
               <tbody>
                 {services.map((s) => (
                   <tr key={s.id} onClick={() => openService(s)} className={editing?.kind === 'service' && editing.id === s.id ? 'selected' : ''}>
-                    <td>
+                    <td className="fit-wrap">
                       <strong>{s.name}</strong>
                     </td>
-                    <td>{s.category ?? '—'}</td>
+                    <td className="wrap">{s.category ?? '—'}</td>
                     <td className="num">{rupees(s.price)}</td>
                     <td>
                       <span className={s.is_active ? 'pill ok' : 'pill off'}>{s.is_active ? 'Active' : 'Hidden'}</span>

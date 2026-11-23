@@ -145,11 +145,11 @@ export function FormsPanel({ url, use, canEdit }: Props) {
             <tbody>
               {records.map((r) => (
                 <tr key={r.id} className={`static ${open?.id === r.id ? 'selected' : ''}`}>
-                  <td>
+                  <td className="fit-wrap">
                     <strong>{r.name}</strong>
                   </td>
                   <td>{longDate(r.created_at)}</td>
-                  <td>{r.author?.name ?? '—'}</td>
+                  <td className="wrap">{r.author?.name ?? '—'}</td>
                   <td className="num actions">
                     <button className="link" onClick={() => edit(r)}>
                       {canEdit ? 'Edit' : 'View'}

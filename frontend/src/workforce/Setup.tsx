@@ -131,7 +131,7 @@ export function WorkforceSetup() {
                     <tbody>
                       {all.shifts.map((s) => (
                         <tr key={s.id} onClick={() => open({ what: 'shift', id: s.id }, { name: s.name, starts_at: time(s.starts_at), ends_at: time(s.ends_at), grace_minutes: String(s.grace_minutes), early_leave_minutes: String(s.early_leave_minutes), break_minutes: String(s.break_minutes), half_day_minutes: String(s.half_day_minutes ?? ''), full_day_minutes: String(s.full_day_minutes ?? ''), overtime_after_minutes: String(s.overtime_after_minutes ?? ''), is_active: s.is_active })}>
-                          <td>
+                          <td className="wrap">
                             <strong>{s.name}</strong>
                             {!s.is_active && <span className="pill off"> Not in use</span>}
                           </td>
@@ -218,14 +218,14 @@ export function WorkforceSetup() {
                     <tbody>
                       {all.leave_types.map((t) => (
                         <tr key={t.id} onClick={() => open({ what: 'leave', id: t.id }, { code: t.code, name: t.name, is_paid: t.is_paid, annual_allowance: String(t.annual_allowance), accrual: t.accrual, carry_forward_max: String(t.carry_forward_max), carry_forward_expires_months: String(t.carry_forward_expires_months ?? ''), allow_half_day: t.allow_half_day, needs_approval: t.needs_approval, is_active: t.is_active })}>
-                          <td>
+                          <td className="wrap">
                             <strong>{t.name}</strong> <small className="muted">{t.code}</small>
                             {!t.is_paid && <span className="pill status-booked"> Without pay</span>}
                             {!t.is_active && <span className="pill off"> Not in use</span>}
                           </td>
                           <td className="num">{t.annual_allowance || '—'}</td>
                           <td>{ACCRUAL[t.accrual] ?? t.accrual}</td>
-                          <td>{t.carry_forward_max > 0 ? `Up to ${t.carry_forward_max} days${t.carry_forward_expires_months ? `, to be used within ${t.carry_forward_expires_months} months` : ''}` : <span className="muted">Not carried: what is left lapses</span>}</td>
+                          <td className="wrap">{t.carry_forward_max > 0 ? `Up to ${t.carry_forward_max} days${t.carry_forward_expires_months ? `, to be used within ${t.carry_forward_expires_months} months` : ''}` : <span className="muted">Not carried: what is left lapses</span>}</td>
                         </tr>
                       ))}
                       {all.leave_types.length === 0 && (

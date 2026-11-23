@@ -158,15 +158,15 @@ export function PharmacyMedicines() {
             </div>
             {notice && <p className="notice">{notice}</p>}
             <div className="table-wrap">
-              <table>
+              <table className={`fit-table ${editing ? 'beside-panel' : ''}`}>
                 <thead>
                   <tr>
                     <th>Medicine</th>
                     <th>Dosage form</th>
-                    <th>Manufacturer</th>
+                    <th className="when-roomy">Manufacturer</th>
                     <th>Category and class</th>
                     <th className="num">Per pack</th>
-                    <th className="num">GST %</th>
+                    <th className="num when-roomy">GST %</th>
                     <th className="num">In stock</th>
                     <th>Status</th>
                   </tr>
@@ -174,7 +174,7 @@ export function PharmacyMedicines() {
                 <tbody>
                   {medicines.map((m) => (
                     <tr key={m.id} onClick={() => openMedicine(m)} className={editing?.kind === 'medicine' && editing.id === m.id ? 'selected' : ''}>
-                      <td>
+                      <td className="fit-wrap">
                         <strong>{m.name}</strong> {m.is_scheduled && <span className="pill status-ongoing">Scheduled</span>}
                         {m.composition && <small className="muted block">{m.composition}</small>}
                         <Link className="link small block" to={`/pharmacy/national-list?medicine=${m.id}`} onClick={(e) => e.stopPropagation()}>
@@ -182,15 +182,15 @@ export function PharmacyMedicines() {
                         </Link>
                         {placeLabel(m.rack_no, m.box_no) && <small className="shelf-place block">{placeLabel(m.rack_no, m.box_no)}</small>}
                       </td>
-                      <td>{m.type ?? '—'}</td>
-                      <td>{m.manufacturer ?? '—'}</td>
-                      <td>
+                      <td className="wrap">{m.type ?? '—'}</td>
+                      <td className="wrap when-roomy">{m.manufacturer ?? '—'}</td>
+                      <td className="wrap">
                         {m.category ?? '—'}
                         {m.sub_category ? ` · ${m.sub_category}` : ''}
                         {(m.ved || m.sde || m.fsn) && <small className="muted block">{[classLabel(VED, m.ved), classLabel(SDE, m.sde), classLabel(FSN, m.fsn)].filter(Boolean).join(' · ')}</small>}
                       </td>
                       <td className="num">{m.units_per_pack}</td>
-                      <td className="num">{m.gst_percent}</td>
+                      <td className="num when-roomy">{m.gst_percent}</td>
                       <td className="num">
                         {m.units_in_stock}{' '}
                         {m.is_active && m.units_in_stock <= m.reorder_level && <span className="pill off">{m.units_in_stock === 0 ? 'Out of stock' : 'Low'}</span>}
@@ -246,7 +246,7 @@ export function PharmacyMedicines() {
                 <tbody>
                   {stockists.map((s) => (
                     <tr key={s.id} onClick={() => openStockist(s)} className={editing?.kind === 'stockist' && editing.id === s.id ? 'selected' : ''}>
-                      <td>
+                      <td className="fit-wrap">
                         <strong>{s.name}</strong>
                         <Link className="link small block" to={`/pharmacy/stockists/${s.id}`} onClick={(e) => e.stopPropagation()}>
                           All bills from this stockist

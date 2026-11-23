@@ -102,7 +102,7 @@ export function WorkforceAdvances() {
                       setOpen(String(a.id))
                     }}
                   >
-                    <td>
+                    <td className="fit-wrap">
                       <strong>{a.employee?.name ?? '—'}</strong>
                       <small className="muted block">{[a.employee?.employee_no, a.employee?.department?.name].filter(Boolean).join(' · ')}</small>
                     </td>

@@ -198,7 +198,7 @@ export function FormDesigner() {
           <tbody>
             {templates.map((t) => (
               <tr key={t.id} onClick={() => { setDraft(toDraft(t)); setNotice(''); setError('') }} className={draft?.id === t.id ? 'selected' : ''}>
-                <td>
+                <td className="fit-wrap">
                   <strong>{t.name}</strong>
                 </td>
                 <td>{ACCESS.find(([value]) => value === t.access)?.[1]}</td>

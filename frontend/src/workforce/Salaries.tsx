@@ -85,7 +85,7 @@ function SalaryList({ parts, onOpenParts }: { parts: Parts | null; onOpenParts: 
             <tbody>
               {rows?.rows.map((r) => (
                 <tr key={r.id} className={open?.id === r.id ? 'selected' : ''} onClick={() => setOpen(r)}>
-                  <td>
+                  <td className="fit-wrap">
                     <strong>{r.name}</strong>
                     <small className="muted block">{[r.employee_no, r.designation, r.department?.name].filter(Boolean).join(' · ')}</small>
                   </td>
@@ -386,7 +386,7 @@ function PartList({ parts, onChanged }: { parts: Parts | null; onChanged: (parts
             <tbody>
               {parts?.components.map((p) => (
                 <tr key={p.id} className={editing !== 'new' && editing?.id === p.id ? 'selected' : ''} onClick={() => setEditing(p)}>
-                  <td>
+                  <td className="fit-wrap">
                     <strong>{p.name}</strong>
                     <small className="muted block">
                       {p.code}
