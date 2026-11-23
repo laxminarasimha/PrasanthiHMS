@@ -91,7 +91,8 @@ export function AllBills() {
           <MoneyByMode amounts={received.amounts} title="Money received in these dates, by how it was paid" note="At the front desk and lab, on bills and as deposits, less refunds. It counts money by the day it came in, so it can differ from “Paid”, which is about the bills listed." />
         )}
         <div className="table-wrap">
-          <table>
+          {/* Long names wrap inside their column, so the list fits the screen without scrolling sideways. */}
+          <table className="fit-table">
             <thead>
               <tr>
                 <th>Bill</th>
@@ -114,7 +115,7 @@ export function AllBills() {
                       {stampDate(b.created_at)} {stampTime(b.created_at)}
                     </small>
                   </td>
-                  <td>
+                  <td className="fit-wrap">
                     {b.patient ? (
                       <>
                         <strong>
@@ -130,7 +131,7 @@ export function AllBills() {
                       '—'
                     )}
                   </td>
-                  <td>
+                  <td className="fit-wrap">
                     {KIND_LABEL[b.kind]}
                     <small className="muted block">{b.lab_order ? `Order ${b.lab_order.order_no}` : (b.appointment?.doctor?.name ?? '')}</small>
                   </td>
