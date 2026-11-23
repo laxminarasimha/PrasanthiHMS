@@ -2,6 +2,8 @@ import { useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { useAuth } from '../auth'
 import { TextField } from '../components/Field'
+import { GoogleButton } from '../components/GoogleButton'
+import { useBrand } from '../brand'
 import { THEMES, applyAppearance, type Appearance } from '../appearance'
 import { allowedTabs } from '../nav'
 import type { User } from '../types'
@@ -9,6 +11,8 @@ import type { User } from '../types'
 /** A person's own account: who they are signed in as, and changing their password. */
 export function Account() {
   const { user, refresh } = useAuth()
+  const brand = useBrand()
+  const [googleNote, setGoogleNote] = useState('')
   const [hidden, setHidden] = useState<string[]>(user?.hidden_tabs ?? [])
   const [tabNotice, setTabNotice] = useState('')
   const [form, setForm] = useState({ current_password: '', password: '', password_confirmation: '' })
@@ -16,6 +20,25 @@ export function Account() {
   const [notice, setNotice] = useState('')
   const [saving, setSaving] = useState(false)
   const set = (key: keyof typeof form) => (value: string) => setForm((f) => ({ ...f, [key]: value }))
+
+  const joinGoogle = async (credential: string) => {
+    setGoogleNote('')
+    try {
+      refresh((await api.post<User>('/account/google', { credential })).data)
+      setGoogleNote('Joined. Next time, press "Sign in with Google" on the sign-in page.')
+    } catch (err) {
+      const errors = fieldErrors(err)
+      setGoogleNote(errors.credential ?? errors._ ?? 'Could not join the Google account.')
+    }
+  }
+  const removeGoogle = async () => {
+    try {
+      refresh((await api.delete<User>('/account/google')).data)
+      setGoogleNote('Google sign-in is switched off for your account. Sign in with your email and password.')
+    } catch {
+      setGoogleNote('Could not change it. Please try again.')
+    }
+  }
 
   const save = async (e: FormEvent) => {
     e.preventDefault()
@@ -114,6 +137,28 @@ export function Account() {
         ))}
       </div>
       {tabNotice && <p className="muted small">{tabNotice}</p>}
+
+      {brand?.google_client_id && (
+        <>
+          <h3>Sign in with Google</h3>
+          {user?.google_email ? (
+            <p>
+              You can sign in with your Google account <strong>{user.google_email}</strong>.{' '}
+              <button type="button" className="link danger" onClick={removeGoogle}>
+                Stop using Google
+              </button>
+            </p>
+          ) : (
+            <>
+              <p className="muted small">Join your Google account, then sign in with one tap instead of typing your password. Your password keeps working too.</p>
+              <div className="narrow-box">
+                <GoogleButton clientId={brand.google_client_id} text="continue_with" onCredential={joinGoogle} />
+              </div>
+            </>
+          )}
+          {googleNote && <p className="muted small">{googleNote}</p>}
+        </>
+      )}
 
       <h3>Change password</h3>
       {notice && <p className="notice">{notice}</p>}

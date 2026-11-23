@@ -15,6 +15,7 @@ use App\Models\Patient;
 use App\Models\PatientAccountMember;
 use App\Models\PharmacySale;
 use App\Models\Setting;
+use App\Support\GoogleIdToken;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -85,8 +86,15 @@ class PatientAppExtrasController extends Controller
     public function deleteAccount(Request $request): JsonResponse
     {
         $account = $request->user();
-        $data = $request->validate(['password' => ['required', 'string']], ['password.required' => 'Enter your password to close the account.']);
-        if (! Hash::check($data['password'], $account->password)) {
+        // Proved with the password, or, for an account opened with Google (which has no password of its own), by signing
+        // in with that same Google account again.
+        $data = $request->validate(['password' => ['required_without:credential', 'nullable', 'string'], 'credential' => ['nullable', 'string', 'max:4096']], ['password.required_without' => 'Enter your password to close the account.']);
+        if (! empty($data['credential'])) {
+            $google = GoogleIdToken::verify($data['credential']);
+            if (! $account->google_sub || ! hash_equals($account->google_sub, $google['sub'])) {
+                throw ValidationException::withMessages(['credential' => 'That is not the Google account joined to this app account.']);
+            }
+        } elseif (! Hash::check((string) $data['password'], $account->password)) {
             throw ValidationException::withMessages(['password' => 'That is not your password.']);
         }
 

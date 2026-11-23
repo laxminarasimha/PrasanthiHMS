@@ -126,8 +126,8 @@ class AdminExtrasTest extends TestCase
 
         $this->app['auth']->forgetGuards();
         $brand = $this->getJson('/api/brand')->assertOk()->assertJsonPath('name', 'Sample Hospital')->assertJsonPath('logo', $logo)->json();
-        // Only the name and the picture: nothing else of the hospital's details goes out unasked.
-        $this->assertSame(['name', 'logo'], array_keys($brand));
+        // Only the name, the picture and the public id of the Google sign-in button: nothing else goes out unasked.
+        $this->assertSame(['name', 'logo', 'google_client_id'], array_keys($brand));
     }
 
     public function test_bills_can_be_set_to_print_on_letterhead_paper(): void

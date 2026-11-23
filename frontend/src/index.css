@@ -1861,3 +1861,9 @@ h2 .count { display: inline-block; min-width: 1.6em; margin-left: 6px; padding: 
 .ref-choice .grow { min-width: 0; }
 .ref-linked { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; }
 .ref-linked p { margin: 6px 0; }
+
+/* "Sign in with Google": a line with "or" between the two ways in, and Google's own button below it. */
+.or-line { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 0.85rem; margin: 4px 0; }
+.or-line::before, .or-line::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
+.google-button { display: flex; justify-content: center; min-height: 44px; width: 100%; }
+.narrow-box { max-width: 360px; }

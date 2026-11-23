@@ -60,6 +60,7 @@ Route::get('/health', function () {
 });
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1,staff-login');
+Route::post('/login/google', [AuthController::class, 'googleLogin'])->middleware('throttle:10,1,staff-google');
 // The hospital's name and logo, for the sign-in page.
 Route::get('/brand', [AdminController::class, 'brand'])->middleware('throttle:60,1,brand');
 
@@ -67,11 +68,15 @@ Route::get('/brand', [AdminController::class, 'brand'])->middleware('throttle:60
 Route::prefix('app')->controller(PatientAppController::class)->group(function () {
     Route::post('/register', 'register')->middleware('throttle:6,1,app-register');
     Route::post('/login', 'login')->middleware('throttle:10,1,app-login');
+    Route::post('/google', 'google')->middleware('throttle:10,1,app-google');
+    Route::post('/google/register', 'googleRegister')->middleware('throttle:6,1,app-register');
 
     Route::middleware(['auth:sanctum', 'actor:patient'])->group(function () {
         Route::get('/me', 'me');
         Route::post('/logout', 'logout');
         Route::post('/password', 'changePassword')->middleware('throttle:10,1');
+        Route::post('/google/connect', 'connectGoogle')->middleware('throttle:10,1');
+        Route::delete('/google/connect', 'disconnectGoogle');
         Route::get('/hospital', 'hospitalInfo');
         Route::get('/records', 'records');
         Route::get('/doctors', 'doctors');
@@ -112,6 +117,8 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
     });
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/logout', [AuthController::class, 'logout']);
+    Route::post('/account/google', [AuthController::class, 'connectGoogle'])->middleware('throttle:10,1');
+    Route::delete('/account/google', [AuthController::class, 'disconnectGoogle']);
     Route::get('/backups', [BackupController::class, 'index']);
     Route::post('/backups', [BackupController::class, 'store'])->middleware('throttle:6,1');
     Route::get('/backups/files', [BackupController::class, 'files'])->middleware('throttle:20,1');

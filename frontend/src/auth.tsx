@@ -9,6 +9,7 @@ type AuthState = {
   user: User | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<void>
+  signInWithGoogle: (credential: string) => Promise<void>
   signOut: () => Promise<void>
   /** Replaces the signed-in person's details after they change their own settings. */
   refresh: (user: User) => void
@@ -105,13 +106,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(res.data.user)
   }
 
+  const signInWithGoogle = async (credential: string) => {
+    const res = await api.post<{ token: string; user: User }>('/login/google', { credential })
+    setToken(res.data.token)
+    setUser(res.data.user)
+  }
+
   const signOut = async () => {
     await api.post('/logout').catch(() => undefined)
     setUser(null)
     setToken(null)
   }
 
-  return <AuthContext.Provider value={{ user, loading, signIn, signOut, refresh: setUser }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ user, loading, signIn, signInWithGoogle, signOut, refresh: setUser }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

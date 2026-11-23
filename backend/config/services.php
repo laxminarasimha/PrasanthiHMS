@@ -23,6 +23,12 @@ return [
         'key' => env('ANTHROPIC_API_KEY'),
     ],
 
+    // "Sign in with Google": the hospital's own OAuth client ids from Google Cloud (not secret). None set: switched off.
+    'google' => [
+        'client_ids' => array_filter([env('GOOGLE_WEB_CLIENT_ID'), env('GOOGLE_IOS_CLIENT_ID')]),
+        'web_client_id' => env('GOOGLE_WEB_CLIENT_ID'),
+    ],
+
     'resend' => [
         'key' => env('RESEND_API_KEY'),
     ],

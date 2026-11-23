@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from './api'
 
 /** The hospital's name and logo as the app itself wears them: at the top of every screen, on the sign-in page and on the browser tab. */
-export type Brand = { name: string; logo: string | null }
+export type Brand = { name: string; logo: string | null; /** Set once "Sign in with Google" is set up for the hospital. */ google_client_id?: string | null }
 
 const KEY = 'hms_brand'
 const CHANGED = 'hms:brand'
