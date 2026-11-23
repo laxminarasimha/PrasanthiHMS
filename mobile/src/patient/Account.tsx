@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Linking, Text, View } from 'react-native'
 import { api, ApiError, type Account, type Hospital, type Person } from '../api'
+import { googleCredential, googleReady } from '../google'
 import { Button, Card, Field, Notice, text } from '../ui'
 import { Family } from './Family'
 
@@ -14,6 +15,44 @@ export function PatientAccount({ account, people, onPeople, onSignOut }: { accou
   const [closing, setClosing] = useState(false)
   const [closePassword, setClosePassword] = useState('')
   const [closeError, setCloseError] = useState('')
+  // The Google account they can sign in with, kept here so joining or removing it shows at once.
+  const [googleEmail, setGoogleEmail] = useState(account.google_email ?? null)
+
+  const joinGoogle = async () => {
+    setMessage({ text: '', kind: 'ok' })
+    try {
+      const credential = await googleCredential()
+      if (!credential) return
+      const next = await api.post<Account>('/app/google/connect', { credential })
+      setGoogleEmail(next.google_email ?? null)
+      setMessage({ text: 'Joined. Next time, press "Continue with Google" to sign in.', kind: 'ok' })
+    } catch (e) {
+      setMessage({ text: (e as Error).message, kind: 'error' })
+    }
+  }
+  const removeGoogle = async () => {
+    try {
+      await api.delete('/app/google/connect')
+      setGoogleEmail(null)
+      setMessage({ text: 'Google sign-in is switched off for this account. Sign in with your mobile number and password.', kind: 'ok' })
+    } catch (e) {
+      setMessage({ text: (e as ApiError).message, kind: 'error' })
+    }
+  }
+  const closeWithGoogle = async () => {
+    setBusy(true)
+    setCloseError('')
+    try {
+      const credential = await googleCredential()
+      if (!credential) return
+      await api.post('/app/account/delete', { credential })
+      onSignOut()
+    } catch (e) {
+      setCloseError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const closeAccount = async () => {
     setBusy(true)
@@ -64,6 +103,23 @@ export function PatientAccount({ account, people, onPeople, onSignOut }: { accou
       <Family people={people} onChange={onPeople} />
 
       <Notice text={message.text} kind={message.kind} />
+
+      {(googleEmail || googleReady) && (
+        <Card>
+          <Text style={text.h2}>Sign in with Google</Text>
+          {googleEmail ? (
+            <>
+              <Text style={text.body}>You can sign in with {googleEmail}.</Text>
+              <Button label="Stop using Google" kind="ghost" onPress={removeGoogle} />
+            </>
+          ) : (
+            <>
+              <Text style={text.muted}>Join your Google account, then sign in with one tap. Your mobile number and password keep working too.</Text>
+              <Button label="Join my Google account" kind="ghost" onPress={joinGoogle} />
+            </>
+          )}
+        </Card>
+      )}
 
       <Card>
         <Text style={text.h2}>Password</Text>
@@ -120,6 +176,7 @@ export function PatientAccount({ account, people, onPeople, onSignOut }: { accou
             <Text style={text.body}>This removes your login, your family list and your monthly medicine lists from this app for good. Appointments already booked stay booked.</Text>
             <Text style={text.muted}>The hospital keeps its own medical and billing records of your visits, as it is required to. To ask about those, call the hospital.</Text>
             <Field label="Your password" value={closePassword} onChangeText={setClosePassword} secureTextEntry autoCapitalize="none" autoComplete="current-password" />
+            {googleEmail && googleReady && <Button label={`Confirm with Google (${googleEmail}) and close it`} kind="danger" onPress={closeWithGoogle} busy={busy} />}
             <Notice text={closeError} />
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <View style={{ flex: 1 }}>

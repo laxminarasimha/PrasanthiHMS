@@ -102,6 +102,14 @@ if [[ -n "$AI_KEY" ]]; then
   printf '\nANTHROPIC_API_KEY=%s\n' "$AI_KEY" >> "$APP/.env"
 fi
 
+# "Sign in with Google" is switched on by the hospital's Google client ids (not secret); without them it stays off.
+for NAME in GOOGLE_WEB_CLIENT_ID GOOGLE_IOS_CLIENT_ID; do
+  VALUE="$(grep -E "^${NAME}=" "$ROOT/backend/.env" | head -1 | cut -d= -f2- || true)"
+  if [[ -n "$VALUE" ]]; then
+    printf '%s=%s\n' "$NAME" "$VALUE" >> "$APP/.env"
+  fi
+done
+
 mkdir -p "$APP/storage/logs" "$APP/storage/framework/cache/data" "$APP/storage/framework/sessions" "$APP/storage/framework/views" "$APP/bootstrap/cache"
 touch "$APP/storage/logs/.gitkeep"
 

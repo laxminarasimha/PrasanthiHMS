@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\User;
 use App\Support\DatabaseBackup;
+use App\Support\GoogleIdToken;
 use App\Support\SignInGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -45,6 +46,59 @@ class AuthController extends Controller
             'token' => $user->createToken('web')->plainTextToken,
             'user' => $this->present($user),
         ]);
+    }
+
+    /**
+     * Staff sign-in with Google. Only for a login that already exists and is switched on: the Google account joined to it
+     * earlier, or, the first time, a Google account whose address Google vouches for and which is the login's own email.
+     * Google never makes a new staff login.
+     */
+    public function googleLogin(Request $request): JsonResponse
+    {
+        $google = GoogleIdToken::verify((string) $request->validate(['credential' => ['required', 'string', 'max:4096']])['credential']);
+        $user = User::where('google_sub', $google['sub'])->first();
+        if (! $user && $google['authoritative']) {
+            $user = User::whereRaw('lower(email) = ?', [$google['email']])->whereNull('google_sub')->first();
+        }
+        if (! $user) {
+            AuditLog::record('auth.failed', null, null, 'Google account not joined to a login', null, mb_substr($google['email'], 0, 100));
+            throw ValidationException::withMessages(['credential' => "No staff login is joined to {$google['email']}. Sign in with your email and password, then join your Google account under My account."]);
+        }
+        if (! $user->is_active) {
+            AuditLog::record('auth.failed', null, null, 'The login is switched off', $user);
+            throw ValidationException::withMessages(['credential' => 'This account has been deactivated.']);
+        }
+        if (! $user->google_sub) {
+            $user->forceFill(['google_sub' => $google['sub'], 'google_email' => $google['email']])->save();
+        }
+        AuditLog::record('auth.login', null, null, 'With Google ('.$google['email'].')', $user);
+
+        return response()->json(['token' => $user->createToken('web')->plainTextToken, 'user' => $this->present($user)]);
+    }
+
+    /** Joins the signed-in person's Google account to their login, so they can sign in with Google from then on. */
+    public function connectGoogle(Request $request): JsonResponse
+    {
+        $google = GoogleIdToken::verify((string) $request->validate(['credential' => ['required', 'string', 'max:4096']])['credential']);
+        $user = $request->user();
+        if (User::where('google_sub', $google['sub'])->where('id', '!=', $user->id)->exists()) {
+            throw ValidationException::withMessages(['credential' => "{$google['email']} is already joined to another staff login."]);
+        }
+        $user->forceFill(['google_sub' => $google['sub'], 'google_email' => $google['email']])->save();
+        AuditLog::record('auth.google_joined', null, null, $google['email'], $user);
+
+        return response()->json($this->present($user));
+    }
+
+    public function disconnectGoogle(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if ($user->google_sub) {
+            AuditLog::record('auth.google_removed', null, null, $user->google_email, $user);
+            $user->forceFill(['google_sub' => null, 'google_email' => null])->save();
+        }
+
+        return response()->json($this->present($user));
     }
 
     /** Lets a person change their own password, after proving they know the current one. */
@@ -117,6 +171,8 @@ class AuthController extends Controller
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
+            // The Google account they can sign in with, if they have joined one.
+            'google_email' => $user->google_email,
             'role' => $user->role->value,
             'role_label' => $user->role->label(),
             'can_manage_staff' => $user->allows('canManageStaff'),

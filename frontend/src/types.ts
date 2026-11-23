@@ -2,6 +2,8 @@ export type User = {
   id: number
   name: string
   email: string
+  /** The Google account they can sign in with, once joined. */
+  google_email?: string | null
   role: string
   role_label: string
   can_manage_staff: boolean

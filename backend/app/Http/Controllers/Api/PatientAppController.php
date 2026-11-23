@@ -14,12 +14,14 @@ use App\Models\Patient;
 use App\Models\PatientAccount;
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\GoogleIdToken;
 use App\Support\SignInGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -83,6 +85,81 @@ class PatientAppController extends Controller
         $account->update(['last_login_at' => now()]);
 
         return response()->json(['token' => $account->createToken('app')->plainTextToken, 'account' => $this->present($account)]);
+    }
+
+    /**
+     * A patient signs in with Google. The Google account must already be joined to an app account (when it was opened
+     * with Google, or joined later under Profile). If it is not, the app is told so, with the name Google gives, and asks
+     * for the mobile number and the rest to open a new account. An email is never used to reach someone's account.
+     */
+    public function google(Request $request): JsonResponse
+    {
+        $google = GoogleIdToken::verify((string) $request->validate(['credential' => ['required', 'string', 'max:4096']])['credential']);
+        $account = PatientAccount::where('google_sub', $google['sub'])->first();
+        if (! $account) {
+            return response()->json(['new' => true, 'name' => $google['name'], 'email' => $google['email']]);
+        }
+        if (! $account->is_active) {
+            throw ValidationException::withMessages(['credential' => 'This account has been switched off. Please call the hospital.']);
+        }
+        $account->update(['last_login_at' => now()]);
+
+        return response()->json(['token' => $account->createToken('app')->plainTextToken, 'account' => $this->present($account)]);
+    }
+
+    /** Opens a new app account with Google, the same as registering, but signed in with Google instead of a password. */
+    public function googleRegister(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'credential' => ['required', 'string', 'max:4096'],
+            'name' => ['required', 'string', 'min:2', 'max:255'],
+            'mobile' => ['required', 'regex:/^[6-9][0-9]{9}$/', 'unique:patient_accounts,mobile'],
+            'gender' => ['required', Rule::in(['male', 'female', 'other'])],
+            'date_of_birth' => ['required', 'date', 'before_or_equal:today', 'after:1900-01-01'],
+        ], [
+            'mobile.regex' => 'Enter a 10-digit mobile number.',
+            'mobile.unique' => 'This mobile number already has an account. Sign in with it and your password, then join Google under Profile.',
+        ]);
+        $google = GoogleIdToken::verify($data['credential']);
+        if (PatientAccount::where('google_sub', $google['sub'])->exists()) {
+            throw ValidationException::withMessages(['credential' => 'This Google account already has an app account. Sign in with Google instead.']);
+        }
+
+        $account = DB::transaction(function () use ($data, $google) {
+            // As with any new account: a fresh patient record, joined to older hospital records only by the front desk.
+            $patient = Patient::create([
+                'name' => $data['name'], 'gender' => $data['gender'], 'date_of_birth' => $data['date_of_birth'],
+                'mobile' => $data['mobile'], 'email' => $google['email'], 'channel' => 'Mobile app',
+            ]);
+
+            // No password of their own: a long random one nobody knows, so only Google opens it.
+            $account = new PatientAccount(['patient_id' => $patient->id, 'name' => $data['name'], 'mobile' => $data['mobile'], 'password' => Str::random(48), 'last_login_at' => now()]);
+            $account->forceFill(['google_sub' => $google['sub'], 'google_email' => $google['email']])->save();
+
+            return $account;
+        });
+
+        return response()->json(['token' => $account->createToken('app')->plainTextToken, 'account' => $this->present($account)], 201);
+    }
+
+    /** Joins a Google account to the signed-in app account, so the patient can sign in with Google from then on. */
+    public function connectGoogle(Request $request): JsonResponse
+    {
+        $google = GoogleIdToken::verify((string) $request->validate(['credential' => ['required', 'string', 'max:4096']])['credential']);
+        $account = $request->user();
+        if (PatientAccount::where('google_sub', $google['sub'])->where('id', '!=', $account->id)->exists()) {
+            throw ValidationException::withMessages(['credential' => "{$google['email']} is already joined to another app account."]);
+        }
+        $account->forceFill(['google_sub' => $google['sub'], 'google_email' => $google['email']])->save();
+
+        return response()->json($this->present($account));
+    }
+
+    public function disconnectGoogle(Request $request): JsonResponse
+    {
+        $request->user()->forceFill(['google_sub' => null, 'google_email' => null])->save();
+
+        return response()->json($this->present($request->user()));
     }
 
     public function me(Request $request): JsonResponse
@@ -403,7 +480,7 @@ class PatientAppController extends Controller
         $patient = $account->patient;
 
         return [
-            'id' => $account->id, 'name' => $account->name, 'mobile' => $account->mobile, 'verified' => $account->verified_at !== null,
+            'id' => $account->id, 'name' => $account->name, 'mobile' => $account->mobile, 'verified' => $account->verified_at !== null, 'google_email' => $account->google_email,
             'patient' => ['id' => $patient->id, 'uhid' => $patient->uhid, 'gender' => $patient->gender, 'age_label' => $patient->age_label],
             'people' => self::people($account),
             'hospital' => $this->hospital(),

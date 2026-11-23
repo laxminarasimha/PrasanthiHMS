@@ -53,6 +53,8 @@ class AdminController extends Controller
             'logo' => $path && Storage::disk('local')->exists($path)
                 ? 'data:'.Storage::disk('local')->mimeType($path).';base64,'.base64_encode(Storage::disk('local')->get($path))
                 : null,
+            // For the "Sign in with Google" button; null while Google sign-in is not set up.
+            'google_client_id' => config('services.google.web_client_id') ?: null,
         ]);
     }
 

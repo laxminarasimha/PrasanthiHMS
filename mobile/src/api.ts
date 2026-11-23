@@ -62,7 +62,7 @@ export const api = {
 
 /** Someone this login looks after: the person themself, or a family member. */
 export type Person = { patient_id: number; name: string; relation: string; uhid: string; gender: string; age_label: string }
-export type Account = { id: number; name: string; mobile: string; verified: boolean; patient: { id: number; uhid: string; gender: string; age_label: string }; people: Person[]; hospital: { name: string; phone: string } }
+export type Account = { id: number; name: string; mobile: string; verified: boolean; google_email?: string | null; patient: { id: number; uhid: string; gender: string; age_label: string }; people: Person[]; hospital: { name: string; phone: string } }
 export type Doctor = { id: number; name: string; department: string | null }
 export type Slot = { time: string; label: string; available: boolean }
 export type Appointment = { id: number; scheduled_at: string; status: 'booked' | 'arrived' | 'ongoing' | 'reviewed' | 'cancelled'; token_no: number | null; notes: string | null; doctor: Doctor | null; patient?: { id: number; name: string } | null; can_cancel: boolean }
