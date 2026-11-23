@@ -199,7 +199,7 @@ export function PharmacyPurchaseOrders() {
                       <td className="mono">
                         <strong>{o.order_no}</strong>
                       </td>
-                      <td>{o.stockist.name}</td>
+                      <td className="fit-wrap">{o.stockist.name}</td>
                       <td>{longDate(o.order_date)}</td>
                       <td className="num">{o.items_count}</td>
                       <td>

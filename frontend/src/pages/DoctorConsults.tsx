@@ -58,7 +58,7 @@ export function DoctorConsults() {
                     {longDate(c.completed_at)}
                     <small className="muted block">{clock(c.completed_at)}</small>
                   </td>
-                  <td>
+                  <td className="fit-wrap">
                     <Link to={`/patients/${c.patient.id}`}>
                       <strong>{c.patient.name}</strong>
                     </Link>
@@ -66,7 +66,7 @@ export function DoctorConsults() {
                       {c.patient.uhid} · {c.patient.age_label} / {c.patient.gender.charAt(0).toUpperCase()} · {c.patient.mobile}
                     </small>
                   </td>
-                  {!isDoctor && <td>{c.doctor.name}</td>}
+                  {!isDoctor && <td className="wrap">{c.doctor.name}</td>}
                   <td className="wrap">{c.diagnosis?.split('\n').join(', ') || <span className="muted">—</span>}</td>
                   <td>{c.follow_up_on ? longDate(c.follow_up_on) : '—'}</td>
                   <td className="num">

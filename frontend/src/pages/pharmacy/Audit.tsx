@@ -427,7 +427,7 @@ function CountsTab({ auditor }: { auditor: boolean }) {
           <tbody>
             {shown.map((c) => (
               <tr key={c.id} className={c.status === 'approved' || c.status === 'cancelled' ? 'done' : ''} onClick={() => navigate(`/pharmacy/audit/counts/${c.id}`)}>
-                <td>
+                <td className="fit-wrap">
                   <strong>{c.title}</strong>
                   <small className="muted block mono">{c.count_no}</small>
                 </td>

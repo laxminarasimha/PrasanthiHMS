@@ -217,7 +217,7 @@ export function StockCountPage() {
                 return (
                   <tr key={r.id} className={`static ${r.recount && counting ? 'recount' : ''} ${r.difference ? 'different' : ''}`}>
                     <td>{r.rack_no || '—'}</td>
-                    <td>
+                    <td className="fit-wrap">
                       <strong>{r.medicine}</strong>
                       {r.recount && counting && <span className="pill status-arrived"> Count again</span>}
                       {r.counted_by && <small className="muted block no-print">{`${r.counted_by}${r.counted_at ? ` · ${stamp(r.counted_at)}` : ''}`}</small>}

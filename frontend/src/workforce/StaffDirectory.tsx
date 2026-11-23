@@ -155,14 +155,14 @@ export function StaffDirectory() {
               <tbody>
                 {staff?.map((s) => (
                   <tr key={s.id} onClick={() => open(s)} className={editing !== 'new' && editing?.id === s.id ? 'selected' : ''}>
-                    <td>
+                    <td className="fit-wrap">
                       <strong>{s.name}</strong>
                       <small className="muted block">
                         {s.employee_no}
                         {s.designation ? ` · ${s.designation}` : ''}
                       </small>
                     </td>
-                    <td>
+                    <td className="wrap">
                       {s.department?.name ?? '—'}
                       <small className="muted block">{TYPE_LABEL[s.employment_type] ?? s.employment_type}</small>
                     </td>

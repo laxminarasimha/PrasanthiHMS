@@ -173,7 +173,7 @@ export function Patients() {
             <tbody className={searching ? 'stale' : ''} aria-busy={searching}>
               {page?.data.map((p) => (
                 <tr key={p.id} onClick={() => navigate(`/patients/${p.id}`)} className={editing !== 'new' && editing?.id === p.id ? 'selected' : ''} title="Open the patient's page">
-                  <td>
+                  <td className="fit-wrap">
                     <strong>{fullName(p)}</strong>
                     {p.is_temporary && <span className="pill status-arrived"> Temporary</span>}
                     <small className="muted block mono">{p.uhid}</small>
@@ -182,7 +182,7 @@ export function Patients() {
                     {p.age_label} / {p.gender.charAt(0).toUpperCase()}
                   </td>
                   <td className="mono">{p.mobile}</td>
-                  <td>{p.city ?? '—'}</td>
+                  <td className="wrap">{p.city ?? '—'}</td>
                   <td>
                     {p.last_visit_at ? longDate(p.last_visit_at) : <span className="muted">Not yet seen</span>}
                     <small className="muted block">Registered {stampDate(p.created_at)}</small>

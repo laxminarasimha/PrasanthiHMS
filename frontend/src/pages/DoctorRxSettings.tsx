@@ -295,13 +295,13 @@ export function MedicineLibrary({ rows, doctorId, run }: { rows: PrescribedMedic
           <tbody>
             {shown.map((r) => (
               <tr key={r.id} className="static">
-                <td>
+                <td className="fit-wrap">
                   <strong>{r.medicine}</strong>
                 </td>
-                <td>{r.dose ?? '—'}</td>
-                <td>{r.frequency ?? '—'}</td>
-                <td>{r.timing ?? '—'}</td>
-                <td>{r.duration ?? '—'}</td>
+                <td className="wrap">{r.dose ?? '—'}</td>
+                <td className="wrap">{r.frequency ?? '—'}</td>
+                <td className="wrap">{r.timing ?? '—'}</td>
+                <td className="wrap">{r.duration ?? '—'}</td>
                 <td className="wrap">{r.instructions ?? '—'}</td>
                 <td className="num">{r.uses ?? 0}</td>
                 <td className="num actions">

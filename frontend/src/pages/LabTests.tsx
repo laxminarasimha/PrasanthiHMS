@@ -282,12 +282,12 @@ export function LabTests() {
 
         {!ordering && !sorting && (
         <div className="table-wrap">
-          <table>
+          <table className={`fit-table ${editing ? 'beside-panel' : ''}`}>
             <thead>
               <tr>
                 <th>Test / report</th>
                 <th>Department</th>
-                <th>Sample</th>
+                <th className="when-roomy">Sample</th>
                 <th className="num">Parameters</th>
                 <th className="num">Price</th>
                 <th>Status</th>
@@ -296,7 +296,7 @@ export function LabTests() {
             <tbody>
               {visible.map((t) => (
                 <tr key={t.id} onClick={() => open(t)} className={editing !== 'new' && editing?.id === t.id ? 'selected' : ''}>
-                  <td>
+                  <td className="fit-wrap">
                     <strong>{t.name}</strong>
                     {t.code && <small className="muted"> {t.code}</small>}
                     {t.version > 1 && (
@@ -306,8 +306,8 @@ export function LabTests() {
                       </small>
                     )}
                   </td>
-                  <td>{t.department ?? '—'}</td>
-                  <td>{t.sample_type ?? '—'}</td>
+                  <td className="wrap">{t.department ?? '—'}</td>
+                  <td className="wrap when-roomy">{t.sample_type ?? '—'}</td>
                   <td className="num">{t.kind === 'text' ? 'Written' : t.parameters.filter((p) => !p.is_heading).length}</td>
                   <td className="num">{rupees(t.price)}</td>
                   <td>

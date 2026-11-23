@@ -155,11 +155,11 @@ export function PharmacyStockReturns() {
                       <td className="mono">
                         <strong>{r.return_no}</strong>
                       </td>
-                      <td>{r.stockist.name}</td>
+                      <td className="fit-wrap">{r.stockist.name}</td>
                       <td>{longDate(r.returned_on)}</td>
                       <td className="num">{r.items.length}</td>
                       <td className="num">{rupees(r.total)}</td>
-                      <td>{r.remarks ?? '—'}</td>
+                      <td className="wrap">{r.remarks ?? '—'}</td>
                     </tr>
                   ))}
                   {returns.length === 0 && (

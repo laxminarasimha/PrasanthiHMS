@@ -77,7 +77,7 @@ export function PharmacySubscriptions() {
                     <strong className={s.status === 'active' && s.next_due_on <= today() ? 'due' : ''}>{longDate(s.next_due_on)}</strong>
                     <small className="muted block">Every month on day {s.day_of_month}</small>
                   </td>
-                  <td>
+                  <td className="fit-wrap">
                     <Link className="link" to={`/patients/${s.patient.id}`}>
                       {fullName(s.patient)}
                     </Link>
@@ -85,12 +85,12 @@ export function PharmacySubscriptions() {
                       {s.patient.uhid} · {s.patient.age_label} / {s.patient.gender.charAt(0).toUpperCase()} · {s.patient.mobile}
                     </small>
                   </td>
-                  <td>
+                  <td className="wrap">
                     {s.title}
                     {s.status === 'paused' && <span className="pill off"> Paused</span>}
                     {s.notes && <small className="muted block">{s.notes}</small>}
                   </td>
-                  <td>
+                  <td className="wrap">
                     {s.items.map((item, i) => (
                       <div key={i}>
                         {item.name} × <strong>{item.quantity}</strong>

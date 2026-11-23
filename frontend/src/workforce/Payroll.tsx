@@ -97,7 +97,7 @@ function RunList({ onOpen }: { onOpen: (id: number) => void }) {
           <tbody>
             {data?.runs.map((r) => (
               <tr key={r.id} onClick={() => onOpen(r.id)}>
-                <td>
+                <td className="wrap">
                   <strong>{r.period_name}</strong>
                   {(r.label || r.replaces_run_id) && <small className="muted block">{r.label ?? 'Run again after a reversal'}</small>}
                 </td>
@@ -423,7 +423,7 @@ function SlipLine({ s, run, final, selected, ticked, onTick, onOpen }: { s: Slip
       {final && run.can.approve && (
         <td onClick={(e) => e.stopPropagation()}>{s.payment_status !== 'paid' && <input type="checkbox" checked={ticked} onChange={(e) => onTick(e.target.checked)} aria-label={`Tick ${s.employee?.name ?? 'payslip'}`} />}</td>
       )}
-      <td>
+      <td className="fit-wrap">
         <strong>{s.employee?.name ?? '—'}</strong>
         <small className="muted block">{[s.slip_no, s.employee?.employee_no, s.employee?.department?.name].filter(Boolean).join(' · ')}</small>
       </td>

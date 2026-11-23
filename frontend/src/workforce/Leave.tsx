@@ -121,11 +121,11 @@ function Requests() {
             <tbody>
               {shown?.map((r) => (
                 <tr key={r.id} className="static">
-                  <td>
+                  <td className="fit-wrap">
                     <strong>{r.employee?.name ?? '—'}</strong>
                     <small className="muted block">{[r.employee?.employee_no, r.employee?.department?.name].filter(Boolean).join(' · ')}</small>
                   </td>
-                  <td>
+                  <td className="wrap">
                     {r.type?.name ?? '—'}
                     <small className="muted block">
                       {days(r.days)}
@@ -345,7 +345,7 @@ function BalanceSheet() {
               <tbody>
                 {shown.rows.map((r) => (
                   <tr key={r.id} onClick={() => setOpen(r)} className={open?.id === r.id ? 'selected' : ''} title="Open the leave account">
-                    <td>
+                    <td className="fit-wrap">
                       <strong>{r.name}</strong>
                       <small className="muted block">{[r.employee_no, r.department?.name].filter(Boolean).join(' · ')}</small>
                     </td>

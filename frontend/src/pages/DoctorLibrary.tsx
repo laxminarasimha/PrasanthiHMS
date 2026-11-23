@@ -125,7 +125,7 @@ export function DoctorLibrary() {
             <tbody>
               {library.templates.map((t) => (
                 <tr key={t.id} className="static">
-                  <td>
+                  <td className="fit-wrap">
                     <strong>{t.name}</strong>
                   </td>
                   <td className="wrap">{t.content.diagnosis || '—'}</td>
@@ -332,7 +332,7 @@ function RxGroups({ groups, doctorId, run, names, defaults }: { groups: RxGroup[
         <tbody>
           {groups.map((g) => (
             <tr key={g.id} className={editing !== 'new' && editing?.id === g.id ? 'selected' : ''} onClick={() => open(g)}>
-              <td>
+              <td className="fit-wrap">
                 <strong>{g.name}</strong>
               </td>
               <td className="wrap wide">{g.medicines.map((m) => [m.medicine, m.frequency, m.duration].filter(Boolean).join(' · ')).join('; ')}</td>

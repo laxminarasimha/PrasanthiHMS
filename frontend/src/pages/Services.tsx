@@ -113,13 +113,13 @@ export function Services() {
             <tbody>
               {services.filter((s) => s.type === tab).map((s) => (
                 <tr key={s.id} onClick={() => open(s)} className={editing !== 'new' && editing?.id === s.id ? 'selected' : ''}>
-                  <td>
+                  <td className="fit-wrap">
                     <strong>{s.name}</strong>
                   </td>
                   <td>{s.code ?? '—'}</td>
                   <td className="num">{rupees(s.price)}</td>
                   <td className="num">{s.gst_percent}</td>
-                  <td>{s.doctor?.name ?? 'Any doctor'}</td>
+                  <td className="wrap">{s.doctor?.name ?? 'Any doctor'}</td>
                   <td>
                     <span className={s.is_active ? 'pill ok' : 'pill off'}>{s.is_active ? 'Active' : 'Hidden'}</span>
                   </td>

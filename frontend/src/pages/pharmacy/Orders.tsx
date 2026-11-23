@@ -47,7 +47,7 @@ export function PharmacyOrders() {
               {orders?.map((o) => (
                 <tr key={o.id} className="static">
                   <td className="mono">{clock(o.completed_at)}</td>
-                  <td>
+                  <td className="fit-wrap">
                     <strong>
                       <PatientLink id={o.patient.id}>{o.patient.name}</PatientLink>
                     </strong>
@@ -55,7 +55,7 @@ export function PharmacyOrders() {
                       {o.patient.uhid} · {o.patient.age_label} / {o.patient.gender.charAt(0).toUpperCase()}
                     </small>
                   </td>
-                  <td>{o.doctor}</td>
+                  <td className="wrap">{o.doctor}</td>
                   <td className="wrap">
                     {o.medicines.map((m) => (
                       <div key={m.id}>

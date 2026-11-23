@@ -230,7 +230,7 @@ export function Expenses() {
                         <span className="mono">{r.expense_no}</span>
                         <small className="muted block">{longDate(r.paid_on ?? r.spent_on)}</small>
                       </td>
-                      <td data-label="For">
+                      <td className="fit-wrap" data-label="For">
                         <strong>{r.category}</strong>
                         {r.paid_to && <span> · {r.paid_to}</span>}
                         {(r.description || r.bill_no || r.department) && <small className="muted block">{[r.department?.name, r.bill_no ? `Bill ${r.bill_no}` : '', r.description].filter(Boolean).join(' · ')}</small>}
@@ -255,7 +255,7 @@ export function Expenses() {
                           <span className={`pill ${EXPENSE_STATUS_CLASS[r.status]}`}>{EXPENSE_STATUS_LABEL[r.status]}</span>
                         )}
                       </td>
-                      <td data-label="Entered by">
+                      <td className="wrap" data-label="Entered by">
                         {r.creator?.name ?? '—'}
                         {r.decider && <small className="muted block">{r.status === 'rejected' ? 'Refused' : 'Approved'} by {r.decider.name}</small>}
                       </td>

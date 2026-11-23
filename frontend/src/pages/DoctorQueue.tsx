@@ -121,7 +121,7 @@ export function DoctorQueue() {
                   {clock(q.scheduled_at)}
                   {q.token_no && <small className="muted block">Token {q.token_no}</small>}
                 </td>
-                <td>
+                <td className="fit-wrap">
                   {/* The name opens the pad too, so a phone needs no sideways scrolling to reach the button. */}
                   <Link className="link" to={`/visits/${q.id}`}>
                     {q.patient.name}
@@ -130,8 +130,8 @@ export function DoctorQueue() {
                     <PatientLink id={q.patient.id}>{q.patient.uhid}</PatientLink> · {q.patient.age_label} / {q.patient.gender.charAt(0).toUpperCase()}
                   </small>
                 </td>
-                {!isDoctor && <td>{q.doctor.name}</td>}
-                <td>{q.service?.name ?? '—'}</td>
+                {!isDoctor && <td className="wrap">{q.doctor.name}</td>}
+                <td className="wrap">{q.service?.name ?? '—'}</td>
                 <td>{q.last_visit ? longDate(q.last_visit) : 'First visit'}</td>
                 <td className="num">{q.visits}</td>
                 <td>{waiting(q, now)}</td>

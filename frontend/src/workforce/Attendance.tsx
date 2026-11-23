@@ -154,7 +154,7 @@ function DayView({ department }: { department: string }) {
                 const last = r.records[r.records.length - 1]
                 return (
                   <tr key={r.id} className="static">
-                    <td>
+                    <td className="fit-wrap">
                       <strong>{r.name}</strong>
                       <small className="muted block">{[r.employee_no, r.department?.name, r.shift].filter(Boolean).join(' · ')}</small>
                       {r.open_earlier.map((s) => (
@@ -441,7 +441,7 @@ function Corrections() {
           <tbody>
             {shown?.map((c) => (
               <tr key={c.id} className="static">
-                <td>
+                <td className="fit-wrap">
                   <strong>{c.employee?.name ?? '—'}</strong>
                   <small className="muted block">
                     {longDate(c.work_date)} · asked by {c.asked_by ?? '—'}

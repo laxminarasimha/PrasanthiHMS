@@ -55,7 +55,7 @@ export function PharmacyStockists() {
             <tbody>
               {rows.map((s) => (
                 <tr key={s.id} onClick={() => navigate(`/pharmacy/stockists/${s.id}`)}>
-                  <td>
+                  <td className="fit-wrap">
                     <Link className="link" to={`/pharmacy/stockists/${s.id}`} onClick={(e) => e.stopPropagation()}>
                       {s.name}
                     </Link>
@@ -385,7 +385,7 @@ export function PharmacyStockist() {
             <tbody>
               {rows.map((b) => (
                 <tr key={b.id} onClick={() => navigate(`/pharmacy/purchases?invoice=${b.id}`)} title="Open this invoice">
-                  <td>
+                  <td className="fit-wrap">
                     <Link className="link" to={`/pharmacy/purchases?invoice=${b.id}`} onClick={(e) => e.stopPropagation()}>
                       {b.invoice_no}
                     </Link>
@@ -441,7 +441,7 @@ export function PharmacyStockist() {
                         <strong>{r.return_no}</strong>
                       </td>
                       <td>{longDate(r.returned_on)}</td>
-                      <td>{r.remarks ?? '—'}</td>
+                      <td className="wrap">{r.remarks ?? '—'}</td>
                       <td className="num">{rupees(r.total)}</td>
                     </tr>
                   ))}
