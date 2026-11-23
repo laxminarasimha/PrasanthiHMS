@@ -129,6 +129,33 @@ class PharmacyManagerTest extends TestCase
         $this->getJson('/api/pharmacy/manager')->assertForbidden();
     }
 
+    public function test_one_payment_to_a_stockist_settles_several_of_their_bills(): void
+    {
+        Sanctum::actingAs($payer = User::factory()->create(['role' => 'pharmacist']));
+        $supplier = Stockist::create(['name' => 'City Pharma', 'credit_days' => 30]);
+        $other = Stockist::create(['name' => 'Another Agency']);
+        $bill = fn (Stockist $s, string $no, float $total) => PurchaseInvoice::create(['stockist_id' => $s->id, 'invoice_no' => $no, 'invoice_date' => today()->subDays(10), 'subtotal' => $total, 'tax' => 0, 'total' => $total, 'paid' => 0]);
+        [$first, $second, $theirs] = [$bill($supplier, 'INV-1', 1000), $bill($supplier, 'INV-2', 500), $bill($other, 'X-1', 300)];
+        $url = "/api/pharmacy/stockists/{$supplier->id}/payments";
+
+        // A bill of another stockist, or more than is owed on one bill, refuses the whole payment: nothing is half paid.
+        $this->postJson($url, ['payments' => [['invoice_id' => $first->id, 'amount' => 1000], ['invoice_id' => $theirs->id, 'amount' => 300]]])->assertStatus(422)->assertJsonValidationErrors('payments.1.invoice_id');
+        $this->postJson($url, ['payments' => [['invoice_id' => $first->id, 'amount' => 1000], ['invoice_id' => $second->id, 'amount' => 500.01]]])->assertStatus(422)->assertJsonValidationErrors('payments.1.amount');
+        $this->postJson($url, ['payments' => []])->assertStatus(422);
+        $this->assertEquals([0, 0, 0], [$first->fresh()->paid, $second->fresh()->paid, $theirs->fresh()->paid]);
+
+        // One transfer of 1,200: the older bill in full, 200 towards the next.
+        $this->postJson($url, ['payments' => [['invoice_id' => $first->id, 'amount' => 1000], ['invoice_id' => $second->id, 'amount' => 200]], 'mode' => 'bank_transfer', 'reference' => 'UTR777', 'paid_on' => today()->subDay()->toDateString()])
+            ->assertOk()->assertJsonPath('paid', 1200)->assertJsonPath('bills', 2);
+        $this->assertEquals([1000, 200, 0], [$first->fresh()->paid, $second->fresh()->paid, $theirs->fresh()->paid]);
+        $line = $second->payments()->first();
+        $this->assertEquals([200, 'bank_transfer', 'UTR777', today()->subDay()->toDateString(), $payer->id], [$line->amount, $line->mode, $line->reference, $line->paid_on->toDateString(), $line->paid_by]);
+        $this->getJson("/api/pharmacy/stockists/{$supplier->id}")->assertOk()->assertJsonPath('totals.paid', 1200)->assertJsonPath('totals.balance', 300);
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->postJson($url, ['payments' => [['invoice_id' => $second->id, 'amount' => 100]]])->assertForbidden();
+    }
+
     public function test_supplier_bills_show_when_they_fall_due_how_old_they_are_and_a_statement(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));

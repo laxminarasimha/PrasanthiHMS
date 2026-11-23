@@ -10,6 +10,7 @@ use App\Models\Payment;
 use App\Models\PurchaseInvoice;
 use App\Models\PurchaseOrder;
 use App\Models\StockBatch;
+use App\Models\Stockist;
 use App\Models\StockMovement;
 use App\Models\StockReturn;
 use App\Support\OpeningStockImport;
@@ -199,6 +200,51 @@ class PharmacyStockController extends Controller
         });
 
         return response()->json($purchase->fresh()->present());
+    }
+
+    /**
+     * One payment to a stockist that settles several of their bills: a single cheque or transfer, shared out
+     * over the bills as the person paying saw it on the screen. Each bill gets its own payment line, so its
+     * balance, the stockist's statement and the day close all read as if the bills had been paid one by one.
+     */
+    public function payStockist(Request $request, Stockist $stockist): JsonResponse
+    {
+        $this->authorizePharmacy($request);
+        $data = $request->validate([
+            'payments' => ['required', 'array', 'min:1', 'max:200'],
+            'payments.*.invoice_id' => ['required', 'integer', 'distinct'],
+            'payments.*.amount' => ['required', 'numeric', 'gt:0'],
+            'mode' => ['nullable', Rule::in(Payment::MODES)],
+            'reference' => ['nullable', 'string', 'max:255'],
+            'paid_on' => ['nullable', 'date', 'before_or_equal:today'],
+            'remarks' => ['nullable', 'string', 'max:500'],
+        ], ['payments.required' => 'Choose at least one bill to pay.', 'paid_on.before_or_equal' => 'A payment cannot be dated in the future.']);
+
+        $paid = DB::transaction(function () use ($stockist, $data, $request) {
+            $invoices = PurchaseInvoice::where('stockist_id', $stockist->id)->whereIn('id', array_column($data['payments'], 'invoice_id'))->lockForUpdate()->get()->keyBy('id');
+            $total = 0.0;
+            foreach ($data['payments'] as $index => $payment) {
+                $invoice = $invoices->get($payment['invoice_id']);
+                if (! $invoice) {
+                    throw ValidationException::withMessages(["payments.{$index}.invoice_id" => 'One of these bills is not from this stockist.']);
+                }
+                $amount = round((float) $payment['amount'], 2);
+                $balance = round($invoice->total - $invoice->paid, 2);
+                if ($amount > $balance) {
+                    throw ValidationException::withMessages(["payments.{$index}.amount" => "Only ₹{$balance} is owed on invoice {$invoice->invoice_no}. Open the page again to see the latest balances."]);
+                }
+                $invoice->payments()->create([
+                    'amount' => $amount, 'mode' => $data['mode'] ?? 'cash', 'reference' => $data['reference'] ?? null,
+                    'paid_on' => $data['paid_on'] ?? today()->toDateString(), 'remarks' => $data['remarks'] ?? null, 'paid_by' => $request->user()->id,
+                ]);
+                $invoice->increment('paid', $amount);
+                $total += $amount;
+            }
+
+            return round($total, 2);
+        });
+
+        return response()->json(['paid' => $paid, 'bills' => count($data['payments'])]);
     }
 
     public function stockReturns(): JsonResponse

@@ -369,6 +369,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
         Route::post('/opening-stock/import', 'importOpeningStock');
         Route::get('/inventory', 'inventory');
         Route::post('/purchases/{purchase}/payments', 'payInvoice');
+        Route::post('/stockists/{stockist}/payments', 'payStockist');
         Route::get('/stock-returns', 'stockReturns');
         Route::post('/stock-returns', 'storeStockReturn');
         Route::get('/purchase-orders', 'purchaseOrders');
