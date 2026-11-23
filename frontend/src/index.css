@@ -1888,3 +1888,22 @@ th.sortable button:focus-visible { outline: 3px solid var(--ring); outline-offse
 .count-diff.more { color: var(--ok); }
 .count-diff .muted { font-weight: 400; }
 .pay-link { margin-left: 10px; }
+
+/* Inventory: a long list read on laptops of every width. The type is a size smaller, long names and compositions
+   wrap inside their column, and the two changes stay in view at the right edge even when the screen is narrow. */
+.inventory-table { font-size: 0.9rem; }
+.inventory-table th { padding: 9px 8px; font-size: 0.7rem; letter-spacing: 0.03em; }
+.inventory-table td { padding: 9px 8px; }
+.inventory-table td small { font-size: 0.78rem; }
+.inventory-table td:first-child { white-space: normal; min-width: 170px; overflow-wrap: anywhere; }
+.inventory-table td.batch { white-space: normal; overflow-wrap: anywhere; min-width: 96px; max-width: 170px; }
+.inventory-table td.expiry { white-space: normal; }
+.inventory-table td.expiry .pill { margin-top: 2px; }
+.inventory-table th.stock-actions, .inventory-table td.stock-actions { position: sticky; right: 0; }
+.inventory-table td.stock-actions { background: var(--surface); box-shadow: -10px 0 8px -8px rgba(31, 26, 36, 0.1); }
+.inventory-table tbody tr.static:hover td.stock-actions { background: var(--surface-2); }
+.inventory-table tbody tr.selected td.stock-actions { background: var(--brand-soft); }
+.inventory-table .stock-actions .link + .link { margin-left: 10px; }
+/* On a small laptop or a tablet the two least-read columns give way (both are in Details and in the export). */
+@media (max-width: 1000px) { .inventory-table .col-gst { display: none; } }
+@media (max-width: 860px) { .inventory-table .col-price { display: none; } }
