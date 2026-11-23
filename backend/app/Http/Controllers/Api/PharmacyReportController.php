@@ -11,6 +11,7 @@ use App\Models\PharmacySaleReturn;
 use App\Models\PurchaseInvoice;
 use App\Models\StockAdjustment;
 use App\Models\StockBatch;
+use App\Support\MoneyFigures;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -65,7 +66,7 @@ class PharmacyReportController extends Controller
         return response()->json([
             'type' => $type, 'title' => self::REPORTS[$type], 'from' => $from->toDateString(), 'to' => $to->toDateString(),
             'columns' => $columns, 'rows' => $rows, 'totals' => $totals, 'reports' => self::REPORTS,
-        ]);
+        ] + (in_array($type, ['billing', 'monthly-billing'], true) ? ['received' => MoneyFigures::received('pharmacy', $from, $to)] : []));
     }
 
     private static function col(string $key, string $label, string $type = 'text', bool $total = true): array

@@ -194,6 +194,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
     Route::controller(FrontDeskController::class)->group(function () {
         Route::get('/front-desk/bills', 'walkInBills');
         Route::get('/front-desk/summary', 'summary');
+        Route::get('/front-desk/money', 'money');
         Route::get('/front-desk/queue', 'queue');
         Route::get('/front-desk/follow-ups', 'followUps');
         Route::get('/patients/{patient}/overview', 'overview');
@@ -347,6 +348,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
 
     Route::prefix('pharmacy')->controller(PharmacySalesController::class)->group(function () {
         Route::get('/dashboard', 'dashboard');
+        Route::get('/money', 'money');
         Route::get('/customer-bills', 'customerBills');
         Route::post('/collect', 'collectMany');
         Route::get('/orders', 'orders');

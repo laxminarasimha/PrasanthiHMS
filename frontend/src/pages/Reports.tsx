@@ -4,6 +4,7 @@ import { DayClose } from '../components/DayClose'
 import { FindPatients } from '../components/FindPatients'
 import { ReportScreen } from '../components/ReportScreen'
 import { modeLabel, rupees, today } from '../format'
+import { MoneyByMode } from '../components/MoneyByMode'
 import { useChoiceInAddress, useRangeInAddress } from '../rangeInAddress'
 
 type Department = { label: string; billed: number; collected: Record<string, number>; collected_total: number }
@@ -151,6 +152,11 @@ export function Reports() {
               </div>
             ))}
           </div>
+
+          <MoneyByMode
+            amounts={Object.fromEntries(summary.modes.map((mode) => [mode, Math.round(departments.reduce((sum, d) => sum + d.collected[mode], 0) * 100) / 100]))}
+            note="All departments together, net of refunds. The table below gives the same figures department by department."
+          />
 
           {summary.paid_out && (
             <div className="print-together">

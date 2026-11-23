@@ -14,6 +14,7 @@ use App\Models\PharmacySale;
 use App\Models\PharmacySaleItem;
 use App\Models\PharmacySaleReturn;
 use App\Models\StockBatch;
+use App\Support\MoneyFigures;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -48,6 +49,8 @@ class PharmacySalesController extends Controller
             'collected_cash' => round($money->get('cash', 0), 2),
             'collected_card' => round($money->get('card', 0), 2),
             'collected_other' => round($money->except(['cash', 'card'])->sum(), 2),
+            // Each way of paying on its own (cash, UPI, card, …). The three figures above stay for the phone app already installed.
+            'collected_by_mode' => MoneyFigures::byMode($money),
             'statistics' => [
                 'medicines' => Medicine::where('is_active', true)->count(),
                 'manufacturers' => Manufacturer::count(),
@@ -65,6 +68,18 @@ class PharmacySalesController extends Controller
     }
 
     /** The day's prescriptions, each marked with whether a pharmacy bill has been made for the patient since. */
+    /** Money the pharmacy counter received in a period, by how it was paid; shown above the list of bills. */
+    public function money(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->mayInPharmacy($request), 403, 'You are not allowed to see the pharmacy.');
+        $range = $request->validate(['from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from']]);
+        $from = Carbon::parse($range['from'] ?? today())->startOfDay();
+        $to = Carbon::parse($range['to'] ?? $from)->endOfDay();
+        abort_if($from->diffInDays($to) > 366, 422, 'Choose a range of one year or less.');
+
+        return response()->json(['from' => $from->toDateString(), 'to' => $to->toDateString(), 'received' => MoneyFigures::received('pharmacy', $from, $to)]);
+    }
+
     public function orders(Request $request): JsonResponse
     {
         $day = Carbon::parse($request->validate(['date' => ['nullable', 'date']])['date'] ?? today());

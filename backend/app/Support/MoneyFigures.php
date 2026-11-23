@@ -71,11 +71,26 @@ class MoneyFigures
     }
 
     /**
+     * Money one counter received in a period, by how it was paid: what the owner needs to tell the cash the staff
+     * must hand over from the money that went straight to the bank (UPI, card, transfer). The front desk's figure
+     * takes its own bills, the lab's bills and patient deposits together, as its screens do.
+     *
+     * @return array<string, float>
+     */
+    public static function received(string $counter, Carbon $from, Carbon $to): array
+    {
+        $departments = self::departments($from, $to);
+        $parts = $counter === 'front_desk' ? ['consultation', 'lab'] : [$counter];
+
+        return collect(Payment::MODES)->mapWithKeys(fn ($mode) => [$mode => round(collect($parts)->sum(fn ($part) => $departments[$part]['collected'][$mode]), 2)])->all();
+    }
+
+    /**
      * Every payment mode with its amount, zero when nothing was received that way.
      *
      * @return array<string, float>
      */
-    private static function byMode(Collection $amounts): array
+    public static function byMode(Collection $amounts): array
     {
         return collect(Payment::MODES)->mapWithKeys(fn ($mode) => [$mode => round((float) ($amounts[$mode] ?? 0), 2)])->all();
     }

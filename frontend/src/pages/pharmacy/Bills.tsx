@@ -1,3 +1,4 @@
+import { MoneyByMode } from '../../components/MoneyByMode'
 import { BillDiscountBox } from '../../components/BillDiscountBox'
 import { discountRupees, type BillDiscount } from '../../components/billDiscount'
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
@@ -63,6 +64,11 @@ export function PharmacyBills() {
 
   // At once when the screen opens; after a short pause when a search or filter changes.
   useLoadOnChange(load)
+  // Money the counter took in the dates shown, by how it was paid. A search runs over all dates, so it has none.
+  const [received, setReceived] = useState<{ key: string; amounts: Record<string, number> } | null>(null)
+  useEffect(() => {
+    api.get<{ received: Record<string, number> }>('/pharmacy/money', { params: { from, to } }).then((res) => setReceived({ key: `${from}|${to}`, amounts: res.data.received })).catch(() => undefined)
+  }, [from, to, sales])
 
   const editable = (s: PharmacySale) => !s.voided_at && s.returned === 0 && s.ipd_transfer === 0
 
@@ -218,6 +224,9 @@ export function PharmacyBills() {
             <div className="tile"><span>Collected</span><strong>{rupees(collected)}</strong></div>
             <div className="tile"><span>Balance due</span><strong className={due > 0 ? 'due' : ''}>{rupees(Math.round(due * 100) / 100)}</strong></div>
           </div>
+          {!searching && received?.key === `${from}|${to}` && (
+            <MoneyByMode amounts={received.amounts} title="Money received in these dates, by how it was paid" note="At the pharmacy counter, less refunds. It counts money by the day it came in, so it can differ from “Collected”, which is about the bills listed." />
+          )}
           <div className="table-wrap">
             <table>
               <thead>

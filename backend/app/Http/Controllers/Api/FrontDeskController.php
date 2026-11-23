@@ -6,20 +6,22 @@ use App\Http\Controllers\Controller;
 use App\Models\Admission;
 use App\Models\Appointment;
 use App\Models\Attachment;
+use App\Models\AuditLog;
 use App\Models\Bill;
 use App\Models\Consultation;
 use App\Models\LabOrder;
 use App\Models\Patient;
+use App\Models\PatientDeposit;
 use App\Models\Payment;
 use App\Models\PharmacySale;
-use App\Models\PatientDeposit;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
+use App\Support\MoneyFigures;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /** The front desk's day: walk-in bills, the day's totals, the waiting-room queue, vitals, attachments and a patient's whole record. */
@@ -83,8 +85,21 @@ class FrontDeskController extends Controller
                 'used' => round((float) PatientDeposit::whereBetween('created_at', [$from, $to])->where('type', 'used')->sum('amount'), 2),
             ],
             'bills' => ['all' => $row(null), 'appointment' => $row('appointment'), 'lab' => $row('lab'), 'other' => $row('other')],
+            // All the money that came in at the desk that day (on bills and as deposits, less refunds), by how it was paid.
+            'received' => MoneyFigures::received('front_desk', $from, $to),
             'appointments' => $appointments,
         ]);
+    }
+
+    /** Money the front desk and lab received in a period, by how it was paid; shown above the list of bills. */
+    public function money(Request $request): JsonResponse
+    {
+        $range = $request->validate(['from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from']]);
+        $from = Carbon::parse($range['from'] ?? today())->startOfDay();
+        $to = Carbon::parse($range['to'] ?? $from)->endOfDay();
+        abort_if($from->diffInDays($to) > 366, 422, 'Choose a range of one year or less.');
+
+        return response()->json(['from' => $from->toDateString(), 'to' => $to->toDateString(), 'received' => MoneyFigures::received('front_desk', $from, $to)]);
     }
 
     /** For the waiting-room screen: who each doctor is seeing now and who is next, by token. */
@@ -112,9 +127,9 @@ class FrontDeskController extends Controller
      */
     public function followUps(Request $request): JsonResponse
     {
-        $day = \Illuminate\Support\Carbon::parse($request->validate(['date' => ['nullable', 'date']])['date'] ?? today())->toDateString();
+        $day = Carbon::parse($request->validate(['date' => ['nullable', 'date']])['date'] ?? today())->toDateString();
 
-        $due = \App\Models\Consultation::whereDate('follow_up_on', $day)->whereNotNull('completed_at')
+        $due = Consultation::whereDate('follow_up_on', $day)->whereNotNull('completed_at')
             ->with(['patient:id,uhid,title,name,gender,date_of_birth,mobile', 'doctor:id,name'])
             ->latest('completed_at')->get(['id', 'appointment_id', 'patient_id', 'doctor_id', 'diagnosis', 'follow_up_on', 'completed_at']);
 
@@ -177,7 +192,7 @@ class FrontDeskController extends Controller
 
     public function overview(Patient $patient): JsonResponse
     {
-        \App\Models\AuditLog::record('patient.opened', $patient->id, $patient);
+        AuditLog::record('patient.opened', $patient->id, $patient);
         $bills = Bill::where('patient_id', $patient->id)->with('labOrder:id,bill_id,order_no')->withIpdTransfers()->latest()->limit(50)->get();
 
         return response()->json([
