@@ -229,6 +229,31 @@ class PharmacyEditTest extends TestCase
         $this->assertSame($this->invoice['id'], $this->batch->fresh()->purchase_invoice_id);
     }
 
+    public function test_stock_without_an_invoice_keeps_its_own_rate_pack_size_and_gst(): void
+    {
+        // Bought on an invoice: the rate, pack size and GST are corrected on the invoice, not here.
+        $details = ['batch_no' => 'B001', 'expiry' => now()->addYears(2)->format('Y-m'), 'pack_mrp' => 28];
+        $this->putJson("/api/pharmacy/stock/{$this->batch->id}", $details + ['pack_price' => 99])->assertStatus(422)->assertJsonValidationErrors('pack_price');
+        // Sent unchanged, as the screen does, they are no obstacle; and no reason has to be typed.
+        $this->putJson("/api/pharmacy/stock/{$this->batch->id}", $details + ['pack_price' => $this->batch->pack_price, 'units_per_pack' => $this->batch->units_per_pack, 'gst_percent' => $this->batch->gst_percent, 'hsn_code' => '3004'])
+            ->assertOk()->assertJsonPath('hsn_code', '3004');
+
+        $this->postJson('/api/pharmacy/opening-stock', ['items' => [[
+            'medicine_id' => $this->batch->medicine_id, 'batch_no' => 'OPEN9', 'expiry' => now()->addYear()->format('Y-m'),
+            'units_per_pack' => 10, 'quantity' => 45, 'mrp' => 30, 'cost_price' => 20, 'gst_percent' => 12,
+        ]]])->assertCreated();
+        $opening = StockBatch::where('batch_no', 'OPEN9')->firstOrFail();
+        $this->putJson("/api/pharmacy/stock/{$opening->id}", ['batch_no' => 'OPEN9', 'expiry' => now()->addYear()->format('Y-m'), 'pack_mrp' => 30, 'pack_price' => 18.5, 'units_per_pack' => 15, 'gst_percent' => 5])
+            ->assertOk()->assertJsonPath('pack_price', 18.5)->assertJsonPath('units_per_pack', 15)->assertJsonPath('gst_percent', 5)
+            ->assertJsonPath('unit_mrp', 2)->assertJsonPath('packs', 3)->assertJsonPath('units_in_stock', 45);
+
+        $changes = collect($this->report('stock-updated'))->pluck('changes')->implode("\n");
+        $this->assertStringContainsString('Purchase rate / pack ₹: 20 → 18.5', $changes);
+        $this->assertStringContainsString('Units in a pack: 10 → 15', $changes);
+        $this->assertStringContainsString('GST %: 12 → 5', $changes);
+        $this->assertStringContainsString('HSN code: — → 3004', $changes);
+    }
+
     public function test_batch_details_and_medicine_changes_are_logged(): void
     {
         $this->putJson("/api/pharmacy/stock/{$this->batch->id}", ['batch_no' => 'B001', 'expiry' => now()->addYears(2)->format('Y-m'), 'pack_mrp' => 32, 'rack_no' => 'R4', 'reason' => 'Label read wrongly'])
