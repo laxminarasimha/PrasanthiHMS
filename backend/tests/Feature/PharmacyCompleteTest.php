@@ -178,6 +178,12 @@ class PharmacyCompleteTest extends TestCase
         // A medicine with nothing on the shelf is counted, but it is not in the inventory list.
         $this->assertNull(collect($inventory)->firstWhere('id', $empty->id));
 
+        // The stock list carries what is needed to read it as the inventory: the medicine's total over its batches,
+        // its low-stock level and what it contains, and it is found by a drug inside it.
+        $other->update(['composition' => 'Cetirizine 10 mg', 'reorder_level' => 40]);
+        $listed = collect($this->getJson('/api/pharmacy/stock?q=cetiriz')->assertOk()->assertJsonCount(1)->json())->first();
+        $this->assertSame([30, 40, 'Cetirizine 10 mg', 'OPEN1'], [$listed['medicine_units'], $listed['medicine']['reorder_level'], $listed['medicine']['composition'], $listed['batch_no']]);
+
         // The kind of difference must be chosen; a note in words is optional.
         $this->postJson("/api/pharmacy/stock/{$this->batch->id}/adjust", ['units_in_stock' => 96])->assertStatus(422)->assertJsonValidationErrors('category')->assertJsonMissingValidationErrors('reason');
         $this->postJson("/api/pharmacy/stock/{$this->batch->id}/adjust", ['units_in_stock' => 96, 'reason' => '4 tablets damaged'])->assertStatus(422)->assertJsonValidationErrors('category');

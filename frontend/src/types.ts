@@ -458,7 +458,9 @@ export type StockBatch = {
   /** What one unit really cost once free packs are counted, and the margin against MRP. Sent with an invoice. */
   unit_cost?: number
   margin_percent?: number | null
-  medicine?: { id: number; name: string; reorder_level?: number }
+  medicine?: { id: number; name: string; reorder_level?: number; type?: string | null; composition?: string | null; manufacturer?: string | null }
+  /** On the inventory list: what can still be sold of this batch's medicine over all its batches. */
+  medicine_units?: number
   invoice?: { id: number; invoice_no: string } | null
 }
 

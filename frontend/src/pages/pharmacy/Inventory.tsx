@@ -1,110 +1,251 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useLoadOnChange } from '../../loading'
 import { api } from '../../api'
+import { useAuth } from '../../auth'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
-import { downloadCsv, expiryLabel, today } from '../../format'
-import type { InventoryMedicine } from '../../types'
+import { daysUntil, downloadCsv, expiryLabel, placeLabel, rupees, today } from '../../format'
+import type { StockBatch } from '../../types'
+import { AddStockPopup, DetailsPopup, QuantityPopup } from './StockEdits'
 
-type Tab = 'all' | 'expiring' | 'low'
-type Data = { all: InventoryMedicine[]; counts: Record<'expiring' | 'low' | 'zero', number> }
-
-const FILTERS: Record<Tab, (m: InventoryMedicine) => boolean> = {
-  all: () => true,
-  expiring: (m) => m.expiring_units > 0,
-  low: (m) => m.units_in_stock > 0 && m.units_in_stock <= m.reorder_level,
+type SortBy = 'medicine' | 'batch' | 'expiry' | 'units' | 'invoice'
+const text = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+/** How two batches compare under each heading. Batches of one medicine stay together, the first to expire on top. */
+const ORDER: Record<SortBy, (a: StockBatch, b: StockBatch) => number> = {
+  medicine: (a, b) => text(a.medicine?.name ?? '', b.medicine?.name ?? '') || text(a.expiry, b.expiry),
+  batch: (a, b) => text(a.batch_no, b.batch_no),
+  expiry: (a, b) => text(a.expiry, b.expiry),
+  units: (a, b) => a.units_in_stock - b.units_in_stock,
+  invoice: (a, b) => text(a.invoice?.invoice_no ?? '', b.invoice?.invoice_no ?? ''),
 }
 
-/** What is on the shelf, medicine by medicine, with the lists a pharmacist checks before ordering. */
-export function PharmacyInventory() {
-  const [data, setData] = useState<Data | null>(null)
-  const [tab, setTab] = useState<Tab>('all')
-  const [query, setQuery] = useState('')
+type Tab = 'all' | 'expiring' | 'low'
+/** A medicine is low when what can still be sold of it, over all its batches, is at or under its low-stock level. */
+const isLow = (b: StockBatch) => (b.medicine_units ?? 0) > 0 && (b.medicine_units ?? 0) <= (b.medicine?.reorder_level ?? 0)
+const SHOWN: Record<Tab, (b: StockBatch) => boolean> = {
+  all: () => true,
+  expiring: (b) => b.units_in_stock > 0 && daysUntil(b.expiry) <= 90,
+  low: isLow,
+}
 
+/**
+ * Everything on the shelf, batch by batch, with the lists a pharmacist checks before ordering (expiring, low) and the
+ * changes made from here: a batch's quantity, its details, and stock that came without an invoice.
+ */
+export function PharmacyInventory() {
+  const { user } = useAuth()
+  const canEdit = Boolean(user?.can_run_pharmacy)
+  const [query, setQuery] = useState('')
+  const [showEmpty, setShowEmpty] = useState(false)
+  const [batches, setBatches] = useState<StockBatch[] | null>(null)
+  // The one small window open over the list: a batch's quantity, a batch's details, or new stock.
+  const [editing, setEditing] = useState<{ batch: StockBatch; what: 'quantity' | 'details' } | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [sort, setSort] = useState<{ by: SortBy; down: boolean }>({ by: 'medicine', down: false })
+  const [notice, setNotice] = useState('')
+  const [tab, setTab] = useState<Tab>('all')
+  // Medicines with nothing on the shelf are not listed here; the page only says how many there are.
+  const [zero, setZero] = useState(0)
   useEffect(() => {
-    api.get<Data>('/pharmacy/inventory').then((res) => setData(res.data))
+    api.get<{ counts: { zero: number } }>('/pharmacy/inventory').then((res) => setZero(res.data.counts.zero))
   }, [])
 
-  // Found by its own name or by a drug inside it.
-  const term = query.trim().toLowerCase()
-  const rows = (data?.all ?? []).filter(FILTERS[tab]).filter((m) => m.name.toLowerCase().includes(term) || (m.composition ?? '').toLowerCase().includes(term))
-  const tabs: [Tab, string][] = [
-    ['all', data ? `In stock (${data.all.length})` : 'In stock'],
-    ['expiring', data ? `Expiring in 90 days (${data.counts.expiring})` : 'Expiring in 90 days'],
-    ['low', data ? `Low stock (${data.counts.low})` : 'Low stock'],
-  ]
+  const load = useCallback(() => {
+    api.get<StockBatch[]>('/pharmacy/stock', { params: { q: query.trim() || undefined, show_empty: showEmpty ? 1 : undefined } }).then((res) => setBatches(res.data))
+  }, [query, showEmpty])
+
+  // At once when the screen opens; after a short pause when a search or filter changes.
+  useLoadOnChange(load)
+
+  const rows = useMemo(() => {
+    const sorted = (batches ?? []).filter(SHOWN[tab]).sort(ORDER[sort.by])
+    return sort.down ? sorted.reverse() : sorted
+  }, [batches, sort, tab])
+  const stocked = batches?.filter((b) => b.units_in_stock > 0) ?? []
+  const medicines = new Set(stocked.map((b) => b.medicine_id)).size
+  const lowCount = new Set((batches ?? []).filter(isLow).map((b) => b.medicine_id)).size
+
+  const expired = stocked.filter((b) => daysUntil(b.expiry) < 0).length
+  const expiring = stocked.filter(SHOWN.expiring).length
+  const value = batches?.reduce((sum, b) => sum + b.units_in_stock * b.unit_mrp, 0) ?? 0
+  // The list stops at 3,000 batches. Beyond that the total and the export would be short, and the page says so.
+  const cut = (batches?.length ?? 0) >= 3000
+
+  const open = (batch: StockBatch, what: 'quantity' | 'details') => {
+    setNotice('')
+    setEditing({ batch, what })
+  }
+  const done = (message: string) => {
+    setNotice(message)
+    setEditing(null)
+    load()
+  }
+
+  const changes = (b: StockBatch) => (
+    <>
+      <button className="link" onClick={() => open(b, 'quantity')} aria-label={`Change the quantity of ${b.medicine?.name} batch ${b.batch_no}`}>
+        Quantity
+      </button>
+      <button className="link" onClick={() => open(b, 'details')} aria-label={`Edit the details of ${b.medicine?.name} batch ${b.batch_no}`}>
+        Details
+      </button>
+    </>
+  )
+
+  const heading = (by: SortBy, label: string, num = false) => (
+    <th className={`sortable ${num ? 'num' : ''}`} aria-sort={sort.by === by ? (sort.down ? 'descending' : 'ascending') : undefined}>
+      <button type="button" title={`Sort by ${label.toLowerCase()}`} onClick={() => setSort((s) => ({ by, down: s.by === by ? !s.down : false }))}>
+        {label}
+        <span aria-hidden="true">{sort.by === by ? (sort.down ? ' ▼' : ' ▲') : ''}</span>
+      </button>
+    </th>
+  )
+
+  const exportCsv = () =>
+    downloadCsv(
+      `inventory-${tab}-${today()}.csv`,
+      ['Medicine', 'Composition', 'Type', 'Manufacturer', 'Batch', 'Expiry', 'Units in stock', 'Units received', 'Medicine total', 'Low-stock level', 'Units per pack', 'Pack price', 'Pack MRP', 'Unit MRP', 'GST %', 'Invoice', 'Rack', 'Box'],
+      rows.map((b) => [b.medicine?.name, b.medicine?.composition, b.medicine?.type, b.medicine?.manufacturer, b.batch_no, b.expiry, b.units_in_stock, b.units_received, b.medicine_units, b.medicine?.reorder_level, b.units_per_pack, b.pack_price, b.pack_mrp, b.unit_mrp, b.gst_percent, b.invoice?.invoice_no ?? 'Opening stock', b.rack_no, b.box_no]),
+    )
 
   return (
     <>
       <PharmacyTabs />
-      <section className="card">
-        <div className="toolbar">
-          <h1>Inventory</h1>
-          <input className="search" type="search" placeholder="Filter by medicine or by the drug inside it" value={query} onChange={(e) => setQuery(e.target.value)} />
-          <button
-            className="btn ghost"
-            onClick={() =>
-              downloadCsv(`inventory-${tab}-${today()}.csv`, ['Medicine', 'Composition', 'Type', 'Manufacturer', 'Units in stock', 'Low-stock level', 'Units expiring in 90 days', 'Next expiry'],
-                rows.map((m) => [m.name, m.composition, m.type, m.manufacturer, m.units_in_stock, m.reorder_level, m.expiring_units, m.next_expiry]))
-            }
-          >
-            Export
-          </button>
-        </div>
-        {/* What is not on the shelf is not inventory: it lives in the medicines list, with where to order it. */}
-        {data && data.counts.zero > 0 && (
-          <p className="muted small">
-            {data.counts.zero} {data.counts.zero === 1 ? 'medicine has' : 'medicines have'} nothing on the shelf and {data.counts.zero === 1 ? 'is' : 'are'} not listed here.{' '}
-            <Link className="link" to="/pharmacy/medicines?view=options&show=out">
-              See them, with where each can be ordered
-            </Link>
-          </p>
-        )}
-        <div className="tabs">
-          {tabs.map(([key, label]) => (
-            <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>
-              {label}
+      <div>
+        <section className="card">
+          <div className="toolbar">
+            <h1>Inventory</h1>
+            <input className="search" type="search" placeholder="Filter by medicine, batch or the drug inside" value={query} onChange={(e) => setQuery(e.target.value)} />
+            <label className="check flush">
+              <input type="checkbox" checked={showEmpty} onChange={(e) => setShowEmpty(e.target.checked)} />
+              Show empty batches
+            </label>
+            {canEdit && (
+              <button className="btn primary" onClick={() => { setNotice(''); setAdding(true) }}>
+                + Add stock
+              </button>
+            )}
+            <button className="btn ghost" onClick={exportCsv}>
+              Export
             </button>
-          ))}
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Medicine</th>
-                <th>Manufacturer</th>
-                <th className="num">Units in stock</th>
-                <th className="num">Low-stock level</th>
-                <th className="num">Expiring in 90 days</th>
-                <th>Next expiry</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((m) => (
-                <tr key={m.id} className="static">
-                  <td>
-                    <strong>{m.name}</strong>
-                    {m.type && <small className="muted"> {m.type}</small>}
-                    {m.composition && <small className="muted block">{m.composition}</small>}
-                  </td>
-                  <td>{m.manufacturer ?? '—'}</td>
-                  <td className="num">
-                    <strong className={m.units_in_stock === 0 ? 'due' : ''}>{m.units_in_stock}</strong>{' '}
-                    {m.units_in_stock > 0 && m.units_in_stock <= m.reorder_level && <span className="pill off">Low</span>}
-                  </td>
-                  <td className="num">{m.reorder_level}</td>
-                  <td className="num">{m.expiring_units || '—'}</td>
-                  <td>{m.next_expiry ? expiryLabel(m.next_expiry) : '—'}</td>
+          </div>
+          <p className="muted small">
+            <strong className="loads">{medicines}</strong> {medicines === 1 ? 'medicine' : 'medicines'} in <strong className="loads">{stocked.length}</strong> {stocked.length === 1 ? 'batch' : 'batches'} · value at MRP{' '}
+            <strong className="loads">{rupees(Math.round(value))}</strong>
+            {expired > 0 && <> · <span className="pill off">{expired} expired</span></>}
+            {/* What is not on the shelf is not inventory: it lives in the medicines list, with where to order it. */}
+            {zero > 0 && (
+              <>
+                {' '}· {zero} {zero === 1 ? 'medicine has' : 'medicines have'} nothing on the shelf:{' '}
+                <Link className="link" to="/pharmacy/medicines?view=options&show=out">
+                  see them, with where to order
+                </Link>
+              </>
+            )}
+          </p>
+          <div className="tabs">
+            {(
+              [
+                ['all', 'All stock', null],
+                ['expiring', 'Expiring in 90 days', expiring],
+                ['low', 'Low stock', lowCount],
+              ] as const
+            ).map(([key, label, count]) => (
+              <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>
+                {label}
+                {count !== null && <span>{count}</span>}
+              </button>
+            ))}
+          </div>
+          {cut && <p className="form-error">Only the first 3,000 batches are shown, so this total and the export are not the whole stock. Type a medicine name to narrow the list.</p>}
+          {notice && <p className="notice">{notice}</p>}
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  {heading('medicine', 'Medicine')}
+                  {heading('batch', 'Batch')}
+                  {heading('expiry', 'Expiry')}
+                  {heading('units', 'Units in stock', true)}
+                  <th className="num">Pack price</th>
+                  <th className="num">MRP</th>
+                  <th className="num">GST %</th>
+                  {heading('invoice', 'Invoice')}
+                  {canEdit && <th className="stock-actions">Change</th>}
                 </tr>
-              ))}
-              {data && rows.length === 0 && (
-                <tr className="empty">
-                  <td colSpan={6}>Nothing in this list.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+              </thead>
+              <tbody>
+                {rows.map((b) => {
+                  const days = daysUntil(b.expiry)
+                  return (
+                    <tr key={b.id} className={`static ${b.units_in_stock === 0 ? 'faded' : ''} ${editing?.batch.id === b.id ? 'selected' : ''}`}>
+                      <td>
+                        <strong>{b.medicine?.name}</strong>
+                        {/* The form, unless the name already says it ("… 650mg Tablet"). */}
+                        {b.medicine?.type && !b.medicine.name.toLowerCase().includes(b.medicine.type.toLowerCase()) && <small className="muted"> {b.medicine.type}</small>}
+                        {b.medicine?.composition && <small className="muted block">{b.medicine.composition}</small>}
+                        {placeLabel(b.rack_no, b.box_no) && <small className="shelf-place block">{placeLabel(b.rack_no, b.box_no)}</small>}
+                        {/* On a phone the last column is a long way to the right, so the two changes also sit under the name. */}
+                        {canEdit && <span className="stock-actions under-name">{changes(b)}</span>}
+                      </td>
+                      <td>{b.batch_no}</td>
+                      <td>
+                        {expiryLabel(b.expiry)}{' '}
+                        {days < 0 ? <span className="pill off">Expired</span> : days <= 90 ? <span className="pill status-arrived">{days} days</span> : null}
+                      </td>
+                      <td className="num">
+                        <strong>{b.units_in_stock}</strong>
+                        <small className="muted"> / {b.units_received}</small>
+                        {/* The medicine as a whole, when it has other batches or is running low. */}
+                        {b.medicine_units !== undefined && (isLow(b) || b.medicine_units !== b.units_in_stock) && (
+                          <small className="muted block">
+                            {b.medicine_units} in all{' '}
+                            {isLow(b) && (
+                              <span className="pill off" title={`Low-stock level ${b.medicine?.reorder_level}`}>
+                                Low
+                              </span>
+                            )}
+                          </small>
+                        )}
+                      </td>
+                      <td className="num">
+                        {rupees(b.pack_price)}
+                        {b.units_per_pack > 1 && <small className="muted block">pack of {b.units_per_pack}</small>}
+                      </td>
+                      <td className="num">
+                        {rupees(b.pack_mrp)}
+                        {b.units_per_pack > 1 && <small className="muted block">{rupees(b.unit_mrp)} a unit</small>}
+                      </td>
+                      <td className="num">{b.gst_percent}</td>
+                      <td>{b.invoice?.invoice_no ?? 'Opening stock'}</td>
+                      {canEdit && <td className="stock-actions">{changes(b)}</td>}
+                    </tr>
+                  )
+                })}
+                {batches && rows.length === 0 && (
+                  <tr className="empty">
+                    <td colSpan={canEdit ? 9 : 8}>
+                      {batches.length === 0 ? 'No stock found. Stock comes in through purchase invoices or with “Add stock”.' : tab === 'low' ? 'Nothing is running low.' : 'Nothing expires in the next 90 days.'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {editing?.what === 'quantity' && <QuantityPopup key={editing.batch.id} batch={editing.batch} onClose={() => setEditing(null)} onDone={done} />}
+        {editing?.what === 'details' && <DetailsPopup key={editing.batch.id} batch={editing.batch} onClose={() => setEditing(null)} onDone={done} />}
+        {adding && (
+          <AddStockPopup
+            onClose={() => setAdding(false)}
+            onAdded={(message) => {
+              setNotice(message)
+              load()
+            }}
+          />
+        )}
+      </div>
     </>
   )
 }
