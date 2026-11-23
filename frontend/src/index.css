@@ -294,8 +294,8 @@ tbody tr.empty td { text-align: center; color: var(--muted); padding: 32px; whit
 .pill.ok { color: var(--ok); background: var(--ok-soft); }
 .pill.owed { color: var(--danger); background: var(--danger-soft); }
 /* A window over the page, for something looked at as a whole and then closed: a patient's bills of the day. */
-.modal-back { position: fixed; inset: 0; z-index: 70; display: grid; justify-items: center; align-items: start; padding: 6vh 16px 24px; overflow-y: auto; background: rgba(31, 26, 36, 0.5); }
-.modal { width: min(780px, 100%); background: var(--surface); color: var(--text); border-radius: 14px; padding: 20px 22px; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.3); outline: none; }
+.modal-back { position: fixed; inset: 0; z-index: 70; display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; align-items: start; padding: 6vh 16px 24px; overflow-y: auto; background: rgba(31, 26, 36, 0.5); }
+.modal { width: min(780px, 100%); min-width: 0; background: var(--surface); color: var(--text); border-radius: 14px; padding: 20px 22px; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.3); outline: none; }
 .modal .panel-head { margin-bottom: 12px; }
 .modal .tiles { margin-bottom: 4px; }
 .modal > .tabs { margin-bottom: 12px; }
@@ -1888,3 +1888,4 @@ th.sortable button:focus-visible { outline: 3px solid var(--ring); outline-offse
 .count-diff.less { color: var(--danger); }
 .count-diff.more { color: var(--ok); }
 .count-diff .muted { font-weight: 400; }
+.pay-link { margin-left: 10px; }

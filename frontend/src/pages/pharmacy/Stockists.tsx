@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { api } from '../../api'
+import { api, fieldErrors } from '../../api'
 import { useAuth } from '../../auth'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
-import { daysUntil, downloadCsv, longDate, rupees, today } from '../../format'
+import { Popup } from '../../components/Popup'
+import { PAYMENT_MODES, daysUntil, downloadCsv, longDate, rupees, today } from '../../format'
 import type { Stockist } from '../../types'
 
 const two = (n: number) => Math.round(n * 100) / 100
@@ -92,6 +93,144 @@ type Show = 'all' | 'unpaid'
 
 const left = (b: Bill) => two(b.total - b.paid)
 
+/**
+ * One payment to the stockist against several bills. The amount typed is shared out over the ticked bills, the
+ * oldest first, and the table shows what each bill gets before anything is saved.
+ */
+function PayBills({ stockist, bills, only, onClose, onPaid }: { stockist: Stockist; bills: Bill[]; only: number | null; onClose: () => void; onPaid: (message: string) => void }) {
+  // Oldest first: that is the order a stockist expects their bills to be cleared in.
+  const [owed] = useState(() => [...bills].sort((a, b) => a.invoice_date.localeCompare(b.invoice_date) || a.id - b.id))
+  const [ticked, setTicked] = useState<number[]>(() => (only ? [only] : owed.map((b) => b.id)))
+  const due = (ids: number[]) => two(owed.filter((b) => ids.includes(b.id)).reduce((sum, b) => sum + left(b), 0))
+  const [amount, setAmount] = useState(() => String(due(only ? [only] : owed.map((b) => b.id))))
+  const [mode, setMode] = useState('cash')
+  const [reference, setReference] = useState('')
+  const [paidOn, setPaidOn] = useState(today())
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const tickedDue = due(ticked)
+  const paying = Number(amount) > 0 ? two(Number(amount)) : 0
+  const tooMuch = paying > tickedDue + 0.004
+  // What each ticked bill gets, the oldest filled first.
+  const shares = new Map<number, number>()
+  let rest = Math.min(paying, tickedDue)
+  for (const b of owed) {
+    if (!ticked.includes(b.id) || rest <= 0.004) continue
+    const share = two(Math.min(left(b), rest))
+    shares.set(b.id, share)
+    rest = two(rest - share)
+  }
+  const ready = paying > 0 && !tooMuch && shares.size > 0 && paidOn !== '' && !saving
+
+  const tick = (id: number, on: boolean) => {
+    const next = on ? [...ticked, id] : ticked.filter((x) => x !== id)
+    setTicked(next)
+    // The amount follows the ticks, so "pay these bills in full" is the starting point each time.
+    setAmount(String(due(next)))
+  }
+
+  const pay = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!ready) return
+    setSaving(true)
+    setError('')
+    try {
+      const res = await api.post<{ paid: number; bills: number }>(`/pharmacy/stockists/${stockist.id}/payments`, {
+        payments: [...shares].map(([invoice_id, share]) => ({ invoice_id, amount: share })), mode, reference: reference.trim() || null, paid_on: paidOn,
+      })
+      onPaid(`Paid ${rupees(res.data.paid)} to ${stockist.name} against ${res.data.bills} ${res.data.bills === 1 ? 'bill' : 'bills'}.`)
+    } catch (err) {
+      setError(Object.values(fieldErrors(err))[0] ?? 'The payment could not be saved. Please try again.')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Popup
+      title="Pay bills"
+      sub={`${stockist.name} · ${owed.length} ${owed.length === 1 ? 'bill' : 'bills'} not fully paid · ${rupees(due(owed.map((b) => b.id)))} owed`}
+      size="wide"
+      onClose={onClose}
+      onSubmit={pay}
+      foot={
+        <>
+          <button type="button" className="btn ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn primary" disabled={!ready}>
+            {saving ? 'Saving…' : `Pay ${rupees(Math.min(paying, tickedDue))}`}
+          </button>
+        </>
+      }
+    >
+      <div className="grid four">
+        <label className="field">
+          <span className="field-label">Amount paid ₹</span>
+          <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} onFocus={(e) => e.target.select()} />
+        </label>
+        <label className="field">
+          <span className="field-label">How it was paid</span>
+          <select value={mode} onChange={(e) => setMode(e.target.value)}>
+            {PAYMENT_MODES.filter((m) => m.value !== 'insurance').map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span className="field-label">Cheque or transfer no.</span>
+          <input maxLength={255} value={reference} onChange={(e) => setReference(e.target.value)} />
+        </label>
+        <label className="field">
+          <span className="field-label">Paid on</span>
+          <input type="date" max={today()} value={paidOn} onChange={(e) => setPaidOn(e.target.value)} />
+        </label>
+      </div>
+      <p className={`small gap-top ${tooMuch ? 'form-error' : 'muted'}`}>
+        {tooMuch
+          ? `That is more than the ${rupees(tickedDue)} owed on the ticked bills.`
+          : 'The amount is shared over the ticked bills, the oldest first. Untick a bill to leave it out, or type a smaller amount for a part payment.'}
+      </p>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th />
+              <th>Invoice</th>
+              <th>Date</th>
+              <th className="num">Owed</th>
+              <th className="num">Paying now</th>
+              <th className="num">Left after</th>
+            </tr>
+          </thead>
+          <tbody>
+            {owed.map((b) => {
+              const share = shares.get(b.id) ?? 0
+              return (
+                <tr key={b.id} className={`static ${ticked.includes(b.id) ? '' : 'faded'}`}>
+                  <td>
+                    <input type="checkbox" checked={ticked.includes(b.id)} onChange={(e) => tick(b.id, e.target.checked)} aria-label={`Pay invoice ${b.invoice_no}`} />
+                  </td>
+                  <td>
+                    <strong>{b.invoice_no}</strong>
+                  </td>
+                  <td>{longDate(b.invoice_date)}</td>
+                  <td className="num">{rupees(left(b))}</td>
+                  <td className="num">{share > 0 ? <strong>{rupees(share)}</strong> : '—'}</td>
+                  <td className={`num ${two(left(b) - share) > 0.004 ? 'due' : 'settled'}`}>{rupees(two(left(b) - share))}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      {error && <p className="form-error">{error}</p>}
+    </Popup>
+  )
+}
+
 /** One stockist's own page: every bill from them, what was paid on each, and what is still owed. */
 export function PharmacyStockist() {
   const { id } = useParams()
@@ -101,10 +240,15 @@ export function PharmacyStockist() {
   const [missing, setMissing] = useState(false)
   const [show, setShow] = useState<Show>('all')
   const [query, setQuery] = useState('')
+  // The payment window: for every unpaid bill, or opened from one bill's own "Pay".
+  const [paying, setPaying] = useState<{ only: number | null } | null>(null)
+  const [notice, setNotice] = useState('')
+  const canPay = Boolean(user?.can_run_pharmacy)
 
-  useEffect(() => {
+  const load = useCallback(() => {
     api.get<Page>(`/pharmacy/stockists/${id}`).then((res) => setPage(res.data)).catch(() => setMissing(true))
   }, [id])
+  useEffect(load, [load])
 
   const unpaid = useMemo(() => (page?.invoices ?? []).filter((b) => left(b) > 0.004), [page])
   const term = query.trim().toLowerCase()
@@ -114,6 +258,27 @@ export function PharmacyStockist() {
 
   const status = (b: Bill) => {
     if (left(b) <= 0.004) return <span className="pill ok">Paid</span>
+    return (
+      <>
+        {dueTag(b)}
+        {canPay && (
+          <button
+            type="button"
+            className="link pay-link"
+            aria-label={`Pay invoice ${b.invoice_no}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              setNotice('')
+              setPaying({ only: b.id })
+            }}
+          >
+            Pay
+          </button>
+        )}
+      </>
+    )
+  }
+  const dueTag = (b: Bill) => {
     if (!b.due_date) return <span className="pill warn">{b.paid > 0 ? 'Part paid' : 'Not paid'}</span>
     const days = daysUntil(b.due_date)
     if (days < 0) return <span className="pill off">Overdue {-days} {days === -1 ? 'day' : 'days'}</span>
@@ -159,8 +324,13 @@ export function PharmacyStockist() {
               </span>
             )}
           </div>
-          {user?.can_run_pharmacy && s && (
-            <Link className="btn primary" to={`/pharmacy/purchases?add=${s.id}`}>
+          {canPay && unpaid.length > 0 && (
+            <button className="btn primary" onClick={() => { setNotice(''); setPaying({ only: null }) }}>
+              Pay bills
+            </button>
+          )}
+          {canPay && s && (
+            <Link className="btn ghost" to={`/pharmacy/purchases?add=${s.id}`}>
               + Add invoice
             </Link>
           )}
@@ -169,6 +339,7 @@ export function PharmacyStockist() {
           </button>
         </div>
 
+        {notice && <p className="notice">{notice}</p>}
         <div className="tiles">
           {(
             [
@@ -287,6 +458,19 @@ export function PharmacyStockist() {
           </>
         )}
       </section>
+      {paying && s && (
+        <PayBills
+          stockist={s}
+          bills={unpaid}
+          only={paying.only}
+          onClose={() => setPaying(null)}
+          onPaid={(message) => {
+            setPaying(null)
+            setNotice(message)
+            load()
+          }}
+        />
+      )}
     </>
   )
 }
