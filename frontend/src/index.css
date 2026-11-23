@@ -1914,4 +1914,35 @@ th.sortable button:focus-visible { outline: 3px solid var(--ring); outline-offse
 .money-by-mode .tiles { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 .money-by-mode .tile.mode-cash { border-color: var(--accent); background: var(--accent-soft); }
 .money-by-mode .tile.mode-upi { border-color: var(--brand); background: var(--brand-soft); }
-.money-by-mode .tile small { font-size: 0.76rem; }
+
+/* Front desk day list: read with a panel open beside it, so it has to fit a narrow space. The type is a size
+   smaller, names, doctors and services wrap, and the "More" button stays in view at the right edge. */
+.desk-table { font-size: 0.92rem; }
+.desk-table th { padding: 9px 8px; font-size: 0.7rem; letter-spacing: 0.03em; }
+.desk-table td { padding: 10px 8px; }
+.desk-table td small { font-size: 0.78rem; }
+.desk-table td.who { white-space: normal; min-width: 150px; overflow-wrap: anywhere; }
+.desk-table td.who .mono { font-weight: 600; }
+.desk-table td.doctor { white-space: normal; min-width: 110px; }
+.desk-table td.status-cell { white-space: normal; }
+.desk-table td.status-cell .btn { margin: 0 6px 4px 0; }
+.desk-table td.bills { min-width: 120px; }
+.desk-table td.advice { min-width: 90px; }
+.desk-table th.menu-cell, .desk-table td.menu-cell { position: sticky; right: 0; }
+.desk-table td.menu-cell { background: var(--surface); box-shadow: -10px 0 8px -8px rgba(31, 26, 36, 0.1); }
+.desk-table tbody tr.static:hover td.menu-cell { background: var(--surface-2); }
+.desk-table tr.walkin td.menu-cell { background: var(--surface-2); }
+/* A pinned cell is its own layer; the one whose menu is open must lie above the pinned cells of the rows below it. */
+.desk-table td.menu-cell:has(.menu) { z-index: 5; }
+/* With a panel open beside the list there is room for less: the advice, then the doctor, give way until the panel
+   is closed. They come back on a wide screen. */
+@media (max-width: 1540px) { .desk-table.beside-panel .advice { display: none; } }
+@media (max-width: 1420px) { .desk-table.beside-panel .doctor { display: none; } }
+
+/* A list that must fit the screen with real names in it: the type is a size smaller, and the cells marked
+   fit-wrap (names, doctors, descriptions) break onto more lines instead of pushing the table wider. */
+.fit-table { font-size: 0.92rem; }
+.fit-table th { padding: 9px 8px; font-size: 0.7rem; letter-spacing: 0.03em; }
+.fit-table td { padding: 10px 8px; }
+.fit-table td small { font-size: 0.78rem; }
+.fit-table td.fit-wrap { white-space: normal; min-width: 130px; overflow-wrap: anywhere; }

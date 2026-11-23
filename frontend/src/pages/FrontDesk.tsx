@@ -278,34 +278,32 @@ export function FrontDesk() {
         {notice && <p className="notice">{notice}</p>}
 
         <div className="table-wrap">
-          <table>
+          {/* Long names, doctors and services wrap inside their column, and "More" stays at the right edge, so the
+              list fits the screen without scrolling sideways even with a panel open beside it. */}
+          <table className={`desk-table ${panel ? 'beside-panel' : ''}`}>
             <thead>
               <tr>
-                <th>Patient ID</th>
                 <th>Patient</th>
                 <th>Bills</th>
                 <th>Time</th>
                 <th>Status</th>
-                <th>Doctor</th>
-                <th>Service</th>
-                <th>Doctor's advice</th>
-                <th />
+                <th className="doctor">Doctor and service</th>
+                <th className="advice">Doctor's advice</th>
+                <th className="menu-cell" />
               </tr>
             </thead>
             <tbody>
               {shownVisits.map((a) => (
                   <tr key={`a${a.id}`} className={`static ${a.status === 'cancelled' ? 'faded' : ''} ${a.status === 'reviewed' ? 'done' : ''}`}>
-                    <td className="mono">
-                      <Link className="link" to={`/patients/${a.patient.id}`} title="View patient dashboard">
-                        {a.patient.uhid}
-                      </Link>
-                    </td>
-                    <td>
+                    <td className="who">
                       <strong>
                         <PatientLink id={a.patient.id}>{a.patient.name}</PatientLink>
                       </strong>
                       <small className="muted block">
-                        {a.patient.age_label} / {a.patient.gender.charAt(0).toUpperCase()} · {a.patient.mobile}
+                        <Link className="link mono" to={`/patients/${a.patient.id}`} title="View patient dashboard">
+                          {a.patient.uhid}
+                        </Link>{' '}
+                        · {a.patient.age_label} / {a.patient.gender.charAt(0).toUpperCase()} · {a.patient.mobile}
                       </small>
                     </td>
                     <td className="bills">
@@ -339,8 +337,10 @@ export function FrontDesk() {
                       </select>
                       {a.status === 'ongoing' && a.awaiting_reports && <small className="muted block">Waiting for lab reports</small>}
                     </td>
-                    <td>{a.doctor.name}</td>
-                    <td>{a.service?.name ?? '—'}</td>
+                    <td className="doctor">
+                      {a.doctor.name}
+                      {a.service?.name && <small className="muted block">{a.service.name}</small>}
+                    </td>
                     <td className="advice">
                       {a.consultation?.completed_at && (
                         <a className="advice-chip rx" href={`/visits/${a.id}/print`} target="_blank" rel="noreferrer" title="Print the prescription">
@@ -411,37 +411,36 @@ export function FrontDesk() {
                 const { patient } = bills[0]
                 return (
                   <tr key={`p${patient.id}`} className="static walkin">
-                    <td className="mono">
-                      <Link className="link" to={`/patients/${patient.id}`} title="View patient dashboard">
-                        {patient.uhid}
-                      </Link>
-                    </td>
-                    <td>
+                    <td className="who">
                       <strong>
                         <PatientLink id={patient.id} bills>
                           {patient.name}
                         </PatientLink>
                       </strong>
                       <small className="muted block">
-                        {patient.age_label} / {patient.gender.charAt(0).toUpperCase()} · {patient.mobile}
+                        <Link className="link mono" to={`/patients/${patient.id}`} title="View patient dashboard">
+                          {patient.uhid}
+                        </Link>{' '}
+                        · {patient.age_label} / {patient.gender.charAt(0).toUpperCase()} · {patient.mobile}
                       </small>
                     </td>
                     <td className="bills">
                       {bills.map((b) => (
                         <BillChip key={b.id} label={bills.length > 1 ? chipLabel(b) : undefined} total={b.total} due={b.due} movedToIpd={b.moved_to_ipd} onOpen={() => open({ kind: 'day', patient })} />
                       ))}
+                      <small className="muted block">{bills.map(madeOf).join(' · ')}</small>
                     </td>
                     <td className="mono">{stampTime(bills[0].created_at)}</td>
-                    <td colSpan={4} className="muted">
-                      {bills.map(madeOf).join(' · ')}
-                    </td>
                     <td />
+                    <td className="doctor" />
+                    <td className="advice" />
+                    <td className="menu-cell" />
                   </tr>
                 )
               })}
               {list && shownVisits.length + shownWalkIns.length === 0 && (
                 <tr className="empty">
-                  <td colSpan={9}>
+                  <td colSpan={7}>
                     {query || status || doctorId || department !== 'all' ? (
                       <>
                         Nobody matches this filter on {longDate(date)}.{' '}
