@@ -12,6 +12,7 @@ use App\Workforce\Support\Access;
 use App\Workforce\Support\Audit;
 use App\Workforce\Support\Money;
 use App\Workforce\Support\Payroll;
+use App\Workforce\Support\PayrollReadiness;
 use App\Workforce\Support\Period;
 use App\Workforce\Support\Permissions;
 use Illuminate\Http\JsonResponse;
@@ -138,6 +139,10 @@ class PayrollController extends Controller
         if ($data['to'] === 'approved' && $user->role->value !== 'admin' && in_array($user->id, [$run->created_by, $run->reviewed_by], true)) {
             abort(403, 'A payroll is approved by someone other than the person who prepared or reviewed it.');
         }
+        // A payroll does not pass on while something it rests on is plainly not ready.
+        if ($data['to'] !== 'draft') {
+            PayrollReadiness::refuse($run);
+        }
         $was = $run->status;
         $run = Payroll::step($run, $data['to'], $user);
         Audit::record($data['to'] === 'draft' ? 'payroll.sent_back' : 'payroll.'.$data['to'], $run, ['status' => $was], ['status' => $run->status, 'net' => $run->net], $data['reason'] ?? null);
@@ -150,8 +155,15 @@ class PayrollController extends Controller
     {
         $user = $request->user();
         Access::require($user, 'wf:payroll:finalise');
-        $run = Payroll::finalise(PayrollRun::query()->findOrFail($run), $user);
-        Audit::record('payroll.finalised', $run, ['status' => 'approved'], ['status' => 'finalised', 'period' => $run->period, 'staff' => $run->payslips()->count(), 'gross' => $run->gross, 'deductions' => $run->deductions, 'net' => $run->net]);
+        $run = PayrollRun::query()->findOrFail($run);
+        PayrollReadiness::refuse($run);
+        // The points that do not stop a payroll are still for whoever locks it to have looked at, and that is kept.
+        $looked = PayrollReadiness::toLookAt($run);
+        if ($looked !== [] && ! $request->boolean('checked')) {
+            throw ValidationException::withMessages(['checked' => 'Tick that you have looked at each point under “Before this payroll goes further”.']);
+        }
+        $run = Payroll::finalise($run, $user);
+        Audit::record('payroll.finalised', $run, ['status' => 'approved'], ['status' => 'finalised', 'period' => $run->period, 'staff' => $run->payslips()->count(), 'gross' => $run->gross, 'deductions' => $run->deductions, 'net' => $run->net] + ($looked === [] ? [] : ['looked_at' => $looked]));
 
         return response()->json($this->detail($run, $user));
     }
@@ -266,6 +278,8 @@ class PayrollController extends Controller
             'steps' => ['prepared' => $who($run->created_by, $run->created_at), 'reviewed' => $who($run->reviewed_by, $run->reviewed_at), 'approved' => $who($run->approved_by, $run->approved_at), 'finalised' => $who($run->finalised_by, $run->finalised_at), 'reversed' => $who($run->reversed_by, $run->reversed_at)],
             'reverse_reason' => $run->reverse_reason, 'worked_out_at' => $run->rules['worked_out_at'] ?? null, 'settings' => $run->rules['finalised_with']['payroll'] ?? $run->rules['payroll'] ?? null,
             'left_out' => $run->rules['left_out'] ?? [],
+            // What this payroll rests on that is not ready, while it can still be put right.
+            'readiness' => in_array($run->status, ['draft', 'reviewed', 'approved'], true) ? PayrollReadiness::of($run, $all) : [],
             // Department totals would give away the pay of a department of one, so they go only to someone who may see pay.
             'departments' => $all ? $slips->groupBy(fn (Payslip $s) => $s->employee?->department?->name ?? 'No department')->map(fn (Collection $list, string $name) => [
                 'name' => $name, 'staff' => $list->count(), 'gross' => Money::text($list->sum('gross')), 'deductions' => Money::text($list->sum('deductions')), 'net' => Money::text($list->sum('net')), 'employer_cost' => Money::text($list->sum('employer_cost')),

@@ -55,6 +55,7 @@ export type SlipRow = {
   one_offs: number | null
 }
 type Step = { name: string | null; at: string | null } | null
+export type ReadinessPoint = { key: string; level: 'stop' | 'look'; title: string; detail: string; names: string[]; where: string | null }
 export type RunDetail = Run & {
   can: RunCan
   period_start: string
@@ -63,6 +64,8 @@ export type RunDetail = Run & {
   reverse_reason: string | null
   worked_out_at: string | null
   left_out: { employee_id: number; name?: string; reason: string }[]
+  /** What this payroll rests on that is not ready: a "stop" holds it back, a "look" must be owned up to before it is finalised. */
+  readiness?: ReadinessPoint[]
   departments: { name: string; staff: number; gross: string; deductions: string; net: string; employer_cost: string }[] | null
   payslips: SlipRow[]
 }

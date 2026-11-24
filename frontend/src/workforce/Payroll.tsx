@@ -137,6 +137,8 @@ function RunPage({ id, onBack, onOpen }: { id: number; onBack: () => void; onOpe
   const [ticked, setTicked] = useState<number[]>([])
   const [payment, setPayment] = useState({ status: 'paid', paid_on: today(), payment_mode: 'bank', payment_reference: '', reason: '' })
   const [slip, setSlip] = useState<number | null>(null)
+  // Whoever finalises says they have looked at the points that do not stop a payroll. Unticked again whenever the run changes.
+  const [looked, setLooked] = useState(false)
   const { run: withPassword, ask } = usePasswordAgain()
 
   useEffect(() => {
@@ -152,6 +154,7 @@ function RunPage({ id, onBack, onOpen }: { id: number; onBack: () => void; onOpe
     setNotice(null)
     try {
       setRun((await step()).data)
+      setLooked(false)
       setNotice({ text: done })
       setAsking(null)
       setReason('')
@@ -168,6 +171,10 @@ function RunPage({ id, onBack, onOpen }: { id: number; onBack: () => void; onOpe
   if (!run) return <section className="card"><p className="loading">Loading the payroll…</p></section>
 
   const actions = runActions(run)
+  const points = run.readiness ?? []
+  const stops = points.filter((p) => p.level === 'stop')
+  const looks = points.filter((p) => p.level === 'look')
+  const held = stops.length > 0 ? 'Put right what is listed under “Before this payroll goes further” first' : undefined
   const unpaid = run.payslips.filter((s) => s.payment_status !== 'paid')
   const final = run.status === 'finalised' || run.status === 'paid'
   const paying = asking === 'pay'
@@ -188,20 +195,21 @@ function RunPage({ id, onBack, onOpen }: { id: number; onBack: () => void; onOpe
             </button>
           )}
           {actions.includes('review') && (
-            <button className="btn primary" disabled={busy} onClick={() => void send(post('step', { to: 'reviewed' }), 'Marked as reviewed. It now waits for approval by someone else.')}>
+            <button className="btn primary" disabled={busy || stops.length > 0} title={held} onClick={() => void send(post('step', { to: 'reviewed' }), 'Marked as reviewed. It now waits for approval by someone else.')}>
               Mark as reviewed
             </button>
           )}
           {actions.includes('approve') && (
-            <button className="btn primary" disabled={busy} onClick={() => void send(post('step', { to: 'approved' }), 'Approved. It can now be finalised.')}>
+            <button className="btn primary" disabled={busy || stops.length > 0} title={held} onClick={() => void send(post('step', { to: 'approved' }), 'Approved. It can now be finalised.')}>
               Approve
             </button>
           )}
           {actions.includes('finalise') && (
             <button
               className="btn primary"
-              disabled={busy}
-              onClick={() => window.confirm(`Finalise the payroll for ${run.period_name}?\n\nAfter this nothing in it can be changed. A mistake can only be put right by reversing the whole run.`) && void send(() => withPassword(post('finalise')), 'Finalised. The payslips are numbered and can be printed, and salaries can be recorded as paid.')}
+              disabled={busy || stops.length > 0 || (looks.length > 0 && !looked)}
+              title={held ?? (looks.length > 0 && !looked ? 'Tick that you have looked at each point below first' : undefined)}
+              onClick={() => window.confirm(`Finalise the payroll for ${run.period_name}?\n\nAfter this nothing in it can be changed. A mistake can only be put right by reversing the whole run.`) && void send(() => withPassword(post('finalise', { checked: looked })), 'Finalised. The payslips are numbered and can be printed, and salaries can be recorded as paid.')}
             >
               Finalise
             </button>
@@ -224,6 +232,38 @@ function RunPage({ id, onBack, onOpen }: { id: number; onBack: () => void; onOpe
         </div>
 
         {notice && <p className={notice.bad ? 'form-error' : 'notice'}>{notice.text}</p>}
+        {points.length > 0 && (
+          <div className={`readiness${stops.length > 0 ? ' stopped' : ''}`}>
+            <h3>Before this payroll goes further</h3>
+            <p className="muted small">
+              {stops.length > 0
+                ? 'It cannot be reviewed, approved or finalised until the points marked “Must be put right” are dealt with. After putting one right, press “Work it out again”.'
+                : 'Nothing holds it back. These points do not stop it, but pay rests on them: whoever finalises it must have looked at each.'}
+            </p>
+            <ul>
+              {points.map((p) => (
+                <li key={p.key}>
+                  <span className={`pill ${p.level === 'stop' ? 'off' : 'status-arrived'}`}>{p.level === 'stop' ? 'Must be put right' : 'To look at'}</span>
+                  <div>
+                    <strong>{p.title}</strong>
+                    <span>{p.detail}</span>
+                    {p.names.length > 0 && <small className="muted">{p.names.slice(0, 12).join(', ')}{p.names.length > 12 ? ` and ${p.names.length - 12} more` : ''}</small>}
+                    {p.where && (
+                      <Link className="link" to={p.where}>
+                        Open where this is put right
+                      </Link>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {stops.length === 0 && looks.length > 0 && actions.includes('finalise') && (
+              <label className="check">
+                <input type="checkbox" checked={looked} onChange={(e) => setLooked(e.target.checked)} />I have looked at each of these, and this payroll is right to finalise
+              </label>
+            )}
+          </div>
+        )}
         {run.status === 'reviewed' && run.can.approve && run.can.approve_this === false && <p className="muted small">You prepared or reviewed this payroll, so someone else must approve it.</p>}
         {run.status === 'reversed' && (
           <p className="form-error">

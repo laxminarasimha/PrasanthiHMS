@@ -178,3 +178,22 @@ Asked for on 2026-11-20: morning duties (8 AM–6 PM for some, 10 AM–9 PM for 
 
 Tests: `WorkforceRosterTest` (the three duties set up, a nurse moved to nights, a check-in after midnight, moving a day off, re-measuring, copying a week, own duties, department reach) and `dutyWords.test.ts`.
 
+## Before a payroll goes further: the readiness check
+
+Added 25 November 2026. A payroll is worked out from attendance, leave and the setup. When those are not ready, pay is taken off people who did nothing wrong, so the run says what it rests on (`App\Workforce\Support\PayrollReadiness`).
+
+Each point is one of two kinds:
+
+- **Must be put right.** The run cannot be reviewed, approved or finalised until it is dealt with.
+  - Pay is taken off for absence and no attendance at all was kept for the month.
+  - A leave request for the month is still waiting for a decision.
+  - An attendance correction for the month is still waiting for a decision.
+- **To look at.** The run can go on, but whoever finalises it must tick that they have looked at each, and that is kept in the record of changes.
+  - Someone has no attendance and no leave in a month where others were marked.
+  - A check-in with no check-out, counted as a worked day.
+  - No holidays set up for the year, or no kinds of leave set up, while pay is taken off for absence.
+  - Staff left out because no salary stands for them.
+  - Anyone paid for less than half the days they were employed in the month.
+
+The check changes no figure. Switching off "Take pay off for absence" under Setup removes the points that depend on it.
+
