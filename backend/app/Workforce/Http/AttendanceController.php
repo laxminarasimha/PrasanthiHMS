@@ -36,7 +36,7 @@ class AttendanceController extends Controller
     {
         $user = $request->user();
         Access::require($user, 'wf:attendance:view');
-        $filters = $request->validate(['date' => ['nullable', 'date'], 'department_id' => ['nullable', 'integer'], 'q' => ['nullable', 'string', 'max:100'], 'who' => ['nullable', Rule::in(['doctors', 'others'])]]);
+        $filters = $request->validate(['date' => ['nullable', 'date'], 'department_id' => ['nullable', 'integer'], 'q' => ['nullable', 'string', 'max:100'], 'who' => ['nullable', Rule::in(['doctors', 'others', 'all'])]]);
         $date = CarbonImmutable::parse($filters['date'] ?? now())->toDateString();
         $staff = $this->staff($user, $date, $date, $filters);
         $days = AttendanceRules::days($staff, $date, $date);
@@ -78,7 +78,7 @@ class AttendanceController extends Controller
     {
         $user = $request->user();
         Access::require($user, 'wf:attendance:view');
-        $filters = $request->validate(['month' => ['nullable', 'date_format:Y-m'], 'department_id' => ['nullable', 'integer'], 'q' => ['nullable', 'string', 'max:100'], 'employee_id' => ['nullable', 'integer'], 'who' => ['nullable', Rule::in(['doctors', 'others'])]]);
+        $filters = $request->validate(['month' => ['nullable', 'date_format:Y-m'], 'department_id' => ['nullable', 'integer'], 'q' => ['nullable', 'string', 'max:100'], 'employee_id' => ['nullable', 'integer'], 'who' => ['nullable', Rule::in(['doctors', 'others', 'all'])]]);
         [$from, $to, $month] = $this->span($filters['month'] ?? null);
         $staff = $this->staff($user, $from, $to, $filters)->when($filters['employee_id'] ?? null, fn ($list, $id) => $list->where('id', (int) $id)->values());
         $days = AttendanceRules::days($staff, $from, $to);
@@ -119,7 +119,7 @@ class AttendanceController extends Controller
     {
         $filters = $request->validate([
             'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'department_id' => ['nullable', 'integer'],
-            'q' => ['nullable', 'string', 'max:100'], 'who' => ['nullable', Rule::in(['doctors', 'others'])],
+            'q' => ['nullable', 'string', 'max:100'], 'who' => ['nullable', Rule::in(['doctors', 'others', 'all'])],
         ]);
         $to = CarbonImmutable::parse($filters['to'] ?? now())->toDateString();
         $from = CarbonImmutable::parse($filters['from'] ?? CarbonImmutable::parse($to)->startOfMonth())->toDateString();
@@ -146,7 +146,7 @@ class AttendanceController extends Controller
     {
         $user = $request->user();
         Access::require($user, 'wf:attendance:export');
-        $filters = $request->validate(['month' => ['nullable', 'date_format:Y-m'], 'department_id' => ['nullable', 'integer'], 'who' => ['nullable', Rule::in(['doctors', 'others'])]]);
+        $filters = $request->validate(['month' => ['nullable', 'date_format:Y-m'], 'department_id' => ['nullable', 'integer'], 'who' => ['nullable', Rule::in(['doctors', 'others', 'all'])]]);
         [$from, $to, $month] = $this->span($filters['month'] ?? null);
         $staff = $this->staff($user, $from, $to, $filters);
         $days = AttendanceRules::days($staff, $from, $to);
@@ -571,9 +571,8 @@ class AttendanceController extends Controller
             ->where(fn ($q) => $q->whereNull('joined_on')->orWhereDate('joined_on', '<=', $to))
             ->where(fn ($q) => $q->where('status', '!=', 'inactive')->orWhereDate('separated_on', '>=', $from))
             ->when($filters['department_id'] ?? null, fn ($q, $id) => $q->where('department_id', $id))
-            // Doctors and consultants: whoever signs in as a doctor, and anyone engaged as a consultant.
-            ->when(($filters['who'] ?? '') === 'doctors', fn ($q) => $q->where(fn ($w) => $w->where('employment_type', 'consultant')->orWhereIn('user_id', User::query()->where('role', Role::Doctor->value)->select('id'))))
-            ->when(($filters['who'] ?? '') === 'others', fn ($q) => $q->where('employment_type', '!=', 'consultant')->where(fn ($w) => $w->whereNull('user_id')->orWhereNotIn('user_id', User::query()->where('role', Role::Doctor->value)->select('id'))))
+            // The daily attendance is of the regular staff. Doctors and consultants are looked at apart, or with everyone.
+            ->when(($filters['who'] ?? '') !== 'all', fn ($q) => $q->regular(($filters['who'] ?? '') !== 'doctors'))
             ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', "%{$term}%")->orWhere('employee_no', 'like', "%{$term}%")))
             ->orderBy('name')->limit(1000)->get();
     }

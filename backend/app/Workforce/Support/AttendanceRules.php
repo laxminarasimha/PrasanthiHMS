@@ -141,6 +141,9 @@ final class AttendanceRules
         // Whether a weekly off or holiday inside a stretch of leave is itself leave: the same choice the leave count uses.
         $leaveCountsDaysOff = (bool) Settings::get('leave')['count_days_off'];
 
+        // Doctors and consultants are not in the daily attendance: a day with nothing marked is not an absence for them.
+        $regular = $ids->isEmpty() ? collect() : Employee::query()->whereIn('id', $ids)->regular()->pluck('id')->flip();
+
         $out = [];
         foreach ($employees as $employee) {
             $calendar = $holidays->get($employee->holiday_calendar_id ?? $default) ?? collect();
@@ -151,7 +154,7 @@ final class AttendanceRules
                 $shift = $shifts->get($duty['shift_id'] ?? $employee->shift_id);
                 $out[$employee->id][$date] = self::day(
                     $employee, $date, $today, $records->get($employee->id.'|'.$date) ?? collect(), $leaves->get($employee->id) ?? collect(),
-                    $shift, $duty['off'], $calendar->get($date)?->name, $leaveCountsDaysOff,
+                    $shift, $duty['off'], $calendar->get($date)?->name, $leaveCountsDaysOff, $regular->has($employee->id),
                 ) + ['shift_id' => $duty['off'] ? null : $shift?->id, 'shift' => $duty['off'] ? null : $shift?->name, 'rostered' => $duty['rostered']];
             }
         }
@@ -166,7 +169,7 @@ final class AttendanceRules
      * @param  Collection<int, LeaveRequest>  $leaves
      * @return array<string, mixed>
      */
-    private static function day(Employee $employee, string $date, string $today, Collection $records, Collection $leaves, ?Shift $shift, bool $weeklyOff, ?string $holiday, bool $leaveCountsDaysOff = false): array
+    private static function day(Employee $employee, string $date, string $today, Collection $records, Collection $leaves, ?Shift $shift, bool $weeklyOff, ?string $holiday, bool $leaveCountsDaysOff = false, bool $regular = true): array
     {
         $day = ['date' => $date, 'status' => '', 'present' => 0.0, 'leave' => 0.0, 'paid_leave' => 0.0, 'absent' => 0.0, 'worked_minutes' => 0, 'late_minutes' => 0, 'early_minutes' => 0, 'overtime_minutes' => 0, 'open' => false, 'records' => [], 'leave_type' => null, 'holiday' => $holiday, 'note' => null];
 
@@ -211,7 +214,7 @@ final class AttendanceRules
                 default => 0.0,
             };
             $day['present'] = min($worked, 1.0 - $day['leave']);
-            $day['absent'] = ($weeklyOff || $holiday) ? 0.0 : max(0.0, 1.0 - $day['leave'] - $day['present']);
+            $day['absent'] = ($weeklyOff || $holiday || ! $regular) ? 0.0 : max(0.0, 1.0 - $day['leave'] - $day['present']);
             $day['status'] = match (true) {
                 $day['open'] => 'open',
                 $day['present'] >= 1.0 => 'present',
@@ -237,6 +240,10 @@ final class AttendanceRules
         }
         if ($date > $today) {
             return ['status' => $day['leave'] > 0 ? 'half_leave' : ''] + $day;
+        }
+        // Not in the daily attendance (a doctor, a consultant): nothing marked means nothing to say, not an absence.
+        if (! $regular) {
+            return ['status' => ''] + $day;
         }
         // Today, before their duty begins (a night duty in the afternoon): not late, not absent, simply not yet.
         if ($date === $today && $shift && now()->lt(self::window($date, $shift)[0]) && $day['leave'] < 1.0) {

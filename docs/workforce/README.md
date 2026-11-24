@@ -207,3 +207,14 @@ Changed 25 November 2026, after the owner found that a night duty checked in at 
 - **Arriving after midnight.** With no duty set for them and nothing recorded the day before, a check-in before 4 AM belongs to the night that began the evening before.
 - **A forgotten check-out no longer blocks the next check-in.** Once a duty is plainly over, its open entry is set aside (state `review`, no check-out, no hours invented) when the person next checks in. It stays on the overview and the day list as "never checked out" until the office puts in the time.
 
+## Regular staff, and doctors and consultants
+
+Added 25 November 2026. The owner: doctors are consultants, not on the payroll; only the working staff are.
+
+- **Regular staff** are in the daily attendance and on the payroll. **Doctors and consultants are not**: nothing marked is not an absence for them, they are not counted in the day's "not in", they are in no payroll, and they are not asked to check in. They may still check in for the record, and their times are under Attendance → "Doctors and consultants".
+- The rule (`Employee::scopeRegular()` / `isRegular()`): someone is not regular when their employment is "Consultant" or their login's role is Doctor. A tick on the person's own record, "In the daily attendance and on the payroll", says otherwise for that one person (a doctor on a monthly salary). The column `wf_employees.regular` is empty until that tick is used.
+
+## A person's window
+
+A staff name on the Workforce pages opens a window over the page (`PersonLink`, `PersonCard`, `GET /workforce/employees/{id}/card`): who they are, how to reach them, whether they are in today, their month, their leave, and a doctor's hours. The server sends each part only to someone who may see it elsewhere; pay and bank details are never part of it. On the Staff list a click opens this window first, and "Open full record" goes on to the form.
+

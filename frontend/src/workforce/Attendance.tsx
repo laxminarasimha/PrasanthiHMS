@@ -7,6 +7,7 @@ import { useLoadOnChange } from '../loading'
 import { useChoiceInAddress } from '../rangeInAddress'
 import { saveFile } from './sensitiveStep'
 import { DAY_CLASS, DAY_LABEL, DAY_LETTER, REQUEST_CLASS, REQUEST_LABEL, addMonths, hours, monthName, readAttendanceSheet, thisMonth, useWorkforce, type Correction, type Day, type Spell, type StaffBrief, type Totals } from './shared'
+import { PersonLink } from './PersonLink'
 import { RosterView } from './Roster'
 import { WorkforceTabs } from './WorkforceTabs'
 
@@ -16,13 +17,13 @@ type MonthList = { month: string; rows: (StaffBrief & { days: Day[]; totals: Tot
 type Sheet = { id: number; file_name: string | null; status: string; summary: Record<string, number>; rows: { id: number; employee_ref: string | null; staff_name: string | null; work_date: string | null; check_in: string | null; check_out: string | null; state: string; note: string | null }[] }
 type View = 'day' | 'month' | 'times' | 'roster' | 'corrections' | 'sheet'
 /** Whose attendance to show: everyone, the doctors and consultants, or the rest of the staff. */
-type Who = '' | 'doctors' | 'others'
-type TimeRow = { id: number; date: string; employee_no: string; name: string; designation: string | null; department: string | null; in: string | null; out: string | null; worked_minutes: number | null; state: string; marked: string }
+type Who = '' | 'doctors' | 'all'
+type TimeRow = { id: number; date: string; employee_id: number; employee_no: string; name: string; designation: string | null; department: string | null; in: string | null; out: string | null; worked_minutes: number | null; state: string; marked: string }
 type TimeList = { from: string; to: string; rows: TimeRow[]; staff: number }
 type Editing = { person: StaffBrief; date: string; record: Spell | null }
 
 const VIEWS = ['day', 'month', 'times', 'roster', 'corrections', 'sheet'] as const
-const WHO = ['', 'doctors', 'others'] as const
+const WHO = ['', 'doctors', 'all'] as const
 const SHEET_STATE: Record<string, [string, string]> = {
   ready: ['Ready', 'ok'], applied: ['Brought in', 'ok'], duplicate: ['Already here', 'status-booked'], unmatched: ['No such staff', 'off'], missing_in: ['No check-in', 'status-arrived'],
   missing_out: ['No check-out', 'status-arrived'], invalid: ['Cannot be read', 'off'], linked: ['Linked', 'status-booked'],
@@ -68,10 +69,10 @@ export function WorkforceAttendance() {
             )}
           </div>
           {(view === 'day' || view === 'month' || view === 'times') && (
-            <select className="narrow" value={who} onChange={(e) => setWho(e.target.value as Who)} aria-label="Whose attendance">
-              <option value="">All staff</option>
+            <select className="narrow" value={who} onChange={(e) => setWho(e.target.value as Who)} aria-label="Whose attendance" title="Doctors and consultants are not in the daily attendance; they are looked at apart">
+              <option value="">Regular staff</option>
               <option value="doctors">Doctors and consultants</option>
-              <option value="others">Other staff</option>
+              <option value="all">Everyone</option>
             </select>
           )}
           {(view === 'day' || view === 'month' || view === 'times' || view === 'roster') && departments.length > 0 && (
@@ -174,7 +175,11 @@ function DayView({ department, who }: { department: string; who: Who }) {
                 return (
                   <tr key={r.id} className="static">
                     <td className="fit-wrap">
-                      <strong>{r.name}</strong>
+                      <strong>
+                        <PersonLink id={r.id} onChanged={load}>
+                          {r.name}
+                        </PersonLink>
+                      </strong>
                       <small className="muted block">{[r.employee_no, r.department?.name, r.shift].filter(Boolean).join(' · ')}</small>
                       {r.open_earlier.map((s) => (
                         <small key={s.id} className="due block">
@@ -371,7 +376,9 @@ function TimesView({ department, who }: { department: string; who: Who }) {
               <tr key={r.id}>
                 <td>{longDate(r.date)}</td>
                 <td className="fit-wrap">
-                  <strong>{r.name}</strong>
+                  <strong>
+                    <PersonLink id={r.employee_id}>{r.name}</PersonLink>
+                  </strong>
                   <small className="muted block">{[r.employee_no, r.designation, r.department].filter(Boolean).join(' · ')}</small>
                 </td>
                 <td>{r.in ? clock(r.in) : '—'}</td>
@@ -462,7 +469,7 @@ function MonthView({ department, who }: { department: string; who: Who }) {
                 {shown.rows.map((r) => (
                   <tr key={r.id} className="static">
                     <td className="wf-name">
-                      {r.name}
+                      <PersonLink id={r.id}>{r.name}</PersonLink>
                       <small className="muted block">{r.employee_no}</small>
                     </td>
                     {r.days.map((d) => (
@@ -557,7 +564,9 @@ function Corrections() {
             {shown?.map((c) => (
               <tr key={c.id} className="static">
                 <td className="fit-wrap">
-                  <strong>{c.employee?.name ?? '—'}</strong>
+                  <strong>
+                    <PersonLink id={c.employee?.id}>{c.employee?.name ?? '—'}</PersonLink>
+                  </strong>
                   <small className="muted block">
                     {longDate(c.work_date)} · asked by {c.asked_by ?? '—'}
                   </small>

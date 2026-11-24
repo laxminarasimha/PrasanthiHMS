@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, fieldErrors } from '../api'
+import { PersonLink } from './PersonLink'
 import { WorkforceTabs } from './WorkforceTabs'
 
 type Person = { id: number; name: string; employee_no: string; phone: string | null; designation: string | null }
@@ -287,7 +288,9 @@ export function StaffCheck() {
                       {check.differences.map((d) => (
                         <tr key={`${d.employee_id}-${d.field}`}>
                           <td className="fit-wrap">
-                            <strong>{d.name}</strong>
+                            <strong>
+                              <PersonLink id={d.employee_id}>{d.name}</PersonLink>
+                            </strong>
                             <small className="muted block">{d.employee_no}</small>
                           </td>
                           <td>{FIELD[d.field]}</td>
@@ -361,7 +364,7 @@ export function StaffCheck() {
                 <ul className="plain-list people">
                   {check.without_login.map((p) => (
                     <li key={p.id}>
-                      {p.name} <span className="muted">· {p.employee_no}{p.designation ? ` · ${p.designation}` : ''} · {p.phone ?? 'no mobile number'}</span>
+                      <PersonLink id={p.id}>{p.name}</PersonLink> <span className="muted">· {p.employee_no}{p.designation ? ` · ${p.designation}` : ''} · {p.phone ?? 'no mobile number'}</span>
                     </li>
                   ))}
                 </ul>

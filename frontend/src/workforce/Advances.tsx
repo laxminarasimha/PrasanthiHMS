@@ -8,6 +8,7 @@ import { PasswordAgain } from './PasswordAgain'
 import { ADVANCE_CLASS, ADVANCE_LABEL, INSTALMENT_LABEL, LEDGER_LABEL, PAY_MODES, inr, payModeLabel, type Advance, type AdvanceDetail } from './pay'
 import { saveFile, usePasswordAgain } from './sensitiveStep'
 import { addMonths, monthName, thisMonth, type StaffBrief } from './shared'
+import { PersonLink } from './PersonLink'
 import { WorkforceTabs } from './WorkforceTabs'
 
 type List = { can: { create: boolean; approve: boolean; let_go: boolean; export: boolean }; owed: { advances: number; amount: string }; waiting: number; rows: Advance[] }
@@ -103,7 +104,9 @@ export function WorkforceAdvances() {
                     }}
                   >
                     <td className="fit-wrap">
-                      <strong>{a.employee?.name ?? '—'}</strong>
+                      <strong>
+                        <PersonLink id={a.employee?.id}>{a.employee?.name ?? '—'}</PersonLink>
+                      </strong>
                       <small className="muted block">{[a.employee?.employee_no, a.employee?.department?.name].filter(Boolean).join(' · ')}</small>
                     </td>
                     <td className="wrap">

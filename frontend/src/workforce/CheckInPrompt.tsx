@@ -35,7 +35,8 @@ export function CheckInPrompt() {
   // Just checked in from here: the window says so for a moment before it goes.
   const [justIn, setJustIn] = useState(false)
 
-  const due = Boolean(mine?.employee && mine.self_check_in && !mine.open && (mine.done ?? []).length === 0)
+  // Doctors and consultants are not in the daily attendance: they may check in from the card, and are not asked to.
+  const due = Boolean(mine?.employee && mine.self_check_in && mine.regular !== false && !mine.open && (mine.done ?? []).length === 0)
   // It stays up while the check-in is on its way and for the moment it says "you are checked in": the answer arrives
   // before this window hears of it, and must not close it in between.
   const showing = Boolean(user) && (justIn || busy || (due && asked !== mark))

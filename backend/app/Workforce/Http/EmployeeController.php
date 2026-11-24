@@ -16,6 +16,13 @@ use App\Workforce\Support\Audit;
 use App\Workforce\Support\Permissions;
 use App\Workforce\Support\Reauth;
 use App\Workforce\Support\Settings;
+use App\Enums\Role;
+use App\Models\Appointment;
+use App\Workforce\Models\Attendance;
+use App\Workforce\Models\LeaveRequest;
+use App\Workforce\Models\LeaveType;
+use App\Workforce\Support\AttendanceRules;
+use App\Workforce\Support\LeaveBook;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -78,6 +85,54 @@ class EmployeeController extends Controller
             'login' => $employee->user ? ['id' => $employee->user->id, 'name' => $employee->user->name, 'email' => $employee->user->email] : null,
             'has_private' => EmployeePrivate::query()->where('employee_id', $employee->id)->exists(),
         ]);
+    }
+
+    /**
+     * One person at a glance, for the window that opens from their name wherever it is shown: who they are, whether
+     * they are in today, their month, their leave, and a doctor's hours. Each part is there only for someone who may
+     * see it elsewhere, and pay and bank details are never part of it.
+     */
+    public function card(Request $request, int $employee): JsonResponse
+    {
+        $user = $request->user();
+        $employee = Employee::query()->with(self::WITH)->findOrFail($employee);
+        $employee->setRelation('user', $employee->user_id ? User::query()->find($employee->user_id) : null);
+        Access::requireFor($user, 'wf:staff:view', $employee);
+        $sees = fn (string $permission) => Access::reaches($user, $permission, $employee);
+        $today = now()->toDateString();
+        $card = ['person' => $this->present($employee), 'can' => ['edit' => $sees('wf:staff:edit'), 'check_in' => $sees('wf:attendance:create') && $employee->status !== 'inactive']];
+
+        if ($sees('wf:attendance:view')) {
+            $days = AttendanceRules::days(collect([$employee]), now()->startOfMonth()->toDateString(), $today)[$employee->id];
+            $attendance = app(AttendanceController::class);
+            $unfinished = Attendance::query()->where('employee_id', $employee->id)->where('state', 'open')->whereNotNull('check_in')->with('shift')->latest('check_in')->get();
+            $on = $unfinished->first(fn (Attendance $a) => AttendanceRules::stillOn($a));
+            $card['today'] = [
+                'status' => $days[$today]['status'], 'shift' => $days[$today]['shift'], 'note' => $days[$today]['note'] ?? null, 'late_minutes' => $days[$today]['late_minutes'], 'worked_minutes' => $days[$today]['worked_minutes'],
+                // The duty they are on right now. Last night's night duty is still this one until it is over.
+                'on' => $on ? $attendance->record($on) : null,
+                'records' => Attendance::query()->where('employee_id', $employee->id)->whereDate('work_date', $today)->orderBy('check_in')->get()->map(fn (Attendance $a) => $attendance->record($a))->values(),
+            ];
+            $card['month'] = ['name' => now()->format('F Y')] + array_intersect_key(AttendanceRules::totals($days), array_flip(['present', 'leave', 'absent', 'late_days', 'worked_minutes']));
+        }
+
+        if ($sees('wf:leave:view')) {
+            $year = LeaveBook::yearOf($today);
+            $card['leave'] = [
+                'left' => LeaveType::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name'])->map(fn (LeaveType $t) => ['code' => $t->code, 'name' => $t->name, 'left' => LeaveBook::balance($employee->id, $t->id, $year)])->values(),
+                'coming' => LeaveRequest::query()->where('employee_id', $employee->id)->whereIn('status', ['pending', 'approved'])->whereDate('to_date', '>=', $today)->with('type:id,name')->orderBy('from_date')->limit(3)->get()
+                    ->map(fn (LeaveRequest $r) => ['from' => $r->from_date->format('Y-m-d'), 'to' => $r->to_date->format('Y-m-d'), 'days' => (float) $r->days, 'status' => $r->status, 'type' => $r->type?->name])->values(),
+            ];
+        }
+
+        // A doctor's own hours for seeing patients, and how many are booked with them today.
+        if ($employee->user?->role === Role::Doctor) {
+            $card['doctor'] = ['availability' => $employee->user->availability, 'slot_minutes' => $employee->user->slot_minutes]
+                + ($user->allows('canWorkFrontDesk') || $user->allows('canConsult') || $user->allows('canViewReports')
+                    ? ['booked_today' => Appointment::query()->where('doctor_id', $employee->user->id)->whereDate('scheduled_at', $today)->where('status', '!=', 'cancelled')->count()] : []);
+        }
+
+        return response()->json($card);
     }
 
     public function store(Request $request): JsonResponse
@@ -218,6 +273,8 @@ class EmployeeController extends Controller
             'separation_reason' => ['nullable', 'string', 'max:255'], 'employment_type' => ['sometimes', Rule::in(Employee::TYPES)],
             'shift_id' => ['nullable', 'integer'], 'weekly_off' => ['nullable', 'array', 'max:7'], 'weekly_off.*' => [Rule::in(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'])],
             'holiday_calendar_id' => ['nullable', 'integer'], 'payment_mode' => ['nullable', Rule::in(['bank', 'cash', 'upi', 'cheque'])], 'user_id' => ['nullable', 'integer'],
+            // In the daily attendance and on the payroll. Left out, the usual rule decides: doctors and consultants are not.
+            'regular' => ['sometimes', 'nullable', 'boolean'],
         ], ['employee_no.regex' => 'Use letters, numbers, - and / only.', 'separated_on.after_or_equal' => 'The leaving date cannot be before the joining date.']);
 
         // Everything named by an id must be this hospital's own.
@@ -260,6 +317,7 @@ class EmployeeController extends Controller
             'work_location' => $e->work_location, 'joined_on' => $e->joined_on?->format('Y-m-d'), 'confirmed_on' => $e->confirmed_on?->format('Y-m-d'), 'separated_on' => $e->separated_on?->format('Y-m-d'),
             'separation_reason' => $e->separation_reason, 'employment_type' => $e->employment_type, 'shift_id' => $e->shift_id, 'shift' => $e->relationLoaded('shift') ? $e->shift?->name : null,
             'weekly_off' => $e->weekly_off, 'holiday_calendar_id' => $e->holiday_calendar_id, 'payment_mode' => $e->payment_mode, 'user_id' => $e->user_id,
+            'regular' => $e->isRegular(), 'regular_set' => $e->regular,
             // Whether the person signs in and as what. What they may do there is for those who manage logins.
             'login' => $e->relationLoaded('user') && $e->user ? ['id' => $e->user->id, 'role' => $e->user->role->value, 'role_label' => $e->user->role->label(), 'is_active' => (bool) $e->user->is_active, 'sign_in_with' => $e->user->sign_in_with ?? 'password', 'email' => $e->user->email, 'waiting_for_own_pin' => (bool) $e->user->must_change_secret] : null,
         ];

@@ -2147,3 +2147,17 @@ td.fit-wrap { white-space: normal; min-width: 130px; overflow-wrap: anywhere; }
 .check-in-mark svg { width: 34px; height: 34px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .check-in-mark.done { background: var(--ok-soft); color: var(--ok); }
 
+/* A staff name that opens the person, and the window it opens */
+.person-link { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; text-align: inherit; cursor: pointer; border-bottom: 1px dotted var(--brand-line); }
+.person-link:hover, .person-link:focus-visible { color: var(--brand); border-bottom-color: var(--brand); outline: none; }
+.person-card { display: grid; gap: 12px; }
+.person-card h3 { margin: 6px 0 0; }
+.person-card .wf-today { margin: 0; }
+.person-card .tiles { margin: 0; }
+.person-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 16px; margin: 0; }
+.person-facts dt { color: var(--muted); font-size: 0.86rem; }
+.person-facts dd { margin: 0; }
+.person-facts a { color: var(--brand); font-weight: 600; text-decoration: none; }
+.person-facts .contents { display: contents; }
+.person-line { margin: 0; }
+

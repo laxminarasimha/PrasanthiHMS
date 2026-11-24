@@ -33,7 +33,8 @@ final class Payroll
      */
     public static function staff(string $period, ?array $only = null): Collection
     {
-        return Employee::query()->with('department:id,name')
+        // Salaries are for the regular staff. Doctors and consultants are paid apart, and are not in a payroll.
+        return Employee::query()->regular()->with('department:id,name')
             ->when($only !== null, fn ($q) => $q->whereIn('id', $only))
             ->where(fn ($q) => $q->whereNull('joined_on')->orWhereDate('joined_on', '<=', Period::end($period)))
             ->where(fn ($q) => $q->where(fn ($w) => $w->where('status', '!=', 'inactive')->whereNull('separated_on'))->orWhereDate('separated_on', '>=', Period::start($period)))
