@@ -60,6 +60,11 @@ export function AttendanceCard() {
         {busy ? 'Saving…' : open ? 'Check out' : done.length ? 'Check in again' : 'Check in'}
       </button>
       {mine.here === false && <p className="punch-away">Connect your phone to the hospital Wi-Fi to check {open ? 'out' : 'in'}. It does not work on mobile data or from outside the hospital.</p>}
+      {mine.forgotten && (
+        <p className="punch-away">
+          Your check-out on {shortDay(mine.forgotten.check_in ?? mine.forgotten.work_date)} was not recorded. You can still check {open ? 'out' : 'in'} today; ask the office to put the earlier one right.
+        </p>
+      )}
       {failed && <p className="form-error">{failed}</p>}
     </section>
   )

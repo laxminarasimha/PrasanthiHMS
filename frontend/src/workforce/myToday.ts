@@ -9,7 +9,10 @@ export type MyToday = {
   self_check_in?: boolean
   /** False when check-in is kept to the hospital's own internet and this phone is not on it. */
   here?: boolean
+  /** The duty they are on now. A night duty that began yesterday evening is still this one, until it is over. */
   open?: Spell | null
+  /** An earlier duty that was never checked out. It does not stop today's check-in; the office puts it right. */
+  forgotten?: Spell | null
   done?: Spell[]
 }
 

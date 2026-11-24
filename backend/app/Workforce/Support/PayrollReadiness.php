@@ -81,7 +81,7 @@ final class PayrollReadiness
         }
 
         // 5. A check-in with no check-out is paid as a worked day.
-        $open = Attendance::query()->whereIn('employee_id', $ids)->where('state', 'open')->whereBetween('work_date', [$from, $to])->pluck('employee_id');
+        $open = Attendance::query()->whereIn('employee_id', $ids)->whereIn('state', ['open', 'review'])->whereNotNull('check_in')->whereNull('check_out')->whereBetween('work_date', [$from, $to])->pluck('employee_id');
         if ($open->isNotEmpty()) {
             $add('no_check_out', self::LOOK, self::count($open->count(), 'day has', 'days have').' a check-in with no check-out',
                 'Each is counted as a worked day. Put in the check-out if the hours matter.', $slips->whereIn('employee_id', $open)->map($name), '/workforce/attendance?view=month');
