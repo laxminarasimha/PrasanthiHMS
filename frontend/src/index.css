@@ -2120,3 +2120,6 @@ td.fit-wrap { white-space: normal; min-width: 130px; overflow-wrap: anywhere; }
 .pin-sheet td.pin { font-size: 1.25rem; font-weight: 700; letter-spacing: 0.2em; }
 @media print { .pin-sheet { border: 0; box-shadow: none; padding: 0; } .pin-sheet .table-wrap { overflow: visible; } }
 
+
+/* On a computer the card keeps to a readable width instead of stretching across the screen. */
+@media (min-width: 769px) { .punch-card { max-width: 560px; } }

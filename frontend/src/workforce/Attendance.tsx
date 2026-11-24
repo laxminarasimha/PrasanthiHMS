@@ -14,10 +14,15 @@ type DayRow = StaffBrief & { shift: string | null; day: Day; records: Spell[]; o
 type DayList = { date: string; rows: DayRow[]; counts: { staff: number; in: number; not_in: number; later?: number; on_leave: number; off: number; late: number; still_in: number } }
 type MonthList = { month: string; rows: (StaffBrief & { days: Day[]; totals: Totals })[] }
 type Sheet = { id: number; file_name: string | null; status: string; summary: Record<string, number>; rows: { id: number; employee_ref: string | null; staff_name: string | null; work_date: string | null; check_in: string | null; check_out: string | null; state: string; note: string | null }[] }
-type View = 'day' | 'month' | 'roster' | 'corrections' | 'sheet'
+type View = 'day' | 'month' | 'times' | 'roster' | 'corrections' | 'sheet'
+/** Whose attendance to show: everyone, the doctors and consultants, or the rest of the staff. */
+type Who = '' | 'doctors' | 'others'
+type TimeRow = { id: number; date: string; employee_no: string; name: string; designation: string | null; department: string | null; in: string | null; out: string | null; worked_minutes: number | null; state: string; marked: string }
+type TimeList = { from: string; to: string; rows: TimeRow[]; staff: number }
 type Editing = { person: StaffBrief; date: string; record: Spell | null }
 
-const VIEWS = ['day', 'month', 'roster', 'corrections', 'sheet'] as const
+const VIEWS = ['day', 'month', 'times', 'roster', 'corrections', 'sheet'] as const
+const WHO = ['', 'doctors', 'others'] as const
 const SHEET_STATE: Record<string, [string, string]> = {
   ready: ['Ready', 'ok'], applied: ['Brought in', 'ok'], duplicate: ['Already here', 'status-booked'], unmatched: ['No such staff', 'off'], missing_in: ['No check-in', 'status-arrived'],
   missing_out: ['No check-out', 'status-arrived'], invalid: ['Cannot be read', 'off'], linked: ['Linked', 'status-booked'],
@@ -28,6 +33,7 @@ export function WorkforceAttendance() {
   const { can } = useWorkforce()
   const [view, setView] = useChoiceInAddress<View>('view', 'day', VIEWS)
   const [department, setDepartment] = useChoiceInAddress<string>('department', '')
+  const [who, setWho] = useChoiceInAddress<Who>('who', '', WHO)
   const [departments, setDepartments] = useState<{ id: number; name: string }[]>([])
   useEffect(() => {
     api.get<{ departments: { id: number; name: string }[] }>('/workforce/options').then((res) => setDepartments(res.data.departments)).catch(() => undefined)
@@ -46,6 +52,9 @@ export function WorkforceAttendance() {
             <button className={view === 'month' ? 'active' : ''} onClick={() => setView('month')}>
               Month
             </button>
+            <button className={view === 'times' ? 'active' : ''} onClick={() => setView('times')} title="Every coming and going between two dates, one line each">
+              In and out times
+            </button>
             <button className={view === 'roster' ? 'active' : ''} onClick={() => setView('roster')}>
               Duty roster
             </button>
@@ -58,7 +67,14 @@ export function WorkforceAttendance() {
               </button>
             )}
           </div>
-          {(view === 'day' || view === 'month' || view === 'roster') && departments.length > 0 && (
+          {(view === 'day' || view === 'month' || view === 'times') && (
+            <select className="narrow" value={who} onChange={(e) => setWho(e.target.value as Who)} aria-label="Whose attendance">
+              <option value="">All staff</option>
+              <option value="doctors">Doctors and consultants</option>
+              <option value="others">Other staff</option>
+            </select>
+          )}
+          {(view === 'day' || view === 'month' || view === 'times' || view === 'roster') && departments.length > 0 && (
             <select className="narrow" value={department} onChange={(e) => setDepartment(e.target.value)} aria-label="Department">
               <option value="">All departments</option>
               {departments.map((d) => (
@@ -69,8 +85,9 @@ export function WorkforceAttendance() {
             </select>
           )}
         </div>
-        {view === 'day' && <DayView department={department} />}
-        {view === 'month' && <MonthView department={department} />}
+        {view === 'day' && <DayView department={department} who={who} />}
+        {view === 'month' && <MonthView department={department} who={who} />}
+        {view === 'times' && <TimesView department={department} who={who} />}
         {view === 'roster' && <RosterView department={department} />}
         {view === 'corrections' && <Corrections />}
         {view === 'sheet' && <SheetImport />}
@@ -79,7 +96,7 @@ export function WorkforceAttendance() {
   )
 }
 
-function DayView({ department }: { department: string }) {
+function DayView({ department, who }: { department: string; who: Who }) {
   const { can } = useWorkforce()
   const [date, setDate] = useChoiceInAddress<string>('date', today())
   const [query, setQuery] = useState('')
@@ -91,13 +108,13 @@ function DayView({ department }: { department: string }) {
 
   const load = useCallback(() => {
     api
-      .get<DayList>('/workforce/attendance/day', { params: { date, department_id: department || undefined, q: query || undefined } })
+      .get<DayList>('/workforce/attendance/day', { params: { date, department_id: department || undefined, who: who || undefined, q: query || undefined } })
       .then((res) => {
         setList(res.data)
         setFailed('')
       })
       .catch(() => setFailed('Could not load the day. Check the connection and try again.'))
-  }, [date, department, query])
+  }, [date, department, who, query])
   useLoadOnChange(load)
   const shown = list?.date === date ? list : null
 
@@ -280,7 +297,93 @@ function SpellForm({ editing, onClose, onSaved }: { editing: Editing; onClose: (
   )
 }
 
-function MonthView({ department }: { department: string }) {
+/**
+ * Every coming and going between two dates, one line each: who, when they came, when they left, for how long, and who
+ * marked it. This is the record of when the doctors and consultants (or anyone else) were in.
+ */
+function TimesView({ department, who }: { department: string; who: Who }) {
+  const { can } = useWorkforce()
+  const [from, setFrom] = useChoiceInAddress<string>('from', `${thisMonth()}-01`)
+  const [to, setTo] = useChoiceInAddress<string>('to', today())
+  const [query, setQuery] = useState('')
+  const [list, setList] = useState<TimeList | null>(null)
+  const [failed, setFailed] = useState('')
+  const params = { from, to, department_id: department || undefined, who: who || undefined, q: query || undefined }
+
+  const load = useCallback(() => {
+    api
+      .get<TimeList>('/workforce/attendance/times', { params: { from, to, department_id: department || undefined, who: who || undefined, q: query || undefined } })
+      .then((res) => {
+        setList(res.data)
+        setFailed('')
+      })
+      .catch((err) => setFailed(Object.values(fieldErrors(err))[0] ?? 'Could not load the times. Check the connection and try again.'))
+  }, [from, to, department, who, query])
+  useLoadOnChange(load)
+  const shown = list?.from === from && list.to === to ? list : null
+  const worked = shown?.rows.reduce((sum, r) => sum + (r.worked_minutes ?? 0), 0) ?? 0
+
+  return (
+    <>
+      <div className="toolbar minor">
+        <input type="date" className="date" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} aria-label="From" />
+        <span className="muted">to</span>
+        <input type="date" className="date" value={to} min={from} max={today()} onChange={(e) => e.target.value && setTo(e.target.value)} aria-label="To" />
+        <input className="search" type="search" placeholder="Name or employee number" value={query} onChange={(e) => setQuery(e.target.value)} />
+        {shown && (
+          <span className="muted small">
+            {shown.rows.length} {shown.rows.length === 1 ? 'entry' : 'entries'} · {hours(worked) || '0h'} in all
+          </span>
+        )}
+        {can('wf:attendance:export') && (
+          <button className="btn ghost" onClick={() => void saveFile('/workforce/attendance/times/export', params, `in-and-out-${from}-to-${to}.csv`)}>
+            Export
+          </button>
+        )}
+      </div>
+      {failed && <div className="form-error">{failed}</div>}
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Name</th>
+              <th>In</th>
+              <th>Out</th>
+              <th>Time in the hospital</th>
+              <th>Marked</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown?.rows.map((r) => (
+              <tr key={r.id}>
+                <td>{longDate(r.date)}</td>
+                <td className="fit-wrap">
+                  <strong>{r.name}</strong>
+                  <small className="muted block">{[r.employee_no, r.designation, r.department].filter(Boolean).join(' · ')}</small>
+                </td>
+                <td>{r.in ? clock(r.in) : '—'}</td>
+                <td>
+                  {r.out ? clock(r.out) : <span className="pill status-arrived">{r.date === today() ? 'Still in' : 'No check-out'}</span>}
+                  {r.out && r.out.slice(0, 10) !== r.date && <small className="muted block">{longDate(r.out.slice(0, 10))}</small>}
+                </td>
+                <td>{r.worked_minutes ? hours(r.worked_minutes) : '—'}</td>
+                <td className="muted">{r.marked}</td>
+              </tr>
+            ))}
+            {shown && shown.rows.length === 0 && (
+              <tr className="empty">
+                <td colSpan={6}>{shown.staff === 0 ? (who === 'doctors' ? 'No doctor or consultant is on the staff list yet. Add them under Staff, and give them a login so they can check in.' : 'No staff to show.') : 'Nobody checked in or out between these dates.'}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )
+}
+
+function MonthView({ department, who }: { department: string; who: Who }) {
   const { can } = useWorkforce()
   const [month, setMonth] = useChoiceInAddress<string>('month', thisMonth())
   const [list, setList] = useState<MonthList | null>(null)
@@ -289,7 +392,7 @@ function MonthView({ department }: { department: string }) {
   useEffect(() => {
     let current = true
     api
-      .get<MonthList>('/workforce/attendance/month', { params: { month, department_id: department || undefined } })
+      .get<MonthList>('/workforce/attendance/month', { params: { month, department_id: department || undefined, who: who || undefined } })
       .then((res) => {
         if (!current) return
         setList(res.data)
@@ -299,7 +402,7 @@ function MonthView({ department }: { department: string }) {
     return () => {
       current = false
     }
-  }, [month, department])
+  }, [month, department, who])
   const shown = list?.month === month ? list : null
   const dates = shown?.rows[0]?.days.map((d) => d.date) ?? []
 
@@ -315,7 +418,7 @@ function MonthView({ department }: { department: string }) {
         </button>
         <span className="grow" />
         {can('wf:attendance:export') && (
-          <button className="btn ghost" onClick={() => void saveFile('/workforce/attendance/export', { month, department_id: department || undefined }, `attendance-${month}.csv`)}>
+          <button className="btn ghost" onClick={() => void saveFile('/workforce/attendance/export', { month, department_id: department || undefined, who: who || undefined }, `attendance-${month}.csv`)}>
             Export
           </button>
         )}

@@ -85,6 +85,8 @@ Route::controller(AttendanceController::class)->prefix('attendance')->group(func
     Route::get('/day', 'day');
     Route::get('/month', 'month');
     Route::get('/export', 'export');
+    Route::get('/times', 'inAndOut');
+    Route::get('/times/export', 'exportInAndOut');
     Route::post('/check-in', 'checkIn');
     Route::post('/', 'store');
     Route::get('/corrections', 'corrections');
