@@ -76,6 +76,11 @@ class StaffSignInTest extends TestCase
         $this->withToken($token)->getJson('/api/me')->assertOk();
         $this->withToken($token)->getJson('/api/workforce/me')->assertOk();
         $this->withToken($token)->getJson('/api/workforce/me/today')->assertOk();
+        // The heading their own payslip is printed under may be read, and never changed.
+        $this->withToken($token)->getJson('/api/clinic')->assertOk();
+        $this->withToken($token)->getJson('/api/billing-preferences')->assertOk();
+        $this->withToken($token)->putJson('/api/clinic', ['name' => 'Changed'])->assertForbidden();
+        $this->withToken($token)->putJson('/api/billing-preferences', [])->assertForbidden();
         // Nothing of the hospital's: not patients, not bills, not other staff, not a screen added later.
         foreach (['/api/patients', '/api/front-desk/queue', '/api/staff', '/api/workforce/employees', '/api/workforce/dashboard', '/api/reports/owner', '/api/doctors'] as $closed) {
             $this->withToken($token)->getJson($closed)->assertForbidden();
