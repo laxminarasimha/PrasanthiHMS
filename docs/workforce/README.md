@@ -238,7 +238,8 @@ Added 25 November 2026. The owner added his consultants under Staff and they did
 - **Giving them a way in later:** Staff → the person → Login and access: type a password and save. "Stop them signing in, and keep them on the doctors' list" does the reverse and signs out their devices.
 - **Off the list:** untick it (a doctor who does not sign in), or mark the person as left. The record is never removed; old appointments, admissions and fees still name them.
 - **The patient phone app:** `users.book_online`. A doctor made from the staff list starts hidden from patients' own booking until "Patients can book them from the phone app" is ticked. Doctors who already had logins keep being offered.
-- **Finding the ones left out:** the staff check lists "Consultants not on the doctors' list" with one button for all of them.
+- **A consultant is a doctor without being asked** (the owner, 25 November 2026: consultants and doctors must both be in the doctors' list). On the staff form the tick comes on by itself when Employment is "Consultant", or the name is written "Dr …", for a person with no login; it can be unticked by hand. Consultants added before this rule were put on the list once, by the migration `consultants_on_the_doctors_list` (`DoctorList::catchUp()`), which did exactly what the staff check's button does.
+- **Finding the ones left out:** the staff check lists "Doctors not on the doctors' list" (a consultant, or someone written as "Dr", with no login) with one button for all of them. Someone written as "Dr" who is not marked as a consultant is only offered there, never put on the list unasked.
 
 ## Each doctor's own OPD consultation fee
 

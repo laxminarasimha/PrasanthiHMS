@@ -148,4 +148,31 @@ class DoctorOnStaffTest extends TestCase
         Sanctum::actingAs($desk);
         $this->putJson("/api/staff/doctor-for/{$consultant->id}", ['doctor' => true])->assertForbidden();
     }
+
+    public function test_consultants_added_before_the_rule_are_put_on_the_doctors_list_once_and_likely_doctors_are_only_offered(): void
+    {
+        $consultant = $this->person('Sample Consultant Surgeon', ['employment_type' => 'consultant', 'phone' => '98480 66666']);
+        $named = $this->person('Dr. Sample Duty Doctor', ['employment_type' => 'permanent']);
+        $nurse = $this->person('Sample Nurse', ['employment_type' => 'permanent']);
+        $left = $this->person('Dr Sample Gone', ['employment_type' => 'consultant', 'status' => 'inactive']);
+        $desk = $this->user('frontdesk', ['name' => 'Sample Desk']);
+        $working = $this->person('Sample Consultant At The Desk', ['employment_type' => 'consultant', 'user_id' => $desk->id]);
+
+        // With nobody signed in, as when the rule first came in.
+        $this->assertSame(1, \App\Support\DoctorList::catchUp());
+        $this->assertSame(0, \App\Support\DoctorList::catchUp());
+
+        $login = User::find($consultant->fresh()->user_id);
+        $this->assertSame(['doctor', 'none', true, false, $this->here->id], [$login->role->value, $login->sign_in_with, (bool) $login->is_active, (bool) $login->book_online, $login->branch_id]);
+        $this->assertNull($named->fresh()->user_id);
+        $this->assertNull($nurse->fresh()->user_id);
+        $this->assertNull($left->fresh()->user_id);
+        $this->assertSame($desk->id, $working->fresh()->user_id);
+        $this->assertSame('frontdesk', $desk->fresh()->role->value);
+
+        Sanctum::actingAs($this->admin);
+        $this->assertSame(['Sample Consultant Surgeon'], $this->doctorNames());
+        // Someone written as "Dr" who is not marked as a consultant is shown on the staff check, for one press.
+        $this->assertSame(['Dr. Sample Duty Doctor'], array_column($this->getJson('/api/workforce/staff-check')->json('consultants_not_doctors'), 'name'));
+    }
 }

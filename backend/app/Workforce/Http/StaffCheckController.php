@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AdminEntry;
 use App\Models\Branch;
 use App\Models\User;
+use App\Support\DoctorList;
 use App\Support\StaffLogin;
 use App\Workforce\Models\Employee;
 use App\Workforce\Support\Access;
@@ -80,8 +81,9 @@ class StaffCheckController extends Controller
             'shared_screens' => $logins->where('is_shared_screen', true)->values()->map($login),
             // Staff who do not sign in. Nothing is wrong with that; they are listed so that the choice is a deliberate one.
             'without_login' => $free->values()->map($person),
-            // Consultants on the staff list who cannot be chosen for an appointment or an admission yet.
-            'consultants_not_doctors' => $free->where('employment_type', 'consultant')->values()->map($person),
+            // Doctors on the staff list who cannot be chosen for an appointment or an admission yet: a consultant
+            // added in some way that missed the list, or someone written as "Dr" who is not marked as a consultant.
+            'consultants_not_doctors' => DoctorList::leftOut($staff)->map($person),
             'totals' => ['staff' => $staff->where('status', '!=', 'inactive')->count(), 'logins' => $logins->where('is_active', true)->filter(fn (User $u) => $u->signsIn())->count(), 'joined' => $joined->count()],
         ]);
     }

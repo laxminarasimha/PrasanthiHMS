@@ -22,7 +22,7 @@ export function StaffCheckNote() {
     counts.unjoined.length ? `${counts.unjoined.length} login${counts.unjoined.length === 1 ? ' belongs' : 's belong'} to no member of staff` : '',
     counts.differences.length ? `${counts.differences.length} detail${counts.differences.length === 1 ? ' differs' : 's differ'} between a person and their login` : '',
     counts.shared_numbers.length ? `${counts.shared_numbers.length} mobile number${counts.shared_numbers.length === 1 ? ' is' : 's are'} on more than one login` : '',
-    counts.consultants_not_doctors?.length ? `${counts.consultants_not_doctors.length} consultant${counts.consultants_not_doctors.length === 1 ? ' is' : 's are'} not on the doctors' list yet` : '',
+    counts.consultants_not_doctors?.length ? `${counts.consultants_not_doctors.length} doctor${counts.consultants_not_doctors.length === 1 ? ' is' : 's are'} not on the doctors' list yet` : '',
   ].filter(Boolean)
   if (parts.length === 0) return null
 
