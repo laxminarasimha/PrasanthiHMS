@@ -196,6 +196,41 @@ class StaffController extends Controller
     }
 
     /**
+     * Gives an own-record login to every member of staff who has none and has a mobile number of their own. Each gets
+     * a starting PIN, returned here once for the hospital to hand out; each person must choose their own at first
+     * sign-in. Someone with no ten-digit number, or a number that already opens another login, is left out and named.
+     */
+    public function storeForAll(Request $request): JsonResponse
+    {
+        $this->mayGive($request, Role::Staff->value);
+        $given = [];
+        $skipped = [];
+        foreach (Employee::query()->whereNull('user_id')->where('status', '!=', 'inactive')->orderBy('name')->get() as $employee) {
+            $mobile = StaffLogin::digits($employee->phone);
+            $holder = $mobile ? StaffLogin::holder($employee->phone) : null;
+            if (! $mobile || $holder) {
+                $skipped[] = ['name' => $employee->name, 'employee_no' => $employee->employee_no, 'why' => $mobile ? "The mobile number already opens {$holder->name}’s login" : 'No ten-digit mobile number on the record'];
+
+                continue;
+            }
+            $pin = StaffLogin::startingPin();
+            DB::transaction(function () use ($request, $employee, $pin) {
+                $staff = User::create([
+                    'name' => $employee->name, 'phone' => $employee->phone, 'gender' => $employee->gender, 'role' => Role::Staff->value, 'branch_id' => $request->user()->branch_id,
+                    'password' => $pin, 'sign_in_with' => 'pin', 'must_change_secret' => true, 'is_active' => true,
+                ])->refresh();
+                AuditLog::record('staff.permissions', null, $staff, $this->permissionWords($staff, null, [], $staff->abilities, 'Login given with the others who had none'));
+                AuditLog::$written = false;
+                $employee->update(['user_id' => $staff->id]);
+                Audit::record('staff.login_given', $employee, ['user_id' => null], ['user_id' => $staff->id, 'role' => $staff->role->value], 'Given with the others who had none', $employee->id);
+            });
+            $given[] = ['name' => $employee->name, 'employee_no' => $employee->employee_no, 'mobile' => $mobile, 'starting_pin' => $pin];
+        }
+
+        return response()->json(['given' => $given, 'skipped' => $skipped]);
+    }
+
+    /**
      * A new starting PIN for an own-record login whose PIN is forgotten. Every device signed in as the person is
      * signed out, a login closed by wrong tries is opened, and the person must choose their own PIN again.
      */

@@ -16,6 +16,9 @@ final class Settings
         'attendance' => [
             // Staff marking their own attendance from their login. Off until the hospital decides its safeguards are enough.
             'self_check_in' => false,
+            // The hospital's own internet connections. With any listed, staff can mark their own attendance only while
+            // on one of them (the hospital Wi-Fi). Empty: from anywhere.
+            'self_check_in_networks' => [],
             // The weekly off for someone who has none of their own set.
             'default_weekly_off' => ['sun'],
         ],
