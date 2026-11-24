@@ -80,7 +80,9 @@ class StaffCheckController extends Controller
             'shared_screens' => $logins->where('is_shared_screen', true)->values()->map($login),
             // Staff who do not sign in. Nothing is wrong with that; they are listed so that the choice is a deliberate one.
             'without_login' => $free->values()->map($person),
-            'totals' => ['staff' => $staff->where('status', '!=', 'inactive')->count(), 'logins' => $logins->where('is_active', true)->count(), 'joined' => $joined->count()],
+            // Consultants on the staff list who cannot be chosen for an appointment or an admission yet.
+            'consultants_not_doctors' => $free->where('employment_type', 'consultant')->values()->map($person),
+            'totals' => ['staff' => $staff->where('status', '!=', 'inactive')->count(), 'logins' => $logins->where('is_active', true)->filter(fn (User $u) => $u->signsIn())->count(), 'joined' => $joined->count()],
         ]);
     }
 

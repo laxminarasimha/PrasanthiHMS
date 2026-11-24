@@ -63,6 +63,10 @@ export type Staff = {
   abilities: Record<string, boolean>
   has_signature: boolean
   availability: Availability | null
+  /** How the login is opened. "none": a doctor who is on the hospital's lists and does not sign in. */
+  sign_in_with?: 'password' | 'pin' | 'none'
+  /** Whether patients may book this doctor from the phone app. */
+  book_online?: boolean
   slot_minutes?: number | null
   /** A doctor's share of what is collected from their own patients, in percent for each counter. Sent to admins only. */
   share_front_desk?: number | null

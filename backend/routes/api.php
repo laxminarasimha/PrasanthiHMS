@@ -571,6 +571,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
     // those who manage logins, and for an own-record login also those who keep the staff records.
     Route::post('/staff/for/{employee}', [StaffController::class, 'storeFor'])->whereNumber('employee');
     Route::post('/staff/for-all', [StaffController::class, 'storeForAll'])->middleware('throttle:6,1');
+    Route::put('/staff/doctor-for/{employee}', [StaffController::class, 'doctorFor'])->whereNumber('employee');
     Route::post('/staff/{staff}/starting-pin', [StaffController::class, 'startingPin'])->whereNumber('staff');
 });
 

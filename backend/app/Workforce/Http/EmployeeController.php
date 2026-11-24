@@ -35,7 +35,7 @@ class EmployeeController extends Controller
 {
     use Helpers;
 
-    private const WITH = ['department:id,name', 'shift:id,name', 'manager:id,name,employee_no', 'user:id,name,role,is_active,sign_in_with,email,must_change_secret'];
+    private const WITH = ['department:id,name', 'shift:id,name', 'manager:id,name,employee_no', 'user:id,name,role,is_active,sign_in_with,email,must_change_secret,signature_text,book_online'];
 
     public function index(Request $request): JsonResponse
     {
@@ -319,7 +319,9 @@ class EmployeeController extends Controller
             'weekly_off' => $e->weekly_off, 'holiday_calendar_id' => $e->holiday_calendar_id, 'payment_mode' => $e->payment_mode, 'user_id' => $e->user_id,
             'regular' => $e->isRegular(), 'regular_set' => $e->regular,
             // Whether the person signs in and as what. What they may do there is for those who manage logins.
-            'login' => $e->relationLoaded('user') && $e->user ? ['id' => $e->user->id, 'role' => $e->user->role->value, 'role_label' => $e->user->role->label(), 'is_active' => (bool) $e->user->is_active, 'sign_in_with' => $e->user->sign_in_with ?? 'password', 'email' => $e->user->email, 'waiting_for_own_pin' => (bool) $e->user->must_change_secret] : null,
+            'login' => $e->relationLoaded('user') && $e->user ? ['id' => $e->user->id, 'role' => $e->user->role->value, 'role_label' => $e->user->role->label(), 'is_active' => (bool) $e->user->is_active, 'sign_in_with' => $e->user->sign_in_with ?? 'password', 'email' => $e->user->email, 'waiting_for_own_pin' => (bool) $e->user->must_change_secret,
+                // A doctor is on the hospital's lists whether or not they sign in.
+                'signs_in' => $e->user->signsIn(), 'is_doctor' => $e->user->role === Role::Doctor && (bool) $e->user->is_active, 'qualification' => $e->user->signature_text, 'book_online' => (bool) $e->user->book_online] : null,
         ];
     }
 }

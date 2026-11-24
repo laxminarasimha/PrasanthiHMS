@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
@@ -231,6 +232,67 @@ class StaffController extends Controller
     }
 
     /**
+     * Puts a member of staff on the hospital's list of doctors, or takes them off it. A doctor on that list can be
+     * chosen for appointments, admissions and consultant visits, and has a month under Consultants, whether or not
+     * they sign in: someone with no login is given a record that cannot be signed in with. Nothing here gives anyone
+     * a way in, so it is open to those who keep the staff records as well as those who manage logins.
+     */
+    public function doctorFor(Request $request, int $employee): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->allows('canManageStaff') || Permissions::reach($user, 'wf:staff:edit') === Permissions::ALL, 403, 'You are not allowed to change the list of doctors.');
+        $employee = Employee::query()->with('department:id,name')->findOrFail($employee);
+        $data = $request->validate(['doctor' => ['required', 'boolean'], 'qualification' => ['sometimes', 'nullable', 'string', 'max:255'], 'book_online' => ['sometimes', 'boolean']]);
+        $login = $employee->user_id ? User::query()->find($employee->user_id) : null;
+        $more = array_filter(['signature_text' => $data['qualification'] ?? null, 'book_online' => $data['book_online'] ?? null], fn ($v) => $v !== null)
+            + (array_key_exists('qualification', $data) && $data['qualification'] === null ? ['signature_text' => null] : []);
+
+        if ($login && $login->role !== Role::Doctor) {
+            throw ValidationException::withMessages(['doctor' => "{$employee->name} signs in as {$login->role->label()}. To make them a doctor, change their role under Login and access."]);
+        }
+        if (! $data['doctor']) {
+            if ($login?->signsIn()) {
+                throw ValidationException::withMessages(['doctor' => "{$employee->name} signs in as a doctor. To take them off the doctors' list, change their role or close their login under Login and access."]);
+            }
+            // Never removed: their appointments, admissions and fees still name them. They are only taken off the lists.
+            $login?->update(['is_active' => false]);
+            if ($login) {
+                Audit::record('staff.doctor_off', $employee, ['doctor' => true], ['doctor' => false], $request->input('reason'), $employee->id);
+            }
+
+            return response()->json(['doctor' => false]);
+        }
+        if ($employee->status === 'inactive') {
+            throw ValidationException::withMessages(['doctor' => "{$employee->name} has left the staff. Mark them as on the staff again first."]);
+        }
+        // Opening a login again is a matter of access, and stays with those who manage logins.
+        if ($login && $login->signsIn() && ! $login->is_active) {
+            throw ValidationException::withMessages(['doctor' => "{$employee->name}'s login is switched off. Open it again under Login and access."]);
+        }
+
+        $login = DB::transaction(function () use ($employee, $login, $more, $user) {
+            if ($login) {
+                $login->update($more + ['is_active' => true]);
+
+                return $login;
+            }
+            $login = User::create($more + [
+                'name' => $employee->name, 'phone' => $employee->phone, 'gender' => $employee->gender, 'department' => $employee->department?->name, 'role' => Role::Doctor->value,
+                'branch_id' => $user->branch_id, 'is_active' => true, 'sign_in_with' => 'none', 'password' => Str::random(48),
+                // A consultant is not offered to patients in the phone app until someone says so.
+                'book_online' => $more['book_online'] ?? false,
+            ])->refresh();
+            $employee->update(['user_id' => $login->id]);
+            Audit::record('staff.doctor_on', $employee, ['doctor' => false], ['doctor' => true, 'user_id' => $login->id], 'Put on the list of doctors; does not sign in', $employee->id);
+
+            return $login;
+        });
+        AuditLog::record('staff.doctor', null, $login, "{$login->name} · on the list of doctors".($login->signsIn() ? '' : ' · does not sign in'));
+
+        return response()->json(['doctor' => true, 'login_id' => $login->id]);
+    }
+
+    /**
      * A new starting PIN for an own-record login whose PIN is forgotten. Every device signed in as the person is
      * signed out, a login closed by wrong tries is opened, and the person must choose their own PIN again.
      */
@@ -278,8 +340,19 @@ class StaffController extends Controller
         $data = $request->validate($this->rules($staff) + [
             'password' => [$pin !== $staff->usesPin() ? 'required' : 'nullable', ...$this->secretRule($pin)],
             'is_active' => ['sometimes', 'boolean'],
+            // Unticked for a doctor: they stay on the hospital's lists and can no longer sign in.
+            'signs_in' => ['sometimes', 'boolean'],
         ], self::PIN_WORDS + ['password.required' => $pin ? 'Give a starting PIN: an own-record login is opened with a PIN.' : 'Give a password: this role cannot be opened with a PIN.']);
-        $this->signInIsPossible($data, $staff);
+        // A doctor may be on the lists without signing in. Anyone else needs a way in, and so does a doctor being given one.
+        $stops = ($data['signs_in'] ?? null) === false && $data['role'] === Role::Doctor->value && ! $staff->is($request->user());
+        $none = $stops || (! $staff->signsIn() && empty($data['password']));
+        unset($data['signs_in']);
+        if ($none && $data['role'] !== Role::Doctor->value) {
+            throw ValidationException::withMessages(['password' => 'Give a password: only a doctor is kept on the hospital’s lists without signing in.']);
+        }
+        if (! $none) {
+            $this->signInIsPossible($data, $staff);
+        }
 
         $this->onlyAdminsTouchAdmins($request, $staff, $data['role']);
         $data = $this->sharesOnlyFromAdmins($request, $data);
@@ -287,7 +360,11 @@ class StaffController extends Controller
             unset($data['password']);
         }
         $newPassword = isset($data['password']) && ! $staff->is($request->user());
-        if (isset($data['password'])) {
+        if ($stops) {
+            unset($data['password']);
+            $data['sign_in_with'] = 'none';
+            $data['must_change_secret'] = false;
+        } elseif (isset($data['password'])) {
             $data += $this->secretOf($pin, $data['password'], $newPassword);
         }
 
@@ -321,7 +398,7 @@ class StaffController extends Controller
         }
 
         // Switched off, or given a new password by someone else: every device signed in as this person is signed out.
-        if ($staff->is_active === false || $newPassword) {
+        if ($staff->is_active === false || $newPassword || $stops) {
             $staff->tokens()->delete();
         }
         // A fresh password from the hospital opens a login that was closed after too many wrong ones.
@@ -364,6 +441,9 @@ class StaffController extends Controller
      */
     private function signInIsPossible(array $data, ?User $staff): void
     {
+        if (blank($data['phone'] ?? null) && blank($data['email'] ?? null)) {
+            throw ValidationException::withMessages(['phone' => 'Give the mobile number they will sign in with, or an email.']);
+        }
         if (filled($data['email'] ?? null)) {
             return;
         }
@@ -490,9 +570,12 @@ class StaffController extends Controller
             'email' => ['nullable', 'email', 'max:255', Rule::unique('users')->ignore($staff)],
             'role' => ['required', Rule::enum(Role::class)],
             'gender' => ['nullable', Rule::in(['male', 'female', 'other'])],
-            'phone' => ['required', 'string', 'regex:/^[0-9+\- ]{7,20}$/'],
+            // Needed by anyone who signs in with it; a doctor who is only on the lists may have none on record.
+            'phone' => ['nullable', 'string', 'regex:/^[0-9+\- ]{7,20}$/'],
             'department' => ['nullable', 'string', 'max:255'],
             'signature_text' => ['nullable', 'string', 'max:255'],
+            // Whether patients may book this doctor from the phone app.
+            'book_online' => ['sometimes', 'boolean'],
             'permissions' => ['sometimes', 'nullable', 'array:'.implode(',', array_keys(User::catalogue()))],
             'permissions.*' => ['boolean'],
             'reason' => ['sometimes', 'nullable', 'string', 'max:300'],
