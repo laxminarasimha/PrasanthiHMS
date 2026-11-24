@@ -14,6 +14,7 @@ use App\Models\LabTest;
 use App\Models\Setting;
 use App\Support\LabDepartments;
 use App\Support\LabTemplate;
+use App\Support\Referral;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -378,7 +379,7 @@ class LabController extends Controller
                 'patient_id' => $data['patient_id'],
                 'appointment_id' => $data['appointment_id'] ?? null,
                 'bill_id' => $bill->id,
-                'referred_by' => $data['referred_by'] ?? null,
+                ...Referral::fields($data['referred_by'] ?? null),
                 'ordered_at' => now(),
                 'created_by' => $user->id,
             ]);

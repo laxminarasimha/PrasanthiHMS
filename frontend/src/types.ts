@@ -56,6 +56,7 @@ export type Staff = {
   abilities: Record<string, boolean>
   has_signature: boolean
   availability: Availability | null
+  slot_minutes?: number | null
 }
 
 /** One permission that can be given to or taken from a person, and the roles that get it by default. */
@@ -98,7 +99,7 @@ export type Patient = {
   last_visit_at?: string | null
 }
 
-export type Doctor = { id: number; name: string; department: string | null; availability?: Availability | null }
+export type Doctor = { id: number; name: string; department: string | null; availability?: Availability | null; /** Minutes in one of this doctor's slots; empty to follow the hospital's. */ slot_minutes?: number | null }
 
 export type Service = {
   id: number
@@ -133,6 +134,9 @@ export type Appointment = {
   consultation?: { id: number; completed_at: string | null; tests_advised: string | null; follow_up_on: string | null; refer_to: string | null; medicines_count: number } | null
   bills: { id: number; bill_no: string; kind: BillKind; total: number; paid: number; due: number; moved_to_ipd: number | null; lab_order: { id: number; order_no: string } | null }[]
 }
+
+/** Someone advised to come back whose date has passed without a visit. */
+export type NotReturned = { id: number; patient: Appointment['patient']; doctor: { id: number; name: string } | null; follow_up_on: string; days_late: number; seen_on: string; diagnosis: string | null; booked_for: string | null }
 
 export type FollowUp = {
   id: number
@@ -180,6 +184,9 @@ export type Bill = {
   subtotal: number
   tax: number
   discount: number
+  /** Why a discount on this bill was given and who allowed it; empty when nothing is taken off. */
+  discount_reason?: string | null
+  discount_allowed_by?: string | null
   total: number
   paid: number
   due: number

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Bill;
 use App\Models\Patient;
 use App\Models\Payment;
+use App\Support\DiscountWhy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -34,7 +35,7 @@ class ChargeController extends Controller
             'test_ids' => ['sometimes', 'array', 'max:60'],
             'package_ids' => ['sometimes', 'array', 'max:20'],
             'referred_by' => ['nullable', 'string', 'max:255'],
-        ], ['appointment_id.exists' => 'That visit belongs to another patient.']);
+        ] + DiscountWhy::RULES, ['appointment_id.exists' => 'That visit belongs to another patient.']);
 
         $services = array_values($data['services'] ?? []);
         $hasLab = ! empty($data['test_ids']) || ! empty($data['package_ids']);
@@ -45,10 +46,12 @@ class ChargeController extends Controller
         $made = [];
         if ($services) {
             $about = ['patient_id' => $data['patient_id'], 'appointment_id' => $data['appointment_id'] ?? null];
+            // Why any discount on these lines is given, and who allowed it: asked once for the whole bill.
+            $why = array_filter(['discount_reason' => $data['discount_reason'] ?? null, 'discount_allowed_by' => $data['discount_allowed_by'] ?? null]);
             $bills = app(BillController::class);
-            $billId = $bills->store($this->ask($request, $about + $services[0]))->getData(true)['id'];
+            $billId = $bills->store($this->ask($request, $about + $services[0] + $why))->getData(true)['id'];
             foreach (array_slice($services, 1) as $line) {
-                $bills->addItem($this->ask($request, $line), Bill::findOrFail($billId));
+                $bills->addItem($this->ask($request, $line + $why), Bill::findOrFail($billId));
             }
             $made[] = $billId;
         }

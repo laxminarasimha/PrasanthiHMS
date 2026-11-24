@@ -17,7 +17,9 @@ use App\Models\PatientDeposit;
 use App\Models\Payment;
 use App\Models\PharmacyPayment;
 use App\Models\PrescriptionItem;
+use App\Support\FollowUps;
 use App\Support\MoneyFigures;
+use App\Support\Referral;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -40,6 +42,7 @@ class HospitalReportController extends Controller
         'upcoming' => 'Front desk: upcoming appointments',
         'missed' => 'Front desk: missed visits',
         'advised-visits' => 'Front desk: advised visits',
+        'not-returned' => 'Front desk: advised to come back, not come',
         'waiting-time' => 'Front desk: waiting time',
         'consultations' => 'Doctor: consultation report',
         'prescriptions' => 'Doctor: prescription report',
@@ -94,12 +97,14 @@ class HospitalReportController extends Controller
                 'bill_no' => $b->bill_no, 'date' => $b->created_at->format('Y-m-d H:i'), 'patient' => $b->patient?->name, 'uhid' => $b->patient?->uhid,
                 'doctor' => $b->appointment?->doctor?->name, 'kind' => self::KIND[$b->kind] ?? $b->kind,
                 'amount' => $b->subtotal, 'discount' => $b->discount, 'total' => $b->total, 'paid' => $b->paid, 'due' => $b->due,
+                'discount_reason' => $b->discount_reason, 'discount_allowed_by' => $b->discount_allowed_by,
             ]);
 
         return [[
             self::col('bill_no', 'Bill'), self::col('date', 'Date'), self::col('patient', 'Patient'), self::col('uhid', 'Patient ID'), self::col('doctor', 'Doctor'),
             self::col('kind', 'Counter'), self::col('amount', 'Amount', 'money'), self::col('discount', 'Discount', 'money'),
             self::col('total', 'Bill total', 'money'), self::col('paid', 'Paid', 'money'), self::col('due', 'Due', 'money'),
+            self::col('discount_reason', 'Discount reason'), self::col('discount_allowed_by', 'Discount allowed by'),
         ], $rows];
     }
 
@@ -249,6 +254,20 @@ class HospitalReportController extends Controller
         return [[
             self::col('advised', 'Advised date'), self::col('patient', 'Patient'), self::col('uhid', 'Patient ID'), self::col('mobile', 'Mobile'),
             self::col('doctor', 'Doctor'), self::col('seen_on', 'Last seen'), self::col('diagnosis', 'Diagnosis'), self::col('booked', 'Appointment'),
+        ], $rows];
+    }
+
+    /** Patients whose advised date fell in the period and who have not been seen since: the list to ring. */
+    private function notReturned(Carbon $from, Carbon $to): array
+    {
+        $rows = FollowUps::notReturned($from, $to)->sortBy('follow_up_on')->map(fn (array $r) => [
+            'advised' => $r['follow_up_on'], 'days_late' => $r['days_late'], 'patient' => $r['patient']->name, 'uhid' => $r['patient']->uhid, 'mobile' => $r['patient']->mobile,
+            'doctor' => $r['doctor']?->name, 'seen_on' => $r['seen_on'], 'diagnosis' => $r['diagnosis'], 'booked_for' => $r['booked_for'] ?? 'Not booked',
+        ]);
+
+        return [[
+            self::col('advised', 'Advised date'), self::col('days_late', 'Days late', 'number', false), self::col('patient', 'Patient'), self::col('uhid', 'Patient ID'), self::col('mobile', 'Mobile'),
+            self::col('doctor', 'Doctor'), self::col('seen_on', 'Last seen'), self::col('diagnosis', 'Diagnosis'), self::col('booked_for', 'Next appointment'),
         ], $rows];
     }
 
@@ -422,10 +441,11 @@ class HospitalReportController extends Controller
     /** Lab work sent by each outside doctor: orders, tests and their value. */
     private function labReferrals(Carbon $from, Carbon $to): array
     {
-        $rows = LabOrder::whereBetween('ordered_at', [$from, $to])->with('items:id,lab_order_id,price')->get(['id', 'referred_by', 'patient_id'])
-            ->groupBy(fn ($o) => mb_strtolower(trim((string) $o->referred_by)))
+        // A doctor on the hospital's list is one row however the name was typed.
+        $rows = LabOrder::whereBetween('ordered_at', [$from, $to])->with('items:id,lab_order_id,price')->get(['id', 'referred_by', 'referral_doctor_id', 'patient_id'])
+            ->groupBy(fn ($o) => Referral::group($o->referral_doctor_id, $o->referred_by)[0])
             ->map(fn (Collection $group) => [
-                'referred_by' => trim((string) $group->first()->referred_by) ?: 'Not referred (self)',
+                'referred_by' => Referral::group($group->first()->referral_doctor_id, $group->first()->referred_by)[1],
                 'orders' => $group->count(), 'patients' => $group->pluck('patient_id')->unique()->count(),
                 'tests' => $group->sum(fn ($o) => $o->items->count()), 'amount' => round((float) $group->sum(fn ($o) => $o->items->sum('price')), 2),
             ])->sortByDesc('amount');
@@ -439,12 +459,12 @@ class HospitalReportController extends Controller
     /** New patients registered in the period, by who sent them, with what they have been billed since. */
     private function patientReferrals(Carbon $from, Carbon $to): array
     {
-        $patients = Patient::whereBetween('created_at', [$from, $to])->get(['id', 'referred_by']);
+        $patients = Patient::whereBetween('created_at', [$from, $to])->get(['id', 'referred_by', 'referral_doctor_id']);
         $billed = Bill::whereIn('patient_id', $patients->pluck('id'))->selectRaw('patient_id, sum(total) as total')->groupBy('patient_id')->pluck('total', 'patient_id');
 
-        $rows = $patients->groupBy(fn ($p) => mb_strtolower(trim((string) $p->referred_by)))
+        $rows = $patients->groupBy(fn ($p) => Referral::group($p->referral_doctor_id, $p->referred_by)[0])
             ->map(fn (Collection $group) => [
-                'referred_by' => trim((string) $group->first()->referred_by) ?: 'Not referred (self)',
+                'referred_by' => Referral::group($group->first()->referral_doctor_id, $group->first()->referred_by)[1],
                 'patients' => $group->count(),
                 'billed' => round((float) $group->sum(fn ($p) => (float) ($billed[$p->id] ?? 0)), 2),
             ])->sortByDesc('patients');

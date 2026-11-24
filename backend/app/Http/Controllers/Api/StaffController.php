@@ -283,6 +283,7 @@ class StaffController extends Controller
             'permissions' => ['sometimes', 'nullable', 'array:'.implode(',', array_keys(User::catalogue()))],
             'permissions.*' => ['boolean'],
             'reason' => ['sometimes', 'nullable', 'string', 'max:300'],
+            'slot_minutes' => ['sometimes', 'nullable', 'integer', Rule::in([5, 10, 15, 20, 30, 60])],
             'availability' => ['sometimes', 'nullable', 'array:mon,tue,wed,thu,fri,sat,sun'],
             'availability.*' => ['nullable', 'array', 'max:3'],
             'availability.*.*.from' => ['required', 'date_format:H:i'],

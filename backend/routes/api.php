@@ -197,6 +197,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
         Route::get('/front-desk/money', 'money');
         Route::get('/front-desk/queue', 'queue');
         Route::get('/front-desk/follow-ups', 'followUps');
+        Route::get('/front-desk/not-returned', 'notReturned');
         Route::get('/patients/{patient}/overview', 'overview');
         Route::get('/patients/{patient}/attachments', 'attachments');
         Route::get('/attachments/{attachment}/download', 'download');

@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 #[Fillable([
     'branch_id', 'title', 'name', 'gender', 'date_of_birth', 'dob_estimated', 'is_temporary', 'mobile', 'mobile_alt', 'email',
     'blood_group', 'allergies', 'preferred_language', 'address', 'city', 'pincode', 'care_of', 'occupation',
-    'referred_by', 'channel', 'tag', 'existing_id', 'created_by',
+    'referred_by', 'referral_doctor_id', 'channel', 'tag', 'existing_id', 'created_by',
 ])]
 class Patient extends Model
 {

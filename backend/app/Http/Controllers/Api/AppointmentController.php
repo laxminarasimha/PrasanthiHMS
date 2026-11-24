@@ -10,6 +10,9 @@ use App\Models\DoctorBlock;
 use App\Models\Payment;
 use App\Models\Service;
 use App\Models\Setting;
+use App\Models\User;
+use App\Support\DiscountWhy;
+use App\Support\DoctorHours;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -140,9 +143,16 @@ class AppointmentController extends Controller
 
     /**
      * Refuses a time when the doctor is away, or when the slot already has as many patients as allowed.
+     * A visit booked for a later time also has to fall inside the doctor's hours, unless the desk says to book it
+     * anyway; a patient who is already here, or is being entered for a time that has come, is never refused for the hour.
      */
-    private function guardSlot(int $doctorId, Carbon $at, ?int $ignoreId = null): void
+    private function guardSlot(int $doctorId, Carbon $at, ?int $ignoreId = null, bool $checkHours = false): void
     {
+        $doctor = User::find($doctorId);
+        if ($checkHours && $doctor && $at->gt(now()) && ! DoctorHours::covers($doctor, $at)) {
+            throw ValidationException::withMessages(['outside_hours' => DoctorHours::describe($doctor, $at).' '.$at->format('g:i A').' is outside those hours.']);
+        }
+
         $block = DoctorBlock::where('doctor_id', $doctorId)->between($at->toDateString(), $at->toDateString())->with('doctor:id,name')->get()
             ->first(fn (DoctorBlock $b) => $b->covers($at));
         if ($block) {
@@ -154,7 +164,7 @@ class AppointmentController extends Controller
         if ($limit < 1) {
             return;
         }
-        $step = (int) $settings['slot_minutes'];
+        $step = DoctorHours::step($doctor);
         $start = $at->copy()->startOfDay()->addMinutes(intdiv($at->hour * 60 + $at->minute, $step) * $step);
         $taken = Appointment::where('doctor_id', $doctorId)
             ->where('status', '!=', 'cancelled')
@@ -181,11 +191,12 @@ class AppointmentController extends Controller
             'discount' => ['nullable', 'numeric', 'min:0'],
             'paid' => ['nullable', 'numeric', 'min:0'],
             'payment_mode' => ['nullable', 'required_with:paid', Rule::in(Payment::MODES)],
-        ]);
+            'outside_hours' => ['sometimes', 'boolean'],
+        ] + DiscountWhy::RULES);
 
-        $billing = array_intersect_key($data, array_flip(['skip_billing', 'unit_price', 'quantity', 'discount', 'paid', 'payment_mode']));
-        $data = array_diff_key($data, $billing);
-        $this->guardSlot((int) $data['doctor_id'], Carbon::parse($data['scheduled_at']));
+        $billing = array_intersect_key($data, array_flip(['skip_billing', 'unit_price', 'quantity', 'discount', 'paid', 'payment_mode', 'discount_reason', 'discount_allowed_by']));
+        $data = array_diff_key($data, $billing + ['outside_hours' => 1]);
+        $this->guardSlot((int) $data['doctor_id'], Carbon::parse($data['scheduled_at']), null, ($data['status'] ?? 'booked') === 'booked' && ! $request->boolean('outside_hours'));
 
         $appointment = DB::transaction(function () use ($data, $billing, $request) {
             $day = Carbon::parse($data['scheduled_at'])->toDateString();
@@ -216,6 +227,9 @@ class AppointmentController extends Controller
                     'kind' => 'appointment',
                     'created_by' => $request->user()->id,
                 ]);
+                if ($discount > 0) {
+                    DiscountWhy::need($bill, $billing);
+                }
                 $bill->addLine($service->name, $price, $quantity, $service->gst_percent, $service->id, $discount);
 
                 $paid = (float) ($billing['paid'] ?? 0);
@@ -237,13 +251,14 @@ class AppointmentController extends Controller
     public function update(Request $request, Appointment $appointment): JsonResponse
     {
         $data = $request->validate(array_map(fn ($rule) => array_merge(['sometimes'], $rule), $this->rules()));
+        $anyway = $request->boolean('outside_hours');
 
         // Moving to another time or doctor has to respect leave and full slots; other edits do not.
         $at = Carbon::parse($data['scheduled_at'] ?? $appointment->getRawOriginal('scheduled_at'));
         $doctorId = (int) ($data['doctor_id'] ?? $appointment->doctor_id);
         $moved = $doctorId !== (int) $appointment->doctor_id || ! $at->equalTo(Carbon::parse($appointment->getRawOriginal('scheduled_at')));
         if ($moved && ($data['status'] ?? $appointment->status) !== 'cancelled') {
-            $this->guardSlot($doctorId, $at, $appointment->id);
+            $this->guardSlot($doctorId, $at, $appointment->id, ($data['status'] ?? $appointment->status) === 'booked' && ! $anyway);
         }
 
         // Record when the patient first reached the hospital, for wait-time reporting later.

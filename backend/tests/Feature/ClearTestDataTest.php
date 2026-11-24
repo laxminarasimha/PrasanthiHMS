@@ -23,7 +23,7 @@ class ClearTestDataTest extends TestCase
         Sanctum::actingAs($admin);
         $patient = Patient::factory()->create();
         $service = Service::create(['name' => 'Consultation', 'price' => 400, 'gst_percent' => 0]);
-        $this->postJson('/api/appointments', ['patient_id' => $patient->id, 'doctor_id' => $sample->id, 'service_id' => $service->id, 'scheduled_at' => now()->addHour()->format('Y-m-d H:i'), 'paid' => 400, 'payment_mode' => 'cash'])->assertCreated();
+        $this->postJson('/api/appointments', ['patient_id' => $patient->id, 'doctor_id' => $sample->id, 'service_id' => $service->id, 'scheduled_at' => now()->addHour()->format('Y-m-d H:i'), 'outside_hours' => true, 'paid' => 400, 'payment_mode' => 'cash'])->assertCreated();
         LabOrder::create(['patient_id' => $patient->id, 'status' => 'pending', 'ordered_at' => now()])->items()->create(['test_name' => 'RBS', 'price' => 80]);
         $bed = Bed::create(['ward' => 'General Ward', 'bed_no' => '1', 'daily_charge' => 800]);
         $this->postJson('/api/ipd/admissions', ['patient_id' => $patient->id, 'doctor_id' => $sample->id, 'bed_id' => $bed->id, 'admitted_at' => now()->format('Y-m-d H:i'), 'reason' => 'Practice'])->assertCreated();

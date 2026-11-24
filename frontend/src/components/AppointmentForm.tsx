@@ -6,6 +6,8 @@ import type { Appointment, Doctor, Patient, Service } from '../types'
 import { SelectField, TextField } from './Field'
 import { useBillingPreferences } from './useBillingPreferences'
 import { PatientPicker } from './PatientPicker'
+import { DiscountWhy } from './DiscountWhy'
+import { noWhy, whyFields } from './discountFields'
 
 type Props = {
   date: string
@@ -21,7 +23,7 @@ type Props = {
   onBooked: (appointment: Appointment) => void
 }
 
-const DURATIONS = [5, 10, 15, 30, 45, 60, 90, 120].map((m) => ({
+const DURATIONS = [5, 10, 15, 20, 30, 45, 60, 90, 120].map((m) => ({
   value: String(m),
   label: m < 60 ? `${m} mins` : `${m / 60} hr${m > 60 ? 's' : ''}`,
 }))
@@ -32,6 +34,19 @@ const STATUSES = [
 
 const nowTime = () => new Date().toTimeString().slice(0, 5)
 
+/** Shown when a visit booked for later falls outside the doctor's hours: the desk reads why, and may book it anyway. */
+export function OutsideHours({ message, checked, onChange }: { message: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  return (
+    <div className="span-2 outside-hours">
+      <p>{message}</p>
+      <label className="check flush">
+        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+        Book at this time anyway, then press Save again
+      </label>
+    </div>
+  )
+}
+
 export function AppointmentForm({ patient: startPatient, date, time: startTime, doctorId: startDoctor, status: startStatus, doctors, services, onClose, onBooked }: Props) {
   const { user } = useAuth()
   const [patient, setPatient] = useState<Patient | null>((startPatient as Patient | undefined) ?? null)
@@ -39,7 +54,9 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
   const [serviceId, setServiceId] = useState('')
   const [day, setDay] = useState(date)
   const [time, setTime] = useState(startTime ?? nowTime())
-  const [duration, setDuration] = useState('15')
+  // A doctor with their own slot length gets visits of that length unless the desk picks another.
+  const [chosenDuration, setDuration] = useState<string | null>(null)
+  const duration = chosenDuration ?? String(doctors.find((d) => String(d.id) === doctorId)?.slot_minutes ?? 15)
   const [status, setStatus] = useState<string>(startStatus ?? 'arrived')
   const [notes, setNotes] = useState('')
   const [skipBilling, setSkipBilling] = useState(false)
@@ -54,6 +71,9 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
   const payLater = prefs.pay_timing === 'after'
   const [errors, setErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
+  const [why, setWhy] = useState(noWhy)
+  // Set once the desk has read that the time is outside the doctor's hours and chosen to book it anyway.
+  const [anyway, setAnyway] = useState(false)
 
   // Offer the services that are open to every doctor plus the chosen doctor's own.
   const offered = services.filter((s) => s.type === 'appointment' && (!s.doctor_id || String(s.doctor_id) === doctorId))
@@ -88,7 +108,9 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
         status,
         notes: notes || null,
         skip_billing: skipBilling,
+        ...(anyway ? { outside_hours: true } : {}),
         ...(billing ? { unit_price: price || 0, quantity: quantity || 1, discount: discount || 0 } : {}),
+        ...(billing && Number(discount) > 0 ? whyFields(why) : {}),
         ...(billing && Number(paid) > 0 ? { paid, payment_mode: mode } : {}),
       })
       onBooked(res.data)
@@ -117,6 +139,7 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
           value={doctorId}
           onChange={(v) => {
             setDoctorId(v)
+            setAnyway(false)
             chooseService('')
           }}
           options={doctors.map((d) => ({ value: String(d.id), label: d.name }))}
@@ -133,8 +156,28 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
         />
         <SelectField label="Status" value={status} onChange={setStatus} options={STATUSES} />
         <SelectField label="Duration" value={duration} onChange={setDuration} options={DURATIONS} />
-        <TextField label="Date" required type="date" value={day} onChange={setDay} error={errors.scheduled_at} />
-        <TextField label="Time" required type="time" value={time} onChange={setTime} />
+        <TextField
+          label="Date"
+          required
+          type="date"
+          value={day}
+          onChange={(v) => {
+            setDay(v)
+            setAnyway(false)
+          }}
+          error={errors.scheduled_at}
+        />
+        <TextField
+          label="Time"
+          required
+          type="time"
+          value={time}
+          onChange={(v) => {
+            setTime(v)
+            setAnyway(false)
+          }}
+        />
+        {errors.outside_hours && <OutsideHours message={errors.outside_hours} checked={anyway} onChange={setAnyway} />}
         <div className="span-2">
           <TextField label="Notes (optional)" value={notes} onChange={setNotes} error={errors.notes} />
         </div>
@@ -153,6 +196,8 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
                 <TextField label="Qty" type="number" min={1} value={quantity} onChange={setQuantity} error={errors.quantity} />
                 <TextField label="Discount (₹)" type="number" min={0} step="0.01" value={discount} onChange={setDiscount} error={errors.discount} />
               </div>
+              {Number(discount) > 0 && <DiscountWhy id="booking-why" value={why} onChange={setWhy} />}
+              {(errors.discount_reason || errors.discount_allowed_by) && <p className="form-error">{errors.discount_reason ?? errors.discount_allowed_by}</p>}
               <p className="net">
                 {service.gst_percent > 0 && <span className="muted">Tax {service.gst_percent}% · </span>}
                 Net price <strong>{rupees(netWithTax)}</strong>

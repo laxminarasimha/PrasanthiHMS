@@ -14,6 +14,7 @@ use App\Models\Patient;
 use App\Models\PatientDeposit;
 use App\Models\Payment;
 use App\Models\PharmacySale;
+use App\Support\FollowUps;
 use App\Support\MoneyFigures;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -138,6 +139,12 @@ class FrontDeskController extends Controller
 
         // One line per patient, even if two doctors gave the same date.
         return response()->json($due->unique('patient_id')->values()->map(fn ($c) => $c->toArray() + ['booked' => $booked->has($c->patient_id)]));
+    }
+
+    /** Patients advised to come back in the last 60 days who have not been seen since, the longest overdue last. */
+    public function notReturned(): JsonResponse
+    {
+        return response()->json(FollowUps::notReturned(today()->subDays(60), now())->take(200)->values());
     }
 
     /** Lets the front desk or a nurse record vitals before the doctor opens the visit. Nothing else on the visit changes. */

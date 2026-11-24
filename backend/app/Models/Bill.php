@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['branch_id', 'patient_id', 'appointment_id', 'kind', 'discount', 'created_by'])]
+#[Fillable(['branch_id', 'patient_id', 'appointment_id', 'kind', 'discount', 'discount_reason', 'discount_allowed_by', 'created_by'])]
 class Bill extends Model
 {
     protected $appends = ['due'];

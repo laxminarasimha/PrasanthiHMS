@@ -43,7 +43,7 @@ class FrontDeskCompleteTest extends TestCase
     public function test_booking_can_change_the_charge_and_take_payment_and_gives_tokens_in_order(): void
     {
         // 2 x 250 less 100 discount = 400, of which 300 is paid now.
-        $first = $this->book(['unit_price' => 250, 'quantity' => 2, 'discount' => 100, 'paid' => 300, 'payment_mode' => 'upi'])->assertCreated()->json();
+        $first = $this->book(['unit_price' => 250, 'quantity' => 2, 'discount' => 100, 'paid' => 300, 'payment_mode' => 'upi', 'discount_reason' => 'Staff family', 'discount_allowed_by' => 'Dr Rao'])->assertCreated()->json();
         $this->assertSame(1, $first['token_no']);
         $this->assertEquals(400, $first['bills'][0]['total']);
         $this->assertEquals(300, $first['bills'][0]['paid']);
@@ -68,7 +68,7 @@ class FrontDeskCompleteTest extends TestCase
         $dressing = Service::factory()->create(['name' => 'Dressing', 'type' => 'other', 'price' => 150, 'gst_percent' => 10]);
 
         // 3 x 120 less 60 = 300, plus 10% GST = 330. Bill: 200 + 300 = 500, tax 30.
-        $this->postJson("/api/bills/{$billId}/items", ['service_id' => $dressing->id, 'unit_price' => 120, 'quantity' => 3, 'line_discount' => 60])
+        $this->postJson("/api/bills/{$billId}/items", ['service_id' => $dressing->id, 'unit_price' => 120, 'quantity' => 3, 'line_discount' => 60, 'discount_reason' => 'Staff family', 'discount_allowed_by' => 'Dr Rao'])
             ->assertCreated()->assertJsonPath('subtotal', 500)->assertJsonPath('tax', 30)->assertJsonPath('total', 530)
             ->assertJsonPath('items.1.discount', 60)->assertJsonPath('items.1.amount', 300);
 
@@ -85,7 +85,7 @@ class FrontDeskCompleteTest extends TestCase
         $billId = $this->book(['paid' => 200, 'payment_mode' => 'cash'])->json('bills.0.id');
 
         $this->putJson("/api/bills/{$billId}", ['discount' => 50])->assertStatus(422)->assertJsonValidationErrors('discount');
-        $this->putJson("/api/bills/{$billId}", ['discount' => 50, 'refund_excess' => true, 'refund_mode' => 'cash'])
+        $this->putJson("/api/bills/{$billId}", ['discount' => 50, 'refund_excess' => true, 'refund_mode' => 'cash', 'discount_reason' => 'Staff family', 'discount_allowed_by' => 'Dr Rao'])
             ->assertOk()->assertJsonPath('total', 150)->assertJsonPath('paid', 150)->assertJsonPath('due', 0)->assertJsonCount(2, 'payments');
     }
 

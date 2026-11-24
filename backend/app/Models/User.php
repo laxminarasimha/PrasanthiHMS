@@ -14,7 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'branch_id', 'role', 'gender', 'phone', 'department', 'signature_text', 'is_active', 'pad_hidden_sections', 'hidden_tabs', 'appearance', 'pad_section_order', 'rx_settings', 'permissions', 'signature_path', 'seal_path', 'availability'])]
+#[Fillable(['name', 'email', 'password', 'branch_id', 'role', 'gender', 'phone', 'department', 'signature_text', 'is_active', 'pad_hidden_sections', 'hidden_tabs', 'appearance', 'pad_section_order', 'rx_settings', 'permissions', 'signature_path', 'seal_path', 'availability', 'slot_minutes'])]
 #[Hidden(['password', 'remember_token', 'signature_path', 'seal_path', 'permissions'])]
 class User extends Authenticatable
 {
@@ -38,6 +38,7 @@ class User extends Authenticatable
             'rx_settings' => 'array',
             'permissions' => 'array',
             'availability' => 'array',
+            'slot_minutes' => 'integer',
         ];
     }
 

@@ -103,7 +103,7 @@ class DayCloseTest extends TestCase
 
         // Nothing that carries money can be added to or changed in the closed day.
         $this->postJson("/api/bills/{$made['bill']}/payments", ['type' => 'payment', 'amount' => 50, 'mode' => 'cash'])->assertStatus(423);
-        $this->putJson("/api/bills/{$made['labBill']}", ['discount' => 300])->assertStatus(423);
+        $this->putJson("/api/bills/{$made['labBill']}", ['discount' => 300, 'discount_reason' => 'Staff family', 'discount_allowed_by' => 'Dr Rao'])->assertStatus(423);
         $this->postJson('/api/lab/orders', ['patient_id' => $made['patient']->id, 'test_ids' => [LabTest::first()->id]])->assertStatus(423);
         $this->assertEquals(150, Bill::find($made['bill'])->paid);
         $this->assertEquals(300, Bill::find($made['labBill'])->total);
@@ -140,7 +140,7 @@ class DayCloseTest extends TestCase
         $this->getJson("/api/day-close?day={$yesterday}")->assertOk()->assertJsonPath('closed.counted_cash', 150);
 
         // Yesterday's bill cannot be made worth something else...
-        $this->putJson("/api/bills/{$made['labBill']}", ['discount' => 100])->assertStatus(423);
+        $this->putJson("/api/bills/{$made['labBill']}", ['discount' => 100, 'discount_reason' => 'Staff family', 'discount_allowed_by' => 'Dr Rao'])->assertStatus(423);
         // ...but the money owed on it can be collected today, and counts as today's cash.
         $this->postJson("/api/bills/{$made['labBill']}/payments", ['type' => 'payment', 'amount' => 300, 'mode' => 'cash'])->assertCreated();
         $this->getJson('/api/day-close')->assertJsonPath('expected_cash', 300);
@@ -185,10 +185,10 @@ class DayCloseTest extends TestCase
         Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
         $made = $this->busyDay();
 
-        $this->putJson("/api/bills/{$made['labBill']}", ['discount' => 300])->assertOk();
+        $this->putJson("/api/bills/{$made['labBill']}", ['discount' => 300, 'discount_reason' => 'Staff family', 'discount_allowed_by' => 'Dr Rao'])->assertOk();
         // Pressing save again with the same figure changes nothing and logs nothing.
-        $this->putJson("/api/bills/{$made['labBill']}", ['discount' => 300])->assertOk();
-        $this->putJson("/api/bills/{$made['labBill']}", ['discount' => 300])->assertOk();
+        $this->putJson("/api/bills/{$made['labBill']}", ['discount' => 300, 'discount_reason' => 'Staff family', 'discount_allowed_by' => 'Dr Rao'])->assertOk();
+        $this->putJson("/api/bills/{$made['labBill']}", ['discount' => 300, 'discount_reason' => 'Staff family', 'discount_allowed_by' => 'Dr Rao'])->assertOk();
 
         $logs = AuditLog::where('subject_type', 'Bill')->where('subject_id', $made['labBill'])->whereIn('action', ['bill.discount', 'change'])->get();
         $this->assertCount(1, $logs);
