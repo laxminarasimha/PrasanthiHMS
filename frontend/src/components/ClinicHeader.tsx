@@ -41,10 +41,10 @@ type Props = {
   children?: ReactNode
   /**
    * Where the logo sits (on the left with the name and address beside it, or on top with everything centred) and how
-   * large the words and the logo are. Left out, the hospital's own choice under Setup is used, on every print.
+   * large the words and the logo are; or `image`, for the hospital's own letterhead picture in place of them. Left out, the hospital's own choice under Setup is used, on every print.
    * Setup passes them itself, to show a choice before it is saved.
    */
-  layout?: 'side' | 'centre'
+  layout?: 'side' | 'centre' | 'image'
   size?: 'small' | 'medium' | 'large'
   logoSize?: 'small' | 'medium' | 'large'
 }
@@ -58,8 +58,21 @@ export function ClinicHeader({ suffix, name, address, children, layout: layoutGi
   const logoSize = logoGiven ?? chosen.logoSize
   const phones = [clinic?.phone, clinic?.phone_alt].filter(Boolean).join(', ')
 
+  // The hospital's letterhead as a picture, when it has chosen that and uploaded one. A heading of its own
+  // (the lab's name and address) is still printed in words.
+  if (layout === 'image' && clinic?.letterhead_header && !name) {
+    return (
+      <header className="clinic-head letterhead-image">
+        <img className="letterhead-picture" src={clinic.letterhead_header} alt={clinic.name} />
+        {children}
+      </header>
+    )
+  }
+  // With no picture uploaded yet, the words are printed as they were before.
+  const words = layout === 'image' ? 'side' : layout
+
   return (
-    <header className={`clinic-head ${layout === 'side' ? 'side' : 'centred'} text-${size} logo-${logoSize}`}>
+    <header className={`clinic-head ${words === 'side' ? 'side' : 'centred'} text-${size} logo-${logoSize}`}>
       <div className="clinic-brand">
         {clinic?.logo && <img className="clinic-logo" src={clinic.logo} alt="" />}
         <div className="clinic-text">
@@ -77,8 +90,15 @@ export function ClinicHeader({ suffix, name, address, children, layout: layoutGi
   )
 }
 
-/** The line at the foot of printed documents, when the hospital has set one. */
-export function ClinicFooter() {
+/**
+ * The foot of printed documents: the hospital's letterhead picture for the foot when it prints its letterhead as
+ * pictures, otherwise its own line of words when it has set one. `plain` keeps to the words, for a narrow receipt.
+ */
+export function ClinicFooter({ plain = false }: { plain?: boolean }) {
   const clinic = useClinic()
+  const { heading } = useHeadingPrefs()
+  if (!plain && heading === 'image' && clinic?.letterhead_header && clinic.letterhead_footer) {
+    return <img className="letterhead-picture foot" src={clinic.letterhead_footer} alt="" />
+  }
   return clinic?.footer ? <p className="clinic-footer">{clinic.footer}</p> : null
 }

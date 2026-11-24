@@ -503,6 +503,8 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
             Route::put('/admin-lists/{kind}/{entry}', 'updateEntry');
             Route::post('/clinic/logo', 'saveLogo');
             Route::delete('/clinic/logo', 'destroyLogo');
+            Route::post('/clinic/letterhead', 'saveLetterhead');
+            Route::delete('/clinic/letterhead/{slot}', 'destroyLetterhead');
             Route::post('/referral-doctors', 'storeReferralDoctor');
             Route::put('/referral-doctors/{doctor}', 'updateReferralDoctor');
             Route::delete('/referral-doctors/{doctor}', 'destroyReferralDoctor');

@@ -1,9 +1,9 @@
 import { Fragment, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../api'
-import { PaperBar, PaperFooter, PaperHeader } from '../components/PrintPaper'
+import { HospitalGstin, PaperBar, PaperFooter, PaperHeader } from '../components/PrintPaper'
 import { longDate, modeLabel, rupees, stampTime } from '../format'
-import { useAutoPrint, usePrintPaper } from '../printPaper'
+import { paperClass, useAutoPrint, usePrintPaper } from '../printPaper'
 import type { BillKind } from '../types'
 
 type DayBill = {
@@ -32,7 +32,7 @@ const KIND: Record<BillKind, string> = { appointment: 'Consultation and services
 export function DayBillsPrint() {
   const { id, date } = useParams()
   const [day, setDay] = useState<Day | null>(null)
-  const paper = usePrintPaper()
+  const paper = usePrintPaper(['a4', 'a5', 'thermal'])
 
   useEffect(() => {
     api.get<Day>('/front-desk/day-bills', { params: { patient_id: id, date } }).then((res) => setDay(res.data))
@@ -51,7 +51,7 @@ export function DayBillsPrint() {
   const name = `${day.patient.title ? `${day.patient.title} ` : ''}${day.patient.name}`
 
   return (
-    <div className="receipt">
+    <div className={`receipt ${paperClass(paper)}`}>
       <PaperBar paper={paper} />
       <PaperHeader paper={paper}>
         <h2>Bills for the day</h2>
@@ -69,13 +69,14 @@ export function DayBillsPrint() {
           Date: <strong>{longDate(day.date)}</strong>
           <br />
           {bills.length} {bills.length === 1 ? 'bill' : 'bills'}: {bills.map((b) => b.bill_no).join(', ')}
+          <HospitalGstin paper={paper} />
         </div>
       </div>
 
       <table>
         <thead>
           <tr>
-            <th>Service</th>
+            <th className="col-name">Service</th>
             <th className="num">Qty</th>
             <th className="num">Price</th>
             <th className="num">Amount</th>
@@ -85,7 +86,7 @@ export function DayBillsPrint() {
           {bills.map((b) => (
             <Fragment key={b.id}>
               <tr className="bill-group">
-                <td colSpan={4}>
+                <td colSpan={4} className="col-name">
                   <strong>{KIND[b.kind]}</strong> · {b.bill_no}
                   {b.order_no ? ` · ${b.order_no}` : ''} · {stampTime(b.created_at)}
                   {b.doctor ? ` · ${b.doctor}` : ''}
@@ -93,7 +94,7 @@ export function DayBillsPrint() {
               </tr>
               {b.items.map((item) => (
                 <tr key={item.id}>
-                  <td>{item.description}</td>
+                  <td className="col-name">{item.description}</td>
                   <td className="num">{item.quantity}</td>
                   <td className="num">{rupees(item.unit_price)}</td>
                   <td className="num">{rupees(item.amount)}</td>

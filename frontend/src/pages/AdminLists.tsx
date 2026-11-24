@@ -14,7 +14,7 @@ export const LISTS: Record<'department' | 'vendor' | 'payer', { title: string; a
   vendor: {
     title: 'Vendors',
     add: 'Add vendor',
-    hint: 'Suppliers and service providers other than medicine stockists, kept here for reference.',
+    hint: 'Suppliers and service providers other than medicine stockists. Their names are offered under "Paid to" when an expense is written.',
     fields: [{ key: 'phone', label: 'Phone' }, { key: 'gstin', label: 'GSTIN' }, { key: 'supplies', label: 'What they supply' }, { key: 'address', label: 'Address' }],
   },
   payer: {

@@ -37,7 +37,7 @@ class BillController extends Controller
             Bill::query()
                 ->when($term === '', fn ($q) => $q->whereBetween('created_at', [$from, $to]))
                 ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('bill_no', 'like', "{$term}%")
-                    ->orWhereHas('patient', fn ($p) => $p->where('name', 'like', "%{$term}%")->orWhere('mobile', 'like', "{$term}%")->orWhere('uhid', 'like', "{$term}%"))))
+                    ->orWhereHas('patient', fn ($p) => $p->where('name', 'like', "%{$term}%")->orWhere('mobile', 'like', "{$term}%")->orWhere(fn ($id) => Patient::idStarts($id, $term)))))
                 ->when($filters['kind'] ?? null, fn ($q, $kind) => $q->where('kind', $kind))
                 ->when($request->boolean('due'), fn ($q) => $q->whereColumn('paid', '<', 'total'))
                 ->with(['patient:id,uhid,title,name,mobile', 'appointment:id,doctor_id', 'appointment.doctor:id,name', 'labOrder:id,bill_id,order_no'])

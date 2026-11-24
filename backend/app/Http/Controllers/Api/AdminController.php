@@ -21,7 +21,10 @@ use Illuminate\Validation\ValidationException;
 /** Hospital-wide setup: the clinic's own details for prints, outside doctors, and merging duplicate patients. */
 class AdminController extends Controller
 {
-    public const CLINIC_DEFAULTS = ['name' => '', 'tagline' => '', 'address' => '', 'phone' => '', 'phone_alt' => '', 'email' => '', 'footer' => ''];
+    public const CLINIC_DEFAULTS = ['name' => '', 'tagline' => '', 'address' => '', 'phone' => '', 'phone_alt' => '', 'email' => '', 'footer' => '', 'gstin' => ''];
+
+    /** The hospital's own letterhead as pictures: one for the top of a printed page, one for the foot. */
+    private const LETTERHEAD = ['header', 'footer'];
 
     /** Every patient-linked table, with the word used for its rows in the merge record. */
     private const PATIENT_TABLES = [
@@ -60,6 +63,7 @@ class AdminController extends Controller
 
     public function saveClinic(Request $request): JsonResponse
     {
+        $request->merge(['gstin' => strtoupper(preg_replace('/\s+/', '', (string) $request->input('gstin'))) ?: null]);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'tagline' => ['nullable', 'string', 'max:255'],
@@ -68,7 +72,9 @@ class AdminController extends Controller
             'phone_alt' => ['nullable', 'string', 'max:30'],
             'email' => ['nullable', 'email', 'max:255'],
             'footer' => ['nullable', 'string', 'max:500'],
-        ]);
+            // The hospital's GST number, printed on bills. Fifteen characters in the form the GST department gives it.
+            'gstin' => ['nullable', 'string', 'regex:/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/'],
+        ], ['gstin.regex' => 'A GSTIN has 15 characters, like 37ABCDE1234F1Z5. Check it against the GST certificate.']);
         // Keep what this form does not send, such as where the logo is stored.
         Setting::updateOrCreate(['key' => 'clinic'], ['value' => array_merge(Setting::group('clinic', self::CLINIC_DEFAULTS), $data)]);
 
@@ -93,6 +99,36 @@ class AdminController extends Controller
         return response()->json($this->clinicDetails($request));
     }
 
+    /** Stores a picture of the hospital's letterhead: the band across the top of a page, or the one across the foot. */
+    public function saveLetterhead(Request $request): JsonResponse
+    {
+        $data = $request->validate(
+            ['slot' => ['required', Rule::in(self::LETTERHEAD)], 'file' => ['required', 'file', 'max:600', 'mimes:png,jpg,jpeg']],
+            ['file.max' => 'The picture must be 600 KB or smaller.', 'file.mimes' => 'Use a PNG or JPG picture.'],
+        );
+        $this->replaceLetterhead($data['slot'], $request->file('file')->store('clinic', 'local'));
+
+        return response()->json($this->clinicDetails($request));
+    }
+
+    public function destroyLetterhead(Request $request, string $slot): JsonResponse
+    {
+        abort_unless(in_array($slot, self::LETTERHEAD, true), 404);
+        $this->replaceLetterhead($slot, null);
+
+        return response()->json($this->clinicDetails($request));
+    }
+
+    private function replaceLetterhead(string $slot, ?string $path): void
+    {
+        $settings = Setting::group('clinic', self::CLINIC_DEFAULTS);
+        if (! empty($settings["letterhead_{$slot}_path"])) {
+            Storage::disk('local')->delete($settings["letterhead_{$slot}_path"]);
+        }
+        $settings["letterhead_{$slot}_path"] = $path;
+        Setting::updateOrCreate(['key' => 'clinic'], ['value' => $settings]);
+    }
+
     private function replaceLogo(?string $path): void
     {
         $settings = Setting::group('clinic', self::CLINIC_DEFAULTS);
@@ -112,17 +148,21 @@ class AdminController extends Controller
     private function clinicDetails(Request $request): array
     {
         $settings = Setting::group('clinic', self::CLINIC_DEFAULTS);
-        $path = $settings['logo_path'] ?? null;
+        $picture = fn (?string $path) => $path && Storage::disk('local')->exists($path)
+            ? 'data:'.Storage::disk('local')->mimeType($path).';base64,'.base64_encode(Storage::disk('local')->get($path))
+            : null;
+        $pictures = ['logo' => $picture($settings['logo_path'] ?? null)];
         unset($settings['logo_path']);
+        foreach (self::LETTERHEAD as $slot) {
+            $pictures["letterhead_{$slot}"] = $picture($settings["letterhead_{$slot}_path"] ?? null);
+            unset($settings["letterhead_{$slot}_path"]);
+        }
         $branch = $request->user()->branch;
 
         return array_merge($settings, [
             'name' => $settings['name'] ?: ($branch?->name ?? config('app.name')),
             'address' => $settings['address'] ?: ($branch?->city ?? ''),
-            'logo' => $path && Storage::disk('local')->exists($path)
-                ? 'data:'.Storage::disk('local')->mimeType($path).';base64,'.base64_encode(Storage::disk('local')->get($path))
-                : null,
-        ]);
+        ], $pictures);
     }
 
     // ---- Billing preferences ----
@@ -137,6 +177,12 @@ class AdminController extends Controller
         'bill_heading' => 'side', 'bill_heading_size' => 'small', 'bill_logo_size' => 'medium',
         // On the printed IPD bill, list each medicine under the pharmacy bill it came on.
         'ipd_print_medicines' => true,
+        // The paper receipts and small bills are printed on: A4, A5, or an 80 mm thermal roll. A counter can choose another.
+        'bill_paper_size' => 'a4',
+        // The hospital's GSTIN (from Clinic details) under the bill number of every bill and receipt.
+        'print_gstin' => true,
+        // Letters put before the patient ID of each new patient, e.g. PH2026110042. Empty for none.
+        'patient_prefix' => '',
     ];
 
     public function billingPreferences(): JsonResponse
@@ -153,14 +199,24 @@ class AdminController extends Controller
             'print_on_letterhead' => ['sometimes', 'boolean'],
             'letterhead_top_mm' => ['sometimes', 'integer', 'between:0,150'],
             'letterhead_bottom_mm' => ['sometimes', 'integer', 'between:0,100'],
-            'bill_heading' => ['sometimes', Rule::in(['side', 'centre'])],
+            // image: the hospital's own letterhead pictures (uploaded under Clinic details) instead of the logo and words.
+            'bill_heading' => ['sometimes', Rule::in(['side', 'centre', 'image'])],
+            'bill_paper_size' => ['sometimes', Rule::in(['a4', 'a5', 'thermal'])],
+            'print_gstin' => ['sometimes', 'boolean'],
+            'patient_prefix' => ['sometimes', 'nullable', 'string', 'regex:/^[A-Za-z][A-Za-z0-9\/-]{0,5}$/'],
             'bill_heading_size' => ['sometimes', Rule::in(['small', 'medium', 'large'])],
             'bill_logo_size' => ['sometimes', Rule::in(['small', 'medium', 'large'])],
             'ipd_print_medicines' => ['sometimes', 'boolean'],
             // Put before the running number of each new IPD case, e.g. IP00012.
             'ipd_prefix' => ['sometimes', 'string', 'regex:/^[A-Za-z0-9\/-]{1,8}$/'],
             'ipd_bill_prefix' => ['sometimes', 'string', 'regex:/^[A-Za-z0-9\/-]{1,8}$/'],
-        ], ['ipd_prefix.regex' => 'Use up to 8 letters, numbers, dashes or slashes.', 'ipd_bill_prefix.regex' => 'Use up to 8 letters, numbers, dashes or slashes.']);
+        ], [
+            'ipd_prefix.regex' => 'Use up to 8 letters, numbers, dashes or slashes.', 'ipd_bill_prefix.regex' => 'Use up to 8 letters, numbers, dashes or slashes.',
+            'patient_prefix.regex' => 'Start with a letter and use up to 6 letters, numbers, dashes or slashes.',
+        ]);
+        if (array_key_exists('patient_prefix', $data)) {
+            $data['patient_prefix'] = strtoupper((string) $data['patient_prefix']);
+        }
         Setting::updateOrCreate(['key' => 'billing'], ['value' => array_merge(Setting::group('billing', self::BILLING_DEFAULTS), $data)]);
 
         return response()->json(Setting::group('billing', self::BILLING_DEFAULTS));

@@ -19,6 +19,7 @@ use App\Models\LabOrderItem;
 use App\Models\Payment;
 use App\Models\PharmacySale;
 use App\Models\Setting;
+use App\Models\Patient;
 use App\Support\BedCharges;
 use App\Support\PharmacyOnIpd;
 use Illuminate\Http\JsonResponse;
@@ -184,7 +185,7 @@ class IpdController extends Controller
                 ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('ipd_no', 'like', "{$term}%")
                     ->orWhereHas('patient', fn ($p) => $p->where('name', 'like', "%{$term}%")
                         ->orWhere('mobile', 'like', "{$term}%")
-                        ->orWhere('uhid', 'like', "{$term}%"))))
+                        ->orWhere(fn ($id) => Patient::idStarts($id, $term)))))
                 ->with(self::LIST_WITH)
                 // Patients still in a bed first; those who have left below them. Newest first within each.
                 ->orderByRaw("CASE WHEN status = 'admitted' THEN 0 ELSE 1 END")

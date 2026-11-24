@@ -10,6 +10,7 @@ use App\Models\PrescriptionTemplate;
 use App\Models\RememberedPhrase;
 use App\Models\RxGroup;
 use App\Models\User;
+use App\Models\Patient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -62,7 +63,7 @@ class DoctorLibraryController extends Controller
             Consultation::whereBetween('completed_at', [$from, $to])
                 ->when($user->role === Role::Doctor, fn ($q) => $q->where('doctor_id', $user->id))
                 ->when($term !== '', fn ($q) => $q->whereHas('patient', fn ($p) => $p->where('name', 'like', "%{$term}%")
-                    ->orWhere('mobile', 'like', "{$term}%")->orWhere('uhid', 'like', "{$term}%")))
+                    ->orWhere('mobile', 'like', "{$term}%")->orWhere(fn ($id) => Patient::idStarts($id, $term))))
                 ->with(['patient:id,uhid,title,name,gender,date_of_birth,mobile', 'doctor:id,name'])
                 ->latest('completed_at')->limit(500)
                 ->get(['id', 'appointment_id', 'patient_id', 'doctor_id', 'diagnosis', 'follow_up_on', 'completed_at'])

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../../api'
-import { PaperBar, PaperFooter, PaperHeader } from '../../components/PrintPaper'
-import { useAutoPrint, usePrintPaper } from '../../printPaper'
+import { HospitalGstin, PaperBar, PaperFooter, PaperHeader } from '../../components/PrintPaper'
+import { paperClass, useAutoPrint, usePrintPaper } from '../../printPaper'
 import { fullName, modeLabel, rupees } from '../../format'
 import type { Admission } from '../../types'
 
@@ -12,7 +12,7 @@ const TITLE = { advance: 'Advance receipt', payment: 'Payment receipt', refund: 
 export function IpdReceiptPrint() {
   const { id, paymentId } = useParams()
   const [a, setA] = useState<Admission | null>(null)
-  const paper = usePrintPaper()
+  const paper = usePrintPaper(['a4', 'a5', 'thermal'])
 
   useEffect(() => {
     api.get<Admission>(`/ipd/admissions/${id}`).then((res) => setA(res.data))
@@ -24,7 +24,7 @@ export function IpdReceiptPrint() {
   if (!payment) return <p className="loading">This payment is no longer on the case.</p>
 
   return (
-    <div className="receipt prescription">
+    <div className={`receipt prescription ${paperClass(paper)}`}>
       <PaperBar paper={paper} />
       <PaperHeader paper={paper}>
         <h2>{TITLE[payment.type]}</h2>
@@ -45,6 +45,7 @@ export function IpdReceiptPrint() {
           <br />
           {/* Stored in world time, so it is turned into the hospital's own time here. */}
           Date: {new Date(payment.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+          <HospitalGstin paper={paper} />
         </div>
       </div>
 
