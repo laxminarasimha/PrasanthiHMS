@@ -13,6 +13,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Models\Patient;
 use App\Support\DiscountWhy;
+use App\Support\DoctorFee;
 use App\Support\DoctorHours;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -197,6 +198,7 @@ class AppointmentController extends Controller
 
         $billing = array_intersect_key($data, array_flip(['skip_billing', 'unit_price', 'quantity', 'discount', 'paid', 'payment_mode', 'discount_reason', 'discount_allowed_by']));
         $data = array_diff_key($data, $billing + ['outside_hours' => 1]);
+        DoctorFee::fits($data['service_id'] ?? null, (int) $data['doctor_id']);
         $this->guardSlot((int) $data['doctor_id'], Carbon::parse($data['scheduled_at']), null, ($data['status'] ?? 'booked') === 'booked' && ! $request->boolean('outside_hours'));
 
         $appointment = DB::transaction(function () use ($data, $billing, $request) {
@@ -260,6 +262,16 @@ class AppointmentController extends Controller
         $moved = $doctorId !== (int) $appointment->doctor_id || ! $at->equalTo(Carbon::parse($appointment->getRawOriginal('scheduled_at')));
         if ($moved && ($data['status'] ?? $appointment->status) !== 'cancelled') {
             $this->guardSlot($doctorId, $at, $appointment->id, ($data['status'] ?? $appointment->status) === 'booked' && ! $anyway);
+        }
+
+        // A doctor's own fee is not carried to another doctor. Looked at only when the doctor or the service changes.
+        // A bill already made for the visit is left as it is.
+        $serviceId = array_key_exists('service_id', $data) ? $data['service_id'] : $appointment->service_id;
+        if ((int) $serviceId !== (int) $appointment->service_id) {
+            DoctorFee::fits($serviceId ? (int) $serviceId : null, $doctorId);
+        } elseif ($doctorId !== (int) $appointment->doctor_id && $serviceId && Service::whereKey($serviceId)->whereNotNull('doctor_id')->where('doctor_id', '!=', $doctorId)->exists()) {
+            // Moved to another doctor with nothing said about the service: the visit takes the new doctor's own.
+            $data['service_id'] = DoctorFee::of($doctorId)?->id;
         }
 
         // Record when the patient first reached the hospital, for wait-time reporting later.

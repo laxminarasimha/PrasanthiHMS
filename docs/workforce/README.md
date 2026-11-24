@@ -239,3 +239,14 @@ Added 25 November 2026. The owner added his consultants under Staff and they did
 - **Off the list:** untick it (a doctor who does not sign in), or mark the person as left. The record is never removed; old appointments, admissions and fees still name them.
 - **The patient phone app:** `users.book_online`. A doctor made from the staff list starts hidden from patients' own booking until "Patients can book them from the phone app" is ticked. Doctors who already had logins keep being offered.
 - **Finding the ones left out:** the staff check lists "Consultants not on the doctors' list" with one button for all of them.
+
+## Each doctor's own OPD consultation fee
+
+Added 25 November 2026. The owner: each doctor's consultation has its own price (one ₹600, another ₹500), and choosing the doctor should set it on the bill.
+
+- **One price list, not two.** A doctor's fee is a service that belongs to the doctor (`services.doctor_id`), marked as their usual consultation (`services.is_doctor_fee`). Bills, reports and the rule about who may change a price work as for any other service. `App\Support\DoctorFee` is the one place that reads and sets it.
+- **Where it is typed:** Staff → the person → Login and access → Doctor settings → "OPD consultation fee", and the same box beside "A doctor who sees patients" on the staff record. It can also be made by hand under Setup → Services, with the tick "This doctor's usual OPD consultation". Setting or changing it needs the permission to set prices.
+- **At the desk:** choosing the doctor in a new appointment puts their consultation and its price on the bill (`usualService()` in `frontend/src/doctorFee.ts`). The desk can still pick another service. The Service box offers the doctor's own services first, then those open to every doctor, and never another doctor's.
+- **With no mark,** the first of a doctor's own appointment services is taken, so services already tied to a doctor work without any change.
+- **Kept apart on the server:** one doctor's own service is refused for another doctor's visit. A visit moved to another doctor takes that doctor's own service; a bill already made is left as it is.
+- **Emptying the box** switches the doctor's service off (old bills still name it); a new amount opens the same one again.
