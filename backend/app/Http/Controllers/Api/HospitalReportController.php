@@ -68,10 +68,10 @@ class HospitalReportController extends Controller
     public function show(Request $request, string $type): JsonResponse
     {
         abort_unless($request->user()->allows('canViewReports'), 403, 'You are not allowed to view reports.');
-        // What a doctor is paid is for the admin alone, like the percentages it is worked out from.
-        $reports = $request->user()->role === Role::Admin ? self::REPORTS : array_diff_key(self::REPORTS, array_flip(self::ADMIN_ONLY));
+        // What a doctor is paid is for those who look after consultants' fees (the admin, unless given to another), like the percentages it is worked out from.
+        $reports = $request->user()->allows('canPayConsultants') ? self::REPORTS : array_diff_key(self::REPORTS, array_flip(self::ADMIN_ONLY));
         abort_unless(isset(self::REPORTS[$type]), 404, 'There is no such report.');
-        abort_unless(isset($reports[$type]), 403, 'Only an admin can open this report.');
+        abort_unless(isset($reports[$type]), 403, 'This report is for those who look after consultants’ fees.');
 
         $range = $request->validate(['from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from']]);
         $from = Carbon::parse($range['from'] ?? today())->startOfDay();

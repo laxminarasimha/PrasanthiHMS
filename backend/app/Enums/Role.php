@@ -159,6 +159,12 @@ enum Role: string
         return in_array($this, [self::Admin, self::Doctor], true);
     }
 
+    /** Roles allowed to see what consultants earn, set their share and fees, and record what is paid to them. */
+    public function canPayConsultants(): bool
+    {
+        return $this === self::Admin;
+    }
+
     /** Roles allowed to download lists and reports as a file. Everyone who could before; not a manager unless given it, and never an own-record login. */
     public function canExportData(): bool
     {

@@ -217,6 +217,7 @@ class AuthController extends Controller
             'can_audit_pharmacy' => $user->allows('canAuditPharmacy'),
             'can_change_price' => $user->allows('canChangePrice'),
             'can_record_expenses' => $user->allows('canRecordExpenses'),
+            'can_pay_consultants' => $user->allows('canPayConsultants'),
             // Something an admin should act on about the backups, shown at the top of every screen until it is done.
             'backup_alert' => $user->role === Role::Admin ? DatabaseBackup::alert() : null,
             'pad_hidden_sections' => $user->pad_hidden_sections ?? [],

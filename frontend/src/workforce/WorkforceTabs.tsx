@@ -11,6 +11,8 @@ const PAGES: [string, string, string, string][] = [
   ['Pay', 'wf:salary:view', '/workforce/pay', 'Salaries'],
   ['Pay', 'wf:payroll:view', '/workforce/payroll', 'Payroll'],
   ['Pay', 'wf:advances:view', '/workforce/advances', 'Advances'],
+  // Doctors and consultants are not in the payroll: what they earn and are paid is kept here.
+  ['Pay', 'canPayConsultants', '/workforce/consultants', 'Consultants'],
   ['Setup', 'wf:settings:admin', '/workforce/setup', 'Setup'],
   ['My record', 'wf:self:view', '/workforce/me', 'My record'],
 ]

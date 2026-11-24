@@ -154,7 +154,7 @@ export function LoginAccess({ person, loginId, onChanged }: { person?: Employee;
   return (
     <>
       {failed && <div className="form-error">{failed}</div>}
-      <LoginForm key={`${login.id}-${login.role}-${login.is_active}`} login={login} person={person} catalogue={catalogue} isAdmin={isAdmin} isSelf={login.id === user?.id} mine={user?.abilities ?? {}} onNewPin={() => void newPin()} onSaved={(saved, message) => {
+      <LoginForm key={`${login.id}-${login.role}-${login.is_active}`} login={login} person={person} catalogue={catalogue} isAdmin={isAdmin} seesPay={Boolean(user?.can_pay_consultants)} isSelf={login.id === user?.id} mine={user?.abilities ?? {}} onNewPin={() => void newPin()} onSaved={(saved, message) => {
         setLogin(saved)
         onChanged(message)
       }} />
@@ -222,7 +222,7 @@ function GiveLogin({ person, catalogue, manages, onGiven }: { person: Employee; 
 }
 
 /** A login that exists: how it is opened, the role, what the person may do, and a doctor's own settings. */
-function LoginForm({ login, person, catalogue, isAdmin, isSelf, mine, onNewPin, onSaved }: { login: Login; person?: Employee; catalogue: Catalogue; isAdmin: boolean; isSelf: boolean; mine: Record<string, boolean>; onNewPin: () => void; onSaved: (saved: Login, message: string) => void }) {
+function LoginForm({ login, person, catalogue, isAdmin, seesPay, isSelf, mine, onNewPin, onSaved }: { login: Login; person?: Employee; catalogue: Catalogue; isAdmin: boolean; /** May see and set a doctor's share: those who look after consultants' fees. */ seesPay: boolean; isSelf: boolean; mine: Record<string, boolean>; onNewPin: () => void; onSaved: (saved: Login, message: string) => void }) {
   const { roles, abilities } = catalogue
   const [part, setPart] = useState<Part>('sign-in')
   const [form, setForm] = useState({ name: login.name, phone: login.phone ?? '', gender: login.gender ?? '', email: login.email ?? '', password: '', role: login.role, signature_text: login.signature_text ?? '', is_active: login.is_active })
@@ -280,7 +280,7 @@ function LoginForm({ login, person, catalogue, isAdmin, isSelf, mine, onNewPin, 
       reason: changing ? reason.trim() : undefined,
       availability: form.role === 'doctor' ? Object.fromEntries(DAYS.map(([day]) => [day, hours[day].filter((r) => r.from && r.to)])) : null,
       slot_minutes: form.role === 'doctor' && slot ? Number(slot) : null,
-      ...(isAdmin ? Object.fromEntries(SHARES.map(([key]) => [`share_${key}`, form.role === 'doctor' && shares[key] !== '' ? Number(shares[key]) : null])) : {}),
+      ...(seesPay ? Object.fromEntries(SHARES.map(([key]) => [`share_${key}`, form.role === 'doctor' && shares[key] !== '' ? Number(shares[key]) : null])) : {}),
     }
     try {
       const res = await api.put<Login>(`/staff/${login.id}`, body)
@@ -492,11 +492,11 @@ function LoginForm({ login, person, catalogue, isAdmin, isSelf, mine, onNewPin, 
           </div>
           {availabilityError && <p className="form-error">Each session needs a start time and a later end time.</p>}
 
-          {isAdmin && (
+          {seesPay && (
             <>
               <h3>Doctor's share of collections</h3>
               <p className="muted small">
-                Optional. The percentage of the money collected from this doctor's own patients that is the doctor's, for each counter. The report "Doctor: share of collections" works it out for any dates; paying it is entered under Expenses. Only admins see these figures.
+                Optional. The percentage of the money collected from this doctor's own patients that is the doctor's, for each counter. The report "Doctor: share of collections" works it out for any dates; paying it is entered under Expenses. Only those who look after consultants' fees see these figures. What it comes to each month, and what was paid, is under Workforce → Pay → Consultants.
               </p>
               <div className="doctor-shares">
                 {SHARES.map(([key, label]) => (

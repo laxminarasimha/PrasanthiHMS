@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\BackupController;
 use App\Http\Controllers\Api\BillController;
 use App\Http\Controllers\Api\CaseHistoryController;
 use App\Http\Controllers\Api\ChargeController;
+use App\Http\Controllers\Api\ConsultantController;
 use App\Http\Controllers\Api\ConsultationController;
 use App\Http\Controllers\Api\DayCloseController;
 use App\Http\Controllers\Api\DoctorLibraryController;
@@ -539,6 +540,22 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
     });
     Route::get('/reports/find-patients', [HospitalReportController::class, 'findPatients']);
     Route::get('/reports/list/{type}', [HospitalReportController::class, 'show']);
+
+    // Consultants: their visits to other doctors' inpatients, what they are owed, and what was paid to them.
+    Route::controller(ConsultantController::class)->group(function () {
+        Route::middleware('ability:canWorkIpd')->group(function () {
+            Route::get('/ipd/admissions/{admission}/consultant-visits', 'visits');
+            Route::post('/ipd/admissions/{admission}/consultant-visits', 'addVisit');
+            Route::post('/consultant-visits/{visit}/cancel', 'cancelVisit');
+        });
+        Route::middleware('ability:canPayConsultants')->prefix('consultants')->group(function () {
+            Route::get('/', 'month');
+            Route::put('/rates', 'saveRates');
+            Route::get('/{doctor}', 'statement')->whereNumber('doctor');
+            Route::post('/{doctor}/payments', 'pay')->whereNumber('doctor');
+            Route::post('/payments/{payment}/cancel', 'cancelPayment')->whereNumber('payment');
+        });
+    });
 
     Route::middleware(EnsureCanManageStaff::class)->group(function () {
         Route::get('/staff', [StaffController::class, 'index']);

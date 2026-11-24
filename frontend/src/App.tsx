@@ -108,6 +108,8 @@ const MyRecord = page(() => import('./workforce/MyRecord'), 'MyRecord')
 const WorkforceSalaries = page(() => import('./workforce/Salaries'), 'WorkforceSalaries')
 const WorkforcePayroll = page(() => import('./workforce/Payroll'), 'WorkforcePayroll')
 const WorkforceAdvances = page(() => import('./workforce/Advances'), 'WorkforceAdvances')
+const Consultants = page(() => import('./workforce/Consultants'), 'Consultants')
+const ConsultantPrint = page(() => import('./workforce/ConsultantPrint'), 'ConsultantPrint')
 const PayslipPrint = page(() => import('./workforce/PayslipPrint'), 'PayslipPrint')
 const MyPayslipPrint = page(() => import('./workforce/PayslipPrint'), 'MyPayslipPrint')
 const Services = page(() => import('./pages/Services'), 'Services')
@@ -175,6 +177,7 @@ export default function App() {
           <Route path="/documents/:id/print" element={<PrintOnly><DocumentPrint /></PrintOnly>} />
           <Route path="/workforce/payslips/:id/print" element={<PrintOnly><PayslipPrint /></PrintOnly>} />
           <Route path="/workforce/me/payslips/:id/print" element={<PrintOnly><MyPayslipPrint /></PrintOnly>} />
+          <Route path="/workforce/consultants/:id/print" element={<PrintOnly><ConsultantPrint /></PrintOnly>} />
           <Route path="/ipd/:id/print" element={<PrintOnly><IpdPrint /></PrintOnly>} />
           <Route path="/ipd/:id/bills/:billId/print" element={<PrintOnly><IpdPrint /></PrintOnly>} />
           <Route path="/ipd/:id/receipt/:paymentId" element={<PrintOnly><IpdReceiptPrint /></PrintOnly>} />
@@ -238,6 +241,7 @@ export default function App() {
             <Route path="/workforce/pay" element={<OnlyWf permission="wf:salary:view"><WorkforceSalaries /></OnlyWf>} />
             <Route path="/workforce/payroll" element={<OnlyWf permission="wf:payroll:view"><WorkforcePayroll /></OnlyWf>} />
             <Route path="/workforce/advances" element={<OnlyWf permission="wf:advances:view"><WorkforceAdvances /></OnlyWf>} />
+            <Route path="/workforce/consultants" element={<Only when="can_pay_consultants"><Consultants /></Only>} />
             <Route path="/workforce/setup" element={<OnlyWf permission="wf:settings:admin"><WorkforceSetup /></OnlyWf>} />
             <Route path="/workforce/me" element={<OnlyWf permission="wf:self:view"><MyRecord /></OnlyWf>} />
           </Route>

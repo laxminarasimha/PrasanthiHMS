@@ -12,6 +12,7 @@ import { ADMISSION_STATUS, PAYMENT_MODES, clock, longDate, modeLabel, nowLocal, 
 import type { Admission, Bed, IpdBillTemplate, IpdService, OutstandingBill } from '../../types'
 import { FormsPanel } from '../../components/FormsPanel'
 import { AttachmentsPanel } from '../../components/FrontDeskPanels'
+import { IpdConsultants } from './IpdConsultants'
 import { IpdInvestigations } from './IpdInvestigations'
 import { IpdNotes } from './IpdNotes'
 import { IpdSummary } from './IpdSummary'
@@ -61,7 +62,7 @@ export function IpdCase() {
   const [discount, setDiscount] = useState('')
   const [closing, setClosing] = useState({ status: 'discharged', discharged_at: nowLocal() })
   const { user } = useAuth()
-  const [tab, setTab] = useState<'bill' | 'notes' | 'charts' | 'summary' | 'results' | 'files' | 'forms'>('bill')
+  const [tab, setTab] = useState<'bill' | 'notes' | 'charts' | 'consultants' | 'summary' | 'results' | 'files' | 'forms'>('bill')
   const [templates, setTemplates] = useState<IpdBillTemplate[]>([])
   const [bedId, setBedId] = useState('')
   const [outstanding, setOutstanding] = useState<OutstandingBill[]>([])
@@ -225,6 +226,9 @@ export function IpdCase() {
               Charts
             </button>
           )}
+          <button className={tab === 'consultants' ? 'active' : ''} onClick={() => canLeave() && setTab('consultants')} title="The consultants who came to see this patient">
+            Consultants
+          </button>
           <button className={tab === 'summary' ? 'active' : ''} onClick={() => canLeave() && setTab('summary')}>
             Discharge summary
           </button>
@@ -240,6 +244,7 @@ export function IpdCase() {
         </div>
 
         {tab === 'charts' && <IpdCharts admissionId={admission.id} userId={user?.id} canChart={Boolean(user?.can_consult)} canOrder={Boolean(user?.can_approve_ipd)} />}
+        {tab === 'consultants' && <IpdConsultants admissionId={admission.id} canEdit={canEdit} minDate={admission.admitted_at.slice(0, 10)} maxDate={admission.discharged_at?.slice(0, 10)} />}
         {tab === 'results' && <IpdInvestigations admissionId={admission.id} />}
         {tab === 'forms' && <FormsPanel url={`/ipd/admissions/${admission.id}/forms`} use="ipd" canEdit={canEdit} />}
         {tab === 'files' && <AttachmentsPanel patient={{ id: admission.patient.id, name: admission.patient.name, uhid: admission.patient.uhid }} />}
