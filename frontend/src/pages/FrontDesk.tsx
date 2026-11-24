@@ -1,8 +1,8 @@
+import { FrontDeskTabs } from '../components/FrontDeskTabs'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLoadOnChange } from '../loading'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api'
-import { useAuth } from '../auth'
 import { AppointmentForm } from '../components/AppointmentForm'
 import { BillPanel } from '../components/BillPanel'
 import { ChargePanel } from '../components/ChargePanel'
@@ -41,7 +41,6 @@ function BillChip({ label, total, due, movedToIpd, onOpen }: { label?: string; t
 }
 
 export function FrontDesk() {
-  const { user } = useAuth()
   const [date, setDate] = useState(today())
   const [status, setStatus] = useState<AppointmentStatus | ''>('')
   const [department, setDepartment] = useState<Department>('all')
@@ -190,6 +189,8 @@ export function FrontDesk() {
   }
 
   return (
+    <>
+    <FrontDeskTabs />
     <div className="split">
       <section className="card">
         <div className="toolbar">
@@ -231,22 +232,6 @@ export function FrontDesk() {
           <Link className="btn ghost small-btn" to="/queue" target="_blank">
             Patient queue
           </Link>
-          <Link className="btn ghost small-btn" to="/front-desk/bills">
-            All bills
-          </Link>
-          <Link className="btn ghost small-btn" to="/front-desk/calendar">
-            Calendar
-          </Link>
-          {user?.can_record_expenses && (
-            <Link className="btn ghost small-btn" to="/expenses">
-              Expenses
-            </Link>
-          )}
-          {user?.can_file_past_records && (
-            <Link className="btn ghost small-btn" to="/past-records">
-              Old papers
-            </Link>
-          )}
         </div>
 
         <div className="desk-filters">
@@ -594,5 +579,6 @@ export function FrontDesk() {
       )}
       {panel?.kind === 'summary' && <SummaryPanel date={date} onClose={() => setPanel(null)} />}
     </div>
+    </>
   )
 }

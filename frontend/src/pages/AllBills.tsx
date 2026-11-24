@@ -1,8 +1,9 @@
+import { FrontDeskTabs } from '../components/FrontDeskTabs'
 import { MoneyByMode } from '../components/MoneyByMode'
 import { useCallback, useEffect, useState } from 'react'
 import { useLoadOnChange } from '../loading'
 import { useRangeInAddress } from '../rangeInAddress'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import { BillPanel } from '../components/BillPanel'
 import { DateRange } from '../components/DateRange'
@@ -60,12 +61,11 @@ export function AllBills() {
   const sum = (key: 'total' | 'paid' | 'due') => Math.round((bills ?? []).reduce((total, b) => total + b[key], 0) * 100) / 100
 
   return (
+    <>
+    <FrontDeskTabs />
     <div className="split">
       <section className="card">
         <div className="toolbar">
-          <Link className="btn ghost" to="/front-desk">
-            ← Day list
-          </Link>
           <h1>All bills</h1>
           {!searching && <DateRange from={from} to={to} onChange={setRange} />}
           <input className="search" type="search" placeholder="Find by bill no., patient name, mobile or ID (all dates)" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -158,5 +158,6 @@ export function AllBills() {
 
       {open && <BillPanel key={open} billId={open} services={services} onClose={() => setOpen(null)} onChange={load} />}
     </div>
+    </>
   )
 }

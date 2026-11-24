@@ -164,8 +164,8 @@ export function PharmacyManager() {
               <ul className="todo">
                 {data.actions.map((a, i) => (
                   <li key={i} className={a.tone}>
-                    {a.key === 'stock' ? (
-                      <Link to="/pharmacy/opening-stock">
+                    {a.key === 'stock' || a.key === 'audit' ? (
+                      <Link to={a.key === 'audit' ? '/pharmacy/audit' : '/pharmacy/opening-stock'}>
                         <strong>{a.count}</strong> {a.text}
                       </Link>
                     ) : (

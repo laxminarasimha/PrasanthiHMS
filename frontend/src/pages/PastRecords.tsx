@@ -1,3 +1,4 @@
+import { FrontDeskTabs } from '../components/FrontDeskTabs'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api'
@@ -26,6 +27,8 @@ export function PastRecords() {
   }, [status])
 
   return (
+    <>
+    <FrontDeskTabs />
     <div className="stack">
       <section className="card">
         <div className="toolbar">
@@ -105,5 +108,6 @@ export function PastRecords() {
         {!data && <p className="loading">Loading…</p>}
       </section>
     </div>
+    </>
   )
 }

@@ -125,7 +125,7 @@ export function PharmacyBoard({ user, refreshKey }: { user: StaffUser; refreshKe
               )}
               {audit.adrift.length > 0 && (
                 <Text style={[text.body, { color: colors.danger }]}>
-                  {audit.adrift.length} {audit.adrift.length === 1 ? 'batch does' : 'batches do'} not add up with the stock record. Look at Pharmacy → Stock audit.
+                  {audit.adrift.length} {audit.adrift.length === 1 ? 'batch does' : 'batches do'} not add up with the stock record. Look at Pharmacy → Manager → Stock audit.
                 </Text>
               )}
             </Card>

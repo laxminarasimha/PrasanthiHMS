@@ -1,3 +1,4 @@
+import { FrontDeskTabs } from '../components/FrontDeskTabs'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../api'
@@ -157,6 +158,8 @@ export function Expenses() {
   )
 
   return (
+    <>
+    <FrontDeskTabs />
     <div className="split">
       <section className="card">
         <div className="toolbar">
@@ -432,6 +435,7 @@ export function Expenses() {
         </Popup>
       )}
     </div>
+    </>
   )
 }
 

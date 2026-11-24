@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Medicine;
 use App\Models\PurchaseOrder;
+use App\Models\StockCount;
 use App\Models\Stockist;
 use App\Support\PharmacyDesk;
 use Illuminate\Http\JsonResponse;
@@ -41,6 +42,8 @@ class PharmacyManagerController extends Controller
         $late = $unmatched['orders']->where('status', 'open')->count();
         $drafts = $unmatched['orders']->where('status', 'draft')->count();
         $never = PharmacyDesk::neverStocked();
+        // Shelf counts handed in by the staff: nothing changes in stock until someone checks and approves them.
+        $counts = StockCount::where('status', 'submitted')->count();
 
         $actions = collect([
             $line('order', 'danger', $out, $say($out, 'medicine is', 'medicines are').' out of stock or will run out before a delivery can arrive. Order today.'),
@@ -50,6 +53,7 @@ class PharmacyManagerController extends Controller
             $line('pay', 'warn', $dueSoon->count(), $say($dueSoon->count(), 'supplier invoice falls', 'supplier invoices fall').' due within a week, '.$rupees((float) $dueSoon->sum('owed')).' in all.'),
             $line('expiry', 'warn', $month->count(), $say($month->count(), 'batch expires', 'batches expire').' within 30 days, worth '.$rupees((float) $month->sum('value')).' at cost. Sell first, or return.'),
             $line('match', 'warn', $late, $say($late, 'order has', 'orders have').' not arrived by the day expected. Call the supplier.'),
+            $line('audit', 'warn', $counts, $say($counts, 'stock count is', 'stock counts are').' waiting to be checked and approved. Open Stock audit.'),
             $line('match', 'note', $drafts, $say($drafts, 'suggested order is', 'suggested orders are').' waiting to be approved and sent.'),
             $line('stock', 'note', $never, $say($never, 'medicine in the list has', 'medicines in the list have').' never had stock entered. Until opening stock is in, nothing here is suggested for them.'),
         ])->where('count', '>', 0)->values();

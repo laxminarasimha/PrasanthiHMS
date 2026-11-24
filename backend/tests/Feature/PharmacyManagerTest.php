@@ -52,6 +52,24 @@ class PharmacyManagerTest extends TestCase
         $this->getJson('/api/pharmacy/manager')->assertOk()->assertJsonPath('places', ['in_stock' => 2, 'placed' => 1]);
     }
 
+    public function test_a_stock_count_waiting_for_approval_is_on_the_to_do_list(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $batch = $this->batch($this->medicine('Counted Tablets'), 30);
+        $this->assertNull(collect($this->getJson('/api/pharmacy/manager')->json('actions'))->firstWhere('key', 'audit'));
+
+        $count = $this->postJson('/api/pharmacy/audit/counts', ['scope' => 'all'])->assertCreated()->json();
+        $line = collect($count['rows'])->firstWhere('stock_batch_id', $batch->id)['id'];
+        $this->putJson("/api/pharmacy/audit/counts/{$count['id']}/lines/{$line}", ['counted_units' => 28])->assertOk();
+        // Still being counted: nothing to approve yet.
+        $this->assertNull(collect($this->getJson('/api/pharmacy/manager')->json('actions'))->firstWhere('key', 'audit'));
+
+        $this->postJson("/api/pharmacy/audit/counts/{$count['id']}/submit")->assertOk();
+        $waiting = collect($this->getJson('/api/pharmacy/manager')->json('actions'))->firstWhere('key', 'audit');
+        $this->assertSame(1, $waiting['count']);
+        $this->assertStringContainsString('stock count is waiting', $waiting['text']);
+    }
+
     public function test_the_reorder_list_says_what_to_order_and_how_much(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
