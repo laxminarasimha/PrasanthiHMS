@@ -500,12 +500,13 @@ td.wrap { white-space: normal; max-width: 320px; }
 .checklist input { width: auto; }
 .checklist li.muted { padding: 10px; }
 .lab-test { border-top: 1px solid var(--border); padding: 14px 0; }
-.lab-test header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.lab-test header { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-bottom: 8px; }
+.lab-test .panel-foot.row { flex-wrap: wrap; justify-content: flex-end; }
 .lab-test header .pill { margin-left: auto; }
 input.result { width: 110px; }
 input.result.high { border-color: var(--danger); color: var(--danger); font-weight: 700; }
 input.result.low { border-color: var(--info); color: var(--info); font-weight: 700; }
-.lab-param { display: grid; grid-template-columns: 1.6fr 0.7fr 1.1fr 1fr auto; gap: 6px; align-items: center; min-width: 520px; }
+.lab-param { display: grid; grid-template-columns: 1.6fr 0.7fr 1.1fr 0.8fr 166px; gap: 6px; align-items: center; min-width: 520px; }
 @media (max-width: 1000px) { .panel.wide { width: 100%; } }
 
 /* Pharmacy */
@@ -752,7 +753,9 @@ input.auto { width: auto; }
 .lab-trail { margin: 0 0 8px; }
 .lab-line { display: block; margin: 2px 0; }
 tr.lab-heading td { font-weight: 700; background: var(--bg); text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.04em; }
-.lab-param.heading { grid-template-columns: 1fr auto; }
+.lab-param.heading { grid-template-columns: 1fr 166px; }
+.lab-param.rx-head > span:first-child { text-align: left; }
+.param-move .link { white-space: nowrap; }
 .lab-param.heading input { font-weight: 700; }
 .lab-report .lab-dates { display: flex; gap: 18px; flex-wrap: wrap; margin: 2px 0 8px; font-size: 0.82rem; color: var(--muted); }
 .lab-report .report-text { white-space: pre-wrap; line-height: 1.55; }
@@ -765,7 +768,9 @@ tr.lab-heading td { font-weight: 700; background: var(--bg); text-transform: upp
 .pad-order li { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 4px; background: var(--surface); }
 .pad-order li.off { opacity: 0.6; }
 .pad-order.wide { max-width: 640px; }
-.param-move { gap: 8px; flex-wrap: nowrap; }
+.param-move { gap: 8px; flex-wrap: nowrap; justify-content: flex-end; }
+/* The template editor has more across each row than other side panels, so it is given more room where there is some. */
+@media (min-width: 1300px) { .panel.wide.template-editor { width: 690px; } }
 .param-move .link:disabled { opacity: 0.3; cursor: default; }
 @media (max-width: 700px) { .inv-row { grid-template-columns: 1fr 1fr; } }
 .note { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
@@ -1635,6 +1640,37 @@ ol.rx-list li::marker { font-weight: 700; color: var(--brand-dark); }
 .stage-dot.status-ongoing { background: var(--info); }
 .stage-dot.ok { background: var(--ok); }
 .lab-bulk { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 2px; }
+
+/* Lab template: extra normal ranges of a parameter, by age and sex, on lines under its row. */
+.lab-param-block { display: flex; flex-direction: column; gap: 4px; min-width: 520px; }
+.lab-range { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 4px 8px 4px 18px; border-left: 3px solid var(--brand-line); background: var(--bg); border-radius: 0 6px 6px 0; }
+/* On a narrow screen the parameter rows scroll sideways; the range lines stay in view and wrap instead. */
+@media (max-width: 1000px) { .lab-range { position: sticky; left: 0; max-width: calc(100vw - 76px); } }
+.lab-range select { width: auto; padding-top: 5px; padding-bottom: 5px; }
+.lab-range input { padding-top: 5px; padding-bottom: 5px; }
+.lab-range input[type='number'] { width: 62px; }
+.lab-range input.grow { flex: 1 1 150px; min-width: 120px; }
+
+/* A test done at an outside lab: the lab's name beside the test, and the small form that names it. */
+.outside-lab { color: var(--info); font-weight: 600; }
+.outside-edit { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+.outside-edit label { display: flex; flex-direction: column; gap: 4px; flex: 1 1 160px; }
+.outside-edit label:nth-of-type(2) { flex: 0 1 130px; }
+
+/* Sample labels: one sticker to a page, at the size of the lab's label roll. */
+.label-sheet { min-height: 100vh; padding: 20px; background: var(--bg); color: #000; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.label-bar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; width: 100%; max-width: 640px; padding: 12px 14px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px; }
+.label-bar > div { flex: 1 1 260px; }
+.sample-label { display: flex; flex-direction: column; gap: 0.3mm; padding: 1mm 2mm; overflow: hidden; background: #fff; color: #000; border: 1px dashed var(--border); font-family: Arial, Helvetica, sans-serif; font-size: 7.5pt; line-height: 1.2; }
+.sample-label .label-name { font-size: 9pt; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sample-label .label-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sample-label .label-tests { flex: 1 1 0; min-height: 0; overflow: hidden; font-size: 7pt; }
+.sample-label .label-barcode { flex: 0 0 auto; display: block; width: 100%; height: var(--bar, 5.5mm); }
+@media print {
+  .label-sheet { display: block; min-height: 0; padding: 0; background: #fff; }
+  .sample-label { border: 0; break-after: page; break-inside: avoid; }
+  .sample-label:last-child { break-after: auto; }
+}
 table.compact td.lab-last { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .lab-last .high { color: var(--danger); font-weight: 700; }
 .lab-last .low { color: var(--info); font-weight: 700; }

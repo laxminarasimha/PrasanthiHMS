@@ -3,23 +3,14 @@ import { api, fieldErrors } from '../api'
 import { useUnsaved } from '../unsaved'
 import { useAuth } from '../auth'
 import { clock, longDate, STAGE_CLASS, STAGE_LABEL } from '../format'
-import type { LabOrder, LabOrderFile, LabOrderItem, LabResult, LabSettings } from '../types'
+import type { LabOrder, LabOrderFile, LabOrderItem, LabSettings } from '../types'
+import { flagFor } from './labFlag'
 import { PatientLink } from './PatientLink'
 
 type Props = {
   orderId: number
   onClose: () => void
   onChange: () => void
-}
-
-/** Works out high/low when the reference range is two plain numbers, e.g. "70 - 140". */
-export function flagFor(value: string, range: string | null): LabResult['flag'] {
-  const match = range?.match(/^\s*(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*$/)
-  const number = Number(value)
-  if (!match || value.trim() === '' || Number.isNaN(number)) return null
-  if (number < Number(match[1])) return 'low'
-  if (number > Number(match[2])) return 'high'
-  return null
 }
 
 type Draft = { values: Record<number, string>; remarks: string; text: string }
@@ -64,6 +55,9 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
   const [fileFor, setFileFor] = useState('')
   const [fileTitle, setFileTitle] = useState('')
   const [fileError, setFileError] = useState('')
+  // The test whose outside lab is being named or changed, with what is typed so far.
+  const [outside, setOutside] = useState<{ itemId: number; lab: string; cost: string } | null>(null)
+  const [outsideLabs, setOutsideLabs] = useState<string[]>([])
 
   /** Shows the saved order. Only the test that was just saved has its typed values replaced, so work on the others is kept. */
   const apply = (next: LabOrder, reset: number | 'all' | null) => {
@@ -131,6 +125,16 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
     }
   }
 
+  const editOutside = (item: LabOrderItem) => {
+    setOutside({ itemId: item.id, lab: item.outside_lab ?? '', cost: item.outside_cost == null ? '' : String(item.outside_cost) })
+    if (outsideLabs.length === 0) api.get<string[]>('/lab/outside-labs').then((res) => setOutsideLabs(res.data)).catch(() => undefined)
+  }
+  const saveOutside = async () => {
+    if (!outside) return
+    await send(`${outside.itemId}/outside`, { outside_lab: outside.lab.trim() || null, outside_cost: outside.lab.trim() && outside.cost !== '' ? outside.cost : null })
+    setOutside(null)
+  }
+
   const save = (item: LabOrderItem, complete?: boolean) => {
     const draft = drafts[item.id]
     return send(String(item.id), {
@@ -139,7 +143,7 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
       ...(complete === undefined ? {} : { complete }),
       results: (item.results ?? [])
         .filter((r) => !r.is_heading)
-        .map((r) => ({ id: r.id, value: draft.values[r.id] || null, flag: flagFor(draft.values[r.id] ?? '', r.reference_range) })),
+        .map((r) => ({ id: r.id, value: draft.values[r.id] || null, flag: flagFor(draft.values[r.id] ?? '', r.reference_range, order.patient.gender) })),
     }, item.id)
   }
 
@@ -189,9 +193,14 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
             <PatientLink id={order.patient.id}>{order.patient.name}</PatientLink> · {order.patient.uhid} · {order.patient.age_label} / {order.patient.gender.charAt(0).toUpperCase()}
           </span>
         </div>
-        <button type="button" className="btn ghost" onClick={onClose}>
-          Close
-        </button>
+        <span className="row">
+          <a className="btn ghost" href={`/lab/orders/${order.id}/labels`} target="_blank" rel="noreferrer" title="A sticker for each sample tube: the patient, the order number and the tests">
+            Sample labels
+          </a>
+          <button type="button" className="btn ghost" onClick={onClose}>
+            Close
+          </button>
+        </span>
       </div>
 
       <div className="print-bar">
@@ -264,6 +273,12 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
               <strong>{item.test_name}</strong>
               {item.sample_type && <small className="muted"> · {item.sample_type}</small>}
               {item.package_name && <small className="muted"> · {item.package_name}</small>}
+              {item.outside_lab && <small className="outside-lab"> · Done at {item.outside_lab}</small>}
+              {canEdit && !reported && outside?.itemId !== item.id && (
+                <button type="button" className="link small" disabled={saving} onClick={() => editOutside(item)} title="Name the outside lab this test is done at, or say it is done here">
+                  {item.outside_lab ? 'Change' : 'Send to an outside lab'}
+                </button>
+              )}
               {item.template_version && (
                 <small className="muted" title="The version of this test's template these fields come from. A report keeps the version it was made with, even when the template is changed later.">
                   {' '}
@@ -282,6 +297,7 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
             {(item.collected_at || item.reported_at) && (
               <p className="muted small lab-trail">
                 {item.collected_at && <>Sample collected {stamp(item.collected_at)}</>}
+                {item.sent_at && <> · Sent to {item.outside_lab} {stamp(item.sent_at)}</>}
                 {item.reported_at && <> · Reported {stamp(item.reported_at)}{item.reporter ? ` by ${item.reporter.name}` : ''}</>}
                 {item.approved_at && <> · Approved {stamp(item.approved_at)}{item.approver ? ` by ${item.approver.name}` : ''}</>}
               </p>
@@ -316,7 +332,7 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
                         </tr>
                       )
                     }
-                    const flag = flagFor(draft.values[r.id] ?? '', r.reference_range)
+                    const flag = flagFor(draft.values[r.id] ?? '', r.reference_range, order.patient.gender)
                     return (
                       <tr key={r.id} className="static">
                         <td>{r.parameter}</td>
@@ -363,6 +379,29 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
               onChange={(e) => setDraft(item.id, { remarks: e.target.value })}
               aria-label={`Comment for ${item.test_name}`}
             />
+            {canEdit && outside?.itemId === item.id && (
+              <div className="outside-edit">
+                <label>
+                  <span className="field-label">Outside lab</span>
+                  <input autoFocus list="outside-lab-names" placeholder="Name, or empty if done here" value={outside.lab} onChange={(e) => setOutside({ ...outside, lab: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">What it charges (₹)</span>
+                  <input type="number" min={0} step="0.01" value={outside.cost} disabled={outside.lab.trim() === ''} onChange={(e) => setOutside({ ...outside, cost: e.target.value })} />
+                </label>
+                <button className="btn primary" disabled={saving} onClick={saveOutside}>
+                  Save
+                </button>
+                <button className="btn ghost" onClick={() => setOutside(null)}>
+                  Cancel
+                </button>
+                <datalist id="outside-lab-names">
+                  {outsideLabs.map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
+              </div>
+            )}
             {canEdit && (
               <div className="panel-foot row">
                 {item.stage === 'booked' && (
@@ -373,6 +412,16 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
                 {item.stage === 'collected' && (
                   <button className="link" disabled={saving} onClick={() => send(`${item.id}/collect`, { collected: false })}>
                     Undo collection
+                  </button>
+                )}
+                {!reported && item.outside_lab && !item.sent_at && (
+                  <button className="btn ghost" disabled={saving} onClick={() => send(`${item.id}/outside`, { sent: true })}>
+                    Sample sent to {item.outside_lab}
+                  </button>
+                )}
+                {!reported && item.sent_at && (
+                  <button className="link" disabled={saving} onClick={() => send(`${item.id}/outside`, { sent: false })}>
+                    Undo sent
                   </button>
                 )}
                 {!reported && (

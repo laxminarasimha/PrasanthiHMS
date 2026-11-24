@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'lab_test_id', 'template_version', 'test_name', 'kind', 'package_name', 'department', 'sample_type', 'price', 'remarks', 'report_text',
     'collected_at', 'collected_by', 'reported_at', 'reported_by', 'approved_at', 'approved_by',
+    'outside_lab', 'outside_cost', 'sent_at', 'sent_by',
 ])]
 class LabOrderItem extends Model
 {
@@ -18,7 +19,7 @@ class LabOrderItem extends Model
      */
     protected function casts(): array
     {
-        return ['price' => 'float', 'collected_at' => 'datetime:Y-m-d H:i', 'reported_at' => 'datetime:Y-m-d H:i', 'approved_at' => 'datetime:Y-m-d H:i'];
+        return ['price' => 'float', 'outside_cost' => 'float', 'sent_at' => 'datetime:Y-m-d H:i', 'collected_at' => 'datetime:Y-m-d H:i', 'reported_at' => 'datetime:Y-m-d H:i', 'approved_at' => 'datetime:Y-m-d H:i'];
     }
 
     public function results(): HasMany

@@ -19,7 +19,7 @@ class LabTemplate
     /**
      * The template as it stands, in the shape a version is kept in.
      *
-     * @return array{name: string, kind: string, default_comment: ?string, parameters: list<array{name: string, is_heading: bool, unit: ?string, reference_range: ?string, method: ?string}>}
+     * @return array{name: string, kind: string, default_comment: ?string, parameters: list<array<string, mixed>>}
      */
     public static function content(LabTest $test): array
     {
@@ -27,10 +27,7 @@ class LabTemplate
             'name' => trim((string) $test->name),
             'kind' => $test->kind ?: 'values',
             'default_comment' => self::text($test->default_comment),
-            'parameters' => $test->parameters->map(fn ($p) => [
-                'name' => trim((string) $p->name), 'is_heading' => (bool) $p->is_heading, 'unit' => self::text($p->unit),
-                'reference_range' => self::text($p->reference_range), 'method' => self::text($p->method),
-            ])->values()->all(),
+            'parameters' => $test->parameters->map(fn ($p) => self::field($p->name, $p->is_heading, $p->unit, $p->reference_range, $p->method, $p->ranges))->values()->all(),
         ];
     }
 
@@ -70,11 +67,25 @@ class LabTemplate
             'name' => trim((string) $version->name),
             'kind' => $version->kind ?: 'values',
             'default_comment' => self::text($version->default_comment),
-            'parameters' => array_map(fn (array $p) => [
-                'name' => trim((string) ($p['name'] ?? '')), 'is_heading' => (bool) ($p['is_heading'] ?? false), 'unit' => self::text($p['unit'] ?? null),
-                'reference_range' => self::text($p['reference_range'] ?? null), 'method' => self::text($p['method'] ?? null),
-            ], array_values($version->parameters ?? [])),
+            'parameters' => array_map(
+                fn (array $p) => self::field($p['name'] ?? '', $p['is_heading'] ?? false, $p['unit'] ?? null, $p['reference_range'] ?? null, $p['method'] ?? null, $p['ranges'] ?? null),
+                array_values($version->parameters ?? []),
+            ),
         ];
+    }
+
+    /**
+     * One field of a template, in the shape a version keeps it in. The ranges by age and sex are written down only
+     * when the field has some, so templates from before they existed read exactly as they did.
+     */
+    private static function field(mixed $name, mixed $heading, mixed $unit, mixed $range, mixed $method, mixed $ranges): array
+    {
+        $ranges = LabRanges::clean($ranges);
+
+        return [
+            'name' => trim((string) $name), 'is_heading' => (bool) $heading, 'unit' => self::text($unit),
+            'reference_range' => self::text($range), 'method' => self::text($method),
+        ] + ($ranges ? ['ranges' => $ranges] : []);
     }
 
     /** What differs between two versions, in words a person in the lab would use. */
@@ -98,8 +109,8 @@ class LabTemplate
             $said[] = 'Removed: '.$list($removed);
         }
         $changed = $after->keys()->intersect($before->keys())->map(function (string $name) use ($before, $after) {
-            $parts = collect(['unit' => 'unit', 'reference_range' => 'normal range', 'method' => 'method', 'is_heading' => 'heading'])
-                ->filter(fn ($label, $key) => $before[$name][$key] !== $after[$name][$key]);
+            $parts = collect(['unit' => 'unit', 'reference_range' => 'normal range', 'ranges' => 'ranges by age and sex', 'method' => 'method', 'is_heading' => 'heading'])
+                ->filter(fn ($label, $key) => ($before[$name][$key] ?? null) !== ($after[$name][$key] ?? null));
 
             return $parts->isEmpty() ? null : $name.' ('.$parts->implode(', ').')';
         })->filter();

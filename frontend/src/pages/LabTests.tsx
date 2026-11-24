@@ -5,10 +5,11 @@ import { TextField } from '../components/Field'
 import { LabTabs } from '../components/LabTabs'
 import { LabVersions } from '../components/LabVersions'
 import { rupees } from '../format'
-import type { LabCatalogueTest, LabParameter, LabSettings } from '../types'
+import type { LabCatalogueTest, LabParameter, LabRange, LabSettings } from '../types'
 
 const emptyParameter = (is_heading = false): LabParameter => ({ name: '', is_heading, unit: '', reference_range: '', method: '' })
-const blank = { code: '', name: '', kind: 'values' as 'values' | 'text', default_comment: '', department: '', sample_type: 'Blood', price: '', print_order: '', is_active: true }
+const emptyRange = (): LabRange => ({ sex: null, age_from: null, age_to: null, age_unit: 'years', range: '' })
+const blank = { code: '', name: '', kind: 'values' as 'values' | 'text', default_comment: '', department: '', sample_type: 'Blood', price: '', print_order: '', is_active: true, outside_lab: '', outside_cost: '' }
 type Form = typeof blank
 
 export function LabTests() {
@@ -48,14 +49,19 @@ export function LabTests() {
       setForm({
         code: target.code ?? '', name: target.name, kind: target.kind, default_comment: target.default_comment ?? '', department: target.department ?? '', sample_type: target.sample_type ?? '',
         price: String(target.price), print_order: String(target.print_order), is_active: target.is_active,
+        outside_lab: target.outside_lab ?? '', outside_cost: target.outside_cost == null ? '' : String(target.outside_cost),
       })
       setParameters(target.parameters.length ? target.parameters : [emptyParameter()])
     }
   }
 
-  const set = (key: 'name' | 'code' | 'department' | 'sample_type' | 'price' | 'print_order' | 'default_comment') => (value: string) => setForm((f) => ({ ...f, [key]: value }))
+  const set = (key: 'name' | 'code' | 'department' | 'sample_type' | 'price' | 'print_order' | 'default_comment' | 'outside_lab' | 'outside_cost') => (value: string) => setForm((f) => ({ ...f, [key]: value }))
   const setParameter = (index: number, key: 'name' | 'unit' | 'reference_range' | 'method', value: string) =>
     setParameters((rows) => rows.map((row, i) => (i === index ? { ...row, [key]: value } : row)))
+  /** The extra normal ranges of one parameter, each for an age band, a sex, or both. */
+  const setRanges = (index: number, change: (ranges: LabRange[]) => LabRange[]) =>
+    setParameters((rows) => rows.map((row, i) => (i === index ? { ...row, ranges: change(row.ranges ?? []) } : row)))
+  const setRange = (index: number, at: number, change: Partial<LabRange>) => setRanges(index, (ranges) => ranges.map((r, j) => (j === at ? { ...r, ...change } : r)))
 
   const save = async (e: FormEvent) => {
     e.preventDefault()
@@ -66,13 +72,21 @@ export function LabTests() {
       code: form.code || null,
       print_order: form.print_order || 0,
       default_comment: form.default_comment || null,
+      outside_lab: form.outside_lab.trim() || null,
+      outside_cost: form.outside_lab.trim() && form.outside_cost !== '' ? form.outside_cost : null,
       parameters:
         form.kind === 'text'
           ? []
           : parameters
               .filter((p) => p.name || p.unit || p.reference_range || p.method)
-              .map(({ name, is_heading, unit, reference_range, method }) =>
-                is_heading ? { name, is_heading: true } : { name, is_heading: false, unit: unit || null, reference_range: reference_range || null, method: method || null },
+              .map(({ name, is_heading, unit, reference_range, method, ranges }) =>
+                is_heading
+                  ? { name, is_heading: true }
+                  : {
+                      name, is_heading: false, unit: unit || null, reference_range: reference_range || null, method: method || null,
+                      // A line left completely empty is dropped; one half filled is sent, so the lab is told what is missing.
+                      ranges: (ranges ?? []).filter((r) => r.range.trim() || r.sex || r.age_from !== null || r.age_to !== null),
+                    },
               ),
     }
     try {
@@ -142,6 +156,7 @@ export function LabTests() {
       setErrors(fieldErrors(err))
     }
   }
+  const outsideLabs = [...new Set(tests.map((t) => t.outside_lab?.trim() ?? '').filter(Boolean))].sort()
   const errorList = Object.entries(errors).filter(([field]) => field.startsWith('parameters') || field === '_' || field === 'kind' || field === 'default_comment')
 
   return (
@@ -299,6 +314,7 @@ export function LabTests() {
                   <td className="fit-wrap">
                     <strong>{t.name}</strong>
                     {t.code && <small className="muted"> {t.code}</small>}
+                    {t.outside_lab && <small className="muted block">Done at {t.outside_lab}</small>}
                     {t.version > 1 && (
                       <small className="muted" title="The version of the report template in use now">
                         {' '}
@@ -327,7 +343,7 @@ export function LabTests() {
       </section>
 
       {editing && (
-        <form className="card panel wide" onSubmit={save} noValidate>
+        <form className="card panel wide template-editor" onSubmit={save} noValidate>
           <div className="panel-head">
             <h2>{editing === 'new' ? (form.kind === 'text' ? 'Add written report' : 'Add test') : editing.name}</h2>
             <button type="button" className="btn ghost" onClick={() => setEditing(null)}>
@@ -350,6 +366,17 @@ export function LabTests() {
               <TextField label="Sample type" placeholder="Blood" value={form.sample_type} onChange={set('sample_type')} error={errors.sample_type} />
               <TextField label="Price (₹)" required type="number" min={0} step="0.01" value={form.price} onChange={set('price')} error={errors.price} />
               <TextField label="Print order" type="number" min={0} value={form.print_order} onChange={set('print_order')} error={errors.print_order} />
+              <div>
+                <TextField label="Done at an outside lab" placeholder="Leave empty when it is done here" list="lab-outside-labs" value={form.outside_lab} onChange={set('outside_lab')} error={errors.outside_lab} />
+                <datalist id="lab-outside-labs">
+                  {outsideLabs.map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
+              </div>
+              {form.outside_lab.trim() !== '' && (
+                <TextField label="What that lab charges (₹)" type="number" min={0} step="0.01" value={form.outside_cost} onChange={set('outside_cost')} error={errors.outside_cost} />
+              )}
             </div>
 
             {form.kind === 'text' ? (
@@ -366,7 +393,8 @@ export function LabTests() {
                     <span />
                   </div>
                   {parameters.map((p, i) => (
-                    <div className={`lab-param ${p.is_heading ? 'heading' : ''}`} key={i}>
+                    <div className="lab-param-block" key={i}>
+                    <div className={`lab-param ${p.is_heading ? 'heading' : ''}`}>
                       <input placeholder={p.is_heading ? 'Sub heading, e.g. Differential count' : 'Haemoglobin'} value={p.name} onChange={(e) => setParameter(i, 'name', e.target.value)} aria-label={p.is_heading ? `Sub heading ${i + 1}` : `Parameter ${i + 1}`} />
                       {!p.is_heading && (
                         <>
@@ -382,10 +410,39 @@ export function LabTests() {
                         <button type="button" className="link" disabled={i === parameters.length - 1} onClick={() => moveParameter(i, i + 1)} aria-label={`Move row ${i + 1} down`} title="Move down">
                           ↓
                         </button>
+                        {!p.is_heading && (
+                          <button type="button" className="link" onClick={() => setRanges(i, (ranges) => [...ranges, emptyRange()])} title="A different normal range for an age or a sex" aria-label={`Add a range by age or sex to row ${i + 1}`}>
+                            + Range
+                          </button>
+                        )}
                         <button type="button" className="link danger" onClick={() => setParameters((rows) => (rows.length > 1 ? rows.filter((_, r) => r !== i) : [emptyParameter()]))}>
                           Remove
                         </button>
                       </span>
+                    </div>
+                    {!p.is_heading &&
+                      (p.ranges ?? []).map((r, j) => (
+                        <div className="lab-range" key={j}>
+                          <select value={r.sex ?? ''} onChange={(e) => setRange(i, j, { sex: (e.target.value || null) as LabRange['sex'] })} aria-label="Sex this range is for">
+                            <option value="">Any sex</option>
+                            <option value="male">Male</option>
+                            <option value="female">Female</option>
+                          </select>
+                          <span className="muted small">age</span>
+                          <input type="number" min={0} placeholder="from" value={r.age_from ?? ''} onChange={(e) => setRange(i, j, { age_from: e.target.value === '' ? null : Number(e.target.value) })} aria-label="Age from" />
+                          <span className="muted small">to</span>
+                          <input type="number" min={0} placeholder="to" value={r.age_to ?? ''} onChange={(e) => setRange(i, j, { age_to: e.target.value === '' ? null : Number(e.target.value) })} aria-label="Age to" />
+                          <select value={r.age_unit} onChange={(e) => setRange(i, j, { age_unit: e.target.value as LabRange['age_unit'] })} aria-label="Age counted in">
+                            <option value="years">years</option>
+                            <option value="months">months</option>
+                            <option value="days">days</option>
+                          </select>
+                          <input className="grow" placeholder="Normal range, e.g. 12 - 15" value={r.range} onChange={(e) => setRange(i, j, { range: e.target.value })} aria-label="Normal range for these patients" />
+                          <button type="button" className="link danger" onClick={() => setRanges(i, (ranges) => ranges.filter((_, k) => k !== j))} aria-label="Remove this range">
+                            Remove
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   ))}
                 </div>
@@ -397,7 +454,10 @@ export function LabTests() {
                     + Add sub heading
                   </button>
                 </div>
-                <p className="muted small">Write number ranges as "70 - 140" so high and low results are flagged automatically.</p>
+                <p className="muted small">
+                  Write ranges as "70 - 140", "&lt; 200" or "&gt; 40" so high and low results are flagged automatically. "+ Range" adds a different normal range for an age or a sex: the first line that fits the
+                  patient is printed on the report, and the range in the row itself for everyone else. Leave the ages empty for a range that depends only on sex.
+                </p>
               </>
             )}
 

@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
-#[Fillable(['name', 'is_heading', 'unit', 'reference_range', 'method', 'position'])]
+#[Fillable(['name', 'is_heading', 'unit', 'reference_range', 'ranges', 'method', 'position'])]
 class LabTestParameter extends Model
 {
     /**
@@ -13,6 +13,6 @@ class LabTestParameter extends Model
      */
     protected function casts(): array
     {
-        return ['is_heading' => 'boolean'];
+        return ['is_heading' => 'boolean', 'ranges' => 'array'];
     }
 }

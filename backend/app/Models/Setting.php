@@ -35,6 +35,11 @@ class Setting extends Model
         'print_method' => true, // the method under each parameter, where one is set
         'print_end_mark' => true, // "End of report" after the last result
         'print_template_version' => true, // which version of its template each test was reported on
+        'print_outside_lab' => true, // "Processed at …" under a test that was done at an outside lab
+        // The sticker put on a sample tube: its size, and whether the order number is also printed as a barcode.
+        'label_width_mm' => 50,
+        'label_height_mm' => 25,
+        'label_barcode' => true,
         'report_note' => '', // a line of the lab's own at the foot of every report
     ];
 

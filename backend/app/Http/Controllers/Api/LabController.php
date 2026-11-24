@@ -11,8 +11,10 @@ use App\Models\LabOrderItem;
 use App\Models\LabPackage;
 use App\Models\LabResult;
 use App\Models\LabTest;
+use App\Models\Patient;
 use App\Models\Setting;
 use App\Support\LabDepartments;
+use App\Support\LabRanges;
 use App\Support\LabTemplate;
 use App\Support\Referral;
 use Illuminate\Http\JsonResponse;
@@ -25,7 +27,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class LabController extends Controller
 {
-    private const ORDER_WITH = ['patient:id,uhid,title,name,gender,date_of_birth,mobile', 'items:id,lab_order_id,test_name,package_name,collected_at,reported_at,approved_at'];
+    private const ORDER_WITH = ['patient:id,uhid,title,name,gender,date_of_birth,mobile', 'items:id,lab_order_id,test_name,package_name,collected_at,reported_at,approved_at,outside_lab,sent_at'];
 
     // ---- Test catalogue ----
 
@@ -121,6 +123,9 @@ class LabController extends Controller
             'print_order' => ['nullable', 'integer', 'min:0', 'max:65000'],
             'default_comment' => ['nullable', 'string', 'max:5000'],
             'is_active' => ['sometimes', 'boolean'],
+            // A test sent to another lab: that lab's name, and what it charges the hospital.
+            'outside_lab' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'outside_cost' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:9999999'],
             // A written report (ECG, X-ray) has no parameters; a values report needs at least one.
             'parameters' => [$text ? 'nullable' : 'required', 'array', $text ? 'min:0' : 'min:1', 'max:120'],
             'parameters.*.name' => ['required', 'string', 'max:255'],
@@ -128,10 +133,33 @@ class LabController extends Controller
             'parameters.*.unit' => ['nullable', 'string', 'max:30'],
             'parameters.*.reference_range' => ['nullable', 'string', 'max:255'],
             'parameters.*.method' => ['nullable', 'string', 'max:255'],
+            // Extra normal ranges of a parameter, each for a sex, an age band, or both. See App\Support\LabRanges.
+            'parameters.*.ranges' => ['sometimes', 'nullable', 'array', 'max:12'],
+            'parameters.*.ranges.*.sex' => ['nullable', Rule::in(['male', 'female'])],
+            'parameters.*.ranges.*.age_from' => ['nullable', 'integer', 'min:0', 'max:999'],
+            'parameters.*.ranges.*.age_to' => ['nullable', 'integer', 'min:0', 'max:999'],
+            'parameters.*.ranges.*.age_unit' => ['nullable', Rule::in(LabRanges::UNITS)],
+            'parameters.*.ranges.*.range' => ['required', 'string', 'max:255'],
         ], [
             'parameters.required' => 'Add at least one parameter to report.',
             'parameters.*.name.required' => 'Name every parameter or remove the empty row.',
+            'parameters.*.ranges.*.range.required' => 'Type the normal range on every age or sex line, or remove the line.',
         ]);
+        foreach ($data['parameters'] ?? [] as $row) {
+            foreach ($row['ranges'] ?? [] as $extra) {
+                [$from, $to] = [$extra['age_from'] ?? null, $extra['age_to'] ?? null];
+                if (blank($extra['sex'] ?? null) && $from === null && $to === null) {
+                    throw ValidationException::withMessages(['parameters' => "{$row['name']}: say which sex or age each extra range is for, or remove the line."]);
+                }
+                if ($from !== null && $to !== null && (int) $to < (int) $from) {
+                    throw ValidationException::withMessages(['parameters' => "{$row['name']}: the upper age cannot be below the lower age."]);
+                }
+            }
+        }
+        if (array_key_exists('outside_lab', $data)) {
+            $data['outside_lab'] = filled($data['outside_lab']) ? trim($data['outside_lab']) : null;
+            $data['outside_cost'] = $data['outside_lab'] && filled($data['outside_cost'] ?? null) ? $data['outside_cost'] : null;
+        }
 
         return DB::transaction(function () use ($test, $data, $text, $request) {
             $parameters = $text ? [] : ($data['parameters'] ?? []);
@@ -141,7 +169,7 @@ class LabController extends Controller
             // These rows are the template as it stands now. What it was before is kept in its versions.
             $test->parameters()->delete();
             foreach (array_values($parameters) as $position => $row) {
-                $test->parameters()->create($row + ['position' => $position]);
+                $test->parameters()->create(['ranges' => LabRanges::clean($row['ranges'] ?? null) ?: null] + $row + ['position' => $position]);
             }
             $test->load('parameters');
 
@@ -296,6 +324,10 @@ class LabController extends Controller
             'print_method' => ['sometimes', 'boolean'],
             'print_end_mark' => ['sometimes', 'boolean'],
             'print_template_version' => ['sometimes', 'boolean'],
+            'print_outside_lab' => ['sometimes', 'boolean'],
+            'label_width_mm' => ['sometimes', 'integer', 'between:20,120'],
+            'label_height_mm' => ['sometimes', 'integer', 'between:10,100'],
+            'label_barcode' => ['sometimes', 'boolean'],
             'report_note' => ['sometimes', 'nullable', 'string', 'max:500'],
         ], ['departments.*.distinct' => 'The same department is in the list twice.']);
         if (array_key_exists('departments', $data)) {
@@ -366,6 +398,8 @@ class LabController extends Controller
 
         $order = DB::transaction(function () use ($data, $request) {
             $user = $request->user();
+            // Whose tests these are: a normal range can depend on the patient's age and sex.
+            $patient = Patient::find($data['patient_id']);
             $bill = Bill::create([
                 'branch_id' => $user->branch_id,
                 'patient_id' => $data['patient_id'],
@@ -385,7 +419,7 @@ class LabController extends Controller
             ]);
 
             $added = [];
-            $addTest = function (LabTest $test, ?string $package, float $price) use ($order, &$added) {
+            $addTest = function (LabTest $test, ?string $package, float $price) use ($order, $patient, &$added) {
                 if (isset($added[$test->id])) {
                     return; // already on this order, singly or through another package
                 }
@@ -402,13 +436,16 @@ class LabController extends Controller
                     'sample_type' => $test->sample_type,
                     'price' => $price,
                     'remarks' => $test->default_comment,
+                    'outside_lab' => $test->outside_lab,
+                    'outside_cost' => $test->outside_lab ? $test->outside_cost : null,
                 ]);
                 foreach ($test->parameters as $parameter) {
                     $item->results()->create([
                         'parameter' => $parameter->name,
                         'is_heading' => $parameter->is_heading,
                         'unit' => $parameter->unit,
-                        'reference_range' => $parameter->reference_range,
+                        // The range for this patient: one set for their age or sex if the template has it, otherwise the plain one.
+                        'reference_range' => LabRanges::pick($parameter->reference_range, $parameter->ranges, $patient),
                         'method' => $parameter->method,
                         'position' => $parameter->position,
                     ]);
@@ -454,9 +491,64 @@ class LabController extends Controller
             throw ValidationException::withMessages(['collected' => 'This test already has a result.']);
         }
 
-        $item->update(['collected_at' => $collected ? ($item->collected_at ?? now()) : null, 'collected_by' => $collected ? $request->user()->id : null]);
+        $item->update(['collected_at' => $collected ? ($item->collected_at ?? now()) : null, 'collected_by' => $collected ? $request->user()->id : null]
+            // A sample that was never taken cannot have been sent anywhere.
+            + ($collected ? [] : ['sent_at' => null, 'sent_by' => null]));
 
         return response()->json($this->present($order));
+    }
+
+    /**
+     * Where one test on an order is done: at an outside lab, or here after all; and whether its sample has been
+     * sent there. A test the hospital always sends out starts with its lab already named.
+     */
+    public function outside(Request $request, LabOrder $order, LabOrderItem $item): JsonResponse
+    {
+        $this->authorizeLab($request);
+        abort_unless($item->lab_order_id === $order->id, 404);
+
+        $data = $request->validate([
+            'outside_lab' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'outside_cost' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:9999999'],
+            'sent' => ['sometimes', 'boolean'],
+        ]);
+        if ($item->reported_at) {
+            throw ValidationException::withMessages(['outside_lab' => 'This test already has a result. Reopen it to change where it is done.']);
+        }
+
+        if (array_key_exists('outside_lab', $data)) {
+            $item->outside_lab = filled($data['outside_lab']) ? trim($data['outside_lab']) : null;
+            $item->outside_cost = $item->outside_lab && filled($data['outside_cost'] ?? null) ? $data['outside_cost'] : null;
+            if (! $item->outside_lab) {
+                $item->sent_at = null;
+                $item->sent_by = null;
+            }
+        }
+        if (array_key_exists('sent', $data)) {
+            if ($data['sent'] && ! $item->outside_lab) {
+                throw ValidationException::withMessages(['sent' => 'Name the outside lab first.']);
+            }
+            $item->sent_at = $data['sent'] ? ($item->sent_at ?? now()) : null;
+            $item->sent_by = $data['sent'] ? ($item->sent_by ?? $request->user()->id) : null;
+            if ($data['sent']) {
+                // A sample that has left the hospital has been collected.
+                $item->collected_at ??= now();
+                $item->collected_by ??= $request->user()->id;
+            }
+        }
+        $item->save();
+
+        return response()->json($this->present($order));
+    }
+
+    /** The outside labs the hospital has used, for choosing from instead of typing the name again. */
+    public function outsideLabs(): JsonResponse
+    {
+        return response()->json(
+            LabTest::whereNotNull('outside_lab')->distinct()->pluck('outside_lab')
+                ->merge(LabOrderItem::whereNotNull('outside_lab')->distinct()->pluck('outside_lab'))
+                ->map(fn ($name) => trim((string) $name))->filter()->unique(fn ($name) => mb_strtolower($name))->sort(SORT_NATURAL | SORT_FLAG_CASE)->values()
+        );
     }
 
     /**

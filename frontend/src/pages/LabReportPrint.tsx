@@ -132,13 +132,16 @@ export function LabReportPrint() {
   /** Which version of its template a test was reported on, when the lab prints that. */
   const version = (item: LabOrderItem) => (settings.print_template_version && item.template_version ? `Template v${item.template_version}` : '')
 
+  /** Where a test was done, when that was an outside lab and the lab prints it. */
+  const processedAt = (item: LabOrderItem) => (settings.print_outside_lab && item.outside_lab ? `Processed at ${item.outside_lab}` : '')
+
   /** One test: its name, then a line for each parameter, or its written report. */
   const testBody = (item: LabOrderItem) => (
     <tbody key={item.id} className="lab-test">
       <tr className="lab-test-name">
         <td colSpan={4}>
           {item.test_name}
-          {(item.sample_type || version(item)) && <small>{[item.sample_type ? `Sample: ${item.sample_type}` : '', version(item)].filter(Boolean).join(' · ')}</small>}
+          {(item.sample_type || version(item) || processedAt(item)) && <small>{[item.sample_type ? `Sample: ${item.sample_type}` : '', processedAt(item), version(item)].filter(Boolean).join(' · ')}</small>}
         </td>
       </tr>
       {perTestDates && (

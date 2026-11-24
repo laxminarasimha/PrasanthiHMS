@@ -51,6 +51,8 @@ class HospitalReportController extends Controller
         'tests-advised' => 'Doctor: tests distribution',
         'test-outcomes' => 'Doctor: tests outcome',
         'lab-tests' => 'Lab: tests done',
+        'lab-turnaround' => 'Lab: time taken for reports',
+        'lab-outside' => 'Lab: tests sent to outside labs',
         'lab-referrals' => 'Referrals: lab orders by referring doctor',
         'patient-referrals' => 'Referrals: new patients by referring doctor',
         'activity' => 'Activity log: who opened and changed records',
@@ -435,6 +437,69 @@ class HospitalReportController extends Controller
         return [[
             self::col('test', 'Test'), self::col('department', 'Department'), self::col('ordered', 'Ordered', 'number'),
             self::col('reported', 'Reported', 'number'), self::col('amount', 'Amount', 'money'),
+        ], $rows];
+    }
+
+    /**
+     * How long each test takes, over the reports of orders made in these dates: from the order to the sample,
+     * from the sample to the report, and the whole wait. The slowest test comes first.
+     */
+    private function labTurnaround(Carbon $from, Carbon $to): array
+    {
+        $span = function (float $minutes): string {
+            $m = (int) round($minutes);
+
+            return match (true) {
+                $m < 60 => "{$m} min",
+                $m < 1440 => intdiv($m, 60).' h '.($m % 60).' min',
+                default => intdiv($m, 1440).' d '.intdiv($m % 1440, 60).' h',
+            };
+        };
+        $between = fn (?string $a, ?string $b) => $a && $b ? max(0, Carbon::parse($a)->diffInMinutes(Carbon::parse($b))) : null;
+
+        $rows = LabOrderItem::join('lab_orders as o', 'o.id', '=', 'lab_order_items.lab_order_id')
+            ->whereBetween('o.ordered_at', [$from, $to])->whereNotNull('lab_order_items.reported_at')->toBase()
+            ->get(['lab_order_items.test_name', 'lab_order_items.department', 'lab_order_items.outside_lab', 'lab_order_items.collected_at', 'lab_order_items.reported_at', 'o.ordered_at'])
+            ->groupBy('test_name')
+            ->map(function (Collection $group, $name) use ($span, $between) {
+                $whole = $group->map(fn ($i) => $between($i->ordered_at, $i->reported_at));
+                $toSample = $group->map(fn ($i) => $between($i->ordered_at, $i->collected_at))->filter(fn ($m) => $m !== null);
+                $toReport = $group->map(fn ($i) => $between($i->collected_at, $i->reported_at))->filter(fn ($m) => $m !== null);
+
+                return [
+                    'test' => $name, 'department' => $group->first()->department,
+                    'outside_lab' => $group->pluck('outside_lab')->filter()->unique()->implode(', '),
+                    'reports' => $group->count(),
+                    'to_sample' => $toSample->isEmpty() ? '' : $span($toSample->avg()), 'to_report' => $toReport->isEmpty() ? '' : $span($toReport->avg()),
+                    'whole' => $span($whole->avg()), 'longest' => $span($whole->max()), 'minutes' => (int) round($whole->avg()),
+                ];
+            })->sortByDesc('minutes');
+
+        return [[
+            self::col('test', 'Test'), self::col('department', 'Department'), self::col('outside_lab', 'Outside lab'), self::col('reports', 'Reports', 'number'),
+            self::col('to_sample', 'Order to sample'), self::col('to_report', 'Sample to report'), self::col('whole', 'Order to report'),
+            self::col('longest', 'Longest wait'), self::col('minutes', 'Order to report, minutes', 'number', false),
+        ], $rows];
+    }
+
+    /** Tests done at outside labs, for orders made in these dates: what is still out, and what each lab charges. */
+    private function labOutside(Carbon $from, Carbon $to): array
+    {
+        $rows = LabOrder::whereBetween('ordered_at', [$from, $to])->whereHas('items', fn ($q) => $q->whereNotNull('outside_lab'))
+            ->with(['patient:id,uhid,name', 'items' => fn ($q) => $q->whereNotNull('outside_lab')])->orderBy('ordered_at')->get()
+            ->flatMap(fn (LabOrder $order) => $order->items->map(fn (LabOrderItem $item) => [
+                'outside_lab' => $item->outside_lab, 'date' => $order->ordered_at->format('Y-m-d'), 'order_no' => $order->order_no,
+                'patient' => $order->patient?->name, 'uhid' => $order->patient?->uhid, 'test' => $item->test_name,
+                'sent' => $item->sent_at?->format('Y-m-d H:i') ?? 'Not sent yet',
+                'reported' => $item->reported_at?->format('Y-m-d H:i') ?? 'Waiting for the result',
+                'price' => round((float) $item->price, 2), 'outside_cost' => round((float) $item->outside_cost, 2),
+            ]))
+            ->sortBy(fn (array $row) => mb_strtolower($row['outside_lab']).'|'.$row['date'].'|'.$row['order_no']);
+
+        return [[
+            self::col('outside_lab', 'Outside lab'), self::col('date', 'Ordered'), self::col('order_no', 'Order no.'), self::col('patient', 'Patient'),
+            self::col('uhid', 'Patient ID'), self::col('test', 'Test'), self::col('sent', 'Sample sent'), self::col('reported', 'Reported'),
+            self::col('price', 'Billed to patient', 'money'), self::col('outside_cost', 'Outside lab charges', 'money'),
         ], $rows];
     }
 
