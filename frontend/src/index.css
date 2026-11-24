@@ -860,7 +860,7 @@ td.wrap.wide { max-width: 640px; }
 
 /* Tablets and small laptops: the menu sits in its own row under the bar, always in view */
 /* On a tablet the menu takes a row of its own. From a small laptop up, the header is one row. */
-@media (min-width: 701px) and (max-width: 1199px) {
+@media (min-width: 769px) and (max-width: 1199px) {
   :root { --bar-h: 102px; }
   .topbar { flex-wrap: wrap; height: auto; padding: 0 16px; row-gap: 0; }
   .topbar .brand { line-height: 50px; }
@@ -869,33 +869,24 @@ td.wrap.wide { max-width: 640px; }
   .topbar nav::-webkit-scrollbar { display: none; }
   .topbar nav a { padding: 8px 13px; opacity: 0.88; }
 }
-@media (min-width: 701px) and (max-width: 860px) {
+@media (min-width: 769px) and (max-width: 860px) {
   .topbar nav { gap: 2px; padding: 5px 8px; }
   .topbar nav a { padding: 8px 9px; }
 }
 
-/* Menu button and drawer for phones */
-.nav-toggle { display: none; }
+/* The full menu on phones and small tablets: a sheet over the screen, opened by "More" on the bar at the foot */
 .nav-foot { display: none; }
-@media (max-width: 700px) {
-  .topbar { height: 52px; padding: 0 12px; gap: 10px; }
-  .nav-toggle { display: inline-flex; flex-direction: column; justify-content: center; gap: 4px; width: 40px; height: 40px; padding: 0 9px; background: none; border: 0; border-radius: 8px; cursor: pointer; }
-  .nav-toggle span { display: block; height: 2px; background: #fff; border-radius: 2px; }
-  .nav-toggle:focus-visible { outline: 2px solid #fff; }
-  .topbar nav { display: none; position: fixed; top: 55px; left: 0; right: 0; bottom: 0; flex-direction: column; gap: 2px; padding: 12px; background: var(--bar-2); overflow-y: auto; z-index: 39; }
+@media (max-width: 768px) {
+  .topbar nav { display: none; position: fixed; top: calc(55px + env(safe-area-inset-top, 0px)); left: 0; right: 0; bottom: calc(var(--tab-h) + env(safe-area-inset-bottom, 0px)); flex-direction: column; gap: 2px; padding: 12px; background: var(--bar-2); overflow-y: auto; z-index: 39; }
   .topbar.open nav { display: flex; }
   .topbar nav a { padding: 14px 16px; font-size: 1.05rem; border-radius: 8px; opacity: 0.92; }
   .topbar nav a.active { border-left: 4px solid var(--accent); }
-  .whoami .btn { display: none; }
-  .whoami small { display: none; }
-  .whoami strong { font-weight: 600; font-size: 0.9rem; max-width: 24vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
   .nav-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: auto; padding: 16px 4px 4px; border-top: 1px solid rgba(255, 255, 255, 0.2); }
   .nav-foot small { display: block; opacity: 0.8; }
 }
 
 /* Phones */
 @media (max-width: 700px) {
-  .whoami { display: none; }
   :root { font-size: 15px; }
   .content { padding: 12px; }
   .card { padding: 12px; border-radius: 10px; }
@@ -2055,3 +2046,38 @@ td.fit-wrap { white-space: normal; min-width: 130px; overflow-wrap: anywhere; }
 .field-hint { font-size: 0.8rem; color: var(--muted); }
 .field-hint.ok { color: var(--ok); }
 .slot-length { max-width: 260px; margin-bottom: 12px; }
+
+/* ---- Phones and small tablets: laid out as a phone app. A slim bar at the top with the hospital's name, the search
+   and sign out; the few places a person goes most on a bar at the foot. Not on a computer. ---- */
+.bottom-bar { display: none; }
+@media (max-width: 768px) {
+  :root { --tab-h: 58px; --bar-h: calc(52px + env(safe-area-inset-top, 0px)); }
+  /* Clear of a notch at the top and of rounded corners at the sides. */
+  .topbar { height: calc(52px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) max(12px, env(safe-area-inset-right, 0px)) 0 max(12px, env(safe-area-inset-left, 0px)); gap: 10px; }
+  .patient-search:not(.on-page) { flex: 1; width: auto; min-width: 0; max-width: 420px; margin: 0 0 0 auto; }
+  .whoami { display: flex; }
+  .whoami .avatar, .who-text, .signout span { display: none; }
+  .topbar .btn.signout { display: inline-flex; align-items: center; min-height: 36px; padding: 5px 9px; }
+  /* Nothing on a page is ever left under the bar, nor under the phone's own gesture bar below it. */
+  .content { padding-bottom: calc(var(--tab-h) + env(safe-area-inset-bottom, 0px) + 16px); }
+  .bottom-bar { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 45; height: calc(var(--tab-h) + env(safe-area-inset-bottom, 0px)); padding: 0 max(4px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(4px, env(safe-area-inset-left, 0px)); background: var(--surface); border-top: 1px solid var(--border); box-shadow: 0 -4px 16px var(--shadow-soft); }
+  .bottom-bar a, .bottom-bar button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; padding: 4px 2px; border: 0; border-radius: 0; background: none; color: var(--muted); font: inherit; font-size: 0.72rem; font-weight: 600; line-height: 1.2; text-decoration: none; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  .bottom-bar svg { box-sizing: content-box; width: 22px; height: 22px; padding: 3px 16px; border-radius: 999px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: background 0.15s; }
+  .bottom-bar span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bottom-bar .active { color: var(--brand-strong); }
+  .bottom-bar .active svg { background: var(--brand-soft); }
+  .bottom-bar a:focus-visible, .bottom-bar button:focus-visible { outline: 2px solid var(--brand); outline-offset: -3px; }
+  /* What floats or sticks at the foot of a page sits above the bar. */
+  .floating-alert:not(.top) { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom, 0px) + 12px); }
+  .order-bar { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom, 0px) + 8px); }
+  .summary-save, .count-actions { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom, 0px)); }
+}
+@media print { .bottom-bar { display: none; } }
+
+/* A person's own attendance at the top of their first screen on a phone */
+.punch-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 12px; margin-bottom: 12px; border-left: 4px solid var(--accent); }
+.punch-card > div { display: grid; gap: 4px; justify-items: start; min-width: 0; }
+.punch-card .pill { font-size: 0.86rem; padding: 4px 12px; }
+.punch-card .btn { flex: none; min-height: 48px; padding: 12px 20px; font-size: 1rem; }
+.punch-card .form-error { flex-basis: 100%; margin: 0; }
+.punch-card a { color: var(--brand); font-weight: 600; text-decoration: none; }

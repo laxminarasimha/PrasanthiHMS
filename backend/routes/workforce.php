@@ -29,6 +29,7 @@ Route::controller(FoundationController::class)->group(function () {
 Route::controller(OverviewController::class)->group(function () {
     Route::get('/dashboard', 'dashboard');
     Route::get('/me', 'me');
+    Route::get('/me/today', 'today');
     Route::post('/me/leave', 'askLeave');
     Route::post('/me/leave/{leave}/cancel', 'cancelLeave');
     Route::post('/me/corrections', 'askCorrection');

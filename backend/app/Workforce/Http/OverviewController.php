@@ -222,6 +222,33 @@ class OverviewController extends Controller
         return response()->json($attendance->ask($employee, $data, $request->user()), 201);
     }
 
+    /**
+     * Today's attendance in a few lines, for the card at the top of a person's home screen on a phone: whether they
+     * are in now, and the spells of today that are already over. Read from the same records as everything else.
+     */
+    public function today(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        Access::require($user, 'wf:self:view');
+        $employee = Employee::query()->where('user_id', $user->id)->first();
+        if (! $employee) {
+            return response()->json(['employee' => null]);
+        }
+        $attendance = app(AttendanceController::class);
+        $today = now()->toDateString();
+        $open = Attendance::query()->where('employee_id', $employee->id)->where('state', 'open')->latest('check_in')->first();
+        // A night duty belongs to the day it began, so one that ended this morning counts as today's too.
+        $done = Attendance::query()->where('employee_id', $employee->id)->where('state', '!=', 'open')
+            ->where(fn ($q) => $q->whereDate('work_date', $today)->orWhereDate('check_out', $today))->orderBy('check_in')->get();
+
+        return response()->json([
+            'employee' => ['id' => $employee->id, 'name' => $employee->name],
+            'self_check_in' => (bool) Settings::get('attendance')['self_check_in'],
+            'open' => $open ? $attendance->record($open) : null,
+            'done' => $done->map(fn (Attendance $a) => $attendance->record($a))->values(),
+        ]);
+    }
+
     /** A person marks themself in or out, only where the hospital has switched that on. */
     public function punch(Request $request): JsonResponse
     {
