@@ -191,9 +191,17 @@ class WorkforceLeaveAndOverviewApiTest extends TestCase
         Sanctum::actingAs($this->user('admin'));
         $this->putJson('/api/workforce/setup/settings', ['attendance' => ['self_check_in' => true]])->assertOk()->assertJsonPath('attendance.self_check_in', true);
         Sanctum::actingAs($login);
+        // The card on the home screen: nothing yet today, then in, then the finished spell.
+        $this->getJson('/api/workforce/me/today')->assertOk()->assertJsonPath('employee.name', 'Desk Person')->assertJsonPath('self_check_in', true)->assertJsonPath('open', null)->assertJsonCount(0, 'done');
         $this->postJson('/api/workforce/me/punch')->assertOk()->assertJsonPath('state', 'open')->assertJsonPath('origin', 'self')->assertJsonPath('employee_id', $me->id);
+        $this->getJson('/api/workforce/me/today')->assertOk()->assertJsonPath('open.state', 'open')->assertJsonCount(0, 'done');
         $this->travelTo('2026-03-11 18:00:00');
         $this->postJson('/api/workforce/me/punch')->assertOk()->assertJsonPath('state', 'completed')->assertJsonPath('worked_minutes', 480);
+        $this->getJson('/api/workforce/me/today')->assertOk()->assertJsonPath('open', null)->assertJsonCount(1, 'done')->assertJsonPath('done.0.worked_minutes', 480);
+        // A login with no staff record has no card.
+        Sanctum::actingAs($this->user('pharmacist'));
+        $this->getJson('/api/workforce/me/today')->assertOk()->assertExactJson(['employee' => null]);
+        Sanctum::actingAs($login);
         $this->assertSame([$me->id], Attendance::withoutGlobalScopes()->pluck('employee_id')->all());
         $this->assertSame(['present', 480], [collect($this->getJson('/api/workforce/me')->json('days'))->firstWhere('date', '2026-03-11')['status'], $this->getJson('/api/workforce/me')->json('totals.worked_minutes')]);
     }

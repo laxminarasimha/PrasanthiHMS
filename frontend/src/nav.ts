@@ -1,3 +1,4 @@
+import { homeFor } from './access'
 import type { User } from './types'
 
 export type NavTab = { key: string; label: string; to: string; /** Other paths that belong to this tab. */ also?: string[] }
@@ -54,3 +55,41 @@ export function menuTabs(user: User): NavTab[] {
 }
 
 export const onTab = (tab: NavTab, path: string) => [tab.to, ...(tab.also ?? [])].some((p) => path === p || path.startsWith(p + '/'))
+
+/** One entry on the bar at the foot of a phone's screen. */
+export type BottomTab = { key: string; label: string; to: string; /** The paths that light this entry. */ paths: string[] }
+
+const whole = (tab: NavTab) => [tab.to, ...(tab.also ?? [])]
+
+/**
+ * The few places a person goes most, for the bar at the foot of a phone's screen: their own first screen, one or two
+ * more by what they do, and their own account. Everything else stays in the full menu, which the bar's last button opens.
+ */
+export function bottomTabs(user: User): BottomTab[] {
+  const tabs = menuTabs(user)
+  const home = homeFor(user)
+  const homeTab = tabs.find((t) => onTab(t, home))
+  const bar: BottomTab[] = [{ key: 'home', label: 'Home', to: home, paths: homeTab ? whole(homeTab) : [home] }]
+  if (user.role === 'doctor') {
+    // A doctor: the day's queue is home, then the calendar of appointments and the patient list.
+    if (user.can_front_desk) bar.push({ key: 'schedule', label: 'Schedule', to: '/front-desk/calendar', paths: ['/front-desk/calendar'] })
+    bar.push({ key: 'patients', label: 'Patients', to: '/patients', paths: ['/patients'] })
+  } else {
+    // Staff: the next section they work in, then their own attendance.
+    const next = tabs.find((t) => t !== homeTab && t.key !== 'workforce' && t.key !== 'setup')
+    if (next) bar.push({ key: next.key, label: next.label, to: next.to, paths: whole(next) })
+    if (user.abilities?.['wf:self:view']) bar.push({ key: 'attendance', label: 'Attendance', to: '/workforce/me', paths: ['/workforce/me'] })
+  }
+  return [...bar, { key: 'profile', label: 'Profile', to: '/account', paths: ['/account'] }]
+}
+
+/** Which entry of the bar the page belongs to: the one whose path fits most closely. None when the page is only in the full menu. */
+export function activeBottom(bar: BottomTab[], path: string): string | undefined {
+  let best: { key: string; length: number } | undefined
+  for (const tab of bar) {
+    for (const p of tab.paths) {
+      if ((path === p || path.startsWith(p + '/')) && (!best || p.length >= best.length)) best = { key: tab.key, length: p.length }
+    }
+  }
+  return best?.key
+}

@@ -16,6 +16,14 @@ document.addEventListener('wheel', () => {
   if (el instanceof HTMLInputElement && el.type === 'number') el.blur()
 }, { passive: true })
 
+// What lets a phone add the app to its home screen and open it full screen. It keeps no pages and no patient
+// data (see public/sw.js), so failing to start only means the phone does not offer to install the app.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => undefined)
+  })
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
