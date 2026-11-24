@@ -277,4 +277,43 @@ class StaffSignInTest extends TestCase
         $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.20']);
         $this->postJson('/api/workforce/me/punch')->assertOk()->assertJsonPath('state', 'completed');
     }
+
+    public function test_doctors_and_consultants_check_in_and_their_times_are_listed_for_the_owner(): void
+    {
+        $this->travelTo('2026-03-11 09:10:00');
+        $doctor = $this->user('doctor', ['name' => 'Dr Sample', 'phone' => '9811100001']);
+        $nurse = $this->user('nurse', ['name' => 'Nurse Sample', 'phone' => '9811100002']);
+        [$doc, $visiting, $ward] = Tenant::run($this->here->id, fn () => [
+            Employee::create(['employee_no' => 'D1', 'name' => 'Dr Sample', 'phone' => '9811100001', 'user_id' => $doctor->id]),
+            Employee::create(['employee_no' => 'D2', 'name' => 'Dr Visiting', 'phone' => '9811100003', 'employment_type' => 'consultant']),
+            Employee::create(['employee_no' => 'N1', 'name' => 'Nurse Sample', 'phone' => '9811100002', 'user_id' => $nurse->id]),
+        ]);
+        Sanctum::actingAs($this->user('admin'));
+        $this->putJson('/api/workforce/setup/settings', ['attendance' => ['self_check_in' => true]])->assertOk();
+        // The office marks the visiting consultant in; the doctor and the nurse mark themselves.
+        $this->postJson('/api/workforce/attendance/check-in', ['employee_id' => $visiting->id])->assertSuccessful();
+        // A doctor signs in with their mobile number and checks in and out like anyone else.
+        Sanctum::actingAs($doctor);
+        $this->getJson('/api/workforce/me/today')->assertOk()->assertJsonPath('employee.name', 'Dr Sample')->assertJsonPath('self_check_in', true);
+        $this->postJson('/api/workforce/me/punch')->assertOk()->assertJsonPath('state', 'open');
+        Sanctum::actingAs($nurse);
+        $this->postJson('/api/workforce/me/punch')->assertOk();
+        $this->travelTo('2026-03-11 13:40:00');
+        Sanctum::actingAs($doctor);
+        $this->postJson('/api/workforce/me/punch')->assertOk()->assertJsonPath('worked_minutes', 270);
+        // The doctor does not see everyone's times: that is for those who look after attendance.
+        $this->getJson('/api/workforce/attendance/times')->assertForbidden();
+
+        Sanctum::actingAs($this->user('admin'));
+        $all = $this->getJson('/api/workforce/attendance/times?from=2026-03-01&to=2026-03-31')->assertOk()->json('rows');
+        $this->assertCount(3, $all);
+        $doctors = $this->getJson('/api/workforce/attendance/times?from=2026-03-01&to=2026-03-31&who=doctors')->assertOk()->json('rows');
+        $this->assertSame([['Dr Visiting', '2026-03-11 09:10', null, 'By the office'], ['Dr Sample', '2026-03-11 09:10', '2026-03-11 13:40', 'By themself']], array_map(fn ($r) => [$r['name'], $r['in'], $r['out'], $r['marked']], $doctors));
+        $this->assertSame(['Nurse Sample'], array_column($this->getJson('/api/workforce/attendance/times?from=2026-03-01&to=2026-03-31&who=others')->json('rows'), 'name'));
+        // The day list and the month take the same choice.
+        $this->assertEqualsCanonicalizing(['Dr Sample', 'Dr Visiting'], array_column($this->getJson('/api/workforce/attendance/day?date=2026-03-11&who=doctors')->assertOk()->json('rows'), 'name'));
+        $this->assertCount(2, $this->getJson('/api/workforce/attendance/month?month=2026-03&who=doctors')->assertOk()->json('rows'));
+        $this->getJson('/api/workforce/attendance/times?from=2026-01-01&to=2026-06-30')->assertStatus(422);
+        $this->get('/api/workforce/attendance/times/export?from=2026-03-01&to=2026-03-31&who=doctors')->assertOk()->assertHeader('content-disposition', 'attachment; filename=in-and-out-2026-03-01-to-2026-03-31.csv');
+    }
 }

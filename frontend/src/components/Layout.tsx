@@ -155,7 +155,8 @@ export function Layout() {
         )}
         <InstallHint />
         {/* On a phone, a person's first screen opens with their own attendance and the button to check in or out. */}
-        {phone && pathname === homeFor(user) && user.abilities?.['wf:self:view'] && <AttendanceCard />}
+        {/* A doctor works at a computer in the consulting room as often as on a phone, so their card is on both. */}
+        {(phone || user.role === 'doctor') && pathname === homeFor(user) && user.abilities?.['wf:self:view'] && <AttendanceCard />}
         {/* One broken screen shows a message in place; the menu stays, and going elsewhere starts afresh. */}
         <ErrorBoundary key={pathname}>
           <Suspense fallback={<ScreenComing />}>

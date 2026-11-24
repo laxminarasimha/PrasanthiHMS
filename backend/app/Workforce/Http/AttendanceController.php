@@ -15,6 +15,7 @@ use App\Workforce\Support\Audit;
 use App\Workforce\Support\Permissions;
 use App\Workforce\Support\Roster;
 use Carbon\CarbonImmutable;
+use App\Enums\Role;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -35,7 +36,7 @@ class AttendanceController extends Controller
     {
         $user = $request->user();
         Access::require($user, 'wf:attendance:view');
-        $filters = $request->validate(['date' => ['nullable', 'date'], 'department_id' => ['nullable', 'integer'], 'q' => ['nullable', 'string', 'max:100']]);
+        $filters = $request->validate(['date' => ['nullable', 'date'], 'department_id' => ['nullable', 'integer'], 'q' => ['nullable', 'string', 'max:100'], 'who' => ['nullable', Rule::in(['doctors', 'others'])]]);
         $date = CarbonImmutable::parse($filters['date'] ?? now())->toDateString();
         $staff = $this->staff($user, $date, $date, $filters);
         $days = AttendanceRules::days($staff, $date, $date);
@@ -58,7 +59,7 @@ class AttendanceController extends Controller
     {
         $user = $request->user();
         Access::require($user, 'wf:attendance:view');
-        $filters = $request->validate(['month' => ['nullable', 'date_format:Y-m'], 'department_id' => ['nullable', 'integer'], 'q' => ['nullable', 'string', 'max:100'], 'employee_id' => ['nullable', 'integer']]);
+        $filters = $request->validate(['month' => ['nullable', 'date_format:Y-m'], 'department_id' => ['nullable', 'integer'], 'q' => ['nullable', 'string', 'max:100'], 'employee_id' => ['nullable', 'integer'], 'who' => ['nullable', Rule::in(['doctors', 'others'])]]);
         [$from, $to, $month] = $this->span($filters['month'] ?? null);
         $staff = $this->staff($user, $from, $to, $filters)->when($filters['employee_id'] ?? null, fn ($list, $id) => $list->where('id', (int) $id)->values());
         $days = AttendanceRules::days($staff, $from, $to);
@@ -73,11 +74,60 @@ class AttendanceController extends Controller
     }
 
     /** The month's totals for each person as a file. */
+    /**
+     * Every coming and going between two dates, one line for each: who, when they came, when they left, how long, and
+     * who marked it. For the record, and for seeing when the doctors and consultants were in.
+     */
+    public function inAndOut(Request $request): JsonResponse
+    {
+        Access::require($request->user(), 'wf:attendance:view');
+
+        return response()->json($this->timeRows($request));
+    }
+
+    public function exportInAndOut(Request $request): StreamedResponse
+    {
+        Access::require($request->user(), 'wf:attendance:export');
+        $list = $this->timeRows($request);
+        Audit::record('attendance.exported', null, null, ['from' => $list['from'], 'to' => $list['to'], 'rows' => count($list['rows'])]);
+        $rows = array_map(fn (array $r) => [$r['date'], $r['employee_no'], $r['name'], $r['designation'], $r['department'], $r['in'], $r['out'], $r['worked_minutes'] === null ? '' : round($r['worked_minutes'] / 60, 2), $r['marked']], $list['rows']);
+
+        return $this->csv("in-and-out-{$list['from']}-to-{$list['to']}.csv", ['Date', 'Employee number', 'Name', 'Designation', 'Department', 'In', 'Out', 'Hours', 'Marked'], $rows);
+    }
+
+    /** @return array{from: string, to: string, rows: list<array<string, mixed>>} */
+    private function timeRows(Request $request): array
+    {
+        $filters = $request->validate([
+            'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'department_id' => ['nullable', 'integer'],
+            'q' => ['nullable', 'string', 'max:100'], 'who' => ['nullable', Rule::in(['doctors', 'others'])],
+        ]);
+        $to = CarbonImmutable::parse($filters['to'] ?? now())->toDateString();
+        $from = CarbonImmutable::parse($filters['from'] ?? CarbonImmutable::parse($to)->startOfMonth())->toDateString();
+        if (CarbonImmutable::parse($from)->diffInDays($to) > 92) {
+            throw ValidationException::withMessages(['from' => 'Choose three months or less at a time.']);
+        }
+        $staff = $this->staff($request->user(), $from, $to, $filters)->keyBy('id');
+        $marked = ['self' => 'By themself', 'manual' => 'By the office', 'import' => 'From the attendance machine', 'correction' => 'By a correction'];
+        $rows = Attendance::query()->whereIn('employee_id', $staff->keys())->whereBetween('work_date', [$from, $to])->orderBy('work_date')->orderBy('check_in')->get()
+            ->map(function (Attendance $a) use ($staff, $marked) {
+                $e = $staff[$a->employee_id];
+
+                return [
+                    'id' => $a->id, 'date' => $a->work_date->format('Y-m-d'), 'employee_id' => $e->id, 'employee_no' => $e->employee_no, 'name' => $e->name, 'designation' => $e->designation,
+                    'department' => $e->department?->name, 'in' => $a->check_in?->format('Y-m-d H:i'), 'out' => $a->check_out?->format('Y-m-d H:i'),
+                    'worked_minutes' => $a->worked_minutes, 'state' => $a->state, 'marked' => $marked[$a->origin] ?? ucfirst((string) $a->origin),
+                ];
+            })->values()->all();
+
+        return ['from' => $from, 'to' => $to, 'rows' => $rows, 'staff' => $staff->count()];
+    }
+
     public function export(Request $request): StreamedResponse
     {
         $user = $request->user();
         Access::require($user, 'wf:attendance:export');
-        $filters = $request->validate(['month' => ['nullable', 'date_format:Y-m'], 'department_id' => ['nullable', 'integer']]);
+        $filters = $request->validate(['month' => ['nullable', 'date_format:Y-m'], 'department_id' => ['nullable', 'integer'], 'who' => ['nullable', Rule::in(['doctors', 'others'])]]);
         [$from, $to, $month] = $this->span($filters['month'] ?? null);
         $staff = $this->staff($user, $from, $to, $filters);
         $days = AttendanceRules::days($staff, $from, $to);
@@ -489,6 +539,9 @@ class AttendanceController extends Controller
             ->where(fn ($q) => $q->whereNull('joined_on')->orWhereDate('joined_on', '<=', $to))
             ->where(fn ($q) => $q->where('status', '!=', 'inactive')->orWhereDate('separated_on', '>=', $from))
             ->when($filters['department_id'] ?? null, fn ($q, $id) => $q->where('department_id', $id))
+            // Doctors and consultants: whoever signs in as a doctor, and anyone engaged as a consultant.
+            ->when(($filters['who'] ?? '') === 'doctors', fn ($q) => $q->where(fn ($w) => $w->where('employment_type', 'consultant')->orWhereIn('user_id', User::query()->where('role', Role::Doctor->value)->select('id'))))
+            ->when(($filters['who'] ?? '') === 'others', fn ($q) => $q->where('employment_type', '!=', 'consultant')->where(fn ($w) => $w->whereNull('user_id')->orWhereNotIn('user_id', User::query()->where('role', Role::Doctor->value)->select('id'))))
             ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', "%{$term}%")->orWhere('employee_no', 'like', "%{$term}%")))
             ->orderBy('name')->limit(1000)->get();
     }
