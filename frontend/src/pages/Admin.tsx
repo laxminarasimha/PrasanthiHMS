@@ -232,6 +232,13 @@ function BillingPrefs() {
         </label>
       ))}
 
+      <h3>Free follow-up</h3>
+      <p className="muted small">
+        A patient who comes back to the same doctor within this many days of a consultation is booked as a follow-up and is not charged. The days are counted from the consultation, and the desk can still charge when it is a new
+        complaint. 0 switches this off.
+      </p>
+      <input className="narrow" type="number" min={0} max={180} value={form.follow_up_days ?? 15} onChange={(e) => setForm({ ...form, follow_up_days: Number(e.target.value) })} aria-label="Free follow-up days" />
+
       <h3>Usual payment mode</h3>
       <p className="muted small">Chosen to begin with when taking money at the front desk. It can be changed for each payment.</p>
       <select className="narrow" value={form.default_payment_mode} onChange={(e) => setForm({ ...form, default_payment_mode: e.target.value })} aria-label="Usual payment mode">

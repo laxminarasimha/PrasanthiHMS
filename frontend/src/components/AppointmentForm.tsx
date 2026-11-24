@@ -1,7 +1,7 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { useAuth } from '../auth'
-import { PAYMENT_MODES, rupees } from '../format'
+import { PAYMENT_MODES, longDate, rupees } from '../format'
 import type { Appointment, Doctor, Patient, Service } from '../types'
 import { SelectField, TextField } from './Field'
 import { useBillingPreferences } from './useBillingPreferences'
@@ -34,6 +34,9 @@ const STATUSES = [
 ]
 
 const nowTime = () => new Date().toTimeString().slice(0, 5)
+
+/** The server's answer to: would this patient's visit to this doctor on this day be a free follow-up? */
+type FollowUpAnswer = { follow_up: boolean; days: number; since: string | null; until: string | null }
 
 /** Shown when a visit booked for later falls outside the doctor's hours: the desk reads why, and may book it anyway. */
 export function OutsideHours({ message, checked, onChange }: { message: string; checked: boolean; onChange: (checked: boolean) => void }) {
@@ -80,9 +83,30 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
   // Offer the chosen doctor's own services, then those open to every doctor.
   const offered = offeredTo(services, doctorId)
   const service = services.find((s) => String(s.id) === serviceId)
+  // A follow-up or a consultation: the desk only books the visit, and the days since the patient's last consultation
+  // with this doctor decide. Asked again whenever the patient, the doctor or the day changes.
+  const followKey = patient && doctorId && day ? `${patient.id}|${doctorId}|${day}` : ''
+  const [followAnswer, setFollowAnswer] = useState<{ key: string; answer: FollowUpAnswer | null } | null>(null)
+  useEffect(() => {
+    if (!followKey) return
+    let live = true
+    const [patientId, doctor, date] = followKey.split('|')
+    api
+      .get<FollowUpAnswer>('/appointments/follow-up', { params: { patient_id: patientId, doctor_id: doctor, date } })
+      .then((res) => live && setFollowAnswer({ key: followKey, answer: res.data }))
+      .catch(() => live && setFollowAnswer({ key: followKey, answer: null }))
+    return () => {
+      live = false
+    }
+  }, [followKey])
+  const asking = Boolean(followKey) && followAnswer?.key !== followKey
+  const follow = followAnswer?.key === followKey && followAnswer.answer?.follow_up ? followAnswer.answer : null
+  // Ticked by the desk for this patient, doctor and day only: a new complaint that is charged as a consultation.
+  const [chargeFor, setChargeFor] = useState('')
+  const free = Boolean(follow) && chargeFor !== followKey
   const net = service ? Math.max(0, Number(price || 0) * Number(quantity || 1) - Number(discount || 0)) : 0
   const netWithTax = Math.round(net * (1 + (service?.gst_percent ?? 0) / 100) * 100) / 100
-  const billing = Boolean(service) && !skipBilling
+  const billing = Boolean(service) && !skipBilling && !free
 
   const chooseService = (value: string) => {
     setServiceId(value)
@@ -110,6 +134,7 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
         status,
         notes: notes || null,
         skip_billing: skipBilling,
+        ...(free ? { follow_up: true } : {}),
         ...(anyway ? { outside_hours: true } : {}),
         ...(billing ? { unit_price: price || 0, quantity: quantity || 1, discount: discount || 0 } : {}),
         ...(billing && Number(discount) > 0 ? whyFields(why) : {}),
@@ -186,7 +211,21 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
         </div>
       </div>
 
-      {service && (
+      {follow && patient && (
+        <div className="follow-up-note">
+          <strong>Follow-up visit: no charge</strong>
+          <p>
+            {patient.name} had a consultation with this doctor on {longDate(follow.since ?? day)}. A visit up to {longDate(follow.until ?? day)} ({follow.days} days) is a follow-up and is not charged.
+          </p>
+          <label className="check flush">
+            <input type="checkbox" checked={!free} onChange={(e) => setChargeFor(e.target.checked ? followKey : '')} />
+            Charge a consultation anyway
+          </label>
+        </div>
+      )}
+      {errors.follow_up && <p className="form-error">{errors.follow_up}</p>}
+
+      {service && !free && (
         <div className="bill-box">
           <label className="check flush">
             <input type="checkbox" checked={skipBilling} onChange={(e) => setSkipBilling(e.target.checked)} />
@@ -222,8 +261,8 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
 
       {errors._ && <p className="form-error">{errors._}</p>}
       <div className="panel-foot">
-        <button className="btn primary" disabled={saving}>
-          {saving ? 'Saving…' : 'Save appointment'}
+        <button className="btn primary" disabled={saving || asking}>
+          {saving ? 'Saving…' : free ? 'Save follow-up' : 'Save appointment'}
         </button>
       </div>
     </form>

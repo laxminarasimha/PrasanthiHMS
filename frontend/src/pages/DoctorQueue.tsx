@@ -120,6 +120,7 @@ export function DoctorQueue() {
                 <td className="mono">
                   {clock(q.scheduled_at)}
                   {q.token_no && <small className="muted block">Token {q.token_no}</small>}
+                  {q.is_follow_up && <small className="muted block">Follow-up</small>}
                 </td>
                 <td className="fit-wrap">
                   {/* The name opens the pad too, so a phone needs no sideways scrolling to reach the button. */}

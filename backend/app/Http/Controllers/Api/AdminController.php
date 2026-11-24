@@ -168,7 +168,9 @@ class AdminController extends Controller
     // ---- Billing preferences ----
 
     public const BILLING_DEFAULTS = [
-        'default_payment_mode' => 'cash', 'pay_timing' => 'before', 'ipd_prefix' => 'IP', 'ipd_bill_prefix' => 'IPB',
+        'default_payment_mode' => 'cash', 'pay_timing' => 'before',
+        // A visit to the same doctor within this many days of a consultation is a follow-up and is not charged. 0 switches it off.
+        'follow_up_days' => 15, 'ipd_prefix' => 'IP', 'ipd_bill_prefix' => 'IPB',
         // Bills printed on the hospital's own letterhead paper leave out the hospital details and logo, and leave
         // this much room at the top and bottom of the page for what is already printed on the paper.
         'print_on_letterhead' => false, 'letterhead_top_mm' => 40, 'letterhead_bottom_mm' => 20,
@@ -196,6 +198,7 @@ class AdminController extends Controller
             'default_payment_mode' => ['required', Rule::in(Payment::MODES)],
             // before: the consultation is paid for when the visit is booked; after: it is billed then and paid later.
             'pay_timing' => ['required', Rule::in(['before', 'after'])],
+            'follow_up_days' => ['sometimes', 'integer', 'between:0,180'],
             'print_on_letterhead' => ['sometimes', 'boolean'],
             'letterhead_top_mm' => ['sometimes', 'integer', 'between:0,150'],
             'letterhead_bottom_mm' => ['sometimes', 'integer', 'between:0,100'],

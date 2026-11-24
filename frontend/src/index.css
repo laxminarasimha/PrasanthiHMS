@@ -2171,3 +2171,9 @@ tr.cancelled td { color: var(--muted); }
 /* A doctor's own consultation fee, on their settings. */
 .doctor-fee { margin-bottom: 16px; }
 .doctor-fee .field { max-width: 260px; margin-bottom: 6px; }
+
+/* The booking form saying a visit is a free follow-up, and its mark on the day list. */
+.follow-up-note { margin-top: 14px; padding: 10px 12px; border: 1px solid var(--ok-line); border-radius: 8px; background: var(--ok-soft); }
+.follow-up-note strong { color: var(--ok); }
+.follow-up-note p { margin: 4px 0 8px; font-size: 0.88rem; }
+.pill.follow-up { margin-right: 6px; white-space: nowrap; }

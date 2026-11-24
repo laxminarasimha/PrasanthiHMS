@@ -15,6 +15,7 @@ use App\Models\Patient;
 use App\Support\DiscountWhy;
 use App\Support\DoctorFee;
 use App\Support\DoctorHours;
+use App\Support\FreeFollowUp;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -179,6 +180,14 @@ class AppointmentController extends Controller
         }
     }
 
+    /** Whether a visit by this patient to this doctor on this day would be a free follow-up: asked by the booking form. */
+    public function followUp(Request $request): JsonResponse
+    {
+        $data = $request->validate(['patient_id' => ['required', 'integer'], 'doctor_id' => ['required', 'integer'], 'date' => ['required', 'date']]);
+
+        return response()->json(FreeFollowUp::answer((int) $data['patient_id'], (int) $data['doctor_id'], $data['date']));
+    }
+
     /**
      * Books the visit and, unless billing is skipped, opens a bill for the chosen service.
      * The front desk may change the price, quantity and discount, and take payment at once.
@@ -194,14 +203,25 @@ class AppointmentController extends Controller
             'paid' => ['nullable', 'numeric', 'min:0'],
             'payment_mode' => ['nullable', 'required_with:paid', Rule::in(Payment::MODES)],
             'outside_hours' => ['sometimes', 'boolean'],
+            // Sent by the booking form when it has shown the desk that this visit is a free follow-up.
+            'follow_up' => ['sometimes', 'boolean'],
         ] + DiscountWhy::RULES);
 
         $billing = array_intersect_key($data, array_flip(['skip_billing', 'unit_price', 'quantity', 'discount', 'paid', 'payment_mode', 'discount_reason', 'discount_allowed_by']));
-        $data = array_diff_key($data, $billing + ['outside_hours' => 1]);
+        $data = array_diff_key($data, $billing + ['outside_hours' => 1, 'follow_up' => 1]);
+
+        // A follow-up or a consultation. The desk books the visit; the days since the last consultation decide.
+        $first = FreeFollowUp::of((int) $data['patient_id'], (int) $data['doctor_id'], $data['scheduled_at']);
+        if ($request->boolean('follow_up') && ! $first) {
+            throw ValidationException::withMessages(['follow_up' => 'This visit is not within '.FreeFollowUp::days().' days of a consultation with this doctor, so it is not a free follow-up. It is booked as a consultation.']);
+        }
+        // Charged when a service is being billed and the form did not book it as a follow-up: the desk chose to charge.
+        $charging = filled($data['service_id'] ?? null) && ! ($billing['skip_billing'] ?? false) && ! $request->boolean('follow_up');
+        $data['is_follow_up'] = $first !== null && ! $charging;
         DoctorFee::fits($data['service_id'] ?? null, (int) $data['doctor_id']);
         $this->guardSlot((int) $data['doctor_id'], Carbon::parse($data['scheduled_at']), null, ($data['status'] ?? 'booked') === 'booked' && ! $request->boolean('outside_hours'));
 
-        $appointment = DB::transaction(function () use ($data, $billing, $request) {
+        $appointment = DB::transaction(function () use ($data, $billing, $request, $charging) {
             $day = Carbon::parse($data['scheduled_at'])->toDateString();
             $appointment = Appointment::create($data + [
                 'branch_id' => $request->user()->branch_id,
@@ -212,7 +232,7 @@ class AppointmentController extends Controller
             ]);
 
             $service = Service::find($data['service_id'] ?? null);
-            if ($service && ! ($billing['skip_billing'] ?? false)) {
+            if ($service && $charging) {
                 $quantity = (int) ($billing['quantity'] ?? 1);
                 $price = (float) ($billing['unit_price'] ?? $service->price);
                 if (abs($price - (float) $service->price) > 0.004 && ! $request->user()->allows('canChangePrice')) {
@@ -262,6 +282,11 @@ class AppointmentController extends Controller
         $moved = $doctorId !== (int) $appointment->doctor_id || ! $at->equalTo(Carbon::parse($appointment->getRawOriginal('scheduled_at')));
         if ($moved && ($data['status'] ?? $appointment->status) !== 'cancelled') {
             $this->guardSlot($doctorId, $at, $appointment->id, ($data['status'] ?? $appointment->status) === 'booked' && ! $anyway);
+        }
+
+        // A free follow-up stays one only while it is still within the days of its consultation, with the same doctor.
+        if ($appointment->is_follow_up && $moved && ($data['status'] ?? $appointment->status) !== 'cancelled' && ! FreeFollowUp::of((int) $appointment->patient_id, $doctorId, $at, $appointment->id)) {
+            throw ValidationException::withMessages(['scheduled_at' => 'This is a free follow-up. With that doctor on that day it is no longer within '.FreeFollowUp::days().' days of a consultation. Cancel this visit and book a new appointment instead.']);
         }
 
         // A doctor's own fee is not carried to another doctor. Looked at only when the doctor or the service changes.

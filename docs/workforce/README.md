@@ -251,3 +251,15 @@ Added 25 November 2026. The owner: each doctor's consultation has its own price 
 - **With no mark,** the first of a doctor's own appointment services is taken, so services already tied to a doctor work without any change.
 - **Kept apart on the server:** one doctor's own service is refused for another doctor's visit. A visit moved to another doctor takes that doctor's own service; a bill already made is left as it is.
 - **Emptying the box** switches the doctor's service off (old bills still name it); a new amount opens the same one again.
+
+## A follow-up within 15 days is not charged
+
+Added 25 November 2026. The owner: the desk only books an appointment for the patient; if it falls within 15 days of their consultation with that doctor it is a follow-up and is not charged.
+
+- **The rule** (`App\Support\FreeFollowUp`): a visit to the same doctor on or before the 15th day after a consultation is a follow-up. A consultation is a visit the patient came for (arrived, on-going or reviewed) that was not itself a follow-up. The days are counted from the consultation, never from a follow-up, so free visits do not chain on. Another doctor is another consultation.
+- **At the desk:** once the patient, the doctor and the day are chosen, the booking form asks the server (`GET /appointments/follow-up`) and shows "Follow-up visit: no charge" with the date of the consultation and the last free day. No bill is made. "Charge a consultation anyway" is there for a new complaint; a charged visit is a consultation and starts the days again.
+- **Booked some other way** (the patient's own phone, or with billing skipped): the visit is marked by itself as it is created (`appointments.is_follow_up`, set in the `Appointment` model), and again if the patient moves it.
+- **Shown** on the Front Desk day list as "Follow-up · free" and in the doctor's queue as "Follow-up".
+- **Moved at the desk** to a day or doctor where it is no longer within the days, a follow-up is refused: cancel it and book a new appointment, which is charged.
+- **The days** are the hospital's own: Setup → Billing preferences → "Free follow-up" (`follow_up_days` in the `billing` settings, 15 to begin with, 0 switches the rule off).
+- Visits from before this was added are all treated as consultations.

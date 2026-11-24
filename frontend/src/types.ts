@@ -140,6 +140,8 @@ export type Appointment = {
   scheduled_at: string
   duration_minutes: number
   status: AppointmentStatus
+  /** A free follow-up: to the same doctor within the hospital's follow-up days of a consultation. */
+  is_follow_up?: boolean
   /** On-going, paused while the patient is at the lab for the reports the doctor asked for. */
   awaiting_reports?: boolean
   token_no: number | null
@@ -308,6 +310,8 @@ export type Visit = {
 export type QueueEntry = {
   id: number
   scheduled_at: string
+  /** A free follow-up of an earlier consultation with this doctor. */
+  is_follow_up?: boolean
   arrived_at: string | null
   status: AppointmentStatus
   patient: VisitPatient
@@ -623,6 +627,8 @@ export type PatientMerge = { id: number; from_uhid: string; from_name: string; t
 export type BillingPreferences = {
   default_payment_mode: string
   pay_timing: 'before' | 'after'
+  /** A visit to the same doctor within this many days of a consultation is a follow-up and is not charged. 0 is off. */
+  follow_up_days?: number
   ipd_prefix: string
   ipd_bill_prefix?: string
   /** Bills go on the hospital's letterhead paper: no hospital details or logo are printed, and room is left for it. */
