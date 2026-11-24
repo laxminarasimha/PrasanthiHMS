@@ -7,7 +7,7 @@ import { useLoadOnChange } from '../loading'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { SelectField, TextField } from '../components/Field'
-import { ReferralList } from '../components/ReferralList'
+import { ReferredBy } from '../components/ReferredBy'
 import { SameMobile } from '../components/SameMobile'
 import { AGE_UNITS, TITLES, fullName, longDate, stampDate } from '../format'
 import type { Patient } from '../types'
@@ -264,8 +264,7 @@ export function Patients() {
           <h3>Other details</h3>
           <div className="grid">
             <TextField label="Occupation" value={form.occupation} onChange={set('occupation')} error={errors.occupation} />
-            <TextField label="Referred by" list="referred-by-doctors" value={form.referred_by} onChange={set('referred_by')} error={errors.referred_by} />
-            <ReferralList id="referred-by-doctors" direction="by" />
+            <ReferredBy value={form.referred_by} onChange={set('referred_by')} error={errors.referred_by} />
             <SelectField label="How they found us" value={form.channel} onChange={set('channel')} options={CHANNELS} placeholder="Select" error={errors.channel} />
             <TextField label="Tag" value={form.tag} onChange={set('tag')} error={errors.tag} />
             <TextField label="Old file / existing ID" value={form.existing_id} onChange={set('existing_id')} error={errors.existing_id} />

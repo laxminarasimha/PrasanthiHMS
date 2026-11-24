@@ -6,6 +6,7 @@ import { useAuth } from '../auth'
 import { STATUS_LABELS, longDate, rupees, today } from '../format'
 import type { Appointment, AppointmentStatus, Attachment, DaySummary, Doctor, Service, Visit } from '../types'
 import { SelectField, TextField } from './Field'
+import { OutsideHours } from './AppointmentForm'
 import { usePartLoading } from '../loading'
 
 const Head = ({ title, sub, onClose }: { title: string; sub?: string; onClose: () => void }) => (
@@ -185,11 +186,12 @@ export function EditAppointmentPanel({ appointment, doctors, services, onClose, 
   const [status, setStatus] = useState<string>(appointment.status)
   const [notes, setNotes] = useState(appointment.notes ?? '')
   const [errors, setErrors] = useState<FieldErrors>({})
+  const [anyway, setAnyway] = useState(false)
 
   const save = async (e: FormEvent) => {
     e.preventDefault()
     try {
-      await api.put(`/appointments/${appointment.id}`, { doctor_id: doctorId, service_id: serviceId || null, scheduled_at: `${day} ${time}`, status, notes: notes || null })
+      await api.put(`/appointments/${appointment.id}`, { doctor_id: doctorId, service_id: serviceId || null, scheduled_at: `${day} ${time}`, status, notes: notes || null, ...(anyway ? { outside_hours: true } : {}) })
       onSaved()
     } catch (err) {
       setErrors(fieldErrors(err))
@@ -212,10 +214,40 @@ export function EditAppointmentPanel({ appointment, doctors, services, onClose, 
       }
     >
       <div className="grid">
-        <SelectField label="Doctor" required value={doctorId} onChange={setDoctorId} options={doctors.map((d) => ({ value: String(d.id), label: d.name }))} error={errors.doctor_id} />
+        <SelectField
+          label="Doctor"
+          required
+          value={doctorId}
+          onChange={(v) => {
+            setDoctorId(v)
+            setAnyway(false)
+          }}
+          options={doctors.map((d) => ({ value: String(d.id), label: d.name }))}
+          error={errors.doctor_id}
+        />
         <SelectField label="Service" value={serviceId} onChange={setServiceId} options={services.filter((s) => s.type === 'appointment').map((s) => ({ value: String(s.id), label: s.name }))} placeholder="None" error={errors.service_id} />
-        <TextField label="Date" required type="date" value={day} onChange={setDay} error={errors.scheduled_at} />
-        <TextField label="Time" required type="time" value={time} onChange={setTime} />
+        <TextField
+          label="Date"
+          required
+          type="date"
+          value={day}
+          onChange={(v) => {
+            setDay(v)
+            setAnyway(false)
+          }}
+          error={errors.scheduled_at}
+        />
+        <TextField
+          label="Time"
+          required
+          type="time"
+          value={time}
+          onChange={(v) => {
+            setTime(v)
+            setAnyway(false)
+          }}
+        />
+        {errors.outside_hours && <OutsideHours message={errors.outside_hours} checked={anyway} onChange={setAnyway} />}
         <SelectField label="Status" value={status} onChange={setStatus} options={(Object.keys(STATUS_LABELS) as AppointmentStatus[]).map((s) => ({ value: s, label: STATUS_LABELS[s] }))} />
         <TextField label="Notes" value={notes} onChange={setNotes} />
       </div>

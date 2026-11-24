@@ -202,12 +202,15 @@ export function Calendar() {
       .map((d) => ({ key: String(d.id), title: d.name, sub: d.department ?? undefined, date, doctorId: String(d.id), today: false }))
   }, [view, from, date, doctors, doctorId])
 
+  // A doctor may keep their own slot length. With one doctor chosen the whole grid follows it; otherwise the hospital's.
+  const stepOf = (id: string) => doctors.find((d) => String(d.id) === id)?.slot_minutes || settings?.slot_minutes || 15
+  const step = doctorId ? stepOf(doctorId) : (settings?.slot_minutes ?? 15)
+
   // Each appointment sits in the slot its time falls in, under its day (week) or its doctor (day).
   const { cells, rows, counts } = useMemo(() => {
     const cells = new Map<string, Appointment[]>()
     const counts = new Map<string, number>()
     if (!settings) return { cells, counts, rows: [] as { session?: string; slot?: string }[] }
-    const step = settings.slot_minutes
     const slotOf = (a: Appointment) => timeOf(Math.floor(minutes(a.scheduled_at.slice(11, 16)) / step) * step)
     const used = new Set<string>()
     for (const a of appointments) {
@@ -243,15 +246,26 @@ export function Calendar() {
     add(`Evening OPD · ${label(settings.evening_start)} – ${label(settings.evening_end)}`, evening)
     add('After OPD hours', after)
     return { cells, rows, counts }
-  }, [appointments, settings, view])
+  }, [appointments, settings, view, step])
 
   // A slot is shaded when its doctor is away. A week showing every doctor has no single doctor to shade for.
   const blockAt = (column: Column, slot: string) => {
     if (!settings || !column.doctorId) return undefined
-    const end = timeOf(minutes(slot) + settings.slot_minutes)
+    const end = timeOf(minutes(slot) + step)
     return blocks.find((b) => String(b.doctor_id) === column.doctorId && b.from_date <= column.date && b.to_date >= column.date && (!b.start_time || !b.end_time || (b.start_time < end && b.end_time > slot)))
   }
-  // Outside the doctor's own usual hours, when they have set any. Booking is still allowed; it is only a hint.
+  // Outside the doctor's own usual hours, when they have set any. A visit booked ahead there asks the desk to confirm.
+  // Whether the doctor's own slot holding this time already has as many patients as one slot may take.
+  const slotFull = (column: Column, slot: string) => {
+    if (!settings || settings.slot_limit <= 0 || !column.doctorId) return false
+    const own = stepOf(column.doctorId)
+    const start = Math.floor(minutes(slot) / own) * own
+    const inSlot = (a: Appointment) => {
+      const at = minutes(a.scheduled_at.slice(11, 16))
+      return a.status !== 'cancelled' && String(a.doctor.id) === column.doctorId && a.scheduled_at.slice(0, 10) === column.date && at >= start && at < start + own
+    }
+    return appointments.filter(inSlot).length >= settings.slot_limit
+  }
   const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const
   const offHours = (column: Column, slot: string) => {
     const availability = doctors.find((d) => String(d.id) === column.doctorId)?.availability
@@ -266,7 +280,7 @@ export function Calendar() {
     setNotice('')
     setPanel({ kind: 'new', date: column.date, time: slot, doctorId: column.doctorId })
   }
-  const nowSlot = settings ? timeOf(Math.floor((new Date().getHours() * 60 + new Date().getMinutes()) / settings.slot_minutes) * settings.slot_minutes) : ''
+  const nowSlot = settings ? timeOf(Math.floor((new Date().getHours() * 60 + new Date().getMinutes()) / step) * step) : ''
   const heading = view === 'week' ? `${dayTitle(from)} – ${dayTitle(addDays(from, 6))}` : dayTitle(date)
 
   return (
@@ -357,7 +371,7 @@ export function Calendar() {
                       {columns.map((c) => {
                         const away = blockAt(c, row.slot!)
                         const off = !away && offHours(c, row.slot!)
-                        const full = !away && settings.slot_limit > 0 && c.doctorId !== '' && (cells.get(`${c.key}|${row.slot}`) ?? []).filter((a) => a.status !== 'cancelled').length >= settings.slot_limit
+                        const full = !away && slotFull(c, row.slot!)
                         return (
                         <td
                           key={c.key}

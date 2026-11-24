@@ -98,6 +98,7 @@ export function Staff() {
     setTab('details')
     setPerms(target === 'new' ? {} : target.abilities)
     setHours(toHours(target === 'new' ? null : target.availability))
+    setSlot(target === 'new' || !target.slot_minutes ? '' : String(target.slot_minutes))
     setForm(
       target === 'new'
         ? blank
@@ -114,6 +115,8 @@ export function Staff() {
     // A new role starts from that role's usual permissions.
     if (key === 'role') setPerms(roleDefaults(value))
   }
+  // The doctor's own slot length in minutes; empty follows the hospital's.
+  const [slot, setSlot] = useState('')
   const setHour = (day: Day, index: number, key: 'from' | 'to', value: string) =>
     setHours((h) => ({ ...h, [day]: h[day].map((range, i) => (i === index ? { ...range, [key]: value } : range)) }))
 
@@ -164,6 +167,7 @@ export function Staff() {
       permissions: form.role ? Object.fromEntries(abilities.map((a) => [a.key, allowedOf(a)])) : undefined,
       reason: changing ? reason.trim() : undefined,
       availability: form.role === 'doctor' ? Object.fromEntries(DAYS.map(([day]) => [day, hours[day].filter((r) => r.from && r.to)])) : null,
+      slot_minutes: form.role === 'doctor' && slot ? Number(slot) : null,
     }
     try {
       const res =
@@ -302,7 +306,18 @@ export function Staff() {
 
           {tab === 'availability' && (
             <div>
-              <p className="muted small">The doctor's usual hours, up to two sessions a day. The appointment calendar greys the times outside them. Leave every day empty to follow the hospital's OPD hours. Leave and holidays are marked on the calendar under "Doctor leave".</p>
+              <p className="muted small">The doctor's usual hours, up to two sessions a day. The appointment calendar greys the times outside them, and booking a later visit outside them asks the desk to confirm. Leave every day empty to follow the hospital's OPD hours. Leave and holidays are marked on the calendar under "Doctor leave".</p>
+              <label className="field slot-length">
+                <span className="field-label">Length of one appointment slot</span>
+                <select value={slot} onChange={(e) => setSlot(e.target.value)}>
+                  <option value="">Same as the hospital</option>
+                  {[5, 10, 15, 20, 30, 60].map((m) => (
+                    <option key={m} value={m}>
+                      {m === 60 ? '1 hour' : `${m} minutes`}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <div className="hours">
                 <span />
                 <span className="field-label">Morning</span>

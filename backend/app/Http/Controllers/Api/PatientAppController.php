@@ -14,6 +14,7 @@ use App\Models\Patient;
 use App\Models\PatientAccount;
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\DoctorHours;
 use App\Support\GoogleIdToken;
 use App\Support\SignInGuard;
 use Illuminate\Http\JsonResponse;
@@ -442,15 +443,11 @@ class PatientAppController extends Controller
     private function slotsFor(User $doctor, Carbon $day): array
     {
         $settings = Setting::group('calendar', Setting::CALENDAR_DEFAULTS);
-        $step = max(5, (int) $settings['slot_minutes']);
+        $step = DoctorHours::step($doctor);
         $limit = (int) $settings['slot_limit'] ?: 1; // from the app, one patient a slot unless the hospital allows more
 
         // The doctor's own hours for that weekday if set, otherwise the hospital's OPD hours.
-        $weekday = strtolower($day->format('D'));
-        $own = $doctor->availability;
-        $ranges = is_array($own) && $own !== []
-            ? ($own[$weekday] ?? [])
-            : [['from' => $settings['morning_start'], 'to' => $settings['morning_end']], ['from' => $settings['evening_start'], 'to' => $settings['evening_end']]];
+        $ranges = DoctorHours::ranges($doctor, $day);
 
         $blocks = DoctorBlock::where('doctor_id', $doctor->id)->between($day->toDateString(), $day->toDateString())->get();
         $taken = Appointment::where('doctor_id', $doctor->id)->whereDate('scheduled_at', $day->toDateString())->where('status', '!=', 'cancelled')->get(['scheduled_at'])

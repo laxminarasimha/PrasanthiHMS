@@ -50,7 +50,7 @@ class FrontDeskChargesTest extends TestCase
 
         $saved = $this->postJson('/api/front-desk/charges', [
             'patient_id' => $patient->id, 'appointment_id' => $visit->id, 'referred_by' => 'Dr Rao',
-            'services' => [['service_id' => $ecg->id], ['service_id' => $dressing->id, 'quantity' => 2, 'line_discount' => 50], ['description' => 'Injection charge', 'unit_price' => 40]],
+            'services' => [['service_id' => $ecg->id], ['service_id' => $dressing->id, 'quantity' => 2, 'line_discount' => 50], ['description' => 'Injection charge', 'unit_price' => 40]], 'discount_reason' => 'Staff family', 'discount_allowed_by' => 'Dr Rao',
             'test_ids' => [$cbp->id, $fbs->id], 'package_ids' => [$package->id],
         ])->assertCreated()->assertJsonCount(2, 'made')->assertJsonCount(2, 'due')->json();
 

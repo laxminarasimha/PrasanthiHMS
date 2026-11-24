@@ -4,7 +4,9 @@ import { api, fieldErrors } from '../api'
 import { PAYMENT_MODES, rupees } from '../format'
 import type { LabCatalogueTest, LabPackage, Service } from '../types'
 import { matchAdvised, namesOf } from './LabOrderForm'
-import { ReferralList } from './ReferralList'
+import { ReferredBy } from './ReferredBy'
+import { DiscountWhy } from './DiscountWhy'
+import { noWhy, whyFields } from './discountFields'
 import { useBillingPreferences } from './useBillingPreferences'
 import { usePartLoading } from '../loading'
 
@@ -123,6 +125,10 @@ export function ChargePanel({ patient, appointmentId, doctor, advised, services,
   const hasLab = lines.some((l) => l.type === 'test' || l.type === 'package')
   const dueTotal = due.reduce((sum, b) => sum + b.due, 0)
 
+  // Any rupee taken off a line needs its reason and the name of who allowed it, once for the bill.
+  const [why, setWhy] = useState(noWhy)
+  const discounted = lines.some((l) => l.type !== 'test' && l.type !== 'package' && Number(l.discount || 0) > 0)
+
   const save = async () => {
     setBusy(true)
     setError('')
@@ -136,9 +142,11 @@ export function ChargePanel({ patient, appointmentId, doctor, advised, services,
         test_ids: lines.filter((l) => l.type === 'test').map((l) => l.id),
         package_ids: lines.filter((l) => l.type === 'package').map((l) => l.id),
         referred_by: hasLab ? referredBy.trim() || null : null,
+        ...(discounted ? whyFields(why) : {}),
       })
       setSaved(res.data.made.length > 1 ? 'Saved: a services bill and a lab order were made.' : hasLab ? 'Saved: the lab order was made.' : 'Saved: the bill was made.')
       setLines([])
+      setWhy(noWhy)
       takeDue(res.data.due)
       onChange()
     } catch (err) {
@@ -279,13 +287,11 @@ export function ChargePanel({ patient, appointmentId, doctor, advised, services,
 
       {hasLab && (
         <div className="gap-top">
-          <ReferralList id="charge-referred-by" direction="by" />
-          <label className="field">
-            <span className="field-label">Lab tests referred by (optional)</span>
-            <input list="charge-referred-by" placeholder="Doctor's name" value={referredBy} onChange={(e) => setReferredBy(e.target.value)} />
-          </label>
+          <ReferredBy label="Lab tests referred by (optional)" value={referredBy} onChange={setReferredBy} ours={doctor} />
         </div>
       )}
+
+      {discounted && <DiscountWhy id="charge-why" value={why} onChange={setWhy} />}
 
       {lines.length > 0 && (
         <div className="panel-foot between">

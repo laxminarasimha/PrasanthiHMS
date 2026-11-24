@@ -31,7 +31,7 @@ class HospitalReportsTest extends TestCase
         // A visit today: billed 500 less 50, 300 paid in cash, seen and completed.
         $visit = $this->postJson('/api/appointments', [
             'patient_id' => $patient->id, 'doctor_id' => $doctor->id, 'service_id' => $service->id, 'scheduled_at' => now()->format('Y-m-d H:i'),
-            'status' => 'arrived', 'discount' => 50, 'paid' => 300, 'payment_mode' => 'cash',
+            'status' => 'arrived', 'discount' => 50, 'paid' => 300, 'payment_mode' => 'cash', 'discount_reason' => 'Staff family', 'discount_allowed_by' => 'Dr Rao',
         ])->assertCreated()->json();
         $this->putJson("/api/appointments/{$visit['id']}/consultation", [
             'diagnosis' => "Type 2 diabetes\nHypertension", 'tests_advised' => 'HbA1c, Lipid profile', 'follow_up_on' => now()->addDays(3)->toDateString(),

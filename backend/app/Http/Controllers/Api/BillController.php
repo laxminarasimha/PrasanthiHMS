@@ -10,6 +10,7 @@ use App\Models\Patient;
 use App\Models\PatientDeposit;
 use App\Models\Payment;
 use App\Models\Service;
+use App\Support\DiscountWhy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -121,7 +122,7 @@ class BillController extends Controller
             'discount' => ['required', 'numeric', 'min:0'],
             'refund_excess' => ['sometimes', 'boolean'],
             'refund_mode' => ['nullable', 'required_if:refund_excess,true', Rule::in(Payment::MODES)],
-        ]);
+        ] + DiscountWhy::RULES);
 
         $worth = $bill->subtotal + $bill->tax - $data['discount'];
         if ($worth < 0) {
@@ -136,7 +137,15 @@ class BillController extends Controller
         $before = round((float) $bill->discount, 2);
         $wasWorth = round((float) $bill->total, 2);
 
-        DB::transaction(function () use ($bill, $data, $excess, $request) {
+        $changed = abs((float) $data['discount'] - $before) > 0.004;
+        DB::transaction(function () use ($bill, $data, $excess, $request, $changed) {
+            if ($changed && $data['discount'] > 0) {
+                // A new amount needs its own reason: the one given for an earlier discount does not carry over.
+                $bill->forceFill(['discount_reason' => null, 'discount_allowed_by' => null]);
+                DiscountWhy::need($bill, $data);
+            } elseif ($changed && ! $bill->items()->where('discount', '>', 0)->exists()) {
+                $bill->forceFill(['discount_reason' => null, 'discount_allowed_by' => null]);
+            }
             if ($excess > 0) {
                 $bill->payments()->create(['type' => 'refund', 'amount' => $excess, 'mode' => $data['refund_mode'], 'reference' => 'Discount given after payment', 'received_by' => $request->user()->id]);
             }
@@ -150,7 +159,7 @@ class BillController extends Controller
         if ($after !== $before) {
             $money = fn (float $amount) => '₹'.number_format($amount, 2);
             AuditLog::record('bill.discount', $bill->patient_id, $bill, "{$bill->bill_no} · discount {$money($before)} → {$money($after)} · bill {$money($wasWorth)} → {$money((float) $bill->total)}"
-                .($excess > 0 ? " · {$money($excess)} refunded" : ''));
+                .($excess > 0 ? " · {$money($excess)} refunded" : '').($after > 0 ? DiscountWhy::note($bill) : ''));
         }
 
         return response()->json($this->present($bill));
@@ -178,7 +187,7 @@ class BillController extends Controller
             'quantity' => ['nullable', 'integer', 'min:1', 'max:999'],
             'line_discount' => ['nullable', 'numeric', 'min:0'],
             'gst_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
-        ];
+        ] + DiscountWhy::RULES;
     }
 
     /**
@@ -196,6 +205,9 @@ class BillController extends Controller
 
         if ($discount > $price * $quantity) {
             throw ValidationException::withMessages(['line_discount' => 'The discount cannot be more than the charge.']);
+        }
+        if ($discount > 0) {
+            DiscountWhy::need($bill, $data);
         }
 
         $bill->addLine(

@@ -8,6 +8,7 @@ use App\Models\Appointment;
 use App\Models\AuditLog;
 use App\Models\LabOrder;
 use App\Models\Patient;
+use App\Support\Referral;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -175,6 +176,8 @@ class PatientController extends Controller
             'date_of_birth.required_without' => 'Enter an age or a date of birth.',
             'age.required_without' => 'Enter an age or a date of birth.',
         ]);
+        // A name on the hospital's list of referring doctors is saved in the list's spelling and tied to it.
+        $data = array_merge($data, Referral::fields($data['referred_by'] ?? null));
 
         if (empty($data['date_of_birth'])) {
             $age = (int) $data['age'];

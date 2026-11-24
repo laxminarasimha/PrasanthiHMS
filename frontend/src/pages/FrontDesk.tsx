@@ -10,7 +10,7 @@ import { DayBills } from '../components/DayBills'
 import { AttachmentsPanel, EditAppointmentPanel, SummaryPanel, VitalsPanel } from '../components/FrontDeskPanels'
 import { PatientPicker } from '../components/PatientPicker'
 import { STATUS_LABELS, clock, longDate, rupees, settlement, stampTime, today } from '../format'
-import type { Appointment, AppointmentStatus, Doctor, FollowUp, LabCatalogueTest, LabPackage, Patient, Service, WalkInBill } from '../types'
+import type { Appointment, AppointmentStatus, Doctor, FollowUp, LabCatalogueTest, LabPackage, Patient, Service, WalkInBill, NotReturned } from '../types'
 import { PatientLink } from '../components/PatientLink'
 
 type DayList = { data: Appointment[]; counts: Partial<Record<AppointmentStatus, number>> }
@@ -49,6 +49,8 @@ export function FrontDesk() {
   const [list, setList] = useState<DayList | null>(null)
   const [walkIns, setWalkIns] = useState<WalkInBill[]>([])
   const [followUps, setFollowUps] = useState<FollowUp[]>([])
+  // Advised to come back in the last 60 days and not seen since: the desk rings them.
+  const [notReturned, setNotReturned] = useState<NotReturned[]>([])
   const [labTests, setLabTests] = useState<LabCatalogueTest[]>([])
   const [labPackages, setLabPackages] = useState<LabPackage[]>([])
   const [doctors, setDoctors] = useState<Doctor[]>([])
@@ -81,6 +83,7 @@ export function FrontDesk() {
       })
     api.get<WalkInBill[]>('/front-desk/bills', { params: { date, q: query || undefined } }).then((res) => setWalkIns(res.data))
     api.get<FollowUp[]>('/front-desk/follow-ups', { params: { date } }).then((res) => setFollowUps(res.data))
+    api.get<NotReturned[]>('/front-desk/not-returned').then((res) => setNotReturned(res.data)).catch(() => undefined)
   }, [date, status, doctorId, query])
 
   // At once when the screen opens; after a short pause when the day, a filter or the search changes.
@@ -541,6 +544,35 @@ export function FrontDesk() {
               </li>
             ))}
             {followUps.length === 0 && <li className="muted when-loaded">No one is due on this day.</li>}
+          </ul>
+
+          <h3>Advised earlier, not come back{notReturned.length > 0 && <span className="count">{notReturned.length}</span>}</h3>
+          <p className="muted small">Patients whose advised date passed in the last 60 days and who have not been seen since. Ring them and book a new date.</p>
+          <ul className="history">
+            {notReturned.map((n) => (
+              <li key={n.id}>
+                <span>
+                  <strong>
+                    <PatientLink id={n.patient.id}>{n.patient.name}</PatientLink>
+                  </strong>
+                  <small className="muted block">
+                    {n.patient.uhid} · {n.patient.mobile}
+                    {n.doctor ? ` · ${n.doctor.name}` : ''}
+                  </small>
+                  <small className="muted block">
+                    Was due {longDate(n.follow_up_on)} · {n.days_late} {n.days_late === 1 ? 'day' : 'days'} late{n.diagnosis ? ` · ${n.diagnosis}` : ''}
+                  </small>
+                </span>
+                {n.booked_for ? (
+                  <span className="pill ok">Booked {longDate(n.booked_for)}</span>
+                ) : (
+                  <button className="btn ghost small-btn" onClick={() => open({ kind: 'new', preset: { patient: n.patient, doctorId: n.doctor ? String(n.doctor.id) : '', date } })}>
+                    Book
+                  </button>
+                )}
+              </li>
+            ))}
+            {notReturned.length === 0 && <li className="muted when-loaded">No one is overdue.</li>}
           </ul>
         </aside>
       )}

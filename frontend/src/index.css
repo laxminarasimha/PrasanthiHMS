@@ -1952,3 +1952,15 @@ td.fit-wrap { white-space: normal; min-width: 130px; overflow-wrap: anywhere; }
 .fit-table td.actions > * { display: inline-block; white-space: nowrap; }
 /* Beside an open panel a list has about half the screen: columns marked when-roomy step aside until the panel is closed. */
 @media (max-width: 1540px) { table.beside-panel .when-roomy { display: none; } }
+
+/* Front desk: the reason and name asked for whenever a discount is given. */
+.discount-why { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; padding: 10px 12px; border: 1px dashed var(--border); border-radius: 8px; background: var(--surface); text-align: left; }
+.totals .discount-why { grid-template-columns: 1fr; min-width: 240px; }
+@media (max-width: 640px) { .discount-why { grid-template-columns: 1fr; } }
+/* A visit booked ahead outside the doctor's hours: why it was stopped, and the tick to book it anyway. */
+.outside-hours { padding: 10px 12px; border: 1px solid var(--accent-line); border-radius: 8px; background: var(--warn-soft); color: var(--warn); }
+.outside-hours p { margin: 0 0 6px; }
+/* The note under a "referred by" box saying whether the name is on the hospital's list. */
+.field-hint { font-size: 0.8rem; color: var(--muted); }
+.field-hint.ok { color: var(--ok); }
+.slot-length { max-width: 260px; margin-bottom: 12px; }

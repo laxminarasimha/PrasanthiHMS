@@ -80,7 +80,7 @@ class FrontDeskTest extends TestCase
     {
         $first = $this->book();
         $this->book();
-        $this->book(['scheduled_at' => now()->addDay()->format('Y-m-d').' 09:00']);
+        $this->book(['scheduled_at' => now()->addDay()->format('Y-m-d').' 11:00']);
 
         $this->putJson("/api/appointments/{$first['id']}", ['status' => 'arrived'])
             ->assertOk()->assertJsonPath('status', 'arrived');
@@ -102,7 +102,7 @@ class FrontDeskTest extends TestCase
         $this->postJson("/api/bills/{$billId}/items", ['service_id' => $ecg->id, 'quantity' => 2])
             ->assertCreated()->assertJsonPath('subtotal', 800)->assertJsonPath('tax', 60)->assertJsonPath('total', 860);
 
-        $this->putJson("/api/bills/{$billId}", ['discount' => 60])->assertOk()->assertJsonPath('total', 800);
+        $this->putJson("/api/bills/{$billId}", ['discount' => 60, 'discount_reason' => 'Staff family', 'discount_allowed_by' => 'Dr Rao'])->assertOk()->assertJsonPath('total', 800);
 
         $this->postJson("/api/bills/{$billId}/payments", ['type' => 'payment', 'amount' => 500, 'mode' => 'cash'])
             ->assertCreated()->assertJsonPath('paid', 500)->assertJsonPath('due', 300);

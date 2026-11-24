@@ -2,9 +2,8 @@ import { useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { rupees } from '../format'
 import type { LabCatalogueTest, LabOrder, LabPackage, Patient } from '../types'
-import { TextField } from './Field'
 import { PatientPicker } from './PatientPicker'
-import { ReferralList } from './ReferralList'
+import { ReferredBy } from './ReferredBy'
 
 type Props = {
   tests: LabCatalogueTest[]
@@ -106,8 +105,7 @@ export function LabOrderForm({ tests, packages = [], visit, onClose, onCreated }
       <PatientPicker patient={patient} onChange={setPatient} error={errors.patient_id} recent />
 
       <div className="gap-top">
-        <ReferralList id="lab-referred-by" direction="by" />
-        <TextField label="Referred by (optional)" placeholder="Doctor's name" list="lab-referred-by" value={referredBy} onChange={setReferredBy} error={errors.referred_by} />
+        <ReferredBy label="Referred by (optional)" value={referredBy} onChange={setReferredBy} error={errors.referred_by} ours={visit?.doctor} />
       </div>
 
       {visit && advised && (

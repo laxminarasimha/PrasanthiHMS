@@ -1,4 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { DiscountWhy } from './DiscountWhy'
+import { noWhy, whyFields } from './discountFields'
 import { useAuth } from '../auth'
 import { api, fieldErrors } from '../api'
 import { PAYMENT_MODES, modeLabel, rupees, stampDate } from '../format'
@@ -26,6 +28,7 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
   const [error, setError] = useState('')
   const [line, setLine] = useState({ service_id: '', description: '', unit_price: '', quantity: '1', line_discount: '' })
   const [discount, setDiscount] = useState('')
+  const [why, setWhy] = useState(noWhy)
   const [refundMode, setRefundMode] = useState('cash')
   const [payType, setPayType] = useState<'payment' | 'refund'>('payment')
   const [amount, setAmount] = useState('')
@@ -43,6 +46,7 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
   const apply = (next: Bill) => {
     setBill(next)
     setDiscount(String(next.discount))
+    setWhy(noWhy)
     setAmount(next.due > 0 ? String(next.due) : '')
     setPayType('payment')
     setError('')
@@ -75,6 +79,10 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
     setLine((l) => ({ ...l, service_id: value, description: service?.name ?? '', unit_price: service ? String(service.price) : l.unit_price }))
   }
 
+  // A discount on a line is explained once per bill; a new bill discount is explained each time the amount changes.
+  const lineNeedsWhy = Number(line.line_discount || 0) > 0 && !bill?.discount_reason
+  const billNeedsWhy = Number(discount || 0) > 0 && Number(discount || 0) !== bill?.discount
+
   const addLine = async (e: FormEvent) => {
     e.preventDefault()
     const ok = await run(
@@ -84,6 +92,7 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
         unit_price: line.unit_price === '' ? null : line.unit_price,
         quantity: line.quantity || 1,
         line_discount: line.line_discount || 0,
+        ...(lineNeedsWhy ? whyFields(why) : {}),
       }),
     )
     if (ok) setLine({ service_id: '', description: '', unit_price: '', quantity: '1', line_discount: '' })
@@ -252,6 +261,8 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
         </form>
       )}
 
+      {lineNeedsWhy && <DiscountWhy id="line-why" value={why} onChange={setWhy} />}
+
       <dl className="totals">
         <dt>Subtotal</dt>
         <dd>{rupees(bill.subtotal)}</dd>
@@ -267,7 +278,7 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
             className="row"
             onSubmit={(e) => {
               e.preventDefault()
-              run(api.put(`/bills/${billId}`, { discount: discount || 0, ...(excess > 0 ? { refund_excess: true, refund_mode: refundMode } : {}) }))
+              run(api.put(`/bills/${billId}`, { discount: discount || 0, ...(excess > 0 ? { refund_excess: true, refund_mode: refundMode } : {}), ...(billNeedsWhy ? whyFields(why) : {}) }))
             }}
           >
             <input className="qty" type="number" min={0} step="0.01" value={discount} onChange={(e) => setDiscount(e.target.value)} aria-label="Discount amount" />
@@ -275,6 +286,12 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
               {excess > 0 ? `Apply and refund ${rupees(excess)}` : 'Apply'}
             </button>
           </form>
+          {billNeedsWhy && <DiscountWhy id="bill-why" value={why} onChange={setWhy} />}
+          {!billNeedsWhy && bill.discount_reason && (
+            <small className="muted block">
+              {bill.discount_reason} · allowed by {bill.discount_allowed_by}
+            </small>
+          )}
           {excess > 0 && (
             <div className="row refund-by">
               <small className="muted">Refund by</small>
