@@ -2,6 +2,7 @@ import { FrontDeskTabs } from '../components/FrontDeskTabs'
 import { Popup } from '../components/Popup'
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { AppointmentForm } from '../components/AppointmentForm'
 import { BillPanel } from '../components/BillPanel'
@@ -164,6 +165,9 @@ function LeavePanel({ date, doctorId, doctors, blocks, onClose, onChange }: { da
 
 export function Calendar() {
   const { user } = useAuth()
+  const navigate = useNavigate()
+  // For the desk a tap on a booking changes or moves it. A doctor's tap opens the patient's visit pad instead.
+  const toPad = user?.role === 'doctor' && Boolean(user.can_consult)
   const [view, setView] = useState<View>('day')
   const [date, setDate] = useState(today())
   const [doctorId, setDoctorId] = useState('')
@@ -333,7 +337,7 @@ export function Calendar() {
           <strong>{heading}</strong>
           <span className="muted">
             {' · '}
-            <span className="loads">{appointments.filter((a) => a.status !== 'cancelled').length}</span> appointments. Tap an empty slot to book; tap a name to change or move it.</span>
+            <span className="loads">{appointments.filter((a) => a.status !== 'cancelled').length}</span> appointments. Tap an empty slot to book; tap a name to {toPad ? 'open the visit pad' : 'change or move it'}.</span>
         </p>
         {notice && <p className="notice">{notice}</p>}
 
@@ -383,10 +387,12 @@ export function Calendar() {
                             <button
                               key={a.id}
                               className={`cal-chip ${a.status}`}
-                              title={`${clock(a.scheduled_at)} · ${a.patient.name} · ${STATUS_LABELS[a.status]}`}
+                              title={`${clock(a.scheduled_at)} · ${a.patient.name} · ${STATUS_LABELS[a.status]}${toPad && a.status !== 'cancelled' ? ' · open the visit pad' : ''}`}
                               onClick={(e) => {
                                 e.stopPropagation()
                                 setNotice('')
+                                // A doctor is here to see the patient, not to move the booking: their click opens the visit pad.
+                                if (toPad && a.status !== 'cancelled') return navigate(`/visits/${a.id}`)
                                 setPanel({ kind: 'edit', appointment: a })
                               }}
                             >
