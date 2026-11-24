@@ -2090,3 +2090,13 @@ td.fit-wrap { white-space: normal; min-width: 130px; overflow-wrap: anywhere; }
 .install-actions { display: flex; align-items: center; gap: 14px; }
 /* With the card at the top of the screen, the same button further down the person's own record would be one too many. */
 .punch-card ~ * .wf-today .btn { display: none; }
+
+/* The staff check: where logins and staff records do not yet agree */
+.check-note { margin: 0 0 14px; padding: 10px 14px; border-radius: 8px; border-left: 4px solid var(--accent); background: var(--accent-soft); color: var(--text); }
+.check-note a { font-weight: 700; color: var(--brand); white-space: nowrap; }
+.staff-check h2 { margin: 26px 0 4px; font-size: 1.05rem; display: flex; align-items: center; gap: 10px; }
+.staff-check h2 + p { margin: 0 0 12px; max-width: 78ch; }
+.staff-check td.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.staff-check select { max-width: 320px; }
+.plain-list { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
+

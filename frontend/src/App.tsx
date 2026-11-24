@@ -100,6 +100,7 @@ const QueueBoard = page(() => import('./pages/QueueBoard'), 'QueueBoard')
 const Reports = page(() => import('./pages/Reports'), 'Reports')
 const WorkforceOverview = page(() => import('./workforce/Overview'), 'WorkforceOverview')
 const StaffDirectory = page(() => import('./workforce/StaffDirectory'), 'StaffDirectory')
+const StaffCheck = page(() => import('./workforce/StaffCheck'), 'StaffCheck')
 const WorkforceAttendance = page(() => import('./workforce/Attendance'), 'WorkforceAttendance')
 const WorkforceLeave = page(() => import('./workforce/Leave'), 'WorkforceLeave')
 const WorkforceSetup = page(() => import('./workforce/Setup'), 'WorkforceSetup')
@@ -231,6 +232,7 @@ export default function App() {
             <Route path="/reports" element={<Only when="can_view_reports"><Reports /></Only>} />
             <Route path="/workforce" element={<OnlyWf permission="wf:reports:view"><WorkforceOverview /></OnlyWf>} />
             <Route path="/workforce/staff" element={<OnlyWf permission="wf:staff:view"><StaffDirectory /></OnlyWf>} />
+            <Route path="/workforce/staff/check" element={<Only when="can_manage_staff"><OnlyWf permission="wf:staff:edit"><StaffCheck /></OnlyWf></Only>} />
             <Route path="/workforce/attendance" element={<OnlyWf permission="wf:attendance:view"><WorkforceAttendance /></OnlyWf>} />
             <Route path="/workforce/leave" element={<OnlyWf permission="wf:leave:view"><WorkforceLeave /></OnlyWf>} />
             <Route path="/workforce/pay" element={<OnlyWf permission="wf:salary:view"><WorkforceSalaries /></OnlyWf>} />
