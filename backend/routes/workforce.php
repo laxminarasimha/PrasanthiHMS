@@ -54,6 +54,7 @@ Route::controller(EmployeeController::class)->group(function () {
     Route::get('/employees/export', 'export');
     Route::post('/employees', 'store');
     Route::get('/employees/{employee}', 'show');
+    Route::get('/employees/{employee}/card', 'card')->whereNumber('employee');
     Route::put('/employees/{employee}', 'update');
     Route::get('/employees/{employee}/private', 'private');
     Route::put('/employees/{employee}/private', 'savePrivate');

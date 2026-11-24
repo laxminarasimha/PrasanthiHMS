@@ -24,6 +24,10 @@ export type Employee = StaffBrief & {
   holiday_calendar_id: number | null
   payment_mode: string | null
   user_id: number | null
+  /** In the daily attendance and on the payroll. Doctors and consultants are not, unless ticked on their record. */
+  regular?: boolean
+  /** What was ticked on the record itself; empty when the usual rule decides. */
+  regular_set?: boolean | null
   /** Whether the person signs in, and as what. What they may do there is for those who manage logins. */
   login?: { id: number; role: string; role_label: string; is_active: boolean; sign_in_with: 'password' | 'pin'; email: string | null; waiting_for_own_pin: boolean } | null
 }

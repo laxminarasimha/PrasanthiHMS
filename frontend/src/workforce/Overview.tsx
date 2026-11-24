@@ -4,6 +4,7 @@ import { api } from '../api'
 import { clock, longDate, today } from '../format'
 import { useChoiceInAddress } from '../rangeInAddress'
 import { inr } from './pay'
+import { PersonLink } from './PersonLink'
 import type { StaffBrief } from './shared'
 import { WorkforceTabs } from './WorkforceTabs'
 
@@ -32,6 +33,9 @@ export function WorkforceOverview() {
   const [date, setDate] = useChoiceInAddress<string>('date', today())
   const [board, setBoard] = useState<Board | null>(null)
   const [error, setError] = useState('')
+  // Read again after someone is checked in or out from the window that opens on their name.
+  const [again, setAgain] = useState(0)
+  const reload = () => setAgain((n) => n + 1)
 
   useEffect(() => {
     let current = true
@@ -46,7 +50,7 @@ export function WorkforceOverview() {
     return () => {
       current = false
     }
-  }, [date])
+  }, [date, again])
   // Figures for a different day than the one chosen are never shown as if they were that day's.
   const shown = board?.date === date ? board : null
 
@@ -62,7 +66,9 @@ export function WorkforceOverview() {
           {people.map((p) => (
             <li key={p.id}>
               <span>
-                {p.name}
+                <PersonLink id={p.id} onChanged={reload}>
+                  {p.name}
+                </PersonLink>
                 <small className="muted block">{[p.designation, p.department?.name].filter(Boolean).join(' · ') || p.employee_no}</small>
               </span>
               {extra && <small className="muted">{extra(p)}</small>}
@@ -164,7 +170,12 @@ export function WorkforceOverview() {
                 {shown.missing_check_outs.map((m) => (
                   <li key={m.id} className="note">
                     <Link to={`/workforce/attendance?date=${m.work_date}`}>
-                      <strong>{m.employee.name}</strong> was checked in on {longDate(m.work_date)}
+                      <strong>
+                        <PersonLink id={m.employee.id} onChanged={reload}>
+                          {m.employee.name}
+                        </PersonLink>
+                      </strong>{' '}
+                      was checked in on {longDate(m.work_date)}
                       {m.check_in ? ` at ${clock(m.check_in)}` : ''} and never checked out. Put the time right.
                     </Link>
                   </li>

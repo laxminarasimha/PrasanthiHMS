@@ -40,11 +40,14 @@ class OverviewController extends Controller
         $user = $request->user();
         Access::require($user, 'wf:reports:view');
         $date = CarbonImmutable::parse($request->validate(['date' => ['nullable', 'date']])['date'] ?? now())->toDateString();
-        $staff = Access::employees($user, 'wf:reports:view')->with('department:id,name')
+        $everyone = Access::employees($user, 'wf:reports:view')->with('department:id,name')
             ->where(fn ($q) => $q->whereNull('joined_on')->orWhereDate('joined_on', '<=', $date))
             ->where(fn ($q) => $q->where('status', '!=', 'inactive')->orWhereDate('separated_on', '>=', $date))->orderBy('name')->get();
+        // The day's count is of the regular staff. A doctor or consultant who has checked in is still shown as in.
+        $regular = Employee::query()->whereIn('id', $everyone->pluck('id'))->regular()->pluck('id')->flip();
+        $staff = $everyone->filter(fn (Employee $e) => $regular->has($e->id))->values();
         $days = AttendanceRules::days($staff, $date, $date);
-        $ids = $staff->pluck('id');
+        $ids = $everyone->pluck('id');
         $list = fn (array $statuses, ?callable $also = null) => $staff->filter(fn (Employee $e) => in_array($days[$e->id][$date]['status'], $statuses, true) && (! $also || $also($days[$e->id][$date])))
             ->map(fn (Employee $e) => $this->brief($e) + ['late_minutes' => $days[$e->id][$date]['late_minutes'], 'leave_type' => $days[$e->id][$date]['leave_type'], 'shift' => $days[$e->id][$date]['shift'], 'note' => $days[$e->id][$date]['note']])->values();
         $working = ['present', 'half_day', 'half_leave', 'open'];
@@ -57,7 +60,7 @@ class OverviewController extends Controller
 
         return response()->json([
             'date' => $date, 'is_today' => $isToday, 'staff' => $staff->count(),
-            'in' => $isToday ? $this->inNowList($inNow, $staff) : $list($working),
+            'in' => $isToday ? $this->inNowList($inNow, $everyone) : $list($working),
             // Today: came in and has already gone (a night duty that ended this morning, a duty that is over).
             'left' => $isToday ? $list(['present', 'half_day', 'half_leave'])->filter($notHere)->values() : null,
             'not_in' => $list(['not_in', 'absent'])->filter($notHere)->values(), 'later' => $list(['later'])->filter($notHere)->values(), 'on_leave' => $list(['on_leave', 'half_leave'], fn ($d) => $d['leave'] > 0),
@@ -247,6 +250,8 @@ class OverviewController extends Controller
             'self_check_in' => (bool) Settings::get('attendance')['self_check_in'],
             // False when the hospital allows check-in only on its own internet and this phone is not on it.
             'here' => Network::mayCheckIn($request->ip()),
+            // A doctor or consultant may check in for the record, but is not asked to: they are not in the daily attendance.
+            'regular' => $employee->isRegular(),
             'open' => $open ? $attendance->record($open) : null,
             // An earlier duty that was never checked out. It does not stop today's check-in; the office puts it right.
             'forgotten' => $forgotten ? $attendance->record($forgotten) : null,

@@ -8,6 +8,7 @@ import { useLoadOnChange } from '../loading'
 import { useChoiceInAddress } from '../rangeInAddress'
 import { LoginAccess, PinSlip } from './LoginAccess'
 import { PasswordAgain } from './PasswordAgain'
+import { PersonCard } from './PersonCard'
 import { saveFile, usePasswordAgain } from './sensitiveStep'
 import { STATUS_LABEL, TYPE_LABEL, WEEKDAYS, useWorkforce, type Employee } from './shared'
 import { StaffCheckNote } from './StaffCheckNote'
@@ -98,6 +99,7 @@ export function StaffDirectory() {
     setNotice('')
     setReason('')
     setWeeklyOff(target === 'new' ? null : target.weekly_off)
+    setRegular(null)
     setForm(
       target === 'new'
         ? blank
@@ -105,6 +107,25 @@ export function StaffDirectory() {
     )
   }
   const set = (key: keyof Form) => (value: string) => setForm((f) => ({ ...f, [key]: value }))
+  // The person whose window is open: a click on the list shows them at a glance first; changing them is one step further.
+  const [viewing, setViewing] = useState<number | null>(null)
+  // In the daily attendance and on the payroll. Empty until it is ticked or unticked here: the usual rule then decides.
+  const [regular, setRegular] = useState<boolean | null>(null)
+
+  // "Open full record" from the window on a person's name arrives here with their number in the address.
+  const wanted = search.get('person') ? Number(search.get('person')) : null
+  useEffect(() => {
+    if (!wanted || !staff) return
+    const show = (person: Employee) => {
+      open(person)
+      setSearch({}, { replace: true })
+    }
+    const found = staff.find((s) => s.id === wanted)
+    if (found) show(found)
+    // Not on the list as it is filtered (someone who has left, say): fetched by itself.
+    else void api.get<Employee>(`/workforce/employees/${wanted}`).then((res) => show(res.data)).catch(() => setSearch({}, { replace: true }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wanted, staff])
 
   /** The login of someone just added, from the same form. If it cannot be given, the person stays added and their page opens where it can be put right. */
   const giveLogin = async (person: Employee) => {
@@ -123,7 +144,7 @@ export function StaffDirectory() {
     e.preventDefault()
     setSaving(true)
     setErrors({})
-    const body = { ...Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v === '' ? null : v])), weekly_off: weeklyOff, reason: reason || undefined }
+    const body = { ...Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v === '' ? null : v])), weekly_off: weeklyOff, reason: reason || undefined, ...(regular === null ? {} : { regular }) }
     try {
       const res = editing === 'new' ? await api.post<Employee>('/workforce/employees', body) : await api.put<Employee>(`/workforce/employees/${(editing as Employee).id}`, body)
       setNotice(editing === 'new' ? `${res.data.name} was added as ${res.data.employee_no}.` : `${res.data.name}'s details were saved.`)
@@ -181,6 +202,7 @@ export function StaffDirectory() {
           </div>
           <StaffCheckNote />
           {slip && <PinSlip name={slip.name} mobile={slip.mobile} pin={slip.pin} onDone={() => setSlip(null)} />}
+          {viewing && <PersonCard id={viewing} onClose={() => setViewing(null)} onChanged={load} />}
           {notice && <p className="notice">{notice}</p>}
           {failed && <div className="form-error">{failed}</div>}
           <div className="table-wrap">
@@ -197,7 +219,7 @@ export function StaffDirectory() {
               </thead>
               <tbody>
                 {staff?.map((s) => (
-                  <tr key={s.id} onClick={() => open(s)} className={editing !== 'new' && editing?.id === s.id ? 'selected' : ''}>
+                  <tr key={s.id} onClick={() => setViewing(s.id)} className={editing !== 'new' && editing?.id === s.id ? 'selected' : ''} title="Open this person">
                     <td className="fit-wrap">
                       <strong>{s.name}</strong>
                       <small className="muted block">
@@ -207,7 +229,10 @@ export function StaffDirectory() {
                     </td>
                     <td className="wrap">
                       {s.department?.name ?? '—'}
-                      <small className="muted block">{TYPE_LABEL[s.employment_type] ?? s.employment_type}</small>
+                      <small className="muted block">
+                        {TYPE_LABEL[s.employment_type] ?? s.employment_type}
+                        {s.regular === false && s.employment_type !== 'consultant' ? ' · not in daily attendance' : ''}
+                      </small>
                     </td>
                     <td className="mono">{s.phone ?? '—'}</td>
                     <td className="wrap">
@@ -318,6 +343,14 @@ export function StaffDirectory() {
                       {weeklyOff === null && <small className="muted">Nothing ticked: the hospital's usual weekly off applies.</small>}
                     </div>
                   </div>
+
+                  <label className="check top gap-top">
+                    <input type="checkbox" checked={regular ?? (editing === 'new' ? form.employment_type !== 'consultant' : (editing.regular ?? true))} onChange={(e) => setRegular(e.target.checked)} />
+                    <span>
+                      In the daily attendance and on the payroll
+                      <small className="muted block">Unticked for doctors and consultants: they are not marked absent, are not in a payroll, and are paid apart. They may still check in for the record.</small>
+                    </span>
+                  </label>
 
                   {editing === 'new' && seesLogin && (
                     <div className="signs-in">

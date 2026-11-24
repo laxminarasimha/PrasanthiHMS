@@ -7,6 +7,8 @@ import type { Spell } from './shared'
 export type MyToday = {
   employee: { id: number; name: string } | null
   self_check_in?: boolean
+  /** False for a doctor or consultant, who is not in the daily attendance. */
+  regular?: boolean
   /** False when check-in is kept to the hospital's own internet and this phone is not on it. */
   here?: boolean
   /** The duty they are on now. A night duty that began yesterday evening is still this one, until it is over. */

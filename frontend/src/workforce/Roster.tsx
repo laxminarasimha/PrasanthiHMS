@@ -4,6 +4,7 @@ import { today } from '../format'
 import { useLoadOnChange } from '../loading'
 import { useChoiceInAddress } from '../rangeInAddress'
 import { dutyLabel, shortTime, weekStart, type RosterData } from './dutyWords'
+import { PersonLink } from './PersonLink'
 
 const addDays = (date: string, by: number) => {
   const d = new Date(`${date}T00:00:00`)
@@ -112,7 +113,7 @@ export function RosterView({ department }: { department: string }) {
             {r?.rows.map((p) => (
               <tr key={p.id} className="static">
                 <td className="wf-name">
-                  {p.name}
+                  <PersonLink id={p.id}>{p.name}</PersonLink>
                   <small>{[p.designation, p.department?.name].filter(Boolean).join(' · ')}</small>
                 </td>
                 {r.dates.map((d) => {

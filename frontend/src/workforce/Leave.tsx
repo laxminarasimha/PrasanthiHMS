@@ -6,6 +6,7 @@ import { longDate } from '../format'
 import { useChoiceInAddress } from '../rangeInAddress'
 import { saveFile } from './sensitiveStep'
 import { PART_LABEL, REQUEST_CLASS, REQUEST_LABEL, days, useWorkforce, type LeaveRequest, type LeaveType, type StaffBrief } from './shared'
+import { PersonLink } from './PersonLink'
 import { WorkforceTabs } from './WorkforceTabs'
 
 type Balances = { year: number; from: string; to: string; types: { id: number; code: string; name: string; is_paid: boolean }[]; rows: (StaffBrief & { balances: Record<string, { left: number; taken: number }> })[] }
@@ -122,7 +123,9 @@ function Requests() {
               {shown?.map((r) => (
                 <tr key={r.id} className="static">
                   <td className="fit-wrap">
-                    <strong>{r.employee?.name ?? '—'}</strong>
+                    <strong>
+                      <PersonLink id={r.employee?.id}>{r.employee?.name ?? '—'}</PersonLink>
+                    </strong>
                     <small className="muted block">{[r.employee?.employee_no, r.employee?.department?.name].filter(Boolean).join(' · ')}</small>
                   </td>
                   <td className="wrap">
@@ -346,7 +349,9 @@ function BalanceSheet() {
                 {shown.rows.map((r) => (
                   <tr key={r.id} onClick={() => setOpen(r)} className={open?.id === r.id ? 'selected' : ''} title="Open the leave account">
                     <td className="fit-wrap">
-                      <strong>{r.name}</strong>
+                      <strong>
+                        <PersonLink id={r.id}>{r.name}</PersonLink>
+                      </strong>
                       <small className="muted block">{[r.employee_no, r.department?.name].filter(Boolean).join(' · ')}</small>
                     </td>
                     {shown.types.map((t) => {

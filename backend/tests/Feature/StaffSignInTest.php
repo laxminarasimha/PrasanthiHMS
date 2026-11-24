@@ -310,8 +310,10 @@ class StaffSignInTest extends TestCase
         $this->getJson('/api/workforce/attendance/times')->assertForbidden();
 
         Sanctum::actingAs($this->user('admin'));
-        $all = $this->getJson('/api/workforce/attendance/times?from=2026-03-01&to=2026-03-31')->assertOk()->json('rows');
-        $this->assertCount(3, $all);
+        $this->assertCount(3, $this->getJson('/api/workforce/attendance/times?from=2026-03-01&to=2026-03-31&who=all')->assertOk()->json('rows'));
+        // With nothing chosen the list is of the regular staff: doctors and consultants are not in the daily attendance.
+        $this->assertSame(['Nurse Sample'], array_column($this->getJson('/api/workforce/attendance/times?from=2026-03-01&to=2026-03-31')->assertOk()->json('rows'), 'name'));
+        $this->assertSame(['Nurse Sample'], array_column($this->getJson('/api/workforce/attendance/day?date=2026-03-11')->json('rows'), 'name'));
         $doctors = $this->getJson('/api/workforce/attendance/times?from=2026-03-01&to=2026-03-31&who=doctors')->assertOk()->json('rows');
         $this->assertSame([['Dr Visiting', '2026-03-11 09:10', null, 'By the office'], ['Dr Sample', '2026-03-11 09:10', '2026-03-11 13:40', 'By themself']], array_map(fn ($r) => [$r['name'], $r['in'], $r['out'], $r['marked']], $doctors));
         $this->assertSame(['Nurse Sample'], array_column($this->getJson('/api/workforce/attendance/times?from=2026-03-01&to=2026-03-31&who=others')->json('rows'), 'name'));
@@ -320,5 +322,91 @@ class StaffSignInTest extends TestCase
         $this->assertCount(2, $this->getJson('/api/workforce/attendance/month?month=2026-03&who=doctors')->assertOk()->json('rows'));
         $this->getJson('/api/workforce/attendance/times?from=2026-01-01&to=2026-06-30')->assertStatus(422);
         $this->get('/api/workforce/attendance/times/export?from=2026-03-01&to=2026-03-31&who=doctors')->assertOk()->assertHeader('content-disposition', 'attachment; filename=in-and-out-2026-03-01-to-2026-03-31.csv');
+    }
+
+    public function test_doctors_and_consultants_are_outside_the_daily_attendance_and_the_payroll(): void
+    {
+        $this->travelTo('2026-03-11 10:00:00'); // a Wednesday
+        $doctor = $this->user('doctor', ['name' => 'Dr Sample', 'phone' => '9811100001']);
+        $salaried = $this->user('doctor', ['name' => 'Dr Salaried', 'phone' => '9811100004']);
+        [$doc, $visiting, $nurse, $duty] = Tenant::run($this->here->id, fn () => [
+            Employee::create(['employee_no' => 'D1', 'name' => 'Dr Sample', 'joined_on' => '2025-01-01', 'user_id' => $doctor->id]),
+            Employee::create(['employee_no' => 'D2', 'name' => 'Dr Visiting', 'joined_on' => '2025-01-01', 'employment_type' => 'consultant']),
+            Employee::create(['employee_no' => 'N1', 'name' => 'Nurse Sample', 'joined_on' => '2025-01-01']),
+            // A doctor on a monthly salary: ticked as regular on their own record.
+            Employee::create(['employee_no' => 'D3', 'name' => 'Dr Salaried', 'joined_on' => '2025-01-01', 'user_id' => $salaried->id, 'regular' => true]),
+        ]);
+        Sanctum::actingAs($this->user('admin'));
+        $this->putJson('/api/workforce/setup/settings', ['attendance' => ['self_check_in' => true]])->assertOk();
+
+        // The day's count, "not in yet" and the month are of the regular staff only.
+        $board = $this->getJson('/api/workforce/dashboard')->assertOk()->json();
+        $this->assertSame([2, ['Dr Salaried', 'Nurse Sample']], [$board['staff'], array_column($board['not_in'], 'name')]);
+        $this->assertSame(['Dr Salaried', 'Nurse Sample'], array_column($this->getJson('/api/workforce/attendance/month?month=2026-03')->json('rows'), 'name'));
+        $this->assertSame(['Dr Sample', 'Dr Visiting'], array_column($this->getJson('/api/workforce/attendance/month?month=2026-03&who=doctors')->json('rows'), 'name'));
+        // Nothing marked is not an absence for them, on the list or on their own record.
+        $this->assertSame([0.0, 0.0], array_map(fn ($r) => (float) $r['totals']['absent'], $this->getJson('/api/workforce/attendance/month?month=2026-03&who=doctors')->json('rows')));
+        $this->assertGreaterThan(0, $this->getJson('/api/workforce/attendance/month?month=2026-03')->json('rows.1.totals.absent'));
+        $list = collect($this->getJson('/api/workforce/employees')->json('data'))->keyBy('name');
+        $this->assertSame([false, false, true, true], [$list['Dr Sample']['regular'], $list['Dr Visiting']['regular'], $list['Nurse Sample']['regular'], $list['Dr Salaried']['regular']]);
+
+        // A consultant who checks in for the record shows as in the hospital, and is never asked to.
+        $this->postJson('/api/workforce/attendance/check-in', ['employee_id' => $visiting->id])->assertSuccessful();
+        $this->assertSame(['Dr Visiting'], array_column($this->getJson('/api/workforce/dashboard')->json('in'), 'name'));
+        Sanctum::actingAs($doctor);
+        $this->getJson('/api/workforce/me/today')->assertOk()->assertJsonPath('regular', false)->assertJsonPath('self_check_in', true);
+        Sanctum::actingAs($salaried);
+        $this->getJson('/api/workforce/me/today')->assertOk()->assertJsonPath('regular', true);
+
+        // A payroll takes in the regular staff only: the doctor and the consultant are not even "left out".
+        Sanctum::actingAs($this->user('admin'));
+        $part = Tenant::run($this->here->id, fn () => \App\Workforce\Models\SalaryComponent::create(['code' => 'BASIC', 'name' => 'Basic pay', 'kind' => 'earning', 'basis' => 'fixed']));
+        Tenant::run($this->here->id, fn () => \App\Workforce\Models\SalaryStructure::create(['employee_id' => $nurse->id, 'effective_from' => '2026-01-01', 'pay_basis' => 'monthly', 'approved_at' => now()])->lines()->create(['component_id' => $part->id, 'amount' => 20000]));
+        $run = $this->postJson('/api/workforce/payroll/runs', ['period' => '2026-02'])->assertCreated()->json();
+        $this->assertSame([['Nurse Sample'], ['Dr Salaried']], [array_column(array_column($run['payslips'], 'employee'), 'name'), array_column($run['left_out'], 'name')]);
+        // Unticking it on the person's record takes them out as well; ticking brings a doctor in.
+        $this->putJson("/api/workforce/employees/{$duty->id}", ['employee_no' => 'D3', 'name' => 'Dr Salaried', 'user_id' => $salaried->id, 'regular' => false])->assertOk()->assertJsonPath('regular', false);
+        $this->putJson("/api/workforce/employees/{$doc->id}", ['employee_no' => 'D1', 'name' => 'Dr Sample', 'user_id' => $doctor->id, 'regular' => true])->assertOk()->assertJsonPath('regular', true);
+    }
+
+    public function test_a_persons_card_shows_each_part_only_to_those_who_may_see_it(): void
+    {
+        $this->travelTo('2026-03-11 10:00:00');
+        $doctor = $this->user('doctor', ['name' => 'Dr Sample', 'phone' => '9811100001', 'availability' => ['mon' => [['from' => '10:00', 'to' => '13:00']]], 'slot_minutes' => 15]);
+        $nurseLogin = $this->user('nurse', ['name' => 'Nurse Sample', 'phone' => '9811100002']);
+        [$doc, $nurse] = Tenant::run($this->here->id, fn () => [
+            Employee::create(['employee_no' => 'D1', 'name' => 'Dr Sample', 'phone' => '9811100001', 'designation' => 'Physician', 'joined_on' => '2025-01-01', 'user_id' => $doctor->id]),
+            Employee::create(['employee_no' => 'N1', 'name' => 'Nurse Sample', 'phone' => '9811100002', 'designation' => 'Staff nurse', 'joined_on' => '2025-01-01', 'user_id' => $nurseLogin->id]),
+        ]);
+        $casual = Tenant::run($this->here->id, fn () => \App\Workforce\Models\LeaveType::create(['code' => 'CL', 'name' => 'Casual leave', 'annual_allowance' => 12]));
+        Tenant::run($this->here->id, fn () => \App\Workforce\Models\LeaveRequest::create(['employee_id' => $nurse->id, 'leave_type_id' => $casual->id, 'from_date' => '2026-03-20', 'to_date' => '2026-03-21', 'days' => 2, 'status' => 'approved', 'requested_by' => $nurseLogin->id]));
+
+        // Whoever looks after staff, attendance and leave sees the whole card, and may check the person in from it.
+        Sanctum::actingAs($this->user('admin'));
+        $this->postJson('/api/workforce/attendance/check-in', ['employee_id' => $nurse->id])->assertSuccessful();
+        $card = $this->getJson("/api/workforce/employees/{$nurse->id}/card")->assertOk()->json();
+        $this->assertSame(['Nurse Sample', 'Staff nurse', '9811100002', 'nurse', true], [$card['person']['name'], $card['person']['designation'], $card['person']['phone'], $card['person']['login']['role'], $card['person']['regular']]);
+        $this->assertSame(['open', '2026-03-11 10:00', 1], [$card['today']['status'], $card['today']['on']['check_in'], count($card['today']['records'])]);
+        $this->assertSame(['March 2026', 1.0], [$card['month']['name'], (float) $card['month']['present']]);
+        $this->assertSame([['CL', 0.0]], array_map(fn ($l) => [$l['code'], (float) $l['left']], $card['leave']['left']));
+        $this->assertSame([['2026-03-20', '2026-03-21', 'approved', 'Casual leave']], array_map(fn ($l) => [$l['from'], $l['to'], $l['status'], $l['type']], $card['leave']['coming']));
+        $this->assertSame(['edit' => true, 'check_in' => true], $card['can']);
+        $this->assertArrayNotHasKey('doctor', $card);
+        // Nothing of pay or bank is on a card, whoever asks.
+        $this->assertStringNotContainsStringIgnoringCase('salary', json_encode($card));
+        $this->assertStringNotContainsStringIgnoringCase('bank_account', json_encode($card));
+
+        // A doctor's card carries their hours and how many are booked with them today.
+        $card = $this->getJson("/api/workforce/employees/{$doc->id}/card")->assertOk()->json();
+        $this->assertSame([15, 0, false], [$card['doctor']['slot_minutes'], $card['doctor']['booked_today'], $card['person']['regular']]);
+        $this->assertSame('10:00', $card['doctor']['availability']['mon'][0]['from']);
+
+        // Someone who manages logins but does not look after attendance or leave sees who the person is, and no more.
+        Sanctum::actingAs($doctor);
+        $card = $this->getJson("/api/workforce/employees/{$nurse->id}/card")->assertOk()->json();
+        $this->assertSame(['Nurse Sample', false, false, ['edit' => true, 'check_in' => false]], [$card['person']['name'], isset($card['today']), isset($card['leave']), $card['can']]);
+        // And someone with no part in keeping staff records has no card to open.
+        Sanctum::actingAs($nurseLogin);
+        $this->getJson("/api/workforce/employees/{$doc->id}/card")->assertForbidden();
     }
 }
