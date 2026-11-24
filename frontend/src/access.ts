@@ -6,7 +6,7 @@ import type { User } from './types'
  */
 export function workforceHome(user: User): string | null {
   const can = (permission: string) => Boolean(user.abilities?.[permission])
-  const pages: [string, string][] = [['wf:reports:view', '/workforce'], ['wf:staff:view', '/workforce/staff'], ['wf:attendance:view', '/workforce/attendance'], ['wf:leave:view', '/workforce/leave'], ['wf:payroll:view', '/workforce/payroll'], ['wf:salary:view', '/workforce/pay'], ['wf:advances:view', '/workforce/advances'], ['wf:settings:admin', '/workforce/setup']]
+  const pages: [string, string][] = [['wf:reports:view', '/workforce'], ['wf:staff:view', '/workforce/staff'], ['wf:attendance:view', '/workforce/attendance'], ['wf:leave:view', '/workforce/leave'], ['wf:payroll:view', '/workforce/payroll'], ['wf:salary:view', '/workforce/pay'], ['wf:advances:view', '/workforce/advances'], ['canPayConsultants', '/workforce/consultants'], ['wf:settings:admin', '/workforce/setup']]
   return pages.find(([permission]) => can(permission))?.[1] ?? (can('wf:self:view') ? '/workforce/me' : null)
 }
 

@@ -30,7 +30,7 @@ class StaffController extends Controller
 
     private function seesShares(Request $request): bool
     {
-        return $request->user()->role === Role::Admin;
+        return $request->user()->allows('canPayConsultants');
     }
 
     /** What the staff screen is sent for one person: with the shares for an admin, without for anyone else. */

@@ -218,3 +218,13 @@ Added 25 November 2026. The owner: doctors are consultants, not on the payroll; 
 
 A staff name on the Workforce pages opens a window over the page (`PersonLink`, `PersonCard`, `GET /workforce/employees/{id}/card`): who they are, how to reach them, whether they are in today, their month, their leave, and a doctor's hours. The server sends each part only to someone who may see it elsewhere; pay and bank details are never part of it. On the Staff list a click opens this window first, and "Open full record" goes on to the form.
 
+## Consultants: what they earn and what they are paid
+
+Added 25 November 2026. Doctors and consultants are not in the payroll. The owner pays them in two ways, and both are kept here (`App\Support\ConsultantFees`, `ConsultantController`).
+
+- **Their own cases:** a percentage of what is collected, set for each doctor under Staff → Login and access → Doctor settings. The figures come from `DoctorMoney` (a bill belongs to the doctor of its visit; an inpatient bill to the doctor the patient is admitted under).
+- **Visits to another doctor's inpatient:** a fixed fee. The first visit to that patient earns one amount (₹1,000 to start with) and each later day a smaller one (₹500). The ward writes the visit down on the inpatient's page under "Consultants": which doctor and which day, once for a day. It adds nothing to the patient's bill. The doctor the patient is admitted under cannot be entered. Each visit keeps the fee it was given, so a change of rates does not rewrite what was earned.
+- **Workforce → Pay → Consultants:** month by month, what each doctor earned, what was paid for that month and what is still due; a doctor's month in full; a statement to print.
+- **A payment** is written down against the month it settles. It is also posted into the cash book as a paid expense under "Consultants' fees" (`ExpenseBook::post`), so the day's cash count sees it and it cannot be dated into a closed day. One made by mistake is cancelled with a reason, and its expense with it.
+- **Who sees the money:** the permission `canPayConsultants`, which only the admin has unless it is ticked for another login. The ward sees which visit it is, never the fee.
+

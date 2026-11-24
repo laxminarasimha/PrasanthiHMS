@@ -98,6 +98,7 @@ class User extends Authenticatable
         'canCloseDay' => ['Close the day', 'Count the cash and close a day’s accounts, which locks that day’s bills and payments.'],
         'canManageSetup' => ['Price lists and setup', 'Change services, OPD hours, beds and IPD services.'],
         'canSetPrices' => ['Set prices', 'Set or change the price of a service, an IPD service or a bed.'],
+        'canPayConsultants' => ['Consultants’ fees and payments', 'See what each consultant has earned, set their share of collections and the visit fees, and record what is paid to them.'],
         'canManageStaff' => ['Staff and permissions', 'Add staff, reset passwords and change what each person may do.'],
     ];
 
@@ -120,7 +121,7 @@ class User extends Authenticatable
      * Permissions that hand over clinical authority, money or control of the system. Only an admin may give one of
      * these to a person, or give a role that carries one; anyone who manages staff may still take them away.
      */
-    public const SENSITIVE = ['canConsult', 'canApproveLab', 'canApproveIpd', 'canChangePrice', 'canSetPrices', 'canDeleteBills', 'canAuditPharmacy', 'canCloseDay', 'canExportData', 'canManageStaff'];
+    public const SENSITIVE = ['canConsult', 'canApproveLab', 'canApproveIpd', 'canChangePrice', 'canSetPrices', 'canDeleteBills', 'canAuditPharmacy', 'canCloseDay', 'canExportData', 'canManageStaff', 'canPayConsultants'];
 
     /**
      * Whether this person may do this in the pharmacy: anything if they run it, or only what reads without

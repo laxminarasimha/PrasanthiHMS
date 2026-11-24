@@ -12,6 +12,8 @@ export type User = {
   role: string
   role_label: string
   can_manage_staff: boolean
+  /** May see what consultants earn, set their share and fees, and record what is paid to them. */
+  can_pay_consultants?: boolean
   can_consult: boolean
   /** May read clinical records: through their own clinical or lab work, or by being allowed to look. */
   can_view_clinical?: boolean

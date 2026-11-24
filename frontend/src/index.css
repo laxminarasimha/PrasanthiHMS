@@ -2161,3 +2161,9 @@ td.fit-wrap { white-space: normal; min-width: 130px; overflow-wrap: anywhere; }
 .person-facts .contents { display: contents; }
 .person-line { margin: 0; }
 
+/* Consultants: their visits to an inpatient, and their month */
+.ipd-consultant-form { align-items: flex-end; gap: 12px; }
+.ipd-consultant-form .field { flex: 1 1 180px; margin: 0; }
+.ipd-consultant-form .btn { flex: none; }
+tr.cancelled td { color: var(--muted); }
+
