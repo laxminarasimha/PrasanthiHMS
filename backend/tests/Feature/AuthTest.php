@@ -43,11 +43,11 @@ class AuthTest extends TestCase
         $try = fn (string $password) => $this->postJson('/api/login', ['email' => $user->email, 'password' => $password]);
 
         foreach (range(1, 10) as $i) {
-            $try("guess{$i}")->assertStatus(422)->assertJsonPath('errors.email.0', 'The email or password is incorrect.');
+            $try("guess{$i}")->assertStatus(422)->assertJsonPath('errors.email.0', 'That is not right. Check the mobile number or email, and the password or PIN.');
         }
         // Closed now, even to the right password, and the same for the email typed in capitals.
-        $this->assertStringContainsString('Too many wrong passwords', $try('password')->assertStatus(422)->json('errors.email.0'));
-        $this->assertStringContainsString('Too many wrong passwords', $this->postJson('/api/login', ['email' => strtoupper($user->email), 'password' => 'password'])->json('errors.email.0'));
+        $this->assertStringContainsString('Too many wrong tries', $try('password')->assertStatus(422)->json('errors.email.0'));
+        $this->assertStringContainsString('Too many wrong tries', $this->postJson('/api/login', ['email' => strtoupper($user->email), 'password' => 'password'])->json('errors.email.0'));
 
         // Someone else's login is not affected.
         $other = User::factory()->create();

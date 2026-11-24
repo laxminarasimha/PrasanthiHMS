@@ -1,4 +1,4 @@
-import { homeFor } from './access'
+import { homeFor, ownRecordOnly, workforceHome } from './access'
 import type { User } from './types'
 
 export type NavTab = { key: string; label: string; to: string; /** Other paths that belong to this tab. */ also?: string[] }
@@ -20,6 +20,8 @@ export const patientsSection = (user: User): 'doctor' | 'front-desk' | 'patients
 
 /** Every menu tab this person is allowed to open, in menu order. */
 export function allowedTabs(user: User): NavTab[] {
+  // An own-record login has one place only, whatever else its permissions might seem to say.
+  if (ownRecordOnly(user)) return workforceTab(user)
   const setup = setupPages(user)
   const patients = patientsSection(user)
   return [
@@ -41,11 +43,9 @@ export function allowedTabs(user: User): NavTab[] {
  * login gets the same tab named for what it holds for them: their own record.
  */
 function workforceTab(user: User): NavTab[] {
-  const can = (permission: string) => Boolean(user.abilities?.[permission])
-  const pages: [string, string][] = [['wf:reports:view', '/workforce'], ['wf:staff:view', '/workforce/staff'], ['wf:attendance:view', '/workforce/attendance'], ['wf:leave:view', '/workforce/leave'], ['wf:payroll:view', '/workforce/payroll'], ['wf:salary:view', '/workforce/pay'], ['wf:advances:view', '/workforce/advances'], ['wf:settings:admin', '/workforce/setup']]
-  const first = pages.find(([permission]) => can(permission))
-  if (first) return [{ key: 'workforce', label: 'Workforce', to: first[1], also: ['/workforce'] }]
-  return can('wf:self:view') ? [{ key: 'workforce', label: 'My record', to: '/workforce/me', also: ['/workforce'] }] : []
+  const first = workforceHome(user)
+  if (!first) return []
+  return [{ key: 'workforce', label: first === '/workforce/me' ? 'My record' : 'Workforce', to: first, also: ['/workforce'] }]
 }
 
 /** The tabs shown in this person's menu: the allowed ones less those they chose to hide. */
@@ -78,7 +78,8 @@ export function bottomTabs(user: User): BottomTab[] {
     // Staff: the next section they work in, then their own attendance.
     const next = tabs.find((t) => t !== homeTab && t.key !== 'workforce' && t.key !== 'setup')
     if (next) bar.push({ key: next.key, label: next.label, to: next.to, paths: whole(next) })
-    if (user.abilities?.['wf:self:view']) bar.push({ key: 'attendance', label: 'Attendance', to: '/workforce/me', paths: ['/workforce/me'] })
+    // Not when their own record is already their first screen.
+    if (user.abilities?.['wf:self:view'] && home !== '/workforce/me') bar.push({ key: 'attendance', label: 'Attendance', to: '/workforce/me', paths: ['/workforce/me'] })
   }
   return [...bar, { key: 'profile', label: 'Profile', to: '/account', paths: ['/account'] }]
 }

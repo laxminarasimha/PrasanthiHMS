@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\Role;
+use App\Support\StaffLogin;
 use App\Workforce\Support\Permissions;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -14,7 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'branch_id', 'role', 'gender', 'phone', 'department', 'signature_text', 'is_active', 'pad_hidden_sections', 'hidden_tabs', 'appearance', 'pad_section_order', 'rx_settings', 'permissions', 'signature_path', 'seal_path', 'availability', 'slot_minutes', 'share_front_desk', 'share_lab', 'share_ipd'])]
+#[Fillable(['name', 'email', 'password', 'branch_id', 'role', 'gender', 'phone', 'department', 'signature_text', 'is_active', 'pad_hidden_sections', 'hidden_tabs', 'appearance', 'pad_section_order', 'rx_settings', 'permissions', 'signature_path', 'seal_path', 'availability', 'slot_minutes', 'share_front_desk', 'share_lab', 'share_ipd', 'sign_in_with', 'must_change_secret', 'is_shared_screen'])]
 #[Hidden(['password', 'remember_token', 'signature_path', 'seal_path', 'permissions', 'share_front_desk', 'share_lab', 'share_ipd'])]
 class User extends Authenticatable
 {
@@ -41,6 +42,7 @@ class User extends Authenticatable
             'slot_minutes' => 'integer',
             // A doctor's share of collections is pay: it is sent only to an admin on the staff screen.
             'share_front_desk' => 'float', 'share_lab' => 'float', 'share_ipd' => 'float',
+            'must_change_secret' => 'boolean', 'is_shared_screen' => 'boolean',
         ];
     }
 
@@ -160,6 +162,18 @@ class User extends Authenticatable
     public static function roleAllows(Role $role, string $ability): bool
     {
         return Permissions::has($ability) ? isset(Permissions::preset($role)[$ability]) : (method_exists($role, $ability) && $role->{$ability}());
+    }
+
+    /** A login keeps its mobile number and its limits whoever saves it, and however. */
+    protected static function booted(): void
+    {
+        static::saving(fn (User $user) => StaffLogin::saving($user));
+    }
+
+    /** Whether this login is opened with a short PIN, which only an own-record login may be. */
+    public function usesPin(): bool
+    {
+        return $this->sign_in_with === 'pin';
     }
 
     public function getHasSignatureAttribute(): bool

@@ -63,3 +63,23 @@ describe('the bar at the foot of a phone’s screen', () => {
     expect(bottomTabs(hidden).map((t) => t.key)).toEqual(['home', 'attendance', 'profile'])
   })
 })
+
+describe('a login that opens only the person’s own record', () => {
+  const ward = person({ role: 'staff', abilities: { 'wf:self:view': true, 'wf:self:create': true } })
+
+  it('has one place in the menu and starts there', () => {
+    expect(allowedTabs(ward).map((t) => [t.key, t.label, t.to])).toEqual([['workforce', 'My record', '/workforce/me']])
+    expect(bottomTabs(ward).map((t) => [t.key, t.to])).toEqual([['home', '/workforce/me'], ['profile', '/account']])
+  })
+
+  it('stays that way whatever else is ticked on it', () => {
+    const ticked = person({ role: 'staff', can_front_desk: true, can_consult: true, can_view_reports: true, abilities: { 'wf:self:view': true } })
+    expect(allowedTabs(ticked).map((t) => t.key)).toEqual(['workforce'])
+  })
+
+  it('office roles start in the staff pages, not on the patient list', () => {
+    const hr = person({ role: 'hr', abilities: { 'wf:staff:view': true, 'wf:self:view': true } })
+    expect(bottomTabs(hr)[0].to).toBe('/workforce/staff')
+  })
+})
+

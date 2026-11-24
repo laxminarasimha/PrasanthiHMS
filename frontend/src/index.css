@@ -2088,4 +2088,5 @@ td.fit-wrap { white-space: normal; min-width: 130px; overflow-wrap: anywhere; }
 .install-hint span { font-size: 0.9rem; color: var(--muted); }
 .install-hint .install-steps { margin-top: 6px; color: var(--text); }
 .install-actions { display: flex; align-items: center; gap: 14px; }
-
+/* With the card at the top of the screen, the same button further down the person's own record would be one too many. */
+.punch-card ~ * .wf-today .btn { display: none; }

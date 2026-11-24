@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\User;
 use App\Support\SignInGuard;
+use App\Support\StaffLogin;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -124,9 +125,10 @@ class StaffController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $data = $request->validate($this->rules() + [
-            'password' => ['required', Password::min(8)->letters()->numbers()],
-        ]);
+        $pin = $request->input('role') === Role::Staff->value;
+        $data = $request->validate($this->rules() + ['password' => ['required', ...$this->secretRule($pin)]], self::PIN_WORDS);
+        $this->signInIsPossible($data, null);
+        $data += $this->secretOf($pin, $data['password'], true);
 
         $this->onlyAdminsTouchAdmins($request, null, $data['role']);
         $data = $this->sharesOnlyFromAdmins($request, $data);
@@ -145,10 +147,14 @@ class StaffController extends Controller
 
     public function update(Request $request, User $staff): JsonResponse
     {
+        // An own-record login is opened with a PIN, every other with a password. Moving a person across that line
+        // needs the new one given in the same step.
+        $pin = ($staff->is($request->user()) ? $staff->role->value : $request->input('role')) === Role::Staff->value;
         $data = $request->validate($this->rules($staff) + [
-            'password' => ['nullable', Password::min(8)->letters()->numbers()],
+            'password' => [$pin !== $staff->usesPin() ? 'required' : 'nullable', ...$this->secretRule($pin)],
             'is_active' => ['sometimes', 'boolean'],
-        ]);
+        ], self::PIN_WORDS + ['password.required' => $pin ? 'Give a starting PIN: an own-record login is opened with a PIN.' : 'Give a password: this role cannot be opened with a PIN.']);
+        $this->signInIsPossible($data, $staff);
 
         $this->onlyAdminsTouchAdmins($request, $staff, $data['role']);
         $data = $this->sharesOnlyFromAdmins($request, $data);
@@ -156,6 +162,9 @@ class StaffController extends Controller
             unset($data['password']);
         }
         $newPassword = isset($data['password']) && ! $staff->is($request->user());
+        if (isset($data['password'])) {
+            $data += $this->secretOf($pin, $data['password'], $newPassword);
+        }
 
         // Stop people locking themselves out of staff management.
         if ($staff->is($request->user())) {
@@ -179,6 +188,8 @@ class StaffController extends Controller
         }
 
         $staff->update($data);
+        // The person's staff record carries the same name and mobile.
+        StaffLogin::fromUser($staff, array_keys($staff->getChanges()));
         if ($changed) {
             AuditLog::record('staff.permissions', null, $staff, $this->permissionWords($staff, $wasRole, $before, $after, $reason));
             AuditLog::$written = false; // the usual "Changed a staff login" line is still written as well
@@ -190,10 +201,51 @@ class StaffController extends Controller
         }
         // A fresh password from the hospital opens a login that was closed after too many wrong ones.
         if ($newPassword) {
-            SignInGuard::clear('staff', $staff->email);
+            SignInGuard::clear('staff', StaffLogin::guardKey($staff));
         }
 
         return response()->json($this->shown($request, $staff));
+    }
+
+    private const PIN_WORDS = ['password.digits' => 'A PIN is '.StaffLogin::PIN_DIGITS.' digits.'];
+
+    /** What a PIN or a password must look like. */
+    private function secretRule(bool $pin): array
+    {
+        return $pin ? ['digits:'.StaffLogin::PIN_DIGITS] : [Password::min(8)->letters()->numbers()];
+    }
+
+    /**
+     * How the login is opened from now on. A PIN handed out by someone else is only a starting PIN: the person must
+     * choose their own before anything else opens.
+     *
+     * @return array<string, mixed>
+     */
+    private function secretOf(bool $pin, string $secret, bool $givenByAnother): array
+    {
+        if ($pin && StaffLogin::weakPin($secret)) {
+            throw ValidationException::withMessages(['password' => 'That PIN is too easy to guess. Do not use one digit repeated or a run like 123456.']);
+        }
+
+        return ['sign_in_with' => $pin ? 'pin' : 'password', 'must_change_secret' => $pin && $givenByAnother];
+    }
+
+    /**
+     * Every login needs something to sign in with: an email, or a ten-digit mobile number that is this person's alone.
+     * A login that has an email may carry a number another login already signs in with (a shared desk phone, say);
+     * that number then opens only the other login, and this person signs in with their email.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function signInIsPossible(array $data, ?User $staff): void
+    {
+        if (filled($data['email'] ?? null)) {
+            return;
+        }
+        if (StaffLogin::digits($data['phone']) === null) {
+            throw ValidationException::withMessages(['phone' => 'Without an email, the person signs in with their mobile number: give all ten digits.']);
+        }
+        StaffLogin::refuseTaken($data['phone'], $staff);
     }
 
     /**
@@ -309,7 +361,8 @@ class StaffController extends Controller
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', Rule::unique('users')->ignore($staff)],
+            // Optional: a person without one signs in with their mobile number.
+            'email' => ['nullable', 'email', 'max:255', Rule::unique('users')->ignore($staff)],
             'role' => ['required', Rule::enum(Role::class)],
             'gender' => ['required', Rule::in(['male', 'female', 'other'])],
             'phone' => ['required', 'string', 'regex:/^[0-9+\- ]{7,20}$/'],

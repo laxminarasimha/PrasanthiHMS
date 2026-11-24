@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Support\DatabaseBackup;
 use App\Support\GoogleIdToken;
 use App\Support\SignInGuard;
+use App\Support\StaffLogin;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -18,28 +19,36 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
+    /**
+     * Signing in with a mobile number or an email, and a password or (for an own-record login) a PIN.
+     * `email` is still taken as the name of the first box, for phone apps installed before mobile sign-in.
+     */
     public function login(Request $request): JsonResponse
     {
         $credentials = $request->validate([
-            'email' => ['required', 'email'],
+            'login' => ['required_without:email', 'nullable', 'string', 'max:255'],
+            'email' => ['required_without:login', 'nullable', 'string', 'max:255'],
             'password' => ['required', 'string'],
-        ]);
-
-        SignInGuard::refuseIfClosed('staff', $credentials['email'], 'email');
-        $user = User::where('email', $credentials['email'])->first();
+        ], ['login.required_without' => 'Type your mobile number or email.', 'email.required_without' => 'Type your mobile number or email.']);
+        $field = filled($credentials['login'] ?? null) ? 'login' : 'email';
+        $typed = trim((string) $credentials[$field]);
+        $user = StaffLogin::typed($typed, $field);
+        // Wrong tries are counted against the login itself, so trying by mobile and then by email is one count.
+        $key = $user ? StaffLogin::guardKey($user) : StaffLogin::key($typed);
+        SignInGuard::refuseIfClosed('staff', $key, $field, $user?->usesPin() ? StaffLogin::PIN_TRIES : SignInGuard::TRIES);
 
         if (! $user || ! Hash::check($credentials['password'], $user->password)) {
-            SignInGuard::wrong('staff', $credentials['email']);
+            SignInGuard::wrong('staff', $key);
             // Kept so that someone guessing at passwords shows up in the activity log. The password tried is never stored.
-            AuditLog::record('auth.failed', null, null, $user ? 'Wrong password' : 'No such login', $user, mb_substr($credentials['email'], 0, 100));
-            throw ValidationException::withMessages(['email' => 'The email or password is incorrect.']);
+            AuditLog::record('auth.failed', null, null, $user ? 'Wrong password' : 'No such login', $user, mb_substr($typed, 0, 100));
+            throw ValidationException::withMessages([$field => 'That is not right. Check the mobile number or email, and the password or PIN.']);
         }
 
         if (! $user->is_active) {
             AuditLog::record('auth.failed', null, null, 'The login is switched off', $user);
-            throw ValidationException::withMessages(['email' => 'This account has been deactivated.']);
+            throw ValidationException::withMessages([$field => 'This account has been deactivated.']);
         }
-        SignInGuard::clear('staff', $credentials['email']);
+        SignInGuard::clear('staff', $key);
         AuditLog::record('auth.login', null, null, null, $user);
 
         return response()->json([
@@ -101,23 +110,32 @@ class AuthController extends Controller
         return response()->json($this->present($user));
     }
 
-    /** Lets a person change their own password, after proving they know the current one. */
+    /**
+     * Lets a person change their own password or PIN, after proving they know the current one. This is also how
+     * someone handed a starting PIN chooses their own, after which the rest of the system opens to them.
+     */
     public function changePassword(Request $request): JsonResponse
     {
+        $user = $request->user();
+        $pin = $user->usesPin();
         $data = $request->validate([
             'current_password' => ['required', 'string'],
-            'password' => ['required', 'confirmed', 'different:current_password', Password::min(8)->letters()->numbers()],
-        ], ['password.different' => 'Choose a password different from the current one.', 'password.confirmed' => 'The two new passwords do not match.']);
+            'password' => ['required', 'confirmed', 'different:current_password', ...($pin ? ['digits:'.StaffLogin::PIN_DIGITS] : [Password::min(8)->letters()->numbers()])],
+        ], $pin
+            ? ['password.different' => 'Choose a PIN different from the current one.', 'password.confirmed' => 'The two new PINs do not match.', 'password.digits' => 'A PIN is '.StaffLogin::PIN_DIGITS.' digits.']
+            : ['password.different' => 'Choose a password different from the current one.', 'password.confirmed' => 'The two new passwords do not match.']);
 
-        $user = $request->user();
         if (! Hash::check($data['current_password'], $user->password)) {
-            throw ValidationException::withMessages(['current_password' => 'That is not your current password.']);
+            throw ValidationException::withMessages(['current_password' => $pin ? 'That is not your current PIN.' : 'That is not your current password.']);
         }
-        $user->update(['password' => $data['password']]);
+        if ($pin && StaffLogin::weakPin($data['password'], $user)) {
+            throw ValidationException::withMessages(['password' => 'That PIN is too easy to guess. Do not use one digit repeated, a run like 123456, or the end of your own mobile number.']);
+        }
+        $user->update(['password' => $data['password'], 'must_change_secret' => false]);
         // Sign out every other device; this one stays signed in.
         $user->tokens()->where('id', '!=', $user->currentAccessToken()->id)->delete();
 
-        return response()->json(['message' => 'Password changed.']);
+        return response()->json(['message' => $pin ? 'PIN changed.' : 'Password changed.']);
     }
 
     public const THEMES = ['prasanthi', 'ocean', 'forest', 'rose', 'slate', 'night'];
@@ -175,6 +193,9 @@ class AuthController extends Controller
             'google_email' => $user->google_email,
             'role' => $user->role->value,
             'role_label' => $user->role->label(),
+            // A login opened with a PIN, and one that must choose its own PIN or password before anything else opens.
+            'sign_in_with' => $user->sign_in_with ?? 'password',
+            'must_change_secret' => (bool) $user->must_change_secret,
             'can_manage_staff' => $user->allows('canManageStaff'),
             // Everything this person may do, by its own name: the Staff screen uses it to show what they can hand on.
             'abilities' => $user->abilities,

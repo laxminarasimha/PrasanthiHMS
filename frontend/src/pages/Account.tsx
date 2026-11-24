@@ -1,7 +1,7 @@
-import { useState, type FormEvent } from 'react'
-import { api, fieldErrors, type FieldErrors } from '../api'
+import { useState } from 'react'
+import { api, fieldErrors } from '../api'
 import { useAuth } from '../auth'
-import { TextField } from '../components/Field'
+import { SecretForm } from '../components/SecretForm'
 import { GoogleButton } from '../components/GoogleButton'
 import { useBrand } from '../brand'
 import { THEMES, applyAppearance, type Appearance } from '../appearance'
@@ -15,11 +15,9 @@ export function Account() {
   const [googleNote, setGoogleNote] = useState('')
   const [hidden, setHidden] = useState<string[]>(user?.hidden_tabs ?? [])
   const [tabNotice, setTabNotice] = useState('')
-  const [form, setForm] = useState({ current_password: '', password: '', password_confirmation: '' })
-  const [errors, setErrors] = useState<FieldErrors>({})
+  const pin = user?.sign_in_with === 'pin'
+  const word = pin ? 'PIN' : 'password'
   const [notice, setNotice] = useState('')
-  const [saving, setSaving] = useState(false)
-  const set = (key: keyof typeof form) => (value: string) => setForm((f) => ({ ...f, [key]: value }))
 
   const joinGoogle = async (credential: string) => {
     setGoogleNote('')
@@ -37,22 +35,6 @@ export function Account() {
       setGoogleNote('Google sign-in is switched off for your account. Sign in with your email and password.')
     } catch {
       setGoogleNote('Could not change it. Please try again.')
-    }
-  }
-
-  const save = async (e: FormEvent) => {
-    e.preventDefault()
-    setSaving(true)
-    setErrors({})
-    setNotice('')
-    try {
-      await api.post('/me/password', form)
-      setForm({ current_password: '', password: '', password_confirmation: '' })
-      setNotice('Password changed. Any other phone or computer signed in with your account has been signed out.')
-    } catch (err) {
-      setErrors(fieldErrors(err))
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -160,24 +142,10 @@ export function Account() {
         </>
       )}
 
-      <h3>Change password</h3>
+      <h3>Change {word}</h3>
       {notice && <p className="notice">{notice}</p>}
-      <form onSubmit={save} noValidate>
-        <div className="grid">
-          <div className="span-2">
-            <TextField label="Current password" required type="password" autoComplete="current-password" value={form.current_password} onChange={set('current_password')} error={errors.current_password} />
-          </div>
-          <TextField label="New password" required type="password" autoComplete="new-password" placeholder="At least 8 letters and numbers" value={form.password} onChange={set('password')} error={errors.password} />
-          <TextField label="New password again" required type="password" autoComplete="new-password" value={form.password_confirmation} onChange={set('password_confirmation')} error={errors.password_confirmation} />
-        </div>
-        {errors._ && <p className="form-error">{errors._}</p>}
-        <div className="panel-foot">
-          <button className="btn primary" disabled={saving || !form.current_password || !form.password || !form.password_confirmation}>
-            {saving ? 'Saving…' : 'Change password'}
-          </button>
-        </div>
-      </form>
-      <p className="muted small">If you have forgotten your password, ask an admin or a doctor to set a new one for you under Staff.</p>
+      <SecretForm pin={pin} onDone={() => setNotice(`Your ${word} is changed. Any other phone or computer signed in with your account has been signed out.`)} />
+      <p className="muted small">If you have forgotten your {word}, ask the hospital office to give you a new one.</p>
     </section>
   )
 }
