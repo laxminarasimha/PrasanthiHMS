@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\AdmissionPayment;
 use App\Models\Appointment;
@@ -18,6 +19,7 @@ use App\Models\Payment;
 use App\Models\PharmacyPayment;
 use App\Models\PrescriptionItem;
 use App\Support\FollowUps;
+use App\Support\DoctorMoney;
 use App\Support\MoneyFigures;
 use App\Support\Referral;
 use Illuminate\Http\JsonResponse;
@@ -48,7 +50,10 @@ class HospitalReportController extends Controller
         'prescriptions' => 'Doctor: prescription report',
         'diagnoses' => 'Doctor: diagnosis report',
         'diagnosis-codes' => 'Doctor: coded diagnoses (ICD-10)',
+        'doctor-collections' => 'Doctor: billing and collections by doctor',
+        'doctor-payout' => 'Doctor: share of collections',
         'tests-advised' => 'Doctor: tests distribution',
+        'tests-not-done' => 'Doctor: tests advised and not done here',
         'test-outcomes' => 'Doctor: tests outcome',
         'lab-tests' => 'Lab: tests done',
         'lab-turnaround' => 'Lab: time taken for reports',
@@ -58,10 +63,15 @@ class HospitalReportController extends Controller
         'activity' => 'Activity log: who opened and changed records',
     ];
 
+    private const ADMIN_ONLY = ['doctor-payout'];
+
     public function show(Request $request, string $type): JsonResponse
     {
         abort_unless($request->user()->allows('canViewReports'), 403, 'You are not allowed to view reports.');
+        // What a doctor is paid is for the admin alone, like the percentages it is worked out from.
+        $reports = $request->user()->role === Role::Admin ? self::REPORTS : array_diff_key(self::REPORTS, array_flip(self::ADMIN_ONLY));
         abort_unless(isset(self::REPORTS[$type]), 404, 'There is no such report.');
+        abort_unless(isset($reports[$type]), 403, 'Only an admin can open this report.');
 
         $range = $request->validate(['from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from']]);
         $from = Carbon::parse($range['from'] ?? today())->startOfDay();
@@ -79,7 +89,7 @@ class HospitalReportController extends Controller
 
         return response()->json([
             'type' => $type, 'title' => self::REPORTS[$type], 'from' => $from->toDateString(), 'to' => $to->toDateString(),
-            'columns' => $columns, 'rows' => $rows, 'totals' => $totals, 'reports' => self::REPORTS,
+            'columns' => $columns, 'rows' => $rows, 'totals' => $totals, 'reports' => $reports,
         ] + (in_array($type, ['bills', 'bill-lines', 'collections'], true) ? ['received' => MoneyFigures::received('front_desk', $from, $to)] : []));
     }
 
@@ -371,6 +381,93 @@ class HospitalReportController extends Controller
             ->sortByDesc('visits');
 
         return [[self::col('code', 'Code'), self::col('name', 'Diagnosis'), self::col('visits', 'Visits', 'number'), self::col('patients', 'Patients', 'number', false)], $rows];
+    }
+
+    /**
+     * What each doctor's patients were billed and what was collected from them, counter by counter.
+     * See App\Support\DoctorMoney for which bill belongs to which doctor.
+     */
+    private function doctorCollections(Carbon $from, Carbon $to): array
+    {
+        $columns = [self::col('doctor', 'Doctor')];
+        foreach (DoctorMoney::COUNTERS as $key => $label) {
+            $columns[] = self::col("{$key}_billed", "{$label} billed", 'money');
+            $columns[] = self::col("{$key}_collected", "{$label} collected", 'money');
+        }
+
+        return [[...$columns, self::col('billed', 'All billed', 'money'), self::col('collected', 'All collected', 'money')], DoctorMoney::between($from, $to)];
+    }
+
+    /**
+     * Each doctor's share of the money collected from their own patients, at the percentages set for the doctor
+     * under Setup → Staff. A counter with no percentage set gives no share. This only works the figure out:
+     * paying it is entered as an expense like any other payment.
+     */
+    private function doctorPayout(Carbon $from, Carbon $to): array
+    {
+        $rows = DoctorMoney::between($from, $to)->where('doctor_id', '>', 0)->map(function (array $row) {
+            $out = ['doctor' => $row['doctor'], 'share' => 0.0];
+            foreach (array_keys(DoctorMoney::COUNTERS) as $key) {
+                $percent = $row["share_{$key}"];
+                $out["{$key}_collected"] = $row["{$key}_collected"];
+                $out["{$key}_percent"] = $percent === null ? 'Not set' : rtrim(rtrim(number_format($percent, 2, '.', ''), '0'), '.').'%';
+                $out["{$key}_share"] = round($row["{$key}_collected"] * (float) $percent / 100, 2);
+                $out['share'] += $out["{$key}_share"];
+            }
+            $out['share'] = round($out['share'], 2);
+
+            return $out;
+        })->values();
+
+        $columns = [self::col('doctor', 'Doctor')];
+        foreach (DoctorMoney::COUNTERS as $key => $label) {
+            $columns[] = self::col("{$key}_collected", "{$label} collected", 'money');
+            $columns[] = self::col("{$key}_percent", 'Share');
+            $columns[] = self::col("{$key}_share", "{$label} share", 'money');
+        }
+
+        return [[...$columns, self::col('share', 'Doctor\'s share', 'money')], $rows];
+    }
+
+    /**
+     * Patients whose doctor advised tests that our lab has not been asked to do since: one row for each visit,
+     * with the tests still outstanding. A test counts as done once the patient has a lab order for it on or after
+     * the day of the visit, whoever placed the order. Names are compared loosely ("CBP" finds "Complete Blood
+     * Picture - CBP"), so a test done under quite another name can still be listed.
+     */
+    private function testsNotDone(Carbon $from, Carbon $to): array
+    {
+        $visits = $this->completed($from, $to)->whereNotNull('tests_advised')->where('tests_advised', '!=', '')
+            ->with(['patient:id,uhid,name,mobile', 'doctor:id,name'])->orderBy('completed_at')->get(['id', 'patient_id', 'doctor_id', 'tests_advised', 'completed_at']);
+        $plain = fn (string $name) => preg_replace('/[^a-z0-9]+/', '', mb_strtolower($name));
+        // Every test our lab was asked to do for these patients from the first of these visits on.
+        $ordered = LabOrderItem::join('lab_orders as o', 'o.id', '=', 'lab_order_items.lab_order_id')
+            ->whereIn('o.patient_id', $visits->pluck('patient_id')->unique())->where('o.ordered_at', '>=', $from)->toBase()
+            ->get(['o.patient_id', 'o.ordered_at', 'lab_order_items.test_name'])
+            ->map(fn ($item) => ['patient_id' => $item->patient_id, 'at' => (string) $item->ordered_at, 'name' => $plain($item->test_name)])->groupBy('patient_id');
+
+        $rows = $visits->map(function (Consultation $visit) use ($ordered, $plain) {
+            $advised = collect(preg_split('/[\r\n,;]+/', (string) $visit->tests_advised))->map(fn ($name) => trim($name))->filter()->unique(fn ($name) => $plain($name))->values();
+            $since = $visit->completed_at->copy()->startOfDay()->format('Y-m-d H:i:s');
+            $done = ($ordered[$visit->patient_id] ?? collect())->filter(fn (array $item) => $item['at'] >= $since)->pluck('name');
+            $missing = $advised->reject(function (string $name) use ($done, $plain) {
+                $key = $plain($name);
+
+                return $key === '' || $done->contains(fn (string $have) => $have === $key || (strlen($key) >= 3 && str_contains($have, $key)) || (strlen($have) >= 3 && str_contains($key, $have)));
+            });
+
+            return $missing->isEmpty() ? null : [
+                'date' => $visit->completed_at->format('Y-m-d'), 'days' => (int) $visit->completed_at->copy()->startOfDay()->diffInDays(today()),
+                'patient' => $visit->patient?->name, 'uhid' => $visit->patient?->uhid, 'mobile' => $visit->patient?->mobile, 'doctor' => $visit->doctor?->name,
+                'advised' => $advised->count(), 'missing' => $missing->count(), 'tests' => $missing->implode(', '),
+            ];
+        })->filter()->values();
+
+        return [[
+            self::col('date', 'Visit'), self::col('days', 'Days ago', 'number', false), self::col('patient', 'Patient'), self::col('uhid', 'Patient ID'),
+            self::col('mobile', 'Mobile'), self::col('doctor', 'Doctor'), self::col('advised', 'Tests advised', 'number'),
+            self::col('missing', 'Not done here', 'number'), self::col('tests', 'Tests not done here'),
+        ], $rows];
     }
 
     /** Tests ordered from the lab for visits in the period, plus tests written as advised. */

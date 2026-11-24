@@ -130,6 +130,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
 
     // Before the patient routes below, so "recent" is not read as a patient's number.
     Route::get('/patients/recent', [PatientController::class, 'recent']);
+    Route::get('/patients/export', [PatientController::class, 'export']);
     Route::apiResource('patients', PatientController::class)->except('destroy');
 
     Route::get('/doctors', [ServiceController::class, 'doctors']);

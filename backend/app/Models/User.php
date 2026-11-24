@@ -14,8 +14,8 @@ use Illuminate\Http\Request;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'branch_id', 'role', 'gender', 'phone', 'department', 'signature_text', 'is_active', 'pad_hidden_sections', 'hidden_tabs', 'appearance', 'pad_section_order', 'rx_settings', 'permissions', 'signature_path', 'seal_path', 'availability', 'slot_minutes'])]
-#[Hidden(['password', 'remember_token', 'signature_path', 'seal_path', 'permissions'])]
+#[Fillable(['name', 'email', 'password', 'branch_id', 'role', 'gender', 'phone', 'department', 'signature_text', 'is_active', 'pad_hidden_sections', 'hidden_tabs', 'appearance', 'pad_section_order', 'rx_settings', 'permissions', 'signature_path', 'seal_path', 'availability', 'slot_minutes', 'share_front_desk', 'share_lab', 'share_ipd'])]
+#[Hidden(['password', 'remember_token', 'signature_path', 'seal_path', 'permissions', 'share_front_desk', 'share_lab', 'share_ipd'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
@@ -39,6 +39,8 @@ class User extends Authenticatable
             'permissions' => 'array',
             'availability' => 'array',
             'slot_minutes' => 'integer',
+            // A doctor's share of collections is pay: it is sent only to an admin on the staff screen.
+            'share_front_desk' => 'float', 'share_lab' => 'float', 'share_ipd' => 'float',
         ];
     }
 

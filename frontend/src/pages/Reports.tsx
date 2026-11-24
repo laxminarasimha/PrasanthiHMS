@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { DayClose } from '../components/DayClose'
 import { FindPatients } from '../components/FindPatients'
+import { OwnerFigures } from '../components/OwnerFigures'
 import { ReportScreen } from '../components/ReportScreen'
 import { modeLabel, rupees, today } from '../format'
 import { MoneyByMode } from '../components/MoneyByMode'
@@ -235,6 +236,8 @@ export function Reports() {
             "Billed" is what was charged in this period. "Collected" is money actually received in this period, net of refunds, whenever the bill was made — so the two need not match.
           </p>
           </div>
+
+          <OwnerFigures from={from} to={to} />
         </>
       )}
     </section>

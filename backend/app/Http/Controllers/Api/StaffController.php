@@ -20,6 +20,20 @@ class StaffController extends Controller
     /** Worked-out values the staff screen needs with each person. */
     private const EXTRA = ['abilities', 'has_signature'];
 
+    /** A doctor's share of collections. It is pay, so only an admin sees it or sets it. */
+    private const SHARES = ['share_front_desk', 'share_lab', 'share_ipd'];
+
+    private function seesShares(Request $request): bool
+    {
+        return $request->user()->role === Role::Admin;
+    }
+
+    /** What the staff screen is sent for one person: with the shares for an admin, without for anyone else. */
+    private function shown(Request $request, User $staff): User
+    {
+        return $this->seesShares($request) ? $staff->append(self::EXTRA)->makeVisible(self::SHARES) : $staff->append(self::EXTRA);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $staff = User::query()
@@ -32,7 +46,7 @@ class StaffController extends Controller
             ->get();
 
         return response()->json([
-            'data' => $staff->each->append(self::EXTRA),
+            'data' => $staff->each(fn (User $person) => $this->shown($request, $person)),
             'roles' => array_map(fn (Role $r) => ['value' => $r->value, 'label' => $r->label()], Role::cases()),
             // Every permission, with what each role gets unless it is changed for a person.
             'abilities' => collect(User::catalogue())->map(fn (array $text, string $key) => [
@@ -115,6 +129,7 @@ class StaffController extends Controller
         ]);
 
         $this->onlyAdminsTouchAdmins($request, null, $data['role']);
+        $data = $this->sharesOnlyFromAdmins($request, $data);
         $data['branch_id'] = $request->user()->branch_id;
         $reason = $data['reason'] ?? null;
         unset($data['reason']);
@@ -125,7 +140,7 @@ class StaffController extends Controller
         AuditLog::record('staff.permissions', null, $staff, $this->permissionWords($staff, null, [], $staff->abilities, $reason ?: 'New member of staff'));
         AuditLog::$written = false; // the usual "Added a staff login" line is still written as well
 
-        return response()->json($staff->append(self::EXTRA), 201);
+        return response()->json($this->shown($request, $staff), 201);
     }
 
     public function update(Request $request, User $staff): JsonResponse
@@ -136,6 +151,7 @@ class StaffController extends Controller
         ]);
 
         $this->onlyAdminsTouchAdmins($request, $staff, $data['role']);
+        $data = $this->sharesOnlyFromAdmins($request, $data);
         if (empty($data['password'])) {
             unset($data['password']);
         }
@@ -177,7 +193,7 @@ class StaffController extends Controller
             SignInGuard::clear('staff', $staff->email);
         }
 
-        return response()->json($staff->append(self::EXTRA));
+        return response()->json($this->shown($request, $staff));
     }
 
     /**
@@ -268,6 +284,25 @@ class StaffController extends Controller
     }
 
     /**
+     * Drops a doctor's share from what is saved unless an admin sent it, and keeps it to doctors.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function sharesOnlyFromAdmins(Request $request, array $data): array
+    {
+        foreach (self::SHARES as $key) {
+            if (! $this->seesShares($request)) {
+                unset($data[$key]);
+            } elseif (array_key_exists($key, $data) && ($data['role'] !== Role::Doctor->value || blank($data[$key]))) {
+                $data[$key] = null;
+            }
+        }
+
+        return $data;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function rules(?User $staff = null): array
@@ -284,6 +319,10 @@ class StaffController extends Controller
             'permissions.*' => ['boolean'],
             'reason' => ['sometimes', 'nullable', 'string', 'max:300'],
             'slot_minutes' => ['sometimes', 'nullable', 'integer', Rule::in([5, 10, 15, 20, 30, 60])],
+            // A doctor's share of what is collected from their own patients, as a percentage for each counter.
+            'share_front_desk' => ['sometimes', 'nullable', 'numeric', 'between:0,100'],
+            'share_lab' => ['sometimes', 'nullable', 'numeric', 'between:0,100'],
+            'share_ipd' => ['sometimes', 'nullable', 'numeric', 'between:0,100'],
             'availability' => ['sometimes', 'nullable', 'array:mon,tue,wed,thu,fri,sat,sun'],
             'availability.*' => ['nullable', 'array', 'max:3'],
             'availability.*.*.from' => ['required', 'date_format:H:i'],
