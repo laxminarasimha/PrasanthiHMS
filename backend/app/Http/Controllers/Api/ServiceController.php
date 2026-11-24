@@ -6,6 +6,7 @@ use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\Service;
 use App\Models\User;
+use App\Support\DoctorFee;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -24,14 +25,32 @@ class ServiceController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        return response()->json(Service::create($this->validated($request))->load('doctor:id,name'), 201);
+        $service = Service::create($this->validated($request));
+        $this->oneUsual($service);
+
+        return response()->json($service->load('doctor:id,name'), 201);
     }
 
     public function update(Request $request, Service $service): JsonResponse
     {
         $service->update($this->validated($request));
+        $this->oneUsual($service);
 
         return response()->json($service->load('doctor:id,name'));
+    }
+
+    /** Only a doctor's own consultation can be their usual one, and a doctor has one. */
+    private function oneUsual(Service $service): void
+    {
+        if (! $service->is_doctor_fee) {
+            return;
+        }
+        if (! $service->doctor_id || $service->type !== 'appointment') {
+            $service->update(['is_doctor_fee' => false]);
+
+            return;
+        }
+        DoctorFee::only($service);
     }
 
     /** Active doctors, for the appointment and service forms. */
@@ -55,6 +74,7 @@ class ServiceController extends Controller
             'gst_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'priority' => ['nullable', 'integer', 'between:1,3'],
             'doctor_id' => ['nullable', Rule::exists('users', 'id')->where('role', Role::Doctor->value)],
+            'is_doctor_fee' => ['sometimes', 'boolean'],
             'is_active' => ['sometimes', 'boolean'],
         ]) + ['gst_percent' => 0, 'priority' => 2];
     }

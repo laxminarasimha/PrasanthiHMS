@@ -8,6 +8,7 @@ import { useBillingPreferences } from './useBillingPreferences'
 import { PatientPicker } from './PatientPicker'
 import { DiscountWhy } from './DiscountWhy'
 import { noWhy, whyFields } from './discountFields'
+import { offeredTo, usualService } from '../doctorFee'
 
 type Props = {
   date: string
@@ -51,7 +52,8 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
   const { user } = useAuth()
   const [patient, setPatient] = useState<Patient | null>((startPatient as Patient | undefined) ?? null)
   const [doctorId, setDoctorId] = useState(startDoctor || (doctors.length === 1 ? String(doctors[0].id) : ''))
-  const [serviceId, setServiceId] = useState('')
+  // The doctor's own consultation is put in with the doctor; the desk may still choose another service.
+  const [serviceId, setServiceId] = useState(() => String(usualService(services, doctorId)?.id ?? ''))
   const [day, setDay] = useState(date)
   const [time, setTime] = useState(startTime ?? nowTime())
   // A doctor with their own slot length gets visits of that length unless the desk picks another.
@@ -60,7 +62,7 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
   const [status, setStatus] = useState<string>(startStatus ?? 'arrived')
   const [notes, setNotes] = useState('')
   const [skipBilling, setSkipBilling] = useState(false)
-  const [price, setPrice] = useState('')
+  const [price, setPrice] = useState(() => String(usualService(services, doctorId)?.price ?? ''))
   const [quantity, setQuantity] = useState('1')
   const [discount, setDiscount] = useState('')
   const [paid, setPaid] = useState('')
@@ -75,8 +77,8 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
   // Set once the desk has read that the time is outside the doctor's hours and chosen to book it anyway.
   const [anyway, setAnyway] = useState(false)
 
-  // Offer the services that are open to every doctor plus the chosen doctor's own.
-  const offered = services.filter((s) => s.type === 'appointment' && (!s.doctor_id || String(s.doctor_id) === doctorId))
+  // Offer the chosen doctor's own services, then those open to every doctor.
+  const offered = offeredTo(services, doctorId)
   const service = services.find((s) => String(s.id) === serviceId)
   const net = service ? Math.max(0, Number(price || 0) * Number(quantity || 1) - Number(discount || 0)) : 0
   const netWithTax = Math.round(net * (1 + (service?.gst_percent ?? 0) / 100) * 100) / 100
@@ -140,7 +142,8 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
           onChange={(v) => {
             setDoctorId(v)
             setAnyway(false)
-            chooseService('')
+            // Each doctor has their own fee: the bill takes it as soon as the doctor is chosen.
+            chooseService(String(usualService(services, v)?.id ?? ''))
           }}
           options={doctors.map((d) => ({ value: String(d.id), label: d.name }))}
           placeholder="Select doctor"
@@ -150,7 +153,7 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
           label="Service"
           value={serviceId}
           onChange={chooseService}
-          options={offered.map((s) => ({ value: String(s.id), label: `${s.name} — ₹${s.price}` }))}
+          options={offered.map((s) => ({ value: String(s.id), label: `${s.name}${s.doctor_id ? ` · ${s.doctor?.name ?? 'this doctor'}` : ''} — ₹${s.price}` }))}
           placeholder="Choose service"
           error={errors.service_id}
         />

@@ -235,6 +235,9 @@ function LoginForm({ login, person, catalogue, isAdmin, seesPay, isSelf, mine, o
   const [hours, setHours] = useState<Hours>(toHours(login.availability))
   const [slot, setSlot] = useState(login.slot_minutes ? String(login.slot_minutes) : '')
   const [bookOnline, setBookOnline] = useState(login.book_online ?? true)
+  // The doctor's own OPD consultation fee. A price, so only those who set prices change it.
+  const canPrice = useAuth().user?.can_set_prices ?? false
+  const [fee, setFee] = useState(login.opd_fee == null ? '' : String(login.opd_fee))
   const share = (value?: number | null) => (value == null ? '' : String(value))
   const [shares, setShares] = useState({ front_desk: share(login.share_front_desk), lab: share(login.share_lab), ipd: share(login.share_ipd) })
   const [reason, setReason] = useState('')
@@ -276,6 +279,7 @@ function LoginForm({ login, person, catalogue, isAdmin, seesPay, isSelf, mine, o
     const body = {
       ...(stopSigningIn ? { signs_in: false } : {}),
       ...(form.role === 'doctor' ? { book_online: bookOnline } : {}),
+      ...(form.role === 'doctor' && canPrice ? { opd_fee: fee === '' ? null : Number(fee) } : {}),
       // The staff record's own name, mobile and gender: typed there, carried here.
       name: person?.name ?? form.name,
       phone: person?.phone ?? form.phone,
@@ -301,7 +305,7 @@ function LoginForm({ login, person, catalogue, isAdmin, seesPay, isSelf, mine, o
       setErrors(found)
       // Show the part that holds the problem.
       const first = Object.keys(found)[0] ?? ''
-      setPart(first.startsWith('availability') || first.startsWith('share_') || first === 'slot_minutes' ? 'doctor' : first.startsWith('permissions') ? 'permissions' : 'sign-in')
+      setPart(first.startsWith('availability') || first.startsWith('share_') || first === 'slot_minutes' || first === 'opd_fee' ? 'doctor' : first.startsWith('permissions') ? 'permissions' : 'sign-in')
     } finally {
       setSaving(false)
     }
@@ -476,6 +480,10 @@ function LoginForm({ login, person, catalogue, isAdmin, seesPay, isSelf, mine, o
 
       {part === 'doctor' && form.role === 'doctor' && (
         <div>
+          <div className="doctor-fee">
+            <TextField label="OPD consultation fee (₹)" type="number" min={0} step="1" placeholder="None of their own" value={fee} onChange={setFee} error={errors.opd_fee} disabled={!canPrice} title={canPrice ? undefined : 'Only someone allowed to set prices can change this'} />
+            <p className="muted small">Put on the bill by itself when this doctor is chosen for a visit. Each doctor has their own. Left empty, the desk chooses from the hospital's list of services.</p>
+          </div>
           <p className="muted small">The doctor's usual hours, up to two sessions a day. The appointment calendar greys the times outside them, and booking a later visit outside them asks the desk to confirm. Leave every day empty to follow the hospital's hours.</p>
           <label className="check">
             <input type="checkbox" checked={bookOnline} onChange={(e) => setBookOnline(e.target.checked)} />

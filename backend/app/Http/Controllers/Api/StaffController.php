@@ -6,6 +6,7 @@ use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\User;
+use App\Support\DoctorFee;
 use App\Support\SignInGuard;
 use App\Support\StaffLogin;
 use App\Workforce\Models\Employee;
@@ -24,7 +25,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class StaffController extends Controller
 {
     /** Worked-out values the staff screen needs with each person. */
-    private const EXTRA = ['abilities', 'has_signature'];
+    private const EXTRA = ['abilities', 'has_signature', 'opd_fee'];
 
     /** A doctor's share of collections. It is pay, so only an admin sees it or sets it. */
     private const SHARES = ['share_front_desk', 'share_lab', 'share_ipd'];
@@ -242,7 +243,7 @@ class StaffController extends Controller
         $user = $request->user();
         abort_unless($user->allows('canManageStaff') || Permissions::reach($user, 'wf:staff:edit') === Permissions::ALL, 403, 'You are not allowed to change the list of doctors.');
         $employee = Employee::query()->with('department:id,name')->findOrFail($employee);
-        $data = $request->validate(['doctor' => ['required', 'boolean'], 'qualification' => ['sometimes', 'nullable', 'string', 'max:255'], 'book_online' => ['sometimes', 'boolean']]);
+        $data = $request->validate(['doctor' => ['required', 'boolean'], 'qualification' => ['sometimes', 'nullable', 'string', 'max:255'], 'book_online' => ['sometimes', 'boolean'], 'opd_fee' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:9999999']]);
         $login = $employee->user_id ? User::query()->find($employee->user_id) : null;
         $more = array_filter(['signature_text' => $data['qualification'] ?? null, 'book_online' => $data['book_online'] ?? null], fn ($v) => $v !== null)
             + (array_key_exists('qualification', $data) && $data['qualification'] === null ? ['signature_text' => null] : []);
@@ -287,6 +288,9 @@ class StaffController extends Controller
 
             return $login;
         });
+        if (array_key_exists('opd_fee', $data)) {
+            DoctorFee::change($login, $data['opd_fee'], $user);
+        }
         AuditLog::record('staff.doctor', null, $login, "{$login->name} · on the list of doctors".($login->signsIn() ? '' : ' · does not sign in'));
 
         return response()->json(['doctor' => true, 'login_id' => $login->id]);
@@ -316,6 +320,8 @@ class StaffController extends Controller
         $data = $request->validate($this->rules() + ['password' => ['required', ...$this->secretRule($pin)]], self::PIN_WORDS);
         $this->signInIsPossible($data, null);
         $data += $this->secretOf($pin, $data['password'], true);
+        $fee = $data['opd_fee'] ?? null;
+        unset($data['opd_fee']);
 
         $this->onlyAdminsTouchAdmins($request, null, $data['role']);
         $data = $this->sharesOnlyFromAdmins($request, $data);
@@ -326,6 +332,9 @@ class StaffController extends Controller
         $this->onlyAdminsGiveSensitive($request, [], $this->abilitiesOf($data['role'], $data['permissions'] ?? null), $data['role']);
 
         $staff = User::create($data)->refresh();
+        if ($staff->role === Role::Doctor && $fee !== null) {
+            DoctorFee::change($staff, $fee, $request->user());
+        }
         AuditLog::record('staff.permissions', null, $staff, $this->permissionWords($staff, null, [], $staff->abilities, $reason ?: 'New member of staff'));
         AuditLog::$written = false; // the usual "Added a staff login" line is still written as well
 
@@ -344,6 +353,9 @@ class StaffController extends Controller
             'signs_in' => ['sometimes', 'boolean'],
         ], self::PIN_WORDS + ['password.required' => $pin ? 'Give a starting PIN: an own-record login is opened with a PIN.' : 'Give a password: this role cannot be opened with a PIN.']);
         // A doctor may be on the lists without signing in. Anyone else needs a way in, and so does a doctor being given one.
+        $feeSent = array_key_exists('opd_fee', $data);
+        $fee = $data['opd_fee'] ?? null;
+        unset($data['opd_fee']);
         $stops = ($data['signs_in'] ?? null) === false && $data['role'] === Role::Doctor->value && ! $staff->is($request->user());
         $none = $stops || (! $staff->signsIn() && empty($data['password']));
         unset($data['signs_in']);
@@ -390,6 +402,9 @@ class StaffController extends Controller
         }
 
         $staff->update($data);
+        if ($feeSent && $staff->role === Role::Doctor) {
+            DoctorFee::change($staff, $fee, $request->user());
+        }
         // The person's staff record carries the same name and mobile.
         StaffLogin::fromUser($staff, array_keys($staff->getChanges()));
         if ($changed) {
@@ -576,6 +591,8 @@ class StaffController extends Controller
             'signature_text' => ['nullable', 'string', 'max:255'],
             // Whether patients may book this doctor from the phone app.
             'book_online' => ['sometimes', 'boolean'],
+            // A doctor's own OPD consultation fee. Kept as a service of theirs, not on the login: see DoctorFee.
+            'opd_fee' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:9999999'],
             'permissions' => ['sometimes', 'nullable', 'array:'.implode(',', array_keys(User::catalogue()))],
             'permissions.*' => ['boolean'],
             'reason' => ['sometimes', 'nullable', 'string', 'max:300'],

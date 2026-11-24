@@ -67,6 +67,8 @@ export type Staff = {
   sign_in_with?: 'password' | 'pin' | 'none'
   /** Whether patients may book this doctor from the phone app. */
   book_online?: boolean
+  /** A doctor's own OPD consultation fee, when they have one. */
+  opd_fee?: number | null
   slot_minutes?: number | null
   /** A doctor's share of what is collected from their own patients, in percent for each counter. Sent to admins only. */
   share_front_desk?: number | null
@@ -125,6 +127,8 @@ export type Service = {
   gst_percent: number
   priority: number
   doctor_id: number | null
+  /** This doctor's usual OPD consultation: put in by itself when the doctor is chosen for a visit. */
+  is_doctor_fee?: boolean
   doctor: { id: number; name: string } | null
   is_active: boolean
 }

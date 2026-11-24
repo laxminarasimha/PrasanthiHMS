@@ -186,6 +186,12 @@ class User extends Authenticatable
         return $this->sign_in_with === 'pin';
     }
 
+    /** A doctor's own OPD consultation fee, when they have one. Asked for by name; never part of a list by itself. */
+    public function getOpdFeeAttribute(): ?float
+    {
+        return $this->role === Role::Doctor ? \App\Support\DoctorFee::of($this->id)?->price : null;
+    }
+
     public function getHasSignatureAttribute(): bool
     {
         return filled($this->signature_path);

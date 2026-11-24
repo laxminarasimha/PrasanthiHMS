@@ -1,3 +1,4 @@
+import { offeredTo, usualService } from '../doctorFee'
 import { MoneyByMode } from './MoneyByMode'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Popup } from './Popup'
@@ -221,11 +222,13 @@ export function EditAppointmentPanel({ appointment, doctors, services, onClose, 
           onChange={(v) => {
             setDoctorId(v)
             setAnyway(false)
+            // One doctor's own service does not go with another doctor: the visit takes the new doctor's.
+            if (!offeredTo(services, v).some((s) => String(s.id) === serviceId)) setServiceId(String(usualService(services, v)?.id ?? ''))
           }}
           options={doctors.map((d) => ({ value: String(d.id), label: d.name }))}
           error={errors.doctor_id}
         />
-        <SelectField label="Service" value={serviceId} onChange={setServiceId} options={services.filter((s) => s.type === 'appointment').map((s) => ({ value: String(s.id), label: s.name }))} placeholder="None" error={errors.service_id} />
+        <SelectField label="Service" value={serviceId} onChange={setServiceId} options={[...offeredTo(services, doctorId), ...services.filter((s) => String(s.id) === serviceId && !offeredTo(services, doctorId).includes(s))].map((s) => ({ value: String(s.id), label: s.name }))} placeholder="None" error={errors.service_id} />
         <TextField
           label="Date"
           required

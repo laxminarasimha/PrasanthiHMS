@@ -29,7 +29,7 @@ export type Employee = StaffBrief & {
   /** What was ticked on the record itself; empty when the usual rule decides. */
   regular_set?: boolean | null
   /** Whether the person signs in, and as what. What they may do there is for those who manage logins. */
-  login?: { id: number; role: string; role_label: string; is_active: boolean; sign_in_with: 'password' | 'pin' | 'none'; email: string | null; waiting_for_own_pin: boolean; /** False for a doctor who is on the hospital's lists and has no way to sign in. */ signs_in?: boolean; /** On the list of doctors: chosen for appointments, admissions and consultants' visits. */ is_doctor?: boolean; qualification?: string | null; book_online?: boolean } | null
+  login?: { id: number; role: string; role_label: string; is_active: boolean; sign_in_with: 'password' | 'pin' | 'none'; /** A doctor's own OPD consultation fee. */ opd_fee?: number | null; email: string | null; waiting_for_own_pin: boolean; /** False for a doctor who is on the hospital's lists and has no way to sign in. */ signs_in?: boolean; /** On the list of doctors: chosen for appointments, admissions and consultants' visits. */ is_doctor?: boolean; qualification?: string | null; book_online?: boolean } | null
 }
 export type DayStatus = 'present' | 'half_day' | 'half_leave' | 'on_leave' | 'absent' | 'not_in' | 'later' | 'open' | 'holiday' | 'weekly_off' | 'not_employed' | ''
 export type Day = {

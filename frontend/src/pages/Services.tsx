@@ -12,7 +12,7 @@ const TYPES = [
   { value: 'other', label: 'Other service' },
 ]
 
-const blank = { code: '', name: '', type: 'appointment', price: '', gst_percent: '0', priority: '2', doctor_id: '', is_active: true }
+const blank = { code: '', name: '', type: 'appointment', price: '', gst_percent: '0', priority: '2', doctor_id: '', is_doctor_fee: false, is_active: true }
 const PRIORITIES = [
   { value: '1', label: '1 — shown first' },
   { value: '2', label: '2 — normal' },
@@ -50,7 +50,7 @@ export function Services() {
         ? { ...blank, type: tab }
         : {
             code: target.code ?? '', name: target.name, type: target.type, price: String(target.price),
-            gst_percent: String(target.gst_percent), priority: String(target.priority ?? 2), doctor_id: target.doctor_id ? String(target.doctor_id) : '', is_active: target.is_active,
+            gst_percent: String(target.gst_percent), priority: String(target.priority ?? 2), doctor_id: target.doctor_id ? String(target.doctor_id) : '', is_doctor_fee: Boolean(target.is_doctor_fee), is_active: target.is_active,
           },
     )
   }
@@ -61,7 +61,7 @@ export function Services() {
     e.preventDefault()
     setSaving(true)
     setErrors({})
-    const payload = { ...form, code: form.code || null, doctor_id: form.doctor_id || null, gst_percent: form.gst_percent || 0 }
+    const payload = { ...form, code: form.code || null, doctor_id: form.doctor_id || null, gst_percent: form.gst_percent || 0, is_doctor_fee: form.is_doctor_fee && Boolean(form.doctor_id) && form.type === 'appointment' }
     try {
       const res = editing === 'new' ? await api.post<Service>('/services', payload) : await api.put<Service>(`/services/${(editing as Service).id}`, payload)
       setNotice(`${res.data.name} was ${editing === 'new' ? 'added' : 'updated'}.`)
@@ -119,7 +119,10 @@ export function Services() {
                   <td>{s.code ?? '—'}</td>
                   <td className="num">{rupees(s.price)}</td>
                   <td className="num">{s.gst_percent}</td>
-                  <td className="wrap">{s.doctor?.name ?? 'Any doctor'}</td>
+                  <td className="wrap">
+                    {s.doctor?.name ?? 'Any doctor'}
+                    {s.is_doctor_fee && <small className="muted block">Their usual consultation</small>}
+                  </td>
                   <td>
                     <span className={s.is_active ? 'pill ok' : 'pill off'}>{s.is_active ? 'Active' : 'Hidden'}</span>
                   </td>
@@ -157,6 +160,12 @@ export function Services() {
               />
             </div>
           </div>
+          {form.doctor_id && form.type === 'appointment' && (
+            <label className="check">
+              <input type="checkbox" checked={form.is_doctor_fee} onChange={(e) => setForm((f) => ({ ...f, is_doctor_fee: e.target.checked }))} />
+              This doctor's usual OPD consultation: put in by itself, with this price, when the doctor is chosen for a visit
+            </label>
+          )}
           {editing !== 'new' && (
             <label className="check">
               <input type="checkbox" checked={form.is_active} onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))} />

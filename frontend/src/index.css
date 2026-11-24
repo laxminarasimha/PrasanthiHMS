@@ -2167,3 +2167,7 @@ td.fit-wrap { white-space: normal; min-width: 130px; overflow-wrap: anywhere; }
 .ipd-consultant-form .btn { flex: none; }
 tr.cancelled td { color: var(--muted); }
 
+
+/* A doctor's own consultation fee, on their settings. */
+.doctor-fee { margin-bottom: 16px; }
+.doctor-fee .field { max-width: 260px; margin-bottom: 6px; }

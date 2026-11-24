@@ -36,6 +36,9 @@ const PRIVATE_FIELDS: [keyof Private & string, string, string][] = [
 ]
 
 /** Everyone who works for the hospital. Someone who leaves is marked as left and kept; nobody is ever removed. */
+/** A doctor's own fee as the box shows it: empty when they have none. */
+const feeOf = (person: Employee) => (person.login?.opd_fee == null ? '' : String(person.login.opd_fee))
+
 export function StaffDirectory() {
   const { can } = useWorkforce()
   const [staff, setStaff] = useState<Employee[] | null>(null)
@@ -100,7 +103,7 @@ export function StaffDirectory() {
     setReason('')
     setWeeklyOff(target === 'new' ? null : target.weekly_off)
     setRegular(null)
-    setDoctor(target === 'new' ? { on: false, qualification: '', book_online: false } : { on: Boolean(target.login?.is_doctor), qualification: target.login?.qualification ?? '', book_online: Boolean(target.login?.book_online) })
+    setDoctor(target === 'new' ? { on: false, qualification: '', book_online: false, fee: '' } : { on: Boolean(target.login?.is_doctor), qualification: target.login?.qualification ?? '', book_online: Boolean(target.login?.book_online), fee: feeOf(target) })
     setForm(
       target === 'new'
         ? blank
@@ -111,7 +114,8 @@ export function StaffDirectory() {
   // The person whose window is open: a click on the list shows them at a glance first; changing them is one step further.
   const [viewing, setViewing] = useState<number | null>(null)
   // A doctor who sees patients: on the hospital's list of doctors, whether or not they sign in.
-  const [doctor, setDoctor] = useState({ on: false, qualification: '', book_online: false })
+  const [doctor, setDoctor] = useState({ on: false, qualification: '', book_online: false, fee: '' })
+  const canPrice = user?.can_set_prices ?? false
   // In the daily attendance and on the payroll. Empty until it is ticked or unticked here: the usual rule then decides.
   const [regular, setRegular] = useState<boolean | null>(null)
 
@@ -135,10 +139,10 @@ export function StaffDirectory() {
    * keeps a doctor's qualification and phone-app booking as typed. A refusal leaves the person saved and says why.
    */
   const keepDoctorList = async (person: Employee, before: Employee | null) => {
-    const was = { on: Boolean(before?.login?.is_doctor), qualification: before?.login?.qualification ?? '', book_online: Boolean(before?.login?.book_online) }
-    if (doctor.on === was.on && (!doctor.on || (doctor.qualification === was.qualification && doctor.book_online === was.book_online))) return
+    const was = { on: Boolean(before?.login?.is_doctor), qualification: before?.login?.qualification ?? '', book_online: Boolean(before?.login?.book_online), fee: before ? feeOf(before) : '' }
+    if (doctor.on === was.on && (!doctor.on || (doctor.qualification === was.qualification && doctor.book_online === was.book_online && doctor.fee === was.fee))) return
     try {
-      await api.put(`/staff/doctor-for/${person.id}`, doctor.on ? { doctor: true, qualification: doctor.qualification.trim() || null, book_online: doctor.book_online } : { doctor: false })
+      await api.put(`/staff/doctor-for/${person.id}`, doctor.on ? { doctor: true, qualification: doctor.qualification.trim() || null, book_online: doctor.book_online, ...(canPrice ? { opd_fee: doctor.fee === '' ? null : Number(doctor.fee) } : {}) } : { doctor: false })
       if (doctor.on !== was.on) setNotice(doctor.on ? `${person.name} is now on the doctors' list, and can be chosen for appointments, admissions and consultants' visits.` : `${person.name} was taken off the doctors' list. Their past appointments and fees are kept.`)
     } catch (err) {
       setNotice(`${person.name}'s details were saved, but the doctors' list was not changed: ${Object.values(fieldErrors(err))[0] ?? 'try again.'}`)
@@ -385,7 +389,8 @@ export function StaffDirectory() {
                     {doctor.on && (
                       <div className="grid gap-top">
                         <TextField label="Qualification, printed under their name" value={doctor.qualification} onChange={(v) => setDoctor((d) => ({ ...d, qualification: v }))} placeholder="For example: MS ENT" />
-                        <label className="check">
+                        <TextField label="OPD consultation fee (₹)" type="number" min={0} step="1" placeholder="None of their own" value={doctor.fee} onChange={(v) => setDoctor((d) => ({ ...d, fee: v }))} disabled={!canPrice} title={canPrice ? 'Put on the bill by itself when this doctor is chosen for a visit' : 'Only someone allowed to set prices can change this'} />
+                        <label className="check span-2">
                           <input type="checkbox" checked={doctor.book_online} onChange={(e) => setDoctor((d) => ({ ...d, book_online: e.target.checked }))} />
                           Patients can book them from the phone app
                         </label>
