@@ -231,7 +231,7 @@ export function DayClose() {
                 ? `${book.blocking} ${book.blocking === 1 ? 'item has' : 'items have'} to be settled, or explained, before closing.`
                 : 'Nothing is holding up the closing.'}
               {book.notes > 0 && ` ${book.notes} more to note.`}
-              {!book.may_close && ' You can look at the day here; closing it is for staff who have been given "Close the day" under Setup → Staff.'}
+              {!book.may_close && ' You can look at the day here; closing it is for staff who have been given "Close the day" on their page under Staff → Login and access.'}
             </p>
           )}
 

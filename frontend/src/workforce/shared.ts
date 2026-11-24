@@ -24,6 +24,8 @@ export type Employee = StaffBrief & {
   holiday_calendar_id: number | null
   payment_mode: string | null
   user_id: number | null
+  /** Whether the person signs in, and as what. What they may do there is for those who manage logins. */
+  login?: { id: number; role: string; role_label: string; is_active: boolean; sign_in_with: 'password' | 'pin'; email: string | null; waiting_for_own_pin: boolean } | null
 }
 export type DayStatus = 'present' | 'half_day' | 'half_leave' | 'on_leave' | 'absent' | 'not_in' | 'later' | 'open' | 'holiday' | 'weekly_off' | 'not_employed' | ''
 export type Day = {

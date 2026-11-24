@@ -171,6 +171,9 @@ export function StaffCheck() {
                                 Make a staff record
                               </button>
                             )}
+                            <Link className="link" to={`/workforce/staff?login=${l.id}`} title="Its role, password and whether it is open">
+                              Open login
+                            </Link>
                             <button className="link" disabled={busy} title="A login for a screen on the wall, such as the waiting-room board, which is not a member of staff" onClick={() => void act(() => screen(l.id, true), `Mark “${l.name}” as a shared screen, not a member of staff?`)}>
                               Not a person
                             </button>
@@ -251,6 +254,9 @@ export function StaffCheck() {
                   {check.shared_screens.map((l) => (
                     <li key={l.id}>
                       {l.name} <span className="muted">· {l.role}</span>{' '}
+                      <Link className="link" to={`/workforce/staff?login=${l.id}`}>
+                        Open login
+                      </Link>{' '}
                       <button className="link" disabled={busy} onClick={() => void act(() => screen(l.id, false))}>
                         It is a person after all
                       </button>

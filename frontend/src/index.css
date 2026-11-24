@@ -2100,3 +2100,15 @@ td.fit-wrap { white-space: normal; min-width: 130px; overflow-wrap: anywhere; }
 .staff-check select { max-width: 320px; }
 .plain-list { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
 
+/* One Staff page: a person's login is a part of their record */
+.pin-slip { display: grid; gap: 6px; justify-items: start; margin: 0 0 14px; padding: 16px 18px; border-radius: 12px; border: 2px solid var(--accent); background: var(--accent-soft); }
+.pin-slip > span { font-weight: 600; }
+.pin-slip strong { font-size: 2.1rem; letter-spacing: 0.3em; line-height: 1.2; color: var(--brand-strong); }
+.pin-slip p { margin: 0 0 6px; max-width: 60ch; }
+.signs-in { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--brand-line); border-radius: 12px; background: var(--surface-2); }
+.signs-in p { margin: 8px 0 0; }
+.login-brief p { margin: 0 0 10px; }
+.tabs.minor { background: none; padding: 0; gap: 6px; }
+.tabs.minor button { border: 1px solid var(--border); }
+.muted.flush { margin: 0; }
+

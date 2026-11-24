@@ -39,7 +39,7 @@ enum Role: string
         };
     }
 
-    /** Closing a day's accounts is for the admin, and for anyone the admin names under Setup → Staff. */
+    /** Closing a day's accounts is for the admin, and for anyone the admin names under Staff → Login and access. */
     public function canCloseDay(): bool
     {
         return $this === self::Admin;
@@ -159,9 +159,9 @@ enum Role: string
         return in_array($this, [self::Admin, self::Doctor], true);
     }
 
-    /** Roles allowed to download lists and reports as a file. Everyone who could before; not a manager unless given it. */
+    /** Roles allowed to download lists and reports as a file. Everyone who could before; not a manager unless given it, and never an own-record login. */
     public function canExportData(): bool
     {
-        return ! in_array($this, [self::Manager, self::Hr, self::DeptManager], true);
+        return ! in_array($this, [self::Manager, self::Hr, self::DeptManager, self::Staff], true);
     }
 }

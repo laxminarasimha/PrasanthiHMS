@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../api'
+import { useAuth } from '../auth'
 import { SelectField, TextField } from '../components/Field'
 import { longDate } from '../format'
 import { useLoadOnChange } from '../loading'
 import { useChoiceInAddress } from '../rangeInAddress'
+import { LoginAccess, PinSlip } from './LoginAccess'
 import { PasswordAgain } from './PasswordAgain'
 import { saveFile, usePasswordAgain } from './sensitiveStep'
 import { STATUS_LABEL, TYPE_LABEL, WEEKDAYS, useWorkforce, type Employee } from './shared'
@@ -41,7 +44,24 @@ export function StaffDirectory() {
   const [status, setStatus] = useChoiceInAddress<string>('status', 'active')
   const [department, setDepartment] = useChoiceInAddress<string>('department', '')
   const [editing, setEditing] = useState<Employee | 'new' | null>(null)
-  const [tab, setTab] = useState<'details' | 'private'>('details')
+  const [tab, setTab] = useState<'details' | 'login' | 'private'>('details')
+  const { user } = useAuth()
+  const manages = Boolean(user?.can_manage_staff)
+  // Who may open a person's "Login and access": those who manage logins, and those who keep the staff records.
+  const seesLogin = manages || can('wf:staff:edit')
+  // Adding a person: whether they sign in, and as what. One form; nothing about them is typed twice.
+  const [signsIn, setSignsIn] = useState(false)
+  const [newRole, setNewRole] = useState('staff')
+  const [newPassword, setNewPassword] = useState('')
+  const [roles, setRoles] = useState<{ value: string; label: string }[]>([])
+  useEffect(() => {
+    if (manages) api.get<{ roles: { value: string; label: string }[] }>('/staff/catalogue').then((res) => setRoles(res.data.roles.filter((r) => r.value !== 'admin' || user?.role === 'admin')))
+  }, [manages, user?.role])
+  // A starting PIN just made for someone added here: shown once.
+  const [slip, setSlip] = useState<{ name: string; mobile: string | null; pin: string } | null>(null)
+  // A login that is not a member of staff (a screen on the wall, or one not yet joined), opened from the staff check.
+  const [search, setSearch] = useSearchParams()
+  const bareLogin = manages && search.get('login') ? Number(search.get('login')) : null
   const [form, setForm] = useState<Form>(blank)
   const [weeklyOff, setWeeklyOff] = useState<string[] | null>(null)
   const [reason, setReason] = useState('')
@@ -57,6 +77,8 @@ export function StaffDirectory() {
         setStaff(res.data.data)
         setCounts(res.data.counts)
         setFailed('')
+        // The person whose page is open is shown as they now are.
+        setEditing((open) => (open && open !== 'new' ? (res.data.data.find((s) => s.id === open.id) ?? open) : open))
       })
       .catch(() => setFailed('Could not load the staff list. Check the connection and try again.'))
   }, [query, status, department])
@@ -66,9 +88,12 @@ export function StaffDirectory() {
     void loadOptions()
   }, [loadOptions])
 
-  const open = (target: Employee | 'new') => {
+  const open = (target: Employee | 'new', at: 'details' | 'login' = 'details') => {
     setEditing(target)
-    setTab('details')
+    setTab(at)
+    setSignsIn(false)
+    setNewRole('staff')
+    setNewPassword('')
     setErrors({})
     setNotice('')
     setReason('')
@@ -81,6 +106,19 @@ export function StaffDirectory() {
   }
   const set = (key: keyof Form) => (value: string) => setForm((f) => ({ ...f, [key]: value }))
 
+  /** The login of someone just added, from the same form. If it cannot be given, the person stays added and their page opens where it can be put right. */
+  const giveLogin = async (person: Employee) => {
+    try {
+      const given = await api.post<{ starting_pin?: string }>(`/staff/for/${person.id}`, newRole === 'staff' ? { role: 'staff' } : { role: newRole, email: form.email || null, password: newPassword })
+      if (given.data.starting_pin) setSlip({ name: person.name, mobile: person.phone, pin: given.data.starting_pin })
+      else setNotice(`${person.name} was added as ${person.employee_no} and can sign in.`)
+    } catch (err) {
+      setEditing(person)
+      setTab('login')
+      setNotice(`${person.name} was added as ${person.employee_no}, but the login was not given: ${Object.values(fieldErrors(err))[0] ?? 'try again below.'}`)
+    }
+  }
+
   const save = async (e: FormEvent) => {
     e.preventDefault()
     setSaving(true)
@@ -90,6 +128,7 @@ export function StaffDirectory() {
       const res = editing === 'new' ? await api.post<Employee>('/workforce/employees', body) : await api.put<Employee>(`/workforce/employees/${(editing as Employee).id}`, body)
       setNotice(editing === 'new' ? `${res.data.name} was added as ${res.data.employee_no}.` : `${res.data.name}'s details were saved.`)
       setEditing(null)
+      if (editing === 'new' && signsIn) await giveLogin(res.data)
       load()
       void loadOptions()
     } catch (err) {
@@ -141,6 +180,7 @@ export function StaffDirectory() {
             </button>
           </div>
           <StaffCheckNote />
+          {slip && <PinSlip name={slip.name} mobile={slip.mobile} pin={slip.pin} onDone={() => setSlip(null)} />}
           {notice && <p className="notice">{notice}</p>}
           {failed && <div className="form-error">{failed}</div>}
           <div className="table-wrap">
@@ -150,6 +190,7 @@ export function StaffDirectory() {
                   <th>Name</th>
                   <th>Department</th>
                   <th>Phone</th>
+                  <th>Signs in as</th>
                   <th>Joined</th>
                   <th>Status</th>
                 </tr>
@@ -169,6 +210,11 @@ export function StaffDirectory() {
                       <small className="muted block">{TYPE_LABEL[s.employment_type] ?? s.employment_type}</small>
                     </td>
                     <td className="mono">{s.phone ?? '—'}</td>
+                    <td className="wrap">
+                      {s.login ? s.login.role_label : <span className="muted">Does not sign in</span>}
+                      {s.login && !s.login.is_active && <small className="due block">Login switched off</small>}
+                      {s.login?.is_active && s.login.waiting_for_own_pin && <small className="muted block">Has not signed in yet</small>}
+                    </td>
                     <td>{s.joined_on ? longDate(s.joined_on) : '—'}</td>
                     <td>
                       <span className={`pill ${s.status === 'active' ? 'ok' : s.status === 'inactive' ? 'off' : 'status-arrived'}`}>{STATUS_LABEL[s.status] ?? s.status}</span>
@@ -177,13 +223,26 @@ export function StaffDirectory() {
                 ))}
                 {staff && staff.length === 0 && (
                   <tr className="empty">
-                    <td colSpan={5}>{query || department ? 'No member of staff matches.' : status === 'active' ? 'No staff have been added yet.' : 'Nobody here.'}</td>
+                    <td colSpan={6}>{query || department ? 'No member of staff matches.' : status === 'active' ? 'No staff have been added yet.' : 'Nobody here.'}</td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
         </section>
+
+        {bareLogin && !editing && (
+          <aside className="card panel wide">
+            <div className="panel-head">
+              <h2>Login</h2>
+              <button type="button" className="btn ghost" onClick={() => setSearch({}, { replace: true })}>
+                Close
+              </button>
+            </div>
+            <p className="muted small">This login is not joined to a member of staff. It is a screen on the wall, or it still waits on the staff check.</p>
+            <LoginAccess key={bareLogin} loginId={bareLogin} onChanged={(message) => message && setNotice(message)} />
+          </aside>
+        )}
 
         {editing && (
           <aside className="card panel wide">
@@ -193,19 +252,35 @@ export function StaffDirectory() {
                 Close
               </button>
             </div>
-            {editing !== 'new' && can('wf:staff_private:view') && (
+            {editing !== 'new' && (seesLogin || can('wf:staff_private:view')) && (
               <div className="tabs flush">
                 <button type="button" className={tab === 'details' ? 'active' : ''} onClick={() => setTab('details')}>
                   Details
                 </button>
-                <button type="button" className={tab === 'private' ? 'active' : ''} onClick={() => setTab('private')}>
-                  Bank and identity
-                </button>
+                {seesLogin && (
+                  <button type="button" className={tab === 'login' ? 'active' : ''} onClick={() => setTab('login')}>
+                    Login and access
+                  </button>
+                )}
+                {can('wf:staff_private:view') && (
+                  <button type="button" className={tab === 'private' ? 'active' : ''} onClick={() => setTab('private')}>
+                    Bank and identity
+                  </button>
+                )}
               </div>
             )}
 
             {tab === 'private' && editing !== 'new' ? (
               <PrivateDetails key={editing.id} employeeId={editing.id} />
+            ) : tab === 'login' && editing !== 'new' ? (
+              <LoginAccess
+                key={`${editing.id}-${editing.login?.id ?? 'none'}`}
+                person={editing}
+                onChanged={(message) => {
+                  if (message) setNotice(message)
+                  load()
+                }}
+              />
             ) : (
               <form onSubmit={save} noValidate>
                 <fieldset disabled={!canEdit}>
@@ -244,16 +319,29 @@ export function StaffDirectory() {
                     </div>
                   </div>
 
-                  {(options?.logins.length ?? 0) > 0 || form.user_id ? (
-                    <SelectField
-                      label="Their login to this system"
-                      value={form.user_id}
-                      onChange={set('user_id')}
-                      options={[...(editing !== 'new' && editing.user_id ? [{ value: String(editing.user_id), label: 'Their present login' }] : []), ...(options?.logins ?? []).map((l) => ({ value: String(l.id), label: `${l.name} (${l.role})` }))]}
-                      placeholder="No login: they do not sign in"
-                      error={errors.user_id}
-                    />
-                  ) : null}
+                  {editing === 'new' && seesLogin && (
+                    <div className="signs-in">
+                      <label className="check flush">
+                        <input type="checkbox" checked={signsIn} onChange={(e) => setSignsIn(e.target.checked)} />
+                        This person signs in to the system
+                      </label>
+                      {signsIn && (
+                        <>
+                          {manages && roles.length > 0 && (
+                            <div className="grid gap-top">
+                              <SelectField label="Role" required value={newRole} onChange={setNewRole} options={roles} />
+                              {newRole !== 'staff' && <TextField label="Password" required type="password" placeholder="At least 8 letters and numbers" value={newPassword} onChange={setNewPassword} autoComplete="new-password" />}
+                            </div>
+                          )}
+                          <p className="muted small">
+                            {newRole === 'staff'
+                              ? 'They will sign in with the mobile number above and a 6-digit PIN, and see only their own attendance, leave and payslips. The starting PIN is shown once when you add them.'
+                              : 'They will sign in with the mobile number above, or the email if one is given, and this password. What the role allows can be changed for them afterwards under Login and access.'}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   {form.status === 'inactive' && (
                     <div className="grid gap-top">

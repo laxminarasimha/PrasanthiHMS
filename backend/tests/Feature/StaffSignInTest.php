@@ -174,4 +174,48 @@ class StaffSignInTest extends TestCase
         app('auth')->forgetGuards();
         $this->postJson('/api/login', ['login' => '9666666666', 'password' => 'password'])->assertStatus(422);
     }
+
+    public function test_a_member_of_staff_is_given_a_login_from_their_own_record(): void
+    {
+        $ward = Tenant::run($this->here->id, fn () => Employee::create(['employee_no' => 'E7', 'name' => 'Ward Person', 'phone' => '97000 00007', 'gender' => 'male']));
+        $nurse = Tenant::run($this->here->id, fn () => Employee::create(['employee_no' => 'E8', 'name' => 'Nurse Person', 'phone' => '9700000008', 'email' => 'nurse.person@example.test']));
+        $noPhone = Tenant::run($this->here->id, fn () => Employee::create(['employee_no' => 'E9', 'name' => 'No Phone']));
+
+        // Whoever keeps the staff records gives an own-record login. The starting PIN is made here and shown once.
+        Sanctum::actingAs($this->user('hr'));
+        $this->postJson("/api/staff/for/{$noPhone->id}")->assertStatus(422)->assertJsonValidationErrors('phone');
+        $given = $this->postJson("/api/staff/for/{$ward->id}")->assertCreated()->assertJsonPath('login.role', 'staff')->json();
+        $this->assertMatchesRegularExpression('/^\d{6}$/', $given['starting_pin']);
+        $login = User::find($given['login']['id']);
+        $this->assertSame(['Ward Person', '9700000007', 'pin', true, null], [$login->name, $login->login_mobile, $login->sign_in_with, $login->must_change_secret, $login->email]);
+        $this->assertSame($login->id, Employee::withoutGlobalScopes()->find($ward->id)->user_id);
+        $this->postJson("/api/staff/for/{$ward->id}")->assertStatus(422);
+        // The list says who signs in and as what.
+        $this->assertSame(['staff', 'pin', true], array_values(array_intersect_key(collect($this->getJson('/api/workforce/employees')->json('data'))->firstWhere('id', $ward->id)['login'], array_flip(['role', 'sign_in_with', 'waiting_for_own_pin']))));
+        // A wider role is not theirs to give.
+        $this->postJson("/api/staff/for/{$nurse->id}", ['role' => 'nurse', 'password' => 'nursing123'])->assertForbidden();
+
+        // The person signs in with the starting PIN, and a forgotten PIN is replaced by a new starting one.
+        app('auth')->forgetGuards();
+        $this->postJson('/api/login', ['login' => '9700000007', 'password' => $given['starting_pin']])->assertOk()->assertJsonPath('user.must_change_secret', true);
+        Sanctum::actingAs($this->user('hr'));
+        $again = $this->postJson("/api/staff/{$login->id}/starting-pin")->assertOk()->json('starting_pin');
+        $this->assertNotSame($given['starting_pin'], $again);
+        $this->assertSame(0, $login->tokens()->count());
+        app('auth')->forgetGuards();
+        $this->postJson('/api/login', ['login' => '9700000007', 'password' => $given['starting_pin']])->assertStatus(422);
+        $this->postJson('/api/login', ['login' => '9700000007', 'password' => $again])->assertOk();
+
+        // Those who manage logins give any role within their own limits, with a password, and see the login afterwards.
+        Sanctum::actingAs($this->user('admin'));
+        $id = $this->postJson("/api/staff/for/{$nurse->id}", ['role' => 'nurse', 'password' => 'nursing123'])->assertCreated()->assertJsonMissingPath('starting_pin')->json('login.id');
+        $this->getJson("/api/staff/{$id}")->assertOk()->assertJsonPath('email', 'nurse.person@example.test')->assertJsonPath('role', 'nurse');
+        $this->getJson('/api/staff/catalogue')->assertOk()->assertJsonFragment(['value' => 'staff', 'label' => 'Staff (own record only)']);
+        // A password login has no starting PIN to reset.
+        $this->postJson("/api/staff/{$id}/starting-pin")->assertStatus(422);
+        // Neither is open to someone who neither manages logins nor keeps staff records.
+        Sanctum::actingAs($this->user('frontdesk'));
+        $this->postJson("/api/staff/for/{$noPhone->id}")->assertForbidden();
+        $this->postJson("/api/staff/{$login->id}/starting-pin")->assertForbidden();
+    }
 }

@@ -3,11 +3,10 @@ import type { User } from './types'
 
 export type NavTab = { key: string; label: string; to: string; /** Other paths that belong to this tab. */ also?: string[] }
 
-/** The setup pages a person may open: hospital details, staff, and the price list. */
+/** The setup pages a person may open: hospital details and the price list. Staff and their logins are one list, under Workforce. */
 export function setupPages(user: User): { label: string; to: string }[] {
   return [
     ...(user.can_manage_setup ? [{ label: 'Hospital', to: '/admin' }] : []),
-    ...(user.can_manage_staff ? [{ label: 'Staff', to: '/staff' }] : []),
     ...(user.can_manage_setup ? [{ label: 'Services', to: '/services' }] : []),
   ]
 }
