@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 // Before the app and its router: the guard for unsaved work listens for Back and Forward ahead of them.
 import './unsaved'
+// Before the app: the browser may offer to install it before any screen is drawn.
+import './install'
 import App from './App.tsx'
 import { applyAppearance, remembered } from './appearance'
 
