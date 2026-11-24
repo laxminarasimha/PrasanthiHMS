@@ -1,24 +1,29 @@
-import { NavLink } from 'react-router-dom'
+import { GroupedTabs, type TabGroup } from '../components/GroupedTabs'
 import { useWorkforce } from './shared'
+
+/** Every workforce page: the entry it sits under, the permission that opens it, its address and its name. */
+const PAGES: [string, string, string, string][] = [
+  ['Today', 'wf:reports:view', '/workforce', 'Today'],
+  ['Staff', 'wf:staff:view', '/workforce/staff', 'Staff'],
+  ['Attendance', 'wf:attendance:view', '/workforce/attendance', 'Attendance'],
+  ['Leave', 'wf:leave:view', '/workforce/leave', 'Leave'],
+  // Everything about money paid to staff sits under one entry.
+  ['Pay', 'wf:salary:view', '/workforce/pay', 'Salaries'],
+  ['Pay', 'wf:payroll:view', '/workforce/payroll', 'Payroll'],
+  ['Pay', 'wf:advances:view', '/workforce/advances', 'Advances'],
+  ['Setup', 'wf:settings:admin', '/workforce/setup', 'Setup'],
+  ['My record', 'wf:self:view', '/workforce/me', 'My record'],
+]
 
 /** The workforce pages a person may open, on one line under the top bar. */
 export function WorkforceTabs() {
   const { can } = useWorkforce()
-  return (
-    <nav className="subnav no-print" aria-label="Workforce pages">
-      {can('wf:reports:view') && (
-        <NavLink to="/workforce" end>
-          Today
-        </NavLink>
-      )}
-      {can('wf:staff:view') && <NavLink to="/workforce/staff">Staff</NavLink>}
-      {can('wf:attendance:view') && <NavLink to="/workforce/attendance">Attendance</NavLink>}
-      {can('wf:leave:view') && <NavLink to="/workforce/leave">Leave</NavLink>}
-      {can('wf:salary:view') && <NavLink to="/workforce/pay">Salaries</NavLink>}
-      {can('wf:payroll:view') && <NavLink to="/workforce/payroll">Payroll</NavLink>}
-      {can('wf:advances:view') && <NavLink to="/workforce/advances">Advances</NavLink>}
-      {can('wf:settings:admin') && <NavLink to="/workforce/setup">Setup</NavLink>}
-      {can('wf:self:view') && <NavLink to="/workforce/me">My record</NavLink>}
-    </nav>
-  )
+  const groups: TabGroup[] = []
+  for (const [group, permission, to, name] of PAGES) {
+    if (!can(permission)) continue
+    const last = groups[groups.length - 1]
+    if (last?.[0] === group) last[1].push([to, name])
+    else groups.push([group, [[to, name]]])
+  }
+  return <GroupedTabs label="Workforce pages" groups={groups} exact={['/workforce']} />
 }
