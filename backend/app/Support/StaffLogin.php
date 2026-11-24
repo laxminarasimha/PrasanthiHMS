@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Enums\Role;
+use App\Models\AdminEntry;
 use App\Models\User;
 use App\Workforce\Models\Employee;
 use App\Workforce\Support\Audit;
@@ -150,6 +151,10 @@ final class StaffLogin
             unset($same['phone']);
         }
         $user->fill($same);
+        // One department list: the login carries the name of the staff record's department, from the hospital's own list.
+        if (in_array('department_id', $changed, true)) {
+            $user->department = $employee->department_id ? AdminEntry::query()->whereKey($employee->department_id)->value('name') : null;
+        }
         $closing = $employee->status === 'inactive' && $user->is_active;
         if ($closing) {
             $user->is_active = false;

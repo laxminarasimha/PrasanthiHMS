@@ -167,8 +167,13 @@ class StaffSignInTest extends TestCase
         $this->putJson("/api/staff/{$login->id}", ['name' => 'Desk Person R.', 'email' => $login->email, 'role' => 'frontdesk', 'gender' => 'female', 'phone' => '9666666666'])->assertOk();
         $this->assertSame('Desk Person R.', Employee::withoutGlobalScopes()->find($person->id)->name);
 
+        // The login's department is the staff record's, from the hospital's own list.
+        $ward = Tenant::run($this->here->id, fn () => \App\Models\AdminEntry::create(['kind' => 'department', 'name' => 'Front Office', 'is_active' => true]));
+        $this->putJson("/api/workforce/employees/{$person->id}", $record(['name' => 'Desk Person R.', 'phone' => '9666666666', 'department_id' => $ward->id]))->assertOk();
+        $this->assertSame('Front Office', $login->fresh()->department);
+
         // Marked as left: signed out everywhere and no longer able to sign in.
-        $this->putJson("/api/workforce/employees/{$person->id}", $record(['name' => 'Desk Person R.', 'phone' => '9666666666', 'status' => 'inactive']))->assertOk();
+        $this->putJson("/api/workforce/employees/{$person->id}", $record(['name' => 'Desk Person R.', 'phone' => '9666666666', 'department_id' => $ward->id, 'status' => 'inactive']))->assertOk();
         $this->assertFalse($login->fresh()->is_active);
         $this->assertSame(0, $login->tokens()->count());
         app('auth')->forgetGuards();
