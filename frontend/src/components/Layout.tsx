@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { BottomBar } from './BottomBar'
 import { BrandMark } from './Brand'
 import { ErrorBoundary } from './ErrorBoundary'
+import { InstallHint } from './InstallHint'
 import { PatientSearch } from './PatientSearch'
 import { onLoadTrouble } from '../api'
 import { useAuth } from '../auth'
@@ -148,6 +149,7 @@ export function Layout() {
             </button>
           </div>
         )}
+        <InstallHint />
         {/* On a phone, a person's first screen opens with their own attendance and the button to check in or out. */}
         {phone && pathname === homeFor(user) && user.abilities?.['wf:self:view'] && <AttendanceCard />}
         {/* One broken screen shows a message in place; the menu stays, and going elsewhere starts afresh. */}
