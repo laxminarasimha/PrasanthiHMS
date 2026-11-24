@@ -1,6 +1,6 @@
 # One Staff list and simple sign-in: the plan
 
-**Status: a plan only. Nothing here is built yet.** Written 24 November 2026 for the owner to read and approve before any work starts.
+**Status: built and live.** Written 24 November 2026 and approved by the owner the same day, with the suggested answers to the decisions in section 8. Stages 0 to 4 and the code part of stage 5 were shipped on 25 November 2026 (pull requests 166 to 170). What was built, and where it differs from the plan below, is in section 10.
 
 ## 1. What was asked for
 
@@ -148,3 +148,28 @@ For whoever builds this; the owner can skip it.
 - **Screens:** `frontend/src/workforce/StaffDirectory.tsx` gains the sections; the permission, availability, signature and share parts move out of `pages/Staff.tsx` into shared components; `/staff` redirects. `homeFor()` sends an own-record login to `/workforce/me`.
 - **Phone app:** `mobile/src/doctor/Login.tsx` takes mobile number or email. A new TestFlight build is asked for before upload.
 - **Tests:** each rule in section 4 gets a server test; `nav.test.ts` covers the own-record bar.
+
+## 10. What was built
+
+| Stage | Pull request | What it is on the screen |
+|---|---|---|
+| 1 | 166 | Sign-in page takes a mobile number or email, and a password or PIN. New role "Staff (own record only)". "Choose your own PIN" screen at first sign-in |
+| 0 and 2 | 167 | Workforce → Staff → "Open the staff check" (shown when something needs attention) |
+| 3 | 168 | Workforce → Staff is the one list; each person has Details, Login and access, Bank and identity. Setup → Staff is gone and its address opens the Staff list |
+| 4 | 169 | Staff check → "Give all a login" with the list of starting PINs. Workforce → Setup → "Where staff may check in from" |
+| 5 | 170 | A login's department follows the staff record's. The phone app's staff sign-in takes a mobile number and has the choose-your-PIN step |
+
+Where it differs from the plan:
+
+- **A number on two logins.** A login that has an email may carry a mobile number another login already signs in with (a shared desk phone, say). That number then opens only the login that holds it, and the other person signs in with their email. A login with no email must have a number of its own. The staff check lists every such number.
+- **Own-record home.** These staff open on their own record with the check-in card at the top, and their bar is Home, Profile and More. A separate Attendance entry would have opened the same page.
+- **Who keeps the staff list.** Whoever manages logins now also sees, adds and edits staff records, because the two are one page. Pay and bank details stay with HR and the admin.
+- **Logins not joined to a person** (before the staff check is done, and screens on the wall) are opened from the staff check with "Open login".
+
+Still to do, outside the code:
+
+- The owner runs the staff check on live once: join the certain matches, make staff records for the rest.
+- The owner switches on self check-in, and adds the hospital's internet connection while at the hospital.
+- A new TestFlight build of the phone app, when the owner asks for it. Until then the installed phone app keeps working with email sign-in; own-record staff use the web app from their phone.
+- Bringing the old WordPress staff in is still waiting on the export (phase 5 of the module).
+
