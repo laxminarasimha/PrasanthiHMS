@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../api'
-import { PaperBar, PaperFooter, PaperHeader } from '../components/PrintPaper'
-import { useAutoPrint, usePrintPaper } from '../printPaper'
+import { HospitalGstin, PaperBar, PaperFooter, PaperHeader } from '../components/PrintPaper'
+import { paperClass, useAutoPrint, usePrintPaper } from '../printPaper'
 import { modeLabel, rupees, fullName, stampDate } from '../format'
 import type { Bill } from '../types'
 
@@ -10,7 +10,7 @@ import type { Bill } from '../types'
 export function BillPrint() {
   const { id } = useParams()
   const [bill, setBill] = useState<Bill | null>(null)
-  const paper = usePrintPaper()
+  const paper = usePrintPaper(['a4', 'a5', 'thermal'])
 
   useEffect(() => {
     api.get<Bill>(`/bills/${id}`).then((res) => setBill(res.data))
@@ -20,7 +20,7 @@ export function BillPrint() {
   if (!bill) return <p className="loading">Loading bill…</p>
 
   return (
-    <div className="receipt">
+    <div className={`receipt ${paperClass(paper)}`}>
       <PaperBar paper={paper} />
       <PaperHeader paper={paper}>
         <h2>Bill / Receipt</h2>
@@ -45,28 +45,29 @@ export function BillPrint() {
               Doctor: {bill.appointment.doctor.name}
             </>
           )}
+          <HospitalGstin paper={paper} />
         </div>
       </div>
 
       <table>
         <thead>
           <tr>
-            <th>#</th>
-            <th>Service</th>
+            <th className="col-extra">#</th>
+            <th className="col-name">Service</th>
             <th className="num">Qty</th>
             <th className="num">Price</th>
-            <th className="num">GST</th>
+            <th className="num col-extra">GST</th>
             <th className="num">Amount</th>
           </tr>
         </thead>
         <tbody>
           {bill.items.map((item, i) => (
             <tr key={item.id}>
-              <td>{i + 1}</td>
-              <td>{item.description}</td>
+              <td className="col-extra">{i + 1}</td>
+              <td className="col-name">{item.description}</td>
               <td className="num">{item.quantity}</td>
               <td className="num">{rupees(item.unit_price)}</td>
-              <td className="num">{rupees(item.tax)}</td>
+              <td className="num col-extra">{rupees(item.tax)}</td>
               <td className="num">{rupees(item.amount + item.tax)}</td>
             </tr>
           ))}

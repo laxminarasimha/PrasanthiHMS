@@ -11,6 +11,7 @@ use App\Models\Payment;
 use App\Models\Service;
 use App\Models\Setting;
 use App\Models\User;
+use App\Models\Patient;
 use App\Support\DiscountWhy;
 use App\Support\DoctorHours;
 use Illuminate\Http\JsonResponse;
@@ -54,7 +55,7 @@ class AppointmentController extends Controller
             ->when($filters['q'] ?? null, fn ($q, $term) => $q->whereHas('patient', fn ($p) => $p
                 ->where('name', 'like', "%{$term}%")
                 ->orWhere('mobile', 'like', "{$term}%")
-                ->orWhere('uhid', 'like', "{$term}%")));
+                ->orWhere(fn ($id) => Patient::idStarts($id, $term))));
 
         return response()->json([
             'counts' => (clone $day)->selectRaw('status, count(*) as total')->groupBy('status')->pluck('total', 'status'),

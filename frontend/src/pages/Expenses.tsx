@@ -55,6 +55,7 @@ export function Expenses() {
   // At once when the screen opens; after a short pause when a search or filter changes.
   useLoadOnChange(load)
   const shown = data?.show === list ? data : null
+  const vendors = useVendors()
 
   useUnsaved(Boolean(form && (form.amount !== '' || form.category !== '' || form.paid_to !== '')) && !form?.id, 'This expense is not saved yet. Leave without saving it?')
 
@@ -354,7 +355,8 @@ export function Expenses() {
               </datalist>
             </div>
             <div className="span-2">
-              <TextField label="Paid to" placeholder="Person or shop (optional)" value={form.paid_to} onChange={set('paid_to')} error={errors.paid_to} />
+              <TextField label="Paid to" placeholder="Person or shop (optional)" list="expense-vendors" value={form.paid_to} onChange={set('paid_to')} error={errors.paid_to} />
+              <VendorNames names={vendors} />
             </div>
             <TextField label="Bill no." placeholder="Optional" value={form.bill_no} onChange={set('bill_no')} error={errors.bill_no} />
             <TextField label="Of which tax (₹)" type="number" min={0} step="0.01" placeholder="0" value={form.tax} onChange={set('tax')} error={errors.tax} />
@@ -535,8 +537,28 @@ function Summary({ from, to }: { from: string; to: string }) {
 
 type Repeat = { id: number; name: string; category_id: number | null; category: string | null; department_id: number | null; department: string | null; paid_to: string | null; amount: string; mode: string | null; day_of_month: number | null; is_active: boolean; last_offered_period: string | null; due: boolean }
 
+/** The hospital's vendors (Setup → Vendors), offered as the names to pick under "Paid to". Any other name can still be typed. */
+function useVendors(): string[] {
+  const [names, setNames] = useState<string[]>([])
+  useEffect(() => {
+    api.get<{ name: string }[]>('/admin-lists/vendor').then((res) => setNames(res.data.map((v) => v.name))).catch(() => undefined)
+  }, [])
+  return names
+}
+
+function VendorNames({ names }: { names: string[] }) {
+  return (
+    <datalist id="expense-vendors">
+      {names.map((name) => (
+        <option key={name} value={name} />
+      ))}
+    </datalist>
+  )
+}
+
 /** The headings with their approval rules, and the expenses that come round every month. */
 function SetUp({ onChanged }: { onChanged: () => void }) {
+  const vendors = useVendors()
   const [headings, setHeadings] = useState<Heading[] | null>(null)
   const [repeats, setRepeats] = useState<Repeat[] | null>(null)
   const [editing, setEditing] = useState<{ id?: number; name: string; approval_above: string; approver_limit: string; is_active: boolean } | null>(null)
@@ -677,7 +699,8 @@ function SetUp({ onChanged }: { onChanged: () => void }) {
             <div className="grid">
               <TextField label="Called" required value={repeat.name} onChange={(v) => setRepeat((r) => r && { ...r, name: v })} placeholder="Building rent" error={errors.name} />
               <SelectField label="Heading" required value={repeat.category_id} onChange={(v) => setRepeat((r) => r && { ...r, category_id: v })} options={(headings ?? []).filter((h) => !h.is_payroll).map((h) => ({ value: String(h.id), label: h.name }))} placeholder="Choose" error={errors.category_id} />
-              <TextField label="Paid to" value={repeat.paid_to} onChange={(v) => setRepeat((r) => r && { ...r, paid_to: v })} error={errors.paid_to} />
+              <TextField label="Paid to" list="expense-vendors" value={repeat.paid_to} onChange={(v) => setRepeat((r) => r && { ...r, paid_to: v })} error={errors.paid_to} />
+              <VendorNames names={vendors} />
               <TextField label="Usual amount (₹)" required type="number" min={1} value={repeat.amount} onChange={(v) => setRepeat((r) => r && { ...r, amount: v })} error={errors.amount} />
               <SelectField label="Usually paid by" value={repeat.mode} onChange={(v) => setRepeat((r) => r && { ...r, mode: v })} options={PAYMENT_MODES} />
               <TextField label="Due on day" type="number" min={1} max={28} value={repeat.day_of_month} onChange={(v) => setRepeat((r) => r && { ...r, day_of_month: v })} error={errors.day_of_month} />

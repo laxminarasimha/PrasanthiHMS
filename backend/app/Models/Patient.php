@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -33,11 +34,29 @@ class Patient extends Model
 
     protected static function booted(): void
     {
-        // Patient number: registration year and month, then a running number (e.g. 2026110042).
+        // Patient number: the hospital's own letters if it has set any, then the registration year and month,
+        // then a running number (e.g. 2026110042, or PH2026110042). A number once given is never changed.
         static::created(function (Patient $patient) {
-            $patient->uhid = $patient->created_at->format('Ym').str_pad((string) $patient->id, 4, '0', STR_PAD_LEFT);
+            $patient->uhid = self::prefix().$patient->created_at->format('Ym').str_pad((string) $patient->id, 4, '0', STR_PAD_LEFT);
             $patient->saveQuietly();
         });
+    }
+
+    /** The letters the hospital puts before each new patient ID; empty when it uses none. */
+    public static function prefix(): string
+    {
+        return (string) (Setting::find('billing')?->value['patient_prefix'] ?? '');
+    }
+
+    /**
+     * Narrows a search to patients whose ID starts with what was typed. The ID is found with or without the
+     * hospital's letters in front, so the desk can type just the number.
+     */
+    public static function idStarts(Builder $query, string $typed): Builder
+    {
+        $prefix = self::prefix();
+
+        return $query->where(fn ($w) => $w->where('uhid', 'like', "{$typed}%")->when($prefix !== '', fn ($or) => $or->orWhere('uhid', 'like', "{$prefix}{$typed}%")));
     }
 
     /** The lasting facts of this patient's health, shown at every visit. */

@@ -38,7 +38,7 @@ class FrontDeskController extends Controller
             Bill::whereNull('appointment_id')->whereNull('cancelled_at')
                 ->whereDate('created_at', $filters['date'] ?? today())
                 ->when($term !== '', fn ($q) => $q->whereHas('patient', fn ($p) => $p->where('name', 'like', "%{$term}%")
-                    ->orWhere('mobile', 'like', "{$term}%")->orWhere('uhid', 'like', "{$term}%")))
+                    ->orWhere('mobile', 'like', "{$term}%")->orWhere(fn ($id) => Patient::idStarts($id, $term))))
                 ->with(['patient:id,uhid,title,name,gender,date_of_birth,mobile', 'labOrder:id,bill_id,order_no', 'labOrder.items:id,lab_order_id', 'items:id,bill_id,description'])
                 ->withIpdTransfers()
                 ->orderBy('created_at')->get()

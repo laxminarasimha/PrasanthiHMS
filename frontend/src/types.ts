@@ -585,7 +585,21 @@ export type Bed = {
 }
 
 /** The hospital's own details, printed at the top of every document. */
-export type Clinic = { name: string; tagline: string | null; address: string | null; phone: string | null; phone_alt: string | null; email: string | null; footer: string | null; logo: string | null }
+export type Clinic = {
+  name: string
+  tagline: string | null
+  address: string | null
+  phone: string | null
+  phone_alt: string | null
+  email: string | null
+  footer: string | null
+  /** The hospital's GST number, printed on bills. */
+  gstin?: string | null
+  logo: string | null
+  /** The hospital's own letterhead as pictures, for the top and the foot of a printed page; embedded images, or null. */
+  letterhead_header?: string | null
+  letterhead_footer?: string | null
+}
 
 export type ReferralDoctor = { id: number; direction: 'by' | 'to'; name: string; specialization: string | null; phone: string | null; place: string | null }
 
@@ -601,11 +615,17 @@ export type BillingPreferences = {
   letterhead_top_mm?: number
   letterhead_bottom_mm?: number
   /** The heading of bills on plain paper: logo on the left with the details beside it, or everything centred. */
-  bill_heading?: 'side' | 'centre'
+  bill_heading?: 'side' | 'centre' | 'image'
   bill_heading_size?: 'small' | 'medium' | 'large'
   bill_logo_size?: 'small' | 'medium' | 'large'
   /** On the printed IPD bill, each medicine is listed under the pharmacy bill it came on. */
   ipd_print_medicines?: boolean
+  /** The paper receipts and small bills are printed on. A counter can choose another on the print page. */
+  bill_paper_size?: 'a4' | 'a5' | 'thermal'
+  /** The hospital's GSTIN under the bill number of every bill and receipt. */
+  print_gstin?: boolean
+  /** Letters put before the patient ID of each new patient; empty for none. */
+  patient_prefix?: string | null
 }
 
 /** A row of a hospital-wide list: a department, a vendor, or a payer. */

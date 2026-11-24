@@ -96,7 +96,7 @@ class PatientController extends Controller
                     if ($words->isNotEmpty()) {
                         $w->where(fn ($name) => $words->each(fn ($word) => $name->where('name', 'like', '%'.$like($word).'%')));
                     }
-                    $w->orWhere('uhid', 'like', $like($q).'%')->orWhere('existing_id', $q);
+                    $w->orWhere(fn ($id) => Patient::idStarts($id, $like($q)))->orWhere('existing_id', $q);
                     // A phone number, even typed with spaces or +91 in front.
                     if (strlen($digits) >= 4) {
                         $tail = strlen($digits) > 10 ? substr($digits, -10) : $digits;

@@ -1641,6 +1641,49 @@ ol.rx-list li::marker { font-weight: 700; color: var(--brand-dark); }
 .stage-dot.ok { background: var(--ok); }
 .lab-bulk { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 2px; }
 
+/* The hospital's letterhead as a picture: the band across the top of a print, and the one across its foot. */
+.receipt header.letterhead-image { border-bottom: 0; padding-bottom: 0; }
+.letterhead-picture { display: block; width: 100%; height: auto; max-height: 60mm; object-fit: contain; }
+.letterhead-picture.foot { margin-top: 24px; max-height: 40mm; }
+.letterhead-box { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.letterhead-box .signature-box img { max-height: 90px; max-width: 100%; }
+@media (max-width: 700px) { .letterhead-box { grid-template-columns: 1fr; } }
+.paper-size { display: inline-flex; align-items: center; gap: 6px; }
+.paper-bar .paper-size select { width: auto; max-width: 190px; padding-top: 5px; padding-bottom: 5px; }
+.paper-bar .grow { flex: 1 1 200px; }
+
+/* A bill on a half sheet: the same bill, a little smaller. */
+.receipt.paper-a5 { max-width: 148mm; padding: 20px; font-size: 0.86rem; }
+.receipt.paper-a5 table { font-size: 0.8rem; }
+.receipt.paper-a5 header h1 { font-size: 1.1rem; }
+.receipt.paper-a5 .receipt-meta { gap: 12px; margin-bottom: 10px; line-height: 1.45; }
+
+/* A bill on an 80 mm thermal roll: one narrow column, each line's name on a row of its own with its figures under it. */
+.receipt.paper-thermal { max-width: 80mm; min-height: 0; padding: 3mm 4mm; font-size: 11px; line-height: 1.35; color: #000; }
+.receipt.paper-thermal header { border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 6px; }
+.receipt.paper-thermal header h1 { font-size: 14px; }
+.receipt.paper-thermal header p { font-size: 10px; margin: 1px 0; }
+.receipt.paper-thermal header h2 { margin-top: 4px; font-size: 11px; }
+.receipt.paper-thermal header .clinic-logo { max-height: 34px; max-width: 120px; margin-bottom: 3px; }
+.receipt.paper-thermal .receipt-meta { display: block; margin-bottom: 6px; line-height: 1.4; }
+.receipt.paper-thermal .receipt-meta .right { text-align: left; margin-top: 3px; }
+.receipt.paper-thermal table { display: block; width: 100%; font-size: 10.5px; }
+.receipt.paper-thermal thead, .receipt.paper-thermal tbody { display: block; }
+.receipt.paper-thermal tr { display: flex; flex-wrap: wrap; gap: 0 6px; padding: 2px 0; border-bottom: 1px dotted #777; }
+.receipt.paper-thermal thead tr { border-bottom: 1px solid #000; }
+.receipt.paper-thermal th, .receipt.paper-thermal td { flex: 1 1 0; min-width: 0; padding: 0; border: 0; background: none; color: #000; font-size: inherit; letter-spacing: 0; text-transform: none; }
+.receipt.paper-thermal th.num, .receipt.paper-thermal td.num { text-align: right; }
+.receipt.paper-thermal .col-name { flex: 0 0 100%; font-weight: 600; }
+.receipt.paper-thermal .col-extra { display: none; }
+.receipt.paper-thermal tr.bill-group-foot td:first-child { flex: 2 1 0; }
+.receipt.paper-thermal .totals { max-width: none; margin-top: 6px; gap: 2px 10px; }
+.receipt.paper-thermal .totals dt, .receipt.paper-thermal .receipt-payments { color: #000; }
+.receipt.paper-thermal .totals dt.strong, .receipt.paper-thermal .totals dd.strong { font-size: 12px; }
+.receipt.paper-thermal .receipt-payments { margin-top: 6px; font-size: 10px; }
+.receipt.paper-thermal .clinic-footer { margin-top: 8px; padding-top: 4px; border-top: 1px dashed #000; font-size: 10px; color: #000; }
+.receipt.paper-thermal .signature { margin-top: 14px; }
+@media print { .receipt.paper-thermal { width: 80mm; max-width: 80mm; margin: 0; } }
+
 /* The owner's day-by-day table: a bar beside each day's collection, measured against the best day shown. */
 .day-trend .trend-day { white-space: nowrap; }
 .day-trend .trend-cell { width: 26%; min-width: 90px; padding-left: 4px; }

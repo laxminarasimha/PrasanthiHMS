@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../../api'
-import { PaperBar, PaperFooter, PaperHeader } from '../../components/PrintPaper'
+import { HospitalGstin, PaperBar, PaperFooter, PaperHeader } from '../../components/PrintPaper'
 import { useAutoPrint, usePrintPaper } from '../../printPaper'
 import { ADMISSION_STATUS, clock, longDate, modeLabel, rupees, fullName } from '../../format'
 import type { Admission } from '../../types'
@@ -43,7 +43,7 @@ export function IpdPrint() {
           {a.gst_no && (
             <>
               <br />
-              GSTIN: {a.gst_no}
+              Patient's GSTIN: {a.gst_no}
             </>
           )}
           {a.payer && (
@@ -73,6 +73,7 @@ export function IpdPrint() {
               {a.bed.ward}, bed {a.bed.bed_no}
             </>
           )}
+          <HospitalGstin paper={paper} label="Hospital GSTIN" />
         </div>
       </div>
 

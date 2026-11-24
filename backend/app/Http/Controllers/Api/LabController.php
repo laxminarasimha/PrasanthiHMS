@@ -364,7 +364,7 @@ class LabController extends Controller
                 ->where('order_no', 'like', "{$term}%")
                 ->orWhereHas('patient', fn ($p) => $p->where('name', 'like', "%{$term}%")
                     ->orWhere('mobile', 'like', "{$term}%")
-                    ->orWhere('uhid', 'like', "{$term}%"))))
+                    ->orWhere(fn ($id) => Patient::idStarts($id, $term)))))
             ->when($filters['status'] ?? null, fn ($q, $s) => $q->where('status', $s))
             // A patient's history is shown with the values, so the doctor can read them in the visit pad.
             ->with($patientId ? ['items.results'] : self::ORDER_WITH)

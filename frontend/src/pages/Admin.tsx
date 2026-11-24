@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { rememberBrand } from '../brand'
-import { ClinicHeader } from '../components/ClinicHeader'
+import { ClinicHeader, useClinic } from '../components/ClinicHeader'
 import { PRINT_PREFS_KEY, printPrefs } from '../printPaper'
 import { SetupTabs } from '../components/SetupTabs'
 import { api, fieldErrors, type FieldErrors } from '../api'
@@ -39,7 +39,7 @@ function ClinicDetails() {
   }, [])
   if (!form) return <p className="loading">Loading…</p>
 
-  const text = (key: Exclude<keyof Clinic, 'logo'>) => ({ value: form[key] ?? '', onChange: (value: string) => setForm({ ...form, [key]: value }), error: errors[key] })
+  const text = (key: 'name' | 'tagline' | 'address' | 'phone' | 'phone_alt' | 'email' | 'footer' | 'gstin') => ({ value: form[key] ?? '', onChange: (value: string) => setForm({ ...form, [key]: value }), error: errors[key] })
   const done = (clinic: Clinic, message: string) => {
     setForm(clinic)
     setNotice(message)
@@ -74,6 +74,21 @@ function ClinicDetails() {
       setErrors({ _: Object.values(fieldErrors(err))[0] })
     }
   }
+  /** The hospital's letterhead as a picture, for the top or the foot of prints. Saved straight away, like the logo. */
+  const letterhead = async (slot: 'header' | 'footer', file?: File) => {
+    try {
+      if (file) {
+        const body = new FormData()
+        body.append('slot', slot)
+        body.append('file', file)
+        done((await api.post<Clinic>('/clinic/letterhead', body)).data, 'Picture saved. To print it, choose "Letterhead pictures" under Billing preferences → Heading of prints.')
+      } else {
+        done((await api.delete<Clinic>(`/clinic/letterhead/${slot}`)).data, 'Picture removed.')
+      }
+    } catch (err) {
+      setErrors({ _: Object.values(fieldErrors(err))[0] })
+    }
+  }
 
   return (
     <form className="narrow" onSubmit={save} noValidate>
@@ -89,7 +104,9 @@ function ClinicDetails() {
         <TextField label="Second phone" {...text('phone_alt')} />
         <TextField label="Email" type="email" {...text('email')} />
         <TextField label="Line at the foot of prints (optional)" placeholder="e.g. Get well soon" {...text('footer')} />
+        <TextField label="GSTIN (optional)" placeholder="15 characters, as on the GST certificate" maxLength={20} {...text('gstin')} />
       </div>
+      <p className="muted small">The GSTIN is printed under the bill number on bills and receipts. Leave it empty if the hospital has none.</p>
 
       <h3>Logo</h3>
       <p className="muted small">Shown at the top of the app, on the sign-in page and the browser tab, and printed at the top of bills, prescriptions and reports. A PNG or JPG up to 500 KB; a square or wide picture on a white or clear background looks best.</p>
@@ -117,6 +134,44 @@ function ClinicDetails() {
         </div>
       </div>
 
+      <h3>Letterhead pictures</h3>
+      <p className="muted small">
+        If you have your letterhead as a picture, upload the band across the top and, if there is one, the band across the foot. Prints on plain paper can then carry them instead of the logo and the words: choose
+        "Letterhead pictures" under Billing preferences → Heading of prints. A wide PNG or JPG up to 600 KB each, about 2000 pixels across, prints sharply.
+      </p>
+      <div className="letterhead-box">
+        {(
+          [
+            ['header', 'Top of the page', form.letterhead_header],
+            ['footer', 'Foot of the page', form.letterhead_footer],
+          ] as const
+        ).map(([slot, label, picture]) => (
+          <div className="signature-box" key={slot}>
+            <span className="field-label">{label}</span>
+            {picture ? <img src={picture} alt={`Letterhead, ${label.toLowerCase()}`} /> : <span className="muted small">No picture.</span>}
+            <div className="row">
+              <label className="btn ghost small-btn">
+                {picture ? 'Replace' : 'Upload'}
+                <input
+                  type="file"
+                  hidden
+                  accept="image/png,image/jpeg"
+                  onChange={(e) => {
+                    letterhead(slot, e.target.files?.[0])
+                    e.target.value = ''
+                  }}
+                />
+              </label>
+              {picture && (
+                <button type="button" className="link danger" onClick={() => letterhead(slot)}>
+                  Remove
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
       {errors._ && <p className="form-error">{errors._}</p>}
       <div className="panel-foot">
         <button className="btn primary">Save details</button>
@@ -131,6 +186,9 @@ function BillingPrefs() {
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
 
+  // Whether the letterhead pictures are there to be chosen, and whether there is a GSTIN to print.
+  const clinic = useClinic()
+
   useEffect(() => {
     api.get<BillingPreferences>('/billing-preferences').then((res) => setForm(res.data))
   }, [])
@@ -139,7 +197,7 @@ function BillingPrefs() {
   const save = async (e: FormEvent) => {
     e.preventDefault()
     try {
-      const res = await api.put<BillingPreferences>('/billing-preferences', form)
+      const res = await api.put<BillingPreferences>('/billing-preferences', { ...form, patient_prefix: (form.patient_prefix ?? '').trim() || null })
       setForm(res.data)
       setNotice('Billing preferences saved.')
       setError('')
@@ -184,6 +242,13 @@ function BillingPrefs() {
         ))}
       </select>
 
+      <h3>Patient IDs</h3>
+      <p className="muted small">
+        Letters placed before the ID of each new patient, for example {(form.patient_prefix ?? '').trim().toUpperCase() || 'PH'}2026110042. Leave empty for the number alone. Patients already registered keep the ID they
+        have, and anyone can still be found by typing just the number.
+      </p>
+      <input className="narrow" maxLength={6} placeholder="None" value={form.patient_prefix ?? ''} onChange={(e) => setForm({ ...form, patient_prefix: e.target.value })} aria-label="Patient ID prefix" />
+
       <h3>IPD case numbers</h3>
       <p className="muted small">The letters placed before the running number of each new IPD case, for example {form.ipd_prefix || 'IP'}00012. Cases already made keep their numbers.</p>
       <input className="narrow" maxLength={8} value={form.ipd_prefix ?? 'IP'} onChange={(e) => setForm({ ...form, ipd_prefix: e.target.value })} aria-label="IPD case number prefix" />
@@ -207,13 +272,14 @@ function BillingPrefs() {
         [
           ['side', 'Logo on the left', 'The logo sits on the left, with the hospital name, address and phone beside it on the right.'],
           ['centre', 'Centred', 'The logo sits on top, with the name, address and phone centred under it.'],
+          ['image', 'Letterhead pictures', 'Your own letterhead, uploaded as pictures under Clinic details, across the top and the foot of the page in place of the logo and the words.'],
         ] as const
       ).map(([value, label, hint]) => (
         <label className="check top" key={value}>
-          <input type="radio" name="bill_heading" checked={(form.bill_heading ?? 'side') === value} onChange={() => setForm({ ...form, bill_heading: value })} />
+          <input type="radio" name="bill_heading" checked={(form.bill_heading ?? 'side') === value} disabled={value === 'image' && !clinic?.letterhead_header} onChange={() => setForm({ ...form, bill_heading: value })} />
           <span>
             {label}
-            <small className="muted block">{hint}</small>
+            <small className="muted block">{value === 'image' && !clinic?.letterhead_header ? 'Upload the picture for the top of the page under Clinic details first.' : hint}</small>
           </span>
         </label>
       ))}
@@ -241,6 +307,35 @@ function BillingPrefs() {
         </ClinicHeader>
       </div>
       <p className="muted small">The logo and the words themselves come from Clinic details. With no logo uploaded, only the name and address are printed.</p>
+
+      <h3>GSTIN on bills</h3>
+      <label className="check top">
+        <input type="checkbox" checked={form.print_gstin ?? true} onChange={(e) => setForm({ ...form, print_gstin: e.target.checked })} />
+        <span>
+          Print the hospital's GSTIN under the bill number
+          <small className="muted block">
+            {clinic?.gstin ? `GSTIN ${clinic.gstin}, on front desk, lab, pharmacy and IPD bills and receipts.` : 'No GSTIN is saved yet: type it under Clinic details and it is printed from then on.'}
+          </small>
+        </span>
+      </label>
+
+      <h3>Size of paper for receipts</h3>
+      <p className="muted small">Front desk and lab bills, pharmacy bills and IPD receipts. A counter with another printer can change it on the print page, and that computer remembers its choice. The full IPD bill is always on A4.</p>
+      {(
+        [
+          ['a4', 'A4', 'A full sheet.'],
+          ['a5', 'A5', 'A half sheet, with everything a little smaller.'],
+          ['thermal', 'Thermal roll (80 mm)', 'A narrow receipt for a thermal printer. The hospital name is always printed on it, small and centred.'],
+        ] as const
+      ).map(([value, label, hint]) => (
+        <label className="check top" key={value}>
+          <input type="radio" name="bill_paper_size" checked={(form.bill_paper_size ?? 'a4') === value} onChange={() => setForm({ ...form, bill_paper_size: value })} />
+          <span>
+            {label}
+            <small className="muted block">{hint}</small>
+          </span>
+        </label>
+      ))}
 
       <h3>Paper for bills</h3>
       <p className="muted small">Front desk, pharmacy and IPD bills and receipts. A counter that uses the other kind can change it on the print page, and that computer remembers its choice.</p>
