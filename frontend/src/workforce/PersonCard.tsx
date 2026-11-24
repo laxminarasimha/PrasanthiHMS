@@ -81,7 +81,7 @@ export function PersonCard({ id, onClose, onChanged }: { id: number; onClose: ()
           <div className="row wrap">
             <span className={`pill ${p.status === 'active' ? 'ok' : p.status === 'inactive' ? 'off' : 'status-arrived'}`}>{STATUS_LABEL[p.status] ?? p.status}</span>
             <span className="pill status-booked">{TYPE_LABEL[p.employment_type] ?? p.employment_type}</span>
-            {p.login ? <span className="pill status-ongoing">Signs in as {p.login.role_label}</span> : <span className="pill status-booked">Does not sign in</span>}
+            {p.login ? <span className="pill status-ongoing">{p.login.signs_in === false ? 'On the doctors’ list · does not sign in' : `Signs in as ${p.login.role_label}`}</span> : <span className="pill status-booked">Does not sign in</span>}
             {p.login && !p.login.is_active && <span className="pill off">Login switched off</span>}
           </div>
           {p.regular === false && <p className="muted small">A doctor or consultant: not in the daily attendance or the payroll. They may still check in for the record.</p>}

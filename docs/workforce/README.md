@@ -228,3 +228,14 @@ Added 25 November 2026. Doctors and consultants are not in the payroll. The owne
 - **A payment** is written down against the month it settles. It is also posted into the cash book as a paid expense under "Consultants' fees" (`ExpenseBook::post`), so the day's cash count sees it and it cannot be dated into a closed day. One made by mistake is cancelled with a reason, and its expense with it.
 - **Who sees the money:** the permission `canPayConsultants`, which only the admin has unless it is ticked for another login. The ward sees which visit it is, never the fee.
 
+
+## A doctor on the staff list is a doctor everywhere
+
+Added 25 November 2026. The owner added his consultants under Staff and they did not appear in the doctor box of a new appointment.
+
+- **What "a doctor" is in this system:** a row in `users` with the role Doctor that is switched on. Every list of doctors reads that and nothing else: appointments, the calendar, the doctor's queue, admissions, consultants' visits and payments, services, discounts, the patient phone app. A staff record on its own was never a doctor to any of them.
+- **The link:** a tick on the person's staff record, "A doctor who sees patients", with their qualification. For someone who has no login it makes that `users` row with `sign_in_with = 'none'`: it is on every list of doctors and cannot be signed in with (`User::signsIn()`, checked in `AuthController` for password and Google sign-in). `StaffLogin::saving` allows this only for the Doctor role. The server side is `PUT /staff/doctor-for/{employee}` (`StaffController::doctorFor`), open to those who keep staff records as well as those who manage logins, because it gives nobody a way in.
+- **Giving them a way in later:** Staff → the person → Login and access: type a password and save. "Stop them signing in, and keep them on the doctors' list" does the reverse and signs out their devices.
+- **Off the list:** untick it (a doctor who does not sign in), or mark the person as left. The record is never removed; old appointments, admissions and fees still name them.
+- **The patient phone app:** `users.book_online`. A doctor made from the staff list starts hidden from patients' own booking until "Patients can book them from the phone app" is ticked. Doctors who already had logins keep being offered.
+- **Finding the ones left out:** the staff check lists "Consultants not on the doctors' list" with one button for all of them.

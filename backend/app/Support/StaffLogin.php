@@ -108,6 +108,10 @@ final class StaffLogin
         if ($user->role === Role::Staff && $user->permissions) {
             $user->permissions = null;
         }
+        // Only a doctor is kept on the lists without signing in. Anyone else with no way in simply has no login.
+        if ($user->sign_in_with === 'none' && $user->role !== Role::Doctor) {
+            throw ValidationException::withMessages(['role' => 'Only a doctor is on the hospital’s lists without signing in. Give this person a password for another role.']);
+        }
         if ($user->sign_in_with === 'pin' && $user->role !== Role::Staff) {
             throw ValidationException::withMessages(['role' => 'A PIN opens only a person’s own record. To give this person more, give them a password as well.']);
         }

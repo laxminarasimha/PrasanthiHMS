@@ -100,6 +100,7 @@ export function StaffDirectory() {
     setReason('')
     setWeeklyOff(target === 'new' ? null : target.weekly_off)
     setRegular(null)
+    setDoctor(target === 'new' ? { on: false, qualification: '', book_online: false } : { on: Boolean(target.login?.is_doctor), qualification: target.login?.qualification ?? '', book_online: Boolean(target.login?.book_online) })
     setForm(
       target === 'new'
         ? blank
@@ -109,6 +110,8 @@ export function StaffDirectory() {
   const set = (key: keyof Form) => (value: string) => setForm((f) => ({ ...f, [key]: value }))
   // The person whose window is open: a click on the list shows them at a glance first; changing them is one step further.
   const [viewing, setViewing] = useState<number | null>(null)
+  // A doctor who sees patients: on the hospital's list of doctors, whether or not they sign in.
+  const [doctor, setDoctor] = useState({ on: false, qualification: '', book_online: false })
   // In the daily attendance and on the payroll. Empty until it is ticked or unticked here: the usual rule then decides.
   const [regular, setRegular] = useState<boolean | null>(null)
 
@@ -127,10 +130,27 @@ export function StaffDirectory() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wanted, staff])
 
+  /**
+   * Puts the person on the hospital's list of doctors, or takes them off, when that was ticked or unticked here; and
+   * keeps a doctor's qualification and phone-app booking as typed. A refusal leaves the person saved and says why.
+   */
+  const keepDoctorList = async (person: Employee, before: Employee | null) => {
+    const was = { on: Boolean(before?.login?.is_doctor), qualification: before?.login?.qualification ?? '', book_online: Boolean(before?.login?.book_online) }
+    if (doctor.on === was.on && (!doctor.on || (doctor.qualification === was.qualification && doctor.book_online === was.book_online))) return
+    try {
+      await api.put(`/staff/doctor-for/${person.id}`, doctor.on ? { doctor: true, qualification: doctor.qualification.trim() || null, book_online: doctor.book_online } : { doctor: false })
+      if (doctor.on !== was.on) setNotice(doctor.on ? `${person.name} is now on the doctors' list, and can be chosen for appointments, admissions and consultants' visits.` : `${person.name} was taken off the doctors' list. Their past appointments and fees are kept.`)
+    } catch (err) {
+      setNotice(`${person.name}'s details were saved, but the doctors' list was not changed: ${Object.values(fieldErrors(err))[0] ?? 'try again.'}`)
+    }
+  }
+
   /** The login of someone just added, from the same form. If it cannot be given, the person stays added and their page opens where it can be put right. */
   const giveLogin = async (person: Employee) => {
+    // Someone added as a doctor signs in as one.
+    const role = doctor.on ? 'doctor' : newRole
     try {
-      const given = await api.post<{ starting_pin?: string }>(`/staff/for/${person.id}`, newRole === 'staff' ? { role: 'staff' } : { role: newRole, email: form.email || null, password: newPassword })
+      const given = await api.post<{ starting_pin?: string }>(`/staff/for/${person.id}`, role === 'staff' ? { role: 'staff' } : { role, email: form.email || null, password: newPassword })
       if (given.data.starting_pin) setSlip({ name: person.name, mobile: person.phone, pin: given.data.starting_pin })
       else setNotice(`${person.name} was added as ${person.employee_no} and can sign in.`)
     } catch (err) {
@@ -150,6 +170,7 @@ export function StaffDirectory() {
       setNotice(editing === 'new' ? `${res.data.name} was added as ${res.data.employee_no}.` : `${res.data.name}'s details were saved.`)
       setEditing(null)
       if (editing === 'new' && signsIn) await giveLogin(res.data)
+      await keepDoctorList(res.data, editing === 'new' ? null : editing)
       load()
       void loadOptions()
     } catch (err) {
@@ -160,6 +181,17 @@ export function StaffDirectory() {
   }
 
   const canEdit = editing === 'new' ? can('wf:staff:create') : can('wf:staff:edit')
+  // Why the doctor tick cannot be changed here, when it cannot: these are matters of access, changed under Login and access.
+  const theirLogin = editing && editing !== 'new' ? editing.login : null
+  const doctorFixed = !theirLogin
+    ? ''
+    : theirLogin.role !== 'doctor'
+      ? `They sign in as ${theirLogin.role_label}. To make them a doctor, change their role under Login and access.`
+      : theirLogin.signs_in !== false && theirLogin.is_active
+        ? 'They sign in as a doctor, so they are on the doctors’ list. To take them off it, change their role or close their login under Login and access.'
+        : theirLogin.signs_in !== false
+          ? 'Their login is switched off. Open it again under Login and access to put them back on the doctors’ list.'
+          : ''
   const pick = (list: { id: number; name: string }[] | undefined) => (list ?? []).map((o) => ({ value: String(o.id), label: o.name }))
   const errorList = Object.entries(errors).filter(([key]) => !(key in blank))
 
@@ -236,8 +268,9 @@ export function StaffDirectory() {
                     </td>
                     <td className="mono">{s.phone ?? '—'}</td>
                     <td className="wrap">
-                      {s.login ? s.login.role_label : <span className="muted">Does not sign in</span>}
-                      {s.login && !s.login.is_active && <small className="due block">Login switched off</small>}
+                      {s.login ? (s.login.signs_in === false ? 'Doctor' : s.login.role_label) : <span className="muted">Does not sign in</span>}
+                      {s.login?.signs_in === false && <small className="muted block">{s.login.is_doctor ? 'On the doctors’ list; does not sign in' : 'Off the doctors’ list'}</small>}
+                      {s.login && s.login.signs_in !== false && !s.login.is_active && <small className="due block">Login switched off</small>}
                       {s.login?.is_active && s.login.waiting_for_own_pin && <small className="muted block">Has not signed in yet</small>}
                     </td>
                     <td>{s.joined_on ? longDate(s.joined_on) : '—'}</td>
@@ -344,8 +377,24 @@ export function StaffDirectory() {
                     </div>
                   </div>
 
+                  <div className="signs-in">
+                    <label className="check flush">
+                      <input type="checkbox" checked={doctor.on} disabled={Boolean(doctorFixed)} onChange={(e) => setDoctor((d) => ({ ...d, on: e.target.checked }))} />A doctor who sees patients
+                    </label>
+                    <p className="muted small">{doctorFixed || 'Ticked, they are on the hospital’s list of doctors: they can be chosen for appointments, admissions and consultants’ visits, and have a month under Pay → Consultants. They do not need a login for this.'}</p>
+                    {doctor.on && (
+                      <div className="grid gap-top">
+                        <TextField label="Qualification, printed under their name" value={doctor.qualification} onChange={(v) => setDoctor((d) => ({ ...d, qualification: v }))} placeholder="For example: MS ENT" />
+                        <label className="check">
+                          <input type="checkbox" checked={doctor.book_online} onChange={(e) => setDoctor((d) => ({ ...d, book_online: e.target.checked }))} />
+                          Patients can book them from the phone app
+                        </label>
+                      </div>
+                    )}
+                  </div>
+
                   <label className="check top gap-top">
-                    <input type="checkbox" checked={regular ?? (editing === 'new' ? form.employment_type !== 'consultant' : (editing.regular ?? true))} onChange={(e) => setRegular(e.target.checked)} />
+                    <input type="checkbox" checked={regular ?? (editing === 'new' ? form.employment_type !== 'consultant' && !doctor.on : (editing.regular ?? true))} onChange={(e) => setRegular(e.target.checked)} />
                     <span>
                       In the daily attendance and on the payroll
                       <small className="muted block">Unticked for doctors and consultants: they are not marked absent, are not in a payroll, and are paid apart. They may still check in for the record.</small>
@@ -362,12 +411,12 @@ export function StaffDirectory() {
                         <>
                           {manages && roles.length > 0 && (
                             <div className="grid gap-top">
-                              <SelectField label="Role" required value={newRole} onChange={setNewRole} options={roles} />
-                              {newRole !== 'staff' && <TextField label="Password" required type="password" placeholder="At least 8 letters and numbers" value={newPassword} onChange={setNewPassword} autoComplete="new-password" />}
+                              {doctor.on ? <TextField label="Role" value="Doctor" onChange={() => undefined} disabled /> : <SelectField label="Role" required value={newRole} onChange={setNewRole} options={roles} />}
+                              {(doctor.on || newRole !== 'staff') && <TextField label="Password" required type="password" placeholder="At least 8 letters and numbers" value={newPassword} onChange={setNewPassword} autoComplete="new-password" />}
                             </div>
                           )}
                           <p className="muted small">
-                            {newRole === 'staff'
+                            {newRole === 'staff' && !doctor.on
                               ? 'They will sign in with the mobile number above and a 6-digit PIN, and see only their own attendance, leave and payslips. The starting PIN is shown once when you add them.'
                               : 'They will sign in with the mobile number above, or the email if one is given, and this password. What the role allows can be changed for them afterwards under Login and access.'}
                           </p>

@@ -134,10 +134,15 @@ export function LoginAccess({ person, loginId, onChanged }: { person?: Employee;
     if (!brief) return null
     return (
       <div className="login-brief">
-        <p>
+        {brief.signs_in === false && (
+          <p>
+            <strong>{person.name}</strong> is on the hospital's list of doctors and does not sign in. A login is given by those who manage logins.
+          </p>
+        )}
+        <p hidden={brief.signs_in === false}>
           <strong>{person.name}</strong> signs in as <strong>{brief.role_label}</strong>, with {brief.sign_in_with === 'pin' ? `their mobile number${person.phone ? ` ${person.phone}` : ''} and a PIN` : (brief.email ?? 'their mobile number') + ' and a password'}.
         </p>
-        {!brief.is_active && <p className="due">This login is switched off.</p>}
+        {!brief.is_active && brief.signs_in !== false && <p className="due">This login is switched off.</p>}
         {brief.waiting_for_own_pin && <p className="muted">They have not yet signed in and chosen their own PIN.</p>}
         {failed && <div className="form-error">{failed}</div>}
         {brief.sign_in_with === 'pin' && brief.is_active && (
@@ -154,7 +159,7 @@ export function LoginAccess({ person, loginId, onChanged }: { person?: Employee;
   return (
     <>
       {failed && <div className="form-error">{failed}</div>}
-      <LoginForm key={`${login.id}-${login.role}-${login.is_active}`} login={login} person={person} catalogue={catalogue} isAdmin={isAdmin} seesPay={Boolean(user?.can_pay_consultants)} isSelf={login.id === user?.id} mine={user?.abilities ?? {}} onNewPin={() => void newPin()} onSaved={(saved, message) => {
+      <LoginForm key={`${login.id}-${login.role}-${login.is_active}-${login.sign_in_with}`} login={login} person={person} catalogue={catalogue} isAdmin={isAdmin} seesPay={Boolean(user?.can_pay_consultants)} isSelf={login.id === user?.id} mine={user?.abilities ?? {}} onNewPin={() => void newPin()} onSaved={(saved, message) => {
         setLogin(saved)
         onChanged(message)
       }} />
@@ -229,6 +234,7 @@ function LoginForm({ login, person, catalogue, isAdmin, seesPay, isSelf, mine, o
   const [perms, setPerms] = useState<Record<string, boolean>>(login.abilities)
   const [hours, setHours] = useState<Hours>(toHours(login.availability))
   const [slot, setSlot] = useState(login.slot_minutes ? String(login.slot_minutes) : '')
+  const [bookOnline, setBookOnline] = useState(login.book_online ?? true)
   const share = (value?: number | null) => (value == null ? '' : String(value))
   const [shares, setShares] = useState({ front_desk: share(login.share_front_desk), lab: share(login.share_lab), ipd: share(login.share_ipd) })
   const [reason, setReason] = useState('')
@@ -240,6 +246,8 @@ function LoginForm({ login, person, catalogue, isAdmin, seesPay, isSelf, mine, o
 
   const own = form.role === OWN_RECORD
   const wasOwn = login.role === OWN_RECORD
+  // A doctor who is on the hospital's lists and has no way to sign in. A password typed here gives them one.
+  const none = login.sign_in_with === 'none'
   const set = (key: keyof typeof form) => (value: string) => {
     setForm((f) => ({ ...f, [key]: value }))
     // A new role starts from that role's usual permissions.
@@ -261,11 +269,13 @@ function LoginForm({ login, person, catalogue, isAdmin, seesPay, isSelf, mine, o
   const changing = !isSelf && (form.role !== login.role || abilities.some((a) => allowedOf(a) !== Boolean(login.abilities[a.key])))
   const availabilityError = Object.entries(errors).find(([key]) => key.startsWith('availability'))?.[1]
 
-  const save = async (e: FormEvent) => {
-    e.preventDefault()
+  const save = async (e: FormEvent | null, stopSigningIn = false) => {
+    e?.preventDefault()
     setSaving(true)
     setErrors({})
     const body = {
+      ...(stopSigningIn ? { signs_in: false } : {}),
+      ...(form.role === 'doctor' ? { book_online: bookOnline } : {}),
       // The staff record's own name, mobile and gender: typed there, carried here.
       name: person?.name ?? form.name,
       phone: person?.phone ?? form.phone,
@@ -337,8 +347,14 @@ function LoginForm({ login, person, catalogue, isAdmin, seesPay, isSelf, mine, o
       {part === 'sign-in' && (
         <>
           <p className="muted small">
-            Signs in with {[person?.phone ?? login.phone ? `mobile number ${person?.phone ?? login.phone}` : '', login.email ? `email ${login.email}` : ''].filter(Boolean).join(' or ') || 'nothing yet: add a mobile number'}
-            , and {wasOwn ? 'a PIN' : 'a password'}.
+            {none ? (
+              <>Does not sign in. They are on the hospital's list of doctors, so they can be chosen for appointments, admissions and consultants' visits. To let them sign in, type a password below and save.</>
+            ) : (
+              <>
+                Signs in with {[person?.phone ?? login.phone ? `mobile number ${person?.phone ?? login.phone}` : '', login.email ? `email ${login.email}` : ''].filter(Boolean).join(' or ') || 'nothing yet: add a mobile number'}
+                , and {wasOwn ? 'a PIN' : 'a password'}.
+              </>
+            )}
           </p>
           <div className="grid">
             {!person && (
@@ -352,11 +368,11 @@ function LoginForm({ login, person, catalogue, isAdmin, seesPay, isSelf, mine, o
             {!own && <TextField label="Login email (optional)" type="email" placeholder="Without one, they sign in with the mobile number" value={form.email} onChange={set('email')} error={errors.email} autoComplete="off" />}
             {own === wasOwn && own ? null : (
               <TextField
-                label={own ? 'Starting PIN' : wasOwn ? 'Password' : 'New password'}
+                label={own ? 'Starting PIN' : none ? 'Password, to let them sign in' : wasOwn ? 'Password' : 'New password'}
                 required={own !== wasOwn}
                 type="password"
                 inputMode={own ? 'numeric' : undefined}
-                placeholder={own ? '6 digits; they choose their own at first sign-in' : wasOwn ? 'At least 8 letters and numbers' : 'Leave blank to keep the present one'}
+                placeholder={own ? '6 digits; they choose their own at first sign-in' : none ? 'Leave blank: they stay without a login' : wasOwn ? 'At least 8 letters and numbers' : 'Leave blank to keep the present one'}
                 value={form.password}
                 onChange={set('password')}
                 error={errors.password}
@@ -376,8 +392,15 @@ function LoginForm({ login, person, catalogue, isAdmin, seesPay, isSelf, mine, o
           {!isSelf && (
             <label className="check">
               <input type="checkbox" checked={form.is_active} onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))} />
-              The login is open (untick to stop this person signing in)
+              {form.role === 'doctor' ? `On the doctors' list${none ? '' : ', and able to sign in'} (untick when they no longer work here)` : 'The login is open (untick to stop this person signing in)'}
             </label>
+          )}
+          {!isSelf && !none && login.role === 'doctor' && form.role === 'doctor' && form.is_active && (
+            <p>
+              <button type="button" className="link" disabled={saving} onClick={() => window.confirm(`Stop ${person?.name ?? login.name} signing in? They are signed out everywhere and stay on the doctors' list.`) && void save(null, true)}>
+                Stop them signing in, and keep them on the doctors' list
+              </button>
+            </p>
           )}
 
           {!own && (
@@ -454,6 +477,10 @@ function LoginForm({ login, person, catalogue, isAdmin, seesPay, isSelf, mine, o
       {part === 'doctor' && form.role === 'doctor' && (
         <div>
           <p className="muted small">The doctor's usual hours, up to two sessions a day. The appointment calendar greys the times outside them, and booking a later visit outside them asks the desk to confirm. Leave every day empty to follow the hospital's hours.</p>
+          <label className="check">
+            <input type="checkbox" checked={bookOnline} onChange={(e) => setBookOnline(e.target.checked)} />
+            Patients can book this doctor from the phone app
+          </label>
           <label className="field slot-length">
             <span className="field-label">Length of one appointment slot</span>
             <select value={slot} onChange={(e) => setSlot(e.target.value)}>

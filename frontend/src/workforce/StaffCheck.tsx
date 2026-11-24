@@ -13,6 +13,8 @@ type Check = {
   shared_numbers: { mobile: string; logins: Login[] }[]
   shared_screens: Login[]
   without_login: Person[]
+  /** Consultants on the staff list who cannot be chosen for an appointment or an admission yet. */
+  consultants_not_doctors?: Person[]
   totals: { staff: number; logins: number; joined: number }
 }
 
@@ -61,6 +63,10 @@ export function StaffCheck() {
   const join = (pairs: { user_id: number; employee_id: number }[]) => api.post<{ joined: number }>('/workforce/staff-check/join', { pairs }).then((res) => `${res.data.joined} joined.`)
   const create = (ids: number[]) => api.post<{ made: number }>('/workforce/staff-check/create', { user_ids: ids }).then((res) => `${res.data.made} staff record${res.data.made === 1 ? '' : 's'} made. Open each in Staff to add the designation and joining date.`)
   const settle = (employee_id: number, field: string, keep: 'staff' | 'login') => api.post('/workforce/staff-check/settle', { employee_id, field, keep }).then(() => 'Both now say the same.')
+  const toDoctors = async (people: Person[]) => {
+    for (const p of people) await api.put(`/staff/doctor-for/${p.id}`, { doctor: true })
+    return `${people.length} put on the doctors' list. Open each in Staff to add the qualification printed under their name.`
+  }
   const screen = (id: number, shared: boolean) => api.post(`/workforce/staff-check/shared-screen/${id}`, { shared }).then(() => (shared ? 'Marked as a shared screen.' : 'It is a person’s login again.'))
 
   // The starting PINs just made for everyone who had no login: shown once, to print or copy and hand out.
@@ -81,7 +87,7 @@ export function StaffCheck() {
 
   const certain = check?.unjoined.filter((l) => l.match) ?? []
   const rest = check?.unjoined.filter((l) => !l.match) ?? []
-  const inOrder = check && check.unjoined.length === 0 && check.differences.length === 0 && check.shared_numbers.length === 0
+  const inOrder = check && check.unjoined.length === 0 && check.differences.length === 0 && check.shared_numbers.length === 0 && (check.consultants_not_doctors?.length ?? 0) === 0
 
   if (sheet) {
     return (
@@ -343,6 +349,30 @@ export function StaffCheck() {
                       </Link>{' '}
                       <button className="link" disabled={busy} onClick={() => void act(() => screen(l.id, false))}>
                         It is a person after all
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            {(check.consultants_not_doctors?.length ?? 0) > 0 && (
+              <>
+                <h2>
+                  Consultants not on the doctors' list <span className="pill status-arrived">{check.consultants_not_doctors!.length}</span>
+                </h2>
+                <p className="muted">They are on the staff list as consultants, but cannot be chosen for an appointment, an admission or a consultant's visit until they are on the hospital's list of doctors. They do not need a login for it.</p>
+                <div className="row gap-bottom">
+                  <button className="btn primary" disabled={busy} onClick={() => void act(() => toDoctors(check.consultants_not_doctors!), `Put these ${check.consultants_not_doctors!.length} consultants on the doctors' list?`)}>
+                    Put all {check.consultants_not_doctors!.length} on the doctors' list
+                  </button>
+                </div>
+                <ul className="plain-list people">
+                  {check.consultants_not_doctors!.map((p) => (
+                    <li key={p.id}>
+                      <PersonLink id={p.id}>{p.name}</PersonLink> <span className="muted">· {p.employee_no}{p.designation ? ` · ${p.designation}` : ''}</span>{' '}
+                      <button className="link" disabled={busy} onClick={() => void act(() => toDoctors([p]))}>
+                        Put on the list
                       </button>
                     </li>
                   ))}

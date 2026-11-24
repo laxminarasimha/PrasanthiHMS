@@ -33,6 +33,10 @@ class AuthController extends Controller
         $field = filled($credentials['login'] ?? null) ? 'login' : 'email';
         $typed = trim((string) $credentials[$field]);
         $user = StaffLogin::typed($typed, $field);
+        // A doctor who is only on the lists has no login to open.
+        if ($user && ! $user->signsIn()) {
+            $user = null;
+        }
         // Wrong tries are counted against the login itself, so trying by mobile and then by email is one count.
         $key = $user ? StaffLogin::guardKey($user) : StaffLogin::key($typed);
         SignInGuard::refuseIfClosed('staff', $key, $field, $user?->usesPin() ? StaffLogin::PIN_TRIES : SignInGuard::TRIES);
@@ -73,7 +77,7 @@ class AuthController extends Controller
             AuditLog::record('auth.failed', null, null, 'Google account not joined to a login', null, mb_substr($google['email'], 0, 100));
             throw ValidationException::withMessages(['credential' => "No staff login is joined to {$google['email']}. Sign in with your email and password, then join your Google account under My account."]);
         }
-        if (! $user->is_active) {
+        if (! $user->is_active || ! $user->signsIn()) {
             AuditLog::record('auth.failed', null, null, 'The login is switched off', $user);
             throw ValidationException::withMessages(['credential' => 'This account has been deactivated.']);
         }

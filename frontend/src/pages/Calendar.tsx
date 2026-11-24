@@ -344,7 +344,7 @@ export function Calendar() {
         {!settings ? (
           <p className="loading">Loading…</p>
         ) : columns.length === 0 ? (
-          <p className="loading">No doctors have been added yet. Add them under Workforce → Staff, with the Doctor role.</p>
+          <p className="loading">No doctors have been added yet. Add them under Workforce → Staff and tick “A doctor who sees patients”.</p>
         ) : (
           <div className="table-wrap cal">
             <table>

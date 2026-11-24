@@ -194,7 +194,7 @@ class PatientAppController extends Controller
         $clinic = Setting::group('clinic', AdminController::CLINIC_DEFAULTS);
 
         return response()->json(['name' => $clinic['name'] ?: 'Prasanthi Hospitals', 'tagline' => $clinic['tagline'], 'address' => $clinic['address'], 'phone' => $clinic['phone'], 'phone_alt' => $clinic['phone_alt'], 'email' => $clinic['email'],
-            'doctors' => User::where('role', Role::Doctor)->where('is_active', true)->orderBy('name')->get(['id', 'name', 'department'])]);
+            'doctors' => User::where('role', Role::Doctor)->where('is_active', true)->where('book_online', true)->orderBy('name')->get(['id', 'name', 'department'])]);
     }
 
     /**
@@ -248,13 +248,13 @@ class PatientAppController extends Controller
 
     public function doctors(): JsonResponse
     {
-        return response()->json(User::where('role', Role::Doctor)->where('is_active', true)->orderBy('name')->get(['id', 'name', 'department']));
+        return response()->json(User::where('role', Role::Doctor)->where('is_active', true)->where('book_online', true)->orderBy('name')->get(['id', 'name', 'department']));
     }
 
     /** The times a doctor can be booked on one day, each marked free or not. */
     public function slots(Request $request, User $doctor): JsonResponse
     {
-        abort_unless($doctor->role === Role::Doctor && $doctor->is_active, 404);
+        abort_unless($doctor->role === Role::Doctor && $doctor->is_active && $doctor->book_online, 404);
         $data = $request->validate(['date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today', 'before_or_equal:'.today()->addDays(self::BOOK_AHEAD_DAYS)->toDateString()]]);
 
         return response()->json($this->slotsFor($doctor, Carbon::parse($data['date'])));
@@ -264,7 +264,7 @@ class PatientAppController extends Controller
     {
         $account = $request->user();
         $data = $request->validate([
-            'doctor_id' => ['required', Rule::exists('users', 'id')->where('role', Role::Doctor->value)->where('is_active', true)],
+            'doctor_id' => ['required', Rule::exists('users', 'id')->where('role', Role::Doctor->value)->where('is_active', true)->where('book_online', true)],
             'scheduled_at' => ['required', 'date_format:Y-m-d H:i'],
             'notes' => ['nullable', 'string', 'max:255'],
             'patient_id' => ['nullable', 'integer'],
