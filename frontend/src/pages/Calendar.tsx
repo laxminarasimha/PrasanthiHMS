@@ -1,6 +1,6 @@
+import { FrontDeskTabs } from '../components/FrontDeskTabs'
 import { Popup } from '../components/Popup'
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { useAuth } from '../auth'
 import { AppointmentForm } from '../components/AppointmentForm'
@@ -270,6 +270,8 @@ export function Calendar() {
   const heading = view === 'week' ? `${dayTitle(from)} – ${dayTitle(addDays(from, 6))}` : dayTitle(date)
 
   return (
+    <>
+    <FrontDeskTabs />
     <div className="split">
       <section className="card">
         <div className="toolbar">
@@ -311,9 +313,6 @@ export function Calendar() {
               OPD hours
             </button>
           )}
-          <Link className="btn ghost" to="/front-desk">
-            Day list
-          </Link>
         </div>
 
         <p className="cal-heading">
@@ -459,5 +458,6 @@ export function Calendar() {
         />
       )}
     </div>
+    </>
   )
 }

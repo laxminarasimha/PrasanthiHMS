@@ -70,7 +70,7 @@ export function Layout() {
 
   // The browser tab says which part of the app it is showing, so several open tabs can be told apart.
   useEffect(() => {
-    const section = user ? (pathname.startsWith('/account') ? 'My account' : allowedTabs(user).find((t) => onTab(t, pathname))?.label) : undefined
+    const section = user ? (pathname.startsWith('/account') ? 'My account' : pathname.startsWith('/patients') ? 'Patients' : allowedTabs(user).find((t) => onTab(t, pathname))?.label) : undefined
     document.title = section ? `${section} · Prasanthi HMS` : 'Prasanthi HMS'
   }, [pathname, user])
 

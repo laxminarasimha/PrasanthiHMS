@@ -10,6 +10,8 @@ vi.mock('../api', () => ({
   api: { get: (...args: unknown[]) => get(...args), post: (...args: unknown[]) => post(...args), put: vi.fn() },
   fieldErrors: (err: { response?: { data?: { errors?: Record<string, string[]> } } }) => Object.fromEntries(Object.entries(err.response?.data?.errors ?? {}).map(([k, v]) => [k, v[0]])),
 }))
+// The page sits under the front desk's strip of pages, which asks who is signed in.
+vi.mock('../auth', () => ({ useAuth: () => ({ user: { can_front_desk: true, can_record_expenses: true } }) }))
 
 const can = { edit: false, submit: false, decide: false, pay: false, cancel: false }
 const row = (over: Partial<Expense> = {}): Expense => ({

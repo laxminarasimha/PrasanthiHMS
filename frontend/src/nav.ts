@@ -11,17 +11,24 @@ export function setupPages(user: User): { label: string; to: string }[] {
   ]
 }
 
+/**
+ * Where the patient list sits for this person. It has no menu tab of its own: it is one of the doctor's pages, or one
+ * of the front desk's for someone who does not see patients. Only a person with neither keeps it as a tab.
+ */
+export const patientsSection = (user: User): 'doctor' | 'front-desk' | 'patients' => (user.can_consult ? 'doctor' : user.can_front_desk ? 'front-desk' : 'patients')
+
 /** Every menu tab this person is allowed to open, in menu order. */
 export function allowedTabs(user: User): NavTab[] {
   const setup = setupPages(user)
+  const patients = patientsSection(user)
   return [
-    ...(user.can_front_desk ? [{ key: 'front-desk', label: 'Front Desk', to: '/front-desk', also: ['/past-records', '/expenses'] }] : []),
-    ...(user.can_consult ? [{ key: 'doctor', label: 'Doctor', to: '/doctor', also: ['/visits'] }] : []),
+    ...(user.can_front_desk ? [{ key: 'front-desk', label: 'Front Desk', to: '/front-desk', also: ['/past-records', '/expenses', ...(patients === 'front-desk' ? ['/patients'] : [])] }] : []),
+    ...(user.can_consult ? [{ key: 'doctor', label: 'Doctor', to: '/doctor', also: ['/visits', '/patients'] }] : []),
     ...(user.can_run_lab || user.can_front_desk ? [{ key: 'lab', label: 'Lab', to: '/lab' }] : []),
     // Those who run the pharmacy land on billing; those who may only look land on the manager's page.
     ...(user.can_run_pharmacy ? [{ key: 'pharmacy', label: 'Pharmacy', to: '/pharmacy' }] : user.can_view_pharmacy ? [{ key: 'pharmacy', label: 'Pharmacy', to: '/pharmacy/manager', also: ['/pharmacy'] }] : []),
     ...(user.can_ipd ? [{ key: 'ipd', label: 'IPD', to: '/ipd' }] : []),
-    { key: 'patients', label: 'Patients', to: '/patients' },
+    ...(patients === 'patients' ? [{ key: 'patients', label: 'Patients', to: '/patients' }] : []),
     ...(user.can_view_reports ? [{ key: 'reports', label: 'Reports', to: '/reports' }] : []),
     ...workforceTab(user),
     ...(setup.length ? [{ key: 'setup', label: 'Setup', to: setup[0].to, also: setup.map((p) => p.to) }] : []),

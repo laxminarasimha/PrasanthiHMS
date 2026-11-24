@@ -1,3 +1,7 @@
+import { FrontDeskTabs } from '../components/FrontDeskTabs'
+import { DoctorTabs } from '../components/DoctorTabs'
+import { useAuth } from '../auth'
+import { patientsSection } from '../nav'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useLoadOnChange } from '../loading'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -44,6 +48,9 @@ function toForm(p: Patient): Form {
 }
 
 export function Patients() {
+  // The list is one of the doctor's pages, or the front desk's for someone who does not see patients.
+  const { user } = useAuth()
+  const section = user ? patientsSection(user) : 'patients'
   const [page, setPage] = useState<Page | null>(null)
   const [query, setQuery] = useState('')
   const [pageNo, setPageNo] = useState(1)
@@ -135,6 +142,8 @@ export function Patients() {
   }
 
   return (
+    <>
+    {section === 'doctor' ? <DoctorTabs /> : section === 'front-desk' ? <FrontDeskTabs /> : null}
     <div className="split">
       <section className="card patient-list">
         <div className="toolbar">
@@ -271,5 +280,6 @@ export function Patients() {
         </form>
       )}
     </div>
+    </>
   )
 }
