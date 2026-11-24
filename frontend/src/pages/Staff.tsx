@@ -25,6 +25,9 @@ const toHours = (saved: Availability | null | undefined): Hours =>
 type Tab = 'details' | 'permissions' | 'availability'
 
 const blank = { name: '', email: '', password: '', role: '', gender: '', phone: '', department: '', signature_text: '', is_active: true }
+/** The counters a doctor can have a share of: bills of their visits, lab bills from their visits, bills of inpatients under them. */
+const SHARES = [['front_desk', 'Front desk bills of their visits'], ['lab', 'Lab bills from their visits'], ['ipd', 'Bills of inpatients under them']] as const
+const noShares = { front_desk: '', lab: '', ipd: '' }
 type Form = typeof blank
 
 /** Every change made to one person's role and permissions: who made it, when, what changed and why. */
@@ -99,6 +102,8 @@ export function Staff() {
     setPerms(target === 'new' ? {} : target.abilities)
     setHours(toHours(target === 'new' ? null : target.availability))
     setSlot(target === 'new' || !target.slot_minutes ? '' : String(target.slot_minutes))
+    const share = (value?: number | null) => (target === 'new' || value == null ? '' : String(value))
+    setShares(target === 'new' ? noShares : { front_desk: share(target.share_front_desk), lab: share(target.share_lab), ipd: share(target.share_ipd) })
     setForm(
       target === 'new'
         ? blank
@@ -117,6 +122,8 @@ export function Staff() {
   }
   // The doctor's own slot length in minutes; empty follows the hospital's.
   const [slot, setSlot] = useState('')
+  // A doctor's share of collections, in percent for each counter; empty means none is worked out. Admins only.
+  const [shares, setShares] = useState(noShares)
   const setHour = (day: Day, index: number, key: 'from' | 'to', value: string) =>
     setHours((h) => ({ ...h, [day]: h[day].map((range, i) => (i === index ? { ...range, [key]: value } : range)) }))
 
@@ -168,6 +175,7 @@ export function Staff() {
       reason: changing ? reason.trim() : undefined,
       availability: form.role === 'doctor' ? Object.fromEntries(DAYS.map(([day]) => [day, hours[day].filter((r) => r.from && r.to)])) : null,
       slot_minutes: form.role === 'doctor' && slot ? Number(slot) : null,
+      ...(isAdmin ? Object.fromEntries(SHARES.map(([key]) => [`share_${key}`, form.role === 'doctor' && shares[key] !== '' ? Number(shares[key]) : null])) : {}),
     }
     try {
       const res =
@@ -373,6 +381,21 @@ export function Staff() {
             </datalist>
             <TextField label="Signature text" value={form.signature_text} onChange={set('signature_text')} error={errors.signature_text} />
           </div>
+
+          {isAdmin && form.role === 'doctor' && (
+            <>
+              <h3>Doctor's share of collections</h3>
+              <p className="muted small">
+                Optional. The percentage of the money collected from this doctor's own patients that is the doctor's, for each counter. The report "Doctor: share of collections" works it out for any dates; paying it is
+                entered under Expenses. Only admins see these figures.
+              </p>
+              <div className="doctor-shares">
+                {SHARES.map(([key, label]) => (
+                  <TextField key={key} label={`${label} (%)`} type="number" min={0} max={100} step="0.5" placeholder="None" value={shares[key]} onChange={(v) => setShares((s) => ({ ...s, [key]: v }))} error={errors[`share_${key}`]} />
+                ))}
+              </div>
+            </>
+          )}
 
           {editing !== 'new' && !isSelf && (
             <label className="check">

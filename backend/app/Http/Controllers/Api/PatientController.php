@@ -51,6 +51,33 @@ class PatientController extends Controller
         return response()->json($order->filter(fn ($_, $id) => $patients->has($id))->map(fn (array $why, int $id) => $patients[$id]->toArray() + ['recent' => $why])->values());
     }
 
+    /**
+     * The whole patient list, for taking away as a file: who each patient is, how to reach them, when they
+     * registered and how often they have come. Only for those allowed to export, and written in the activity log.
+     */
+    public function export(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->allows('canExportData'), 403, 'You are not allowed to export to a file.');
+
+        $visits = Appointment::where('status', '!=', 'cancelled')->where('scheduled_at', '<=', now())
+            ->selectRaw('patient_id, count(*) as visits, max(scheduled_at) as last_visit')->groupBy('patient_id')->toBase()->get()->keyBy('patient_id');
+        $rows = Patient::whereNull('merged_into_id')->where('is_temporary', false)->orderBy('id')
+            ->get(['id', 'uhid', 'title', 'name', 'gender', 'date_of_birth', 'dob_estimated', 'mobile', 'mobile_alt', 'email', 'blood_group', 'address', 'city', 'pincode', 'referred_by', 'created_at'])
+            ->map(fn (Patient $p) => [
+                $p->uhid, $p->title, $p->name, ucfirst((string) $p->gender), $p->age_label === '—' ? '' : $p->age_label,
+                $p->date_of_birth ? $p->date_of_birth->format('Y-m-d').($p->dob_estimated ? ' (from age)' : '') : '',
+                $p->mobile, $p->mobile_alt, $p->email, $p->blood_group, $p->address, $p->city, $p->pincode, $p->referred_by,
+                $p->created_at?->format('Y-m-d'), (int) ($visits[$p->id]->visits ?? 0),
+                isset($visits[$p->id]) ? substr((string) $visits[$p->id]->last_visit, 0, 10) : '',
+            ]);
+        AuditLog::record('patients.exported', null, null, $rows->count().' patients, the whole list');
+
+        return response()->json([
+            'columns' => ['Patient ID', 'Title', 'Name', 'Sex', 'Age', 'Date of birth', 'Mobile', 'Other mobile', 'Email', 'Blood group', 'Address', 'City', 'PIN code', 'Referred by', 'Registered on', 'Visits', 'Last visit'],
+            'rows' => $rows->values(),
+        ]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $patients = Patient::query()

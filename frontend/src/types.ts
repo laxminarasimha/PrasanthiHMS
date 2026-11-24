@@ -57,6 +57,10 @@ export type Staff = {
   has_signature: boolean
   availability: Availability | null
   slot_minutes?: number | null
+  /** A doctor's share of what is collected from their own patients, in percent for each counter. Sent to admins only. */
+  share_front_desk?: number | null
+  share_lab?: number | null
+  share_ipd?: number | null
 }
 
 /** One permission that can be given to or taken from a person, and the roles that get it by default. */

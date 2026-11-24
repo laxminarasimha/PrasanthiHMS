@@ -51,6 +51,7 @@ class AuditLog extends Model
         'auth.failed' => 'Tried to sign in and failed',
         'bill.item_added' => 'Added a line to a bill',
         'bill.cancelled' => 'Cancelled a bill',
+        'patients.exported' => 'Took the patient list away as a file',
         'bill.item_removed' => 'Removed a line from a bill',
         'bill.payment' => 'Recorded money on a bill',
         'bill.payment_mode' => 'Changed how a bill was paid',

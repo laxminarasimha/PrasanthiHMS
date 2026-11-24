@@ -1641,6 +1641,18 @@ ol.rx-list li::marker { font-weight: 700; color: var(--brand-dark); }
 .stage-dot.ok { background: var(--ok); }
 .lab-bulk { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 2px; }
 
+/* The owner's day-by-day table: a bar beside each day's collection, measured against the best day shown. */
+.day-trend .trend-day { white-space: nowrap; }
+.day-trend .trend-cell { width: 26%; min-width: 90px; padding-left: 4px; }
+.day-trend .trend-bar { display: block; height: 10px; min-width: 2px; border-radius: 0 4px 4px 0; background: var(--brand); }
+@media (max-width: 700px) { .day-trend .trend-cell { display: none; } .day-trend th:nth-child(4) { display: none; } }
+/* On a phone the billed figure gives way, so the day, what came in, what went out and what is left fit across. */
+@media (max-width: 500px) { .day-trend th:nth-child(2), .day-trend td:nth-child(2) { display: none; } }
+@media print { .day-trend .trend-bar { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
+/* A doctor's share of collections on the staff form. */
+.doctor-shares { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 600px) { .doctor-shares { grid-template-columns: 1fr; } }
+
 /* Lab template: extra normal ranges of a parameter, by age and sex, on lines under its row. */
 .lab-param-block { display: flex; flex-direction: column; gap: 4px; min-width: 520px; }
 .lab-range { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 4px 8px 4px 18px; border-left: 3px solid var(--brand-line); background: var(--bg); border-radius: 0 6px 6px 0; }

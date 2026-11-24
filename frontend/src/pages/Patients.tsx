@@ -9,7 +9,7 @@ import { api, fieldErrors, type FieldErrors } from '../api'
 import { SelectField, TextField } from '../components/Field'
 import { ReferredBy } from '../components/ReferredBy'
 import { SameMobile } from '../components/SameMobile'
-import { AGE_UNITS, TITLES, fullName, longDate, stampDate } from '../format'
+import { AGE_UNITS, TITLES, downloadCsv, fullName, longDate, stampDate, today } from '../format'
 import type { Patient } from '../types'
 
 type Page = { data: Patient[]; current_page: number; last_page: number; total: number }
@@ -54,6 +54,20 @@ export function Patients() {
   const [page, setPage] = useState<Page | null>(null)
   const [query, setQuery] = useState('')
   const [pageNo, setPageNo] = useState(1)
+  const [exporting, setExporting] = useState(false)
+  /** The whole patient list as a spreadsheet file. It holds everyone's contact details, so it asks first and is written in the activity log. */
+  const exportAll = async () => {
+    if (!window.confirm('Download the whole patient list, with names, mobile numbers and addresses, as a file? This is recorded in the activity log.')) return
+    setExporting(true)
+    try {
+      const res = await api.get<{ columns: string[]; rows: (string | number | null)[][] }>('/patients/export')
+      downloadCsv(`patients-${today()}.csv`, res.data.columns, res.data.rows)
+    } catch {
+      window.alert('The list could not be prepared. Please try again.')
+    } finally {
+      setExporting(false)
+    }
+  }
   const [editing, setEditing] = useState<Patient | 'new' | null>(null)
   const [form, setForm] = useState<Form>(blank)
   const [errors, setErrors] = useState<FieldErrors>({})
@@ -160,6 +174,11 @@ export function Patients() {
             }}
           />
           {searching && <span className="searching muted">Searching…</span>}
+          {user?.can_export && (
+            <button className="btn ghost" disabled={exporting} onClick={exportAll} title="Every patient with their contact details, as a spreadsheet file">
+              {exporting ? 'Preparing…' : 'Export all'}
+            </button>
+          )}
           <button className="btn primary" onClick={() => open('new')}>
             + New patient
           </button>
