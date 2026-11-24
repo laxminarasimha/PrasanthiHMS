@@ -18,6 +18,9 @@ enum Role: string
     case Pharmacist = 'pharmacist';
     case LabTech = 'lab_tech';
     case Frontdesk = 'frontdesk';
+    // Someone who works in the hospital but not in this system: wards, housekeeping, security, drivers. Their login
+    // opens their own attendance, leave and payslips and nothing else, so it may be opened with a PIN.
+    case Staff = 'staff';
 
     public function label(): string
     {
@@ -32,6 +35,7 @@ enum Role: string
             self::Pharmacist => 'Pharmacist',
             self::LabTech => 'Lab Technician',
             self::Frontdesk => 'Front Desk',
+            self::Staff => 'Staff (own record only)',
         };
     }
 

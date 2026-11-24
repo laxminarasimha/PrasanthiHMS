@@ -110,7 +110,7 @@ Route::prefix('reader')->middleware('throttle:240,1,reader')->controller(RecordR
     Route::post('/records/{record}/done', 'done');
 });
 
-Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(function () {
+Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money'])->group(function () {
     Route::middleware('ability:canRunPharmacy')->controller(SubscriptionController::class)->group(function () {
         Route::get('/pharmacy/subscriptions', 'index');
         Route::post('/pharmacy/subscriptions/{subscription}/prepared', 'prepared');
@@ -551,4 +551,4 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'activity', 'money'])->group(f
 });
 
 // ---- Workforce: staff records, attendance, leave, payroll, advances and expenses (routes/workforce.php) ----
-Route::middleware(['auth:sanctum', 'actor:staff', 'activity'])->prefix('workforce')->group(base_path('routes/workforce.php'));
+Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity'])->prefix('workforce')->group(base_path('routes/workforce.php'));

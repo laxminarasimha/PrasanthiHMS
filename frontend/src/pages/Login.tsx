@@ -11,7 +11,7 @@ import { useBrand } from '../brand'
 export function Login() {
   const { user, signIn, signInWithGoogle } = useAuth()
   const brand = useBrand()
-  const [email, setEmail] = useState('')
+  const [login, setLogin] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -23,10 +23,10 @@ export function Login() {
     setBusy(true)
     setError('')
     try {
-      await signIn(email, password)
+      await signIn(login.trim(), password)
     } catch (err) {
       const errors = fieldErrors(err)
-      setError(errors.email ?? errors.password ?? errors._)
+      setError(errors.login ?? errors.email ?? errors.password ?? errors._)
     } finally {
       setBusy(false)
     }
@@ -54,9 +54,9 @@ export function Login() {
           Prasanthi <span>HMS</span>
         </div>
         <p className="muted">Multi Speciality Centre. Sign in with your staff account.</p>
-        <TextField label="Email" type="email" value={email} onChange={setEmail} autoComplete="username" required />
+        <TextField label="Mobile number or email" type="text" inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={login} onChange={setLogin} autoComplete="username" required />
         <TextField
-          label="Password"
+          label="Password or PIN"
           type="password"
           value={password}
           onChange={setPassword}

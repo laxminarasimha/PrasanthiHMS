@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Navigate, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { BottomBar } from './BottomBar'
 import { BrandMark } from './Brand'
 import { ErrorBoundary } from './ErrorBoundary'
@@ -8,7 +8,7 @@ import { PatientSearch } from './PatientSearch'
 import { onLoadTrouble } from '../api'
 import { useAuth } from '../auth'
 import { keepPrintPrefsFresh } from '../printPaper'
-import { homeFor } from '../access'
+import { homeFor, ownRecordOnly } from '../access'
 import { allowedTabs, menuTabs, onTab } from '../nav'
 import { NAV_ICONS } from '../navIcons'
 import { usePhone } from '../phone'
@@ -58,9 +58,11 @@ export function Layout() {
     }
   }
   // Print pages open in their own tab and print at once, so the way prints are laid out is fetched here, ahead of time.
+  const ownOnly = user ? ownRecordOnly(user) : true
   useEffect(() => {
-    void keepPrintPrefsFresh()
-  }, [])
+    // Not for an own-record login, which prints nothing of the hospital's and may not ask for its settings.
+    if (!ownOnly) void keepPrintPrefsFresh()
+  }, [ownOnly])
 
   // The browser tab says which part of the app it is showing, so several open tabs can be told apart.
   useEffect(() => {
@@ -69,6 +71,8 @@ export function Layout() {
   }, [pathname, user])
 
   if (!user) return null
+  // An own-record login has two places: its own record and its own account. Any other address goes home.
+  if (ownOnly && !pathname.startsWith('/workforce/me') && !pathname.startsWith('/account')) return <Navigate to={homeFor(user)} replace />
 
   return (
     <div className="app">
@@ -115,7 +119,7 @@ export function Layout() {
             </button>
           </div>
         </nav>
-        <PatientSearch />
+        {!ownOnly && <PatientSearch />}
         <div className="whoami">
           <NavLink className="avatar" to="/account" title={`${user.name} · ${user.role_label}: my account`} aria-label="My account" onClick={(e) => !canLeave() && e.preventDefault()}>
             {initials(user.name)}

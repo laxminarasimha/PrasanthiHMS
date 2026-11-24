@@ -108,7 +108,7 @@ export function Staff() {
       target === 'new'
         ? blank
         : {
-            name: target.name, email: target.email, password: '', role: target.role, gender: target.gender ?? '',
+            name: target.name, email: target.email ?? '', password: '', role: target.role, gender: target.gender ?? '',
             phone: target.phone ?? '', department: target.department ?? '', signature_text: target.signature_text ?? '',
             is_active: target.is_active,
           },
@@ -260,9 +260,12 @@ export function Staff() {
             <button type="button" className={tab === 'details' ? 'active' : ''} onClick={() => setTab('details')}>
               Details
             </button>
-            <button type="button" className={tab === 'permissions' ? 'active' : ''} onClick={() => setTab('permissions')}>
-              Permissions
-            </button>
+            {/* The own-record role is exactly that: there is nothing to tick on top of it. */}
+            {form.role !== 'staff' && (
+              <button type="button" className={tab === 'permissions' ? 'active' : ''} onClick={() => setTab('permissions')}>
+                Permissions
+              </button>
+            )}
             {form.role === 'doctor' && (
               <button type="button" className={tab === 'availability' ? 'active' : ''} onClick={() => setTab('availability')}>
                 Availability
@@ -362,12 +365,13 @@ export function Staff() {
             <SelectField label="Gender" required value={form.gender} onChange={set('gender')} options={GENDERS} placeholder="Select" error={errors.gender} />
             <SelectField label="Role" required value={form.role} onChange={set('role')} options={roles} placeholder="Select role" error={errors.role} />
             <TextField label="Phone" required inputMode="tel" value={form.phone} onChange={set('phone')} error={errors.phone} />
-            <TextField label="Login email" required type="email" value={form.email} onChange={set('email')} error={errors.email} autoComplete="off" />
+            <TextField label="Login email (optional)" type="email" placeholder="Without one, they sign in with the mobile number" value={form.email} onChange={set('email')} error={errors.email} autoComplete="off" />
             <TextField
-              label={editing === 'new' ? 'Password' : 'New password'}
+              label={form.role === 'staff' ? (editing === 'new' ? 'Starting PIN' : 'New starting PIN') : editing === 'new' ? 'Password' : 'New password'}
               required={editing === 'new'}
               type="password"
-              placeholder={editing === 'new' ? 'At least 8 letters and numbers' : 'Leave blank to keep current'}
+              inputMode={form.role === 'staff' ? 'numeric' : undefined}
+              placeholder={form.role === 'staff' ? '6 digits; they choose their own at first sign-in' : editing === 'new' ? 'At least 8 letters and numbers' : 'Leave blank to keep current'}
               value={form.password}
               onChange={set('password')}
               error={errors.password}

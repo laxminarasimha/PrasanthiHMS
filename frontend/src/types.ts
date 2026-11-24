@@ -1,7 +1,12 @@
 export type User = {
   id: number
   name: string
-  email: string
+  /** Empty for someone who signs in with their mobile number only. */
+  email: string | null
+  /** How this login is opened: a password, or a PIN for a login that reaches only the person's own record. */
+  sign_in_with?: 'password' | 'pin'
+  /** Signed in with a starting PIN the hospital handed out: nothing opens until they choose their own. */
+  must_change_secret?: boolean
   /** The Google account they can sign in with, once joined. */
   google_email?: string | null
   role: string

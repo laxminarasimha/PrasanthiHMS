@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { homeFor } from './access'
 import { AuthProvider, useAuth } from './auth'
 import { Layout } from './components/Layout'
+import { ChooseSecret } from './pages/ChooseSecret'
 import { Login } from './pages/Login'
 import type { User } from './types'
 
@@ -115,13 +116,16 @@ const VisitPad = page(() => import('./pages/VisitPad'), 'VisitPad')
 function Protected() {
   const { user, loading } = useAuth()
   if (loading) return <p className="loading">Loading…</p>
-  return user ? <Layout /> : <Navigate to="/login" replace />
+  if (!user) return <Navigate to="/login" replace />
+  // Signed in with a starting PIN: their own must be chosen before anything else is shown.
+  return user.must_change_secret ? <ChooseSecret /> : <Layout />
 }
 
 function PrintOnly({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
   if (loading) return <p className="loading">Loading…</p>
-  return user ? children : <Navigate to="/login" replace />
+  if (!user) return <Navigate to="/login" replace />
+  return user.must_change_secret ? <ChooseSecret /> : children
 }
 
 /** Shows a page only to roles with the given ability; everyone else goes to their own home screen. */

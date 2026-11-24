@@ -5,6 +5,7 @@ namespace App\Workforce\Http;
 use App\Http\Controllers\Controller;
 use App\Models\AdminEntry;
 use App\Models\User;
+use App\Support\StaffLogin;
 use App\Workforce\Models\DepartmentManager;
 use App\Workforce\Models\Employee;
 use App\Workforce\Models\EmployeePrivate;
@@ -87,6 +88,7 @@ class EmployeeController extends Controller
         $data['employee_no'] = filled($data['employee_no'] ?? null) ? $data['employee_no'] : $this->nextNumber();
         $employee = Employee::create($data + ['created_by' => $request->user()->id]);
         Audit::record('staff.added', $employee, null, $employee->only(array_keys($data)), null, $employee->id);
+        StaffLogin::fromEmployee($employee);
 
         return response()->json($this->present($employee->load(self::WITH)), 201);
     }
@@ -107,6 +109,8 @@ class EmployeeController extends Controller
         if ($after !== []) {
             Audit::record('staff.changed', $employee, $before, $after, $request->input('reason'), $employee->id);
         }
+        // The person's login follows: the same name and mobile, and closed if they have left.
+        StaffLogin::fromEmployee($employee->fresh(), array_keys($after));
 
         return response()->json($this->present($employee->fresh()->load(self::WITH)));
     }

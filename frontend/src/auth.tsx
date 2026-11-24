@@ -8,7 +8,10 @@ import type { User } from './types'
 type AuthState = {
   user: User | null
   loading: boolean
-  signIn: (email: string, password: string) => Promise<void>
+  /** `login` is a mobile number or an email; `password` a password, or a PIN for a login opened with one. */
+  signIn: (login: string, password: string) => Promise<void>
+  /** The starting PIN just typed by someone who must now choose their own, so they are not asked for it twice. Never stored. */
+  startingSecret: string | null
   signInWithGoogle: (credential: string) => Promise<void>
   signOut: () => Promise<void>
   /** Replaces the signed-in person's details after they change their own settings. */
@@ -100,8 +103,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const signIn = async (email: string, password: string) => {
-    const res = await api.post<{ token: string; user: User }>('/login', { email, password })
+  const [startingSecret, setStartingSecret] = useState<string | null>(null)
+  const signIn = async (login: string, password: string) => {
+    const res = await api.post<{ token: string; user: User }>('/login', { login, password })
+    setStartingSecret(res.data.user.must_change_secret ? password : null)
     setToken(res.data.token)
     setUser(res.data.user)
   }
@@ -118,7 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null)
   }
 
-  return <AuthContext.Provider value={{ user, loading, signIn, signInWithGoogle, signOut, refresh: setUser }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ user, loading, signIn, startingSecret, signInWithGoogle, signOut, refresh: setUser }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {
