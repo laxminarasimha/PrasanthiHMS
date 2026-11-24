@@ -181,7 +181,7 @@ class WorkforceExpensesTest extends TestCase
         $slip = fn (string $name) => collect($run['payslips'])->firstWhere('employee.name', $name)['id'];
         $this->postJson("/api/workforce/payroll/runs/{$run['id']}/step", ['to' => 'reviewed'])->assertOk();
         $this->postJson("/api/workforce/payroll/runs/{$run['id']}/step", ['to' => 'approved'])->assertOk();
-        $this->postJson("/api/workforce/payroll/runs/{$run['id']}/finalise")->assertOk();
+        $this->postJson("/api/workforce/payroll/runs/{$run['id']}/finalise", ['checked' => true])->assertOk();
         $this->postJson("/api/workforce/payroll/runs/{$run['id']}/pay", ['payslip_ids' => [$slip('Asha Sample')], 'status' => 'paid', 'paid_on' => '2026-05-05', 'payment_mode' => 'bank', 'payment_reference' => 'NEFT 9'])->assertOk();
         $this->postJson("/api/workforce/payroll/runs/{$run['id']}/pay", ['payslip_ids' => [$slip('Ravi Sample')], 'status' => 'paid', 'paid_on' => '2026-05-05', 'payment_mode' => 'cash'])->assertOk()->assertJsonPath('status', 'paid');
         $out = $this->paidOut();
@@ -207,7 +207,7 @@ class WorkforceExpensesTest extends TestCase
         $this->postJson("/api/workforce/payroll/runs/{$again['id']}/payslips/{$ashaAgain}/lines", ['kind' => 'earning', 'name' => 'Incentive', 'amount' => 500, 'note' => 'Missed in the first run'])->assertOk();
         $this->postJson("/api/workforce/payroll/runs/{$again['id']}/step", ['to' => 'reviewed'])->assertOk();
         $this->postJson("/api/workforce/payroll/runs/{$again['id']}/step", ['to' => 'approved'])->assertOk();
-        $this->postJson("/api/workforce/payroll/runs/{$again['id']}/finalise")->assertOk();
+        $this->postJson("/api/workforce/payroll/runs/{$again['id']}/finalise", ['checked' => true])->assertOk();
         $ids = collect($again['payslips'])->pluck('id')->all();
         $this->postJson("/api/workforce/payroll/runs/{$again['id']}/pay", ['payslip_ids' => $ids, 'status' => 'paid', 'paid_on' => '2026-05-05', 'payment_mode' => 'bank'])->assertOk();
         $this->assertSame(48500.0, $this->paidOut()['by_category'][ExpenseBook::SALARIES]);

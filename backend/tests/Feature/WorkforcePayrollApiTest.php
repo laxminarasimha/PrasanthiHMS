@@ -154,7 +154,10 @@ class WorkforcePayrollApiTest extends TestCase
         Sanctum::actingAs($admin);
         $this->postJson("/api/workforce/payroll/runs/{$run['id']}/finalise")->assertStatus(428);
         $this->typePassword();
-        $final = $this->postJson("/api/workforce/payroll/runs/{$run['id']}/finalise")->assertOk()->assertJsonPath('status', 'finalised')->json();
+        // Points that do not stop a payroll (here: no holidays or kinds of leave set up) must be owned up to as looked at.
+        $this->postJson("/api/workforce/payroll/runs/{$run['id']}/finalise")->assertStatus(422)->assertJsonValidationErrors('checked');
+        $this->typePassword();
+        $final = $this->postJson("/api/workforce/payroll/runs/{$run['id']}/finalise", ['checked' => true])->assertOk()->assertJsonPath('status', 'finalised')->json();
         $this->assertSame(['PS-202604-0001', 'PS-202604-0002'], collect($final['payslips'])->pluck('slip_no')->sort()->values()->all());
         $this->postJson("/api/workforce/payroll/runs/{$run['id']}/work-out")->assertStatus(422);
         $this->postJson("/api/workforce/payroll/runs/{$run['id']}/payslips/{$ashaSlip}/lines", ['kind' => 'deduction', 'name' => 'Fine', 'amount' => 100, 'note' => 'Late'])->assertStatus(422);
@@ -301,5 +304,66 @@ class WorkforcePayrollApiTest extends TestCase
         Tenant::forget();
         $this->getJson("/api/workforce/advances/{$id}")->assertNotFound();
         $this->getJson('/api/workforce/advances?status=all')->assertOk()->assertJsonCount(0, 'rows');
+    }
+
+    public function test_a_payroll_does_not_go_further_while_what_it_rests_on_is_not_ready(): void
+    {
+        $admin = $this->user('admin');
+        $asha = $this->employee('Asha Sample');
+        $ravi = $this->employee('Ravi Sample');
+        $this->employee('Unpaid Sample');
+        // Salaries, but not a single day of attendance for April.
+        Tenant::run($this->here->id, function () use ($asha, $ravi) {
+            $part = SalaryComponent::query()->firstOrCreate(['code' => 'BASIC'], ['name' => 'Basic pay', 'kind' => 'earning', 'basis' => 'fixed']);
+            foreach ([$asha, $ravi] as $e) {
+                SalaryStructure::create(['employee_id' => $e->id, 'effective_from' => '2026-01-01', 'pay_basis' => 'monthly', 'approved_at' => now()])->lines()->create(['component_id' => $part->id, 'amount' => 26000]);
+            }
+        });
+        Sanctum::actingAs($admin);
+        $run = $this->postJson('/api/workforce/payroll/runs', ['period' => '2026-04'])->assertCreated()->json();
+        $points = collect($run['readiness'])->keyBy('key');
+
+        // With pay taken off for absence and nothing marked for anyone, everybody would lose the month: it stops there.
+        $this->assertSame('stop', $points['attendance_not_kept']['level']);
+        $this->assertSame(['Unpaid Sample'], $points['no_salary']['names']);
+        $this->assertStringContainsString('No attendance was kept', $this->postJson("/api/workforce/payroll/runs/{$run['id']}/step", ['to' => 'reviewed'])->assertStatus(422)->json('errors.status.0'));
+
+        // Attendance brought in for one of them: the stop goes, and the other is named as someone to look at.
+        Tenant::run($this->here->id, function () use ($asha) {
+            for ($day = CarbonImmutable::parse('2026-04-01'); $day->format('Y-m') === '2026-04'; $day = $day->addDay()) {
+                if (! $day->isSunday()) {
+                    Attendance::create(['employee_id' => $asha->id, 'work_date' => $day->toDateString(), 'check_in' => $day->toDateString().' 09:00:00', 'check_out' => $day->toDateString().' 17:00:00', 'state' => 'completed', 'day_status' => 'present', 'worked_minutes' => 480, 'origin' => 'manual']);
+                }
+            }
+        });
+        $points = collect($this->postJson("/api/workforce/payroll/runs/{$run['id']}/work-out")->assertOk()->json('readiness'))->keyBy('key');
+        $this->assertFalse($points->has('attendance_not_kept'));
+        $this->assertSame(['look', ['Ravi Sample']], [$points['no_attendance_for_some']['level'], $points['no_attendance_for_some']['names']]);
+        $this->assertSame(['Ravi Sample'], $points['half_unpaid']['names']);
+        $this->assertTrue($points->has('no_holidays') && $points->has('no_leave_types'));
+
+        // A leave request still waiting for April stops it too, until it is decided.
+        $casual = Tenant::run($this->here->id, fn () => \App\Workforce\Models\LeaveType::create(['code' => 'CL', 'name' => 'Casual leave', 'annual_allowance' => 12]));
+        $leave = Tenant::run($this->here->id, fn () => \App\Workforce\Models\LeaveRequest::create(['employee_id' => $ravi->id, 'leave_type_id' => $casual->id, 'from_date' => '2026-04-20', 'to_date' => '2026-04-21', 'days' => 2, 'status' => 'pending', 'requested_by' => $admin->id]));
+        $points = collect($this->getJson("/api/workforce/payroll/runs/{$run['id']}")->json('readiness'))->keyBy('key');
+        $this->assertSame(['stop', ['Ravi Sample']], [$points['leave_waiting']['level'], $points['leave_waiting']['names']]);
+        $this->assertFalse($points->has('no_leave_types'));
+        $this->postJson("/api/workforce/payroll/runs/{$run['id']}/step", ['to' => 'reviewed'])->assertStatus(422);
+        $leave->update(['status' => 'rejected']);
+
+        // Nothing stops it now. It is finalised only by someone who says they have looked at what is left, and that is kept.
+        $this->postJson("/api/workforce/payroll/runs/{$run['id']}/step", ['to' => 'reviewed'])->assertOk();
+        $this->postJson("/api/workforce/payroll/runs/{$run['id']}/step", ['to' => 'approved'])->assertOk();
+        $this->typePassword();
+        $this->postJson("/api/workforce/payroll/runs/{$run['id']}/finalise")->assertStatus(422)->assertJsonValidationErrors('checked');
+        $this->typePassword();
+        $this->postJson("/api/workforce/payroll/runs/{$run['id']}/finalise", ['checked' => true])->assertOk()->assertJsonPath('status', 'finalised')->assertJsonPath('readiness', []);
+        $kept = AuditEvent::where('action', 'payroll.finalised')->latest('id')->first()->after['looked_at'];
+        $this->assertEqualsCanonicalizing(['no_attendance_for_some', 'no_holidays', 'no_salary', 'half_unpaid'], $kept);
+
+        // With "Take pay off for absence" switched off, a month with no attendance is no stop: nobody loses pay for it.
+        $this->putJson('/api/workforce/setup/settings', ['payroll' => ['deduct_absence' => false]])->assertOk();
+        $may = $this->postJson('/api/workforce/payroll/runs', ['period' => '2026-03'])->assertCreated()->json();
+        $this->assertSame([], collect($may['readiness'])->where('level', 'stop')->all());
     }
 }

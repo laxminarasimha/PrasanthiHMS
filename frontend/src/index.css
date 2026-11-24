@@ -2123,3 +2123,15 @@ td.fit-wrap { white-space: normal; min-width: 130px; overflow-wrap: anywhere; }
 
 /* On a computer the card keeps to a readable width instead of stretching across the screen. */
 @media (min-width: 769px) { .punch-card { max-width: 560px; } }
+
+/* What a payroll rests on that is not ready */
+.readiness { margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--warn-line); border-left: 4px solid var(--warn-line); border-radius: 10px; background: var(--warn-soft); }
+.readiness.stopped { border-color: var(--danger-line); background: var(--danger-soft); }
+.readiness h3 { margin: 0 0 2px; font-size: 1rem; text-transform: none; letter-spacing: 0; color: var(--text); }
+.readiness > p { margin: 0 0 10px; }
+.readiness ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.readiness li { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 12px; align-items: start; }
+.readiness li > div { display: grid; gap: 2px; justify-items: start; }
+.readiness .check { margin: 12px 0 0; }
+@media (max-width: 700px) { .readiness li { grid-template-columns: 1fr; gap: 4px; } }
+
