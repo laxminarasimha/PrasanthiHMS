@@ -138,6 +138,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
     Route::get('/services', [ServiceController::class, 'index']);
     Route::get('/appointments', [AppointmentController::class, 'index']);
     Route::get('/appointments/calendar', [AppointmentController::class, 'calendar']);
+    Route::get('/appointments/follow-up', [AppointmentController::class, 'followUp']);
 
     Route::middleware('ability:canManageSetup')->group(function () {
         // A price is set only by someone allowed to set prices; the rest of a service is setup like any other.

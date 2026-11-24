@@ -295,6 +295,11 @@ export function FrontDesk() {
                       </small>
                     </td>
                     <td className="bills">
+                      {a.is_follow_up && (
+                        <span className="pill ok follow-up" title="A follow-up within the free days of a consultation with this doctor: not charged">
+                          Follow-up · free
+                        </span>
+                      )}
                       {billsOf(a)
                         .filter(inDepartment)
                         .map((b) => (
