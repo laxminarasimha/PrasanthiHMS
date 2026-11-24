@@ -1,32 +1,23 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { api, fieldErrors } from '../api'
+import { useAuth } from '../auth'
 import { clock, today } from '../format'
-import type { Spell } from './shared'
-
-type Today = { employee: { id: number; name: string } | null; self_check_in?: boolean; /** False when check-in is kept to the hospital's own internet and this phone is not on it. */ here?: boolean; open?: Spell | null; done?: Spell[] }
+import { punchMyToday, useMyToday } from './myToday'
 
 /** "23 Nov" for a spell that began on another day, such as last night's duty. */
 const shortDay = (dateTime: string) => new Date(`${dateTime.slice(0, 10)}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
 
 /**
- * A person's own attendance for today at the top of their first screen on a phone: whether they are in, and one large
+ * A person's own attendance for today at the top of their first screen: whether they are in, and one large
  * button to check in or out. It marks attendance exactly as "My record" does, and is shown only to someone whose login
  * is joined to a staff record, in a hospital that lets staff mark their own attendance.
  */
 export function AttendanceCard() {
   const { pathname } = useLocation()
-  const [mine, setMine] = useState<Today | null>(null)
+  const { user } = useAuth()
+  const mine = useMyToday()
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState('')
-
-  const load = useCallback(() => {
-    api
-      .get<Today>('/workforce/me/today')
-      .then((res) => setMine(res.data))
-      .catch(() => undefined)
-  }, [])
-  useEffect(load, [load])
 
   if (!mine?.employee || !mine.self_check_in) return null
   const open = mine.open ?? null
@@ -34,17 +25,10 @@ export function AttendanceCard() {
   const cameAt = open?.check_in ?? ''
 
   const punch = async () => {
-    if (open && !window.confirm(`Check out now? You checked in at ${clock(cameAt)}.`)) return
+    if (!user || (open && !window.confirm(`Check out now? You checked in at ${clock(cameAt)}.`))) return
     setBusy(true)
-    setFailed('')
-    try {
-      await api.post('/workforce/me/punch')
-      load()
-    } catch (err) {
-      setFailed(Object.values(fieldErrors(err))[0] ?? 'That did not save. Try again.')
-    } finally {
-      setBusy(false)
-    }
+    setFailed(await punchMyToday(user.id))
+    setBusy(false)
   }
 
   return (
