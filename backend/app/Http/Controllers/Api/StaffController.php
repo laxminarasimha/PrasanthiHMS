@@ -8,6 +8,10 @@ use App\Models\AuditLog;
 use App\Models\User;
 use App\Support\SignInGuard;
 use App\Support\StaffLogin;
+use App\Workforce\Models\Employee;
+use App\Workforce\Support\Audit;
+use App\Workforce\Support\Permissions;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -125,6 +129,92 @@ class StaffController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        return response()->json($this->shown($request, $this->make($request)), 201);
+    }
+
+    /** What the screens need to offer when a login is made or changed: the roles, and every permission with the roles that carry it. */
+    public function catalogue(): JsonResponse
+    {
+        return response()->json([
+            'roles' => array_map(fn (Role $r) => ['value' => $r->value, 'label' => $r->label()], Role::cases()),
+            'abilities' => collect(User::catalogue())->map(fn (array $text, string $key) => [
+                'key' => $key, 'label' => $text[0], 'hint' => $text[1], 'group' => $text[2], 'sensitive' => $text[3],
+                'roles' => collect(Role::cases())->filter(fn (Role $r) => User::roleAllows($r, $key))->map->value->values(),
+            ])->values(),
+        ]);
+    }
+
+    /** One login, as the staff page's "Login and access" section shows it. */
+    public function show(Request $request, User $staff): JsonResponse
+    {
+        return response()->json($this->shown($request, $staff));
+    }
+
+    /**
+     * Whether this person may give or reset a login for a member of staff. Those who manage logins may, for any role
+     * within their own limits. Those who keep the staff records (HR) may for an own-record login only, which opens
+     * nothing but that person's own attendance, leave and payslips.
+     */
+    private function mayGive(Request $request, string $role): void
+    {
+        $user = $request->user();
+        $keepsStaff = $role === Role::Staff->value && Permissions::reach($user, 'wf:staff:edit') === Permissions::ALL;
+        abort_unless($user->allows('canManageStaff') || $keepsStaff, 403, $role === Role::Staff->value ? 'You are not allowed to give logins.' : 'Only those who manage logins can give this role.');
+    }
+
+    /**
+     * Gives a member of staff their login. The name, mobile and gender are the staff record's own, so they are typed
+     * once. An own-record login gets a starting PIN made here and shown once: the person must choose their own the
+     * first time they sign in.
+     */
+    public function storeFor(Request $request, int $employee): JsonResponse
+    {
+        $employee = Employee::query()->findOrFail($employee);
+        $role = (string) $request->input('role', Role::Staff->value);
+        $this->mayGive($request, $role);
+        if ($employee->user_id) {
+            throw ValidationException::withMessages(['role' => "{$employee->name} already has a login."]);
+        }
+        if ($employee->status === 'inactive') {
+            throw ValidationException::withMessages(['role' => "{$employee->name} has left the staff. Mark them as on the staff again first."]);
+        }
+        $pin = $role === Role::Staff->value ? StaffLogin::startingPin() : null;
+        $request->merge(['role' => $role, 'name' => $employee->name, 'phone' => $employee->phone, 'gender' => $employee->gender, 'email' => $request->input('email') ?: $employee->email] + ($pin ? ['password' => $pin] : []));
+        if (blank($employee->phone)) {
+            throw ValidationException::withMessages(['phone' => "Add {$employee->name}'s mobile number on the Details tab first: it is what they sign in with."]);
+        }
+
+        $staff = DB::transaction(function () use ($request, $employee) {
+            $staff = $this->make($request);
+            $employee->update(['user_id' => $staff->id]);
+            Audit::record('staff.login_given', $employee, ['user_id' => null], ['user_id' => $staff->id, 'role' => $staff->role->value], $request->input('reason'), $employee->id);
+
+            return $staff;
+        });
+
+        return response()->json(['login' => $this->shown($request, $staff)] + ($pin ? ['starting_pin' => $pin] : []), 201);
+    }
+
+    /**
+     * A new starting PIN for an own-record login whose PIN is forgotten. Every device signed in as the person is
+     * signed out, a login closed by wrong tries is opened, and the person must choose their own PIN again.
+     */
+    public function startingPin(Request $request, User $staff): JsonResponse
+    {
+        $this->mayGive($request, Role::Staff->value);
+        abort_unless($staff->usesPin() && $staff->role === Role::Staff, 422, 'Only an own-record login is opened with a PIN.');
+        abort_if($staff->is($request->user()), 422, 'Change your own PIN under My account.');
+        $pin = StaffLogin::startingPin($staff);
+        $staff->update(['password' => $pin, 'must_change_secret' => true]);
+        $staff->tokens()->delete();
+        SignInGuard::clear('staff', StaffLogin::guardKey($staff));
+        AuditLog::record('staff.pin_reset', null, $staff, "{$staff->name} · A new starting PIN was given");
+
+        return response()->json(['starting_pin' => $pin]);
+    }
+
+    private function make(Request $request): User
+    {
         $pin = $request->input('role') === Role::Staff->value;
         $data = $request->validate($this->rules() + ['password' => ['required', ...$this->secretRule($pin)]], self::PIN_WORDS);
         $this->signInIsPossible($data, null);
@@ -142,7 +232,7 @@ class StaffController extends Controller
         AuditLog::record('staff.permissions', null, $staff, $this->permissionWords($staff, null, [], $staff->abilities, $reason ?: 'New member of staff'));
         AuditLog::$written = false; // the usual "Added a staff login" line is still written as well
 
-        return response()->json($this->shown($request, $staff), 201);
+        return $staff;
     }
 
     public function update(Request $request, User $staff): JsonResponse
@@ -364,7 +454,7 @@ class StaffController extends Controller
             // Optional: a person without one signs in with their mobile number.
             'email' => ['nullable', 'email', 'max:255', Rule::unique('users')->ignore($staff)],
             'role' => ['required', Rule::enum(Role::class)],
-            'gender' => ['required', Rule::in(['male', 'female', 'other'])],
+            'gender' => ['nullable', Rule::in(['male', 'female', 'other'])],
             'phone' => ['required', 'string', 'regex:/^[0-9+\- ]{7,20}$/'],
             'department' => ['nullable', 'string', 'max:255'],
             'signature_text' => ['nullable', 'string', 'max:255'],

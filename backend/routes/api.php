@@ -542,12 +542,18 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
 
     Route::middleware(EnsureCanManageStaff::class)->group(function () {
         Route::get('/staff', [StaffController::class, 'index']);
+        Route::get('/staff/catalogue', [StaffController::class, 'catalogue']);
+        Route::get('/staff/{staff}', [StaffController::class, 'show'])->whereNumber('staff');
         Route::post('/staff', [StaffController::class, 'store']);
         Route::put('/staff/{staff}', [StaffController::class, 'update']);
         Route::get('/staff/{staff}/permission-history', [StaffController::class, 'permissionHistory']);
         Route::post('/staff/{staff}/signature', [StaffController::class, 'saveSignature']);
         Route::delete('/staff/{staff}/signature', [StaffController::class, 'destroySignature']);
     });
+    // A login given to a member of staff from their own page, and a forgotten PIN replaced. Each checks who may:
+    // those who manage logins, and for an own-record login also those who keep the staff records.
+    Route::post('/staff/for/{employee}', [StaffController::class, 'storeFor'])->whereNumber('employee');
+    Route::post('/staff/{staff}/starting-pin', [StaffController::class, 'startingPin'])->whereNumber('staff');
 });
 
 // ---- Workforce: staff records, attendance, leave, payroll, advances and expenses (routes/workforce.php) ----

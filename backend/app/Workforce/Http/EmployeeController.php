@@ -28,7 +28,7 @@ class EmployeeController extends Controller
 {
     use Helpers;
 
-    private const WITH = ['department:id,name', 'shift:id,name', 'manager:id,name,employee_no'];
+    private const WITH = ['department:id,name', 'shift:id,name', 'manager:id,name,employee_no', 'user:id,name,role,is_active,sign_in_with,email,must_change_secret'];
 
     public function index(Request $request): JsonResponse
     {
@@ -71,7 +71,7 @@ class EmployeeController extends Controller
 
     public function show(Request $request, int $employee): JsonResponse
     {
-        $employee = Employee::query()->with([...self::WITH, 'user:id,name,email'])->findOrFail($employee);
+        $employee = Employee::query()->with(self::WITH)->findOrFail($employee);
         Access::requireFor($request->user(), 'wf:staff:view', $employee);
 
         return response()->json($this->present($employee) + [
@@ -260,6 +260,8 @@ class EmployeeController extends Controller
             'work_location' => $e->work_location, 'joined_on' => $e->joined_on?->format('Y-m-d'), 'confirmed_on' => $e->confirmed_on?->format('Y-m-d'), 'separated_on' => $e->separated_on?->format('Y-m-d'),
             'separation_reason' => $e->separation_reason, 'employment_type' => $e->employment_type, 'shift_id' => $e->shift_id, 'shift' => $e->relationLoaded('shift') ? $e->shift?->name : null,
             'weekly_off' => $e->weekly_off, 'holiday_calendar_id' => $e->holiday_calendar_id, 'payment_mode' => $e->payment_mode, 'user_id' => $e->user_id,
+            // Whether the person signs in and as what. What they may do there is for those who manage logins.
+            'login' => $e->relationLoaded('user') && $e->user ? ['id' => $e->user->id, 'role' => $e->user->role->value, 'role_label' => $e->user->role->label(), 'is_active' => (bool) $e->user->is_active, 'sign_in_with' => $e->user->sign_in_with ?? 'password', 'email' => $e->user->email, 'waiting_for_own_pin' => (bool) $e->user->must_change_secret] : null,
         ];
     }
 }

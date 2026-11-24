@@ -10,7 +10,7 @@ use App\Models\User;
  *
  * A permission is named `wf:<what>:<action>`, the action being one of view, create, edit, approve, finalise,
  * reverse, export or admin. Each role starts with a preset; a tick or an untick made for one person under
- * Setup → Staff overrides the preset for that person, and an untick always wins.
+ * Staff → Login and access overrides the preset for that person, and an untick always wins.
  *
  * A preset also says how far a permission reaches: over all staff of the branch, over the staff of the departments
  * the person looks after, or over the person's own record only. The reach is enforced by `Access` on the server.

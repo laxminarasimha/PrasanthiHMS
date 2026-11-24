@@ -111,7 +111,6 @@ const WorkforceAdvances = page(() => import('./workforce/Advances'), 'WorkforceA
 const PayslipPrint = page(() => import('./workforce/PayslipPrint'), 'PayslipPrint')
 const MyPayslipPrint = page(() => import('./workforce/PayslipPrint'), 'MyPayslipPrint')
 const Services = page(() => import('./pages/Services'), 'Services')
-const Staff = page(() => import('./pages/Staff'), 'Staff')
 const VisitPad = page(() => import('./pages/VisitPad'), 'VisitPad')
 
 function Protected() {
@@ -228,7 +227,8 @@ export default function App() {
             <Route path="/patients/:id/history" element={<CaseHistory />} />
             <Route path="/admin" element={<Only when="can_manage_setup"><Admin /></Only>} />
             <Route path="/services" element={<Only when="can_manage_setup"><Services /></Only>} />
-            <Route path="/staff" element={<Only when="can_manage_staff"><Staff /></Only>} />
+            {/* The old Setup → Staff page: a person's login is now part of their page on the one Staff list. */}
+            <Route path="/staff" element={<Navigate to="/workforce/staff" replace />} />
             <Route path="/reports" element={<Only when="can_view_reports"><Reports /></Only>} />
             <Route path="/workforce" element={<OnlyWf permission="wf:reports:view"><WorkforceOverview /></OnlyWf>} />
             <Route path="/workforce/staff" element={<OnlyWf permission="wf:staff:view"><StaffDirectory /></OnlyWf>} />

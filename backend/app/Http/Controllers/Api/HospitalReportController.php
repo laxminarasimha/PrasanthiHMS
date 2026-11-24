@@ -400,7 +400,7 @@ class HospitalReportController extends Controller
 
     /**
      * Each doctor's share of the money collected from their own patients, at the percentages set for the doctor
-     * under Setup → Staff. A counter with no percentage set gives no share. This only works the figure out:
+     * under Staff → Login and access. A counter with no percentage set gives no share. This only works the figure out:
      * paying it is entered as an expense like any other payment.
      */
     private function doctorPayout(Carbon $from, Carbon $to): array

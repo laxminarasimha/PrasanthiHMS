@@ -4,7 +4,7 @@ Written by `php artisan workforce:permission-matrix` from `backend/app/Workforce
 
 - A permission is named `wf:<what>:<action>`; the action is one of view, create, edit, approve, finalise, reverse, export, admin.
 - Each cell says how far the permission reaches for that role to start with: **All staff** of the branch, the staff of the person's **own departments**, their **own record**, or — (not given).
-- A tick or untick made for one person under Setup → Staff overrides this for that person. An untick always wins. A tick where the role had nothing reaches all staff.
+- A tick or untick made for one person under Staff → Login and access overrides this for that person. An untick always wins. A tick where the role had nothing reaches all staff.
 - The admin login always has everything, over all staff.
 - **Admin only** marks a permission that only an admin login may add on top of a role.
 - Other staff (doctors, nurses, pharmacists, lab technicians, front desk) start with their own records only.
