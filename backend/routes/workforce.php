@@ -11,6 +11,7 @@ use App\Workforce\Http\RequireFreshPassword;
 use App\Workforce\Http\RosterController;
 use App\Workforce\Http\SalaryController;
 use App\Workforce\Http\SetupController;
+use App\Workforce\Http\StaffCheckController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -35,6 +36,16 @@ Route::controller(OverviewController::class)->group(function () {
     Route::post('/me/corrections', 'askCorrection');
     Route::post('/me/punch', 'punch');
     Route::get('/me/payslips/{slip}', 'myPayslip')->whereNumber('slip');
+});
+
+// Where logins and staff records do not yet agree, and putting that right.
+Route::controller(StaffCheckController::class)->prefix('staff-check')->group(function () {
+    Route::get('/', 'show');
+    Route::post('/join', 'join');
+    Route::post('/create', 'create');
+    Route::post('/settle', 'settle');
+    Route::post('/unjoin/{employee}', 'unjoin')->whereNumber('employee');
+    Route::post('/shared-screen/{user}', 'sharedScreen')->whereNumber('user');
 });
 
 Route::controller(EmployeeController::class)->group(function () {

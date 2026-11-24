@@ -140,6 +140,9 @@ final class Permissions
         };
     }
 
+    /** What comes with managing logins (canManageStaff), for someone whose role does not already give it. */
+    public const WITH_LOGINS = ['wf:staff:view', 'wf:staff:create', 'wf:staff:edit'];
+
     /** Whether a permission name belongs to this module. */
     public static function has(string $permission): bool
     {
@@ -163,6 +166,11 @@ final class Permissions
         $own = $user->permissions[$permission] ?? null;
         if ($own === false) {
             return null;
+        }
+        // Whoever manages the hospital's logins keeps the list of people they belong to: a person and their login
+        // are one record. Pay, bank details and the rest of the module stay with those named for them.
+        if ($preset === null && in_array($permission, self::WITH_LOGINS, true) && $user->allows('canManageStaff')) {
+            return self::ALL;
         }
 
         return $own === true ? ($preset ?? self::ALL) : $preset;

@@ -7,6 +7,7 @@ import { useChoiceInAddress } from '../rangeInAddress'
 import { PasswordAgain } from './PasswordAgain'
 import { saveFile, usePasswordAgain } from './sensitiveStep'
 import { STATUS_LABEL, TYPE_LABEL, WEEKDAYS, useWorkforce, type Employee } from './shared'
+import { StaffCheckNote } from './StaffCheckNote'
 import { WorkforceTabs } from './WorkforceTabs'
 
 type Options = {
@@ -139,6 +140,7 @@ export function StaffDirectory() {
               Everyone
             </button>
           </div>
+          <StaffCheckNote />
           {notice && <p className="notice">{notice}</p>}
           {failed && <div className="form-error">{failed}</div>}
           <div className="table-wrap">
