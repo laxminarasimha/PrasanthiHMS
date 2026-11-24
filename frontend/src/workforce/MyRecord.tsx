@@ -18,7 +18,10 @@ type Mine = {
   days: Day[]
   totals: Totals
   records: Spell[]
+  /** The duty they are on now; a night duty that began yesterday is still this one until it is over. */
   open: Spell | null
+  /** An earlier duty that was never checked out. */
+  forgotten?: Spell | null
   self_check_in: boolean
   leave_year: number
   leave_types: LeaveType[]
@@ -116,12 +119,14 @@ export function MyRecord() {
                 <div>
                   <span className="muted small">Today</span>
                   <strong>
-                    <span className={`pill ${DAY_CLASS[todays.status] ?? ''}`}>{DAY_LABEL[todays.status] ?? '—'}</span>
+                    {/* Still on last night's duty: nothing is marked for today yet, but they are in. */}
+                    {shown.open && shown.open.work_date !== today() ? <span className="pill ok">On duty</span> : <span className={`pill ${DAY_CLASS[todays.status] ?? ''}`}>{DAY_LABEL[todays.status] ?? '—'}</span>}
                   </strong>
                   <small className="muted">
-                    {shown.open ? `In since ${clock(shown.open.check_in ?? '')}` : todays.worked_minutes ? `Worked ${hours(todays.worked_minutes)}` : ''}
+                    {shown.open ? `In since ${clock(shown.open.check_in ?? '')}${shown.open.work_date !== today() ? ` on ${longDate(shown.open.work_date)}; this duty counts for that day` : ''}` : todays.worked_minutes ? `Worked ${hours(todays.worked_minutes)}` : ''}
                     {todays.late_minutes > 0 ? ` · ${todays.late_minutes} min late` : ''}
                   </small>
+                  {shown.forgotten && <small className="due">Your check-out on {longDate(shown.forgotten.work_date)} was not recorded. Ask for a correction, or ask the office to put it right.</small>}
                 </div>
                 {shown.self_check_in && (
                   <button className={shown.open ? 'btn' : 'btn primary'} disabled={busy} onClick={() => void punch()}>

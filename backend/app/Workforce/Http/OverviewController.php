@@ -63,7 +63,7 @@ class OverviewController extends Controller
             'not_in' => $list(['not_in', 'absent'])->filter($notHere)->values(), 'later' => $list(['later'])->filter($notHere)->values(), 'on_leave' => $list(['on_leave', 'half_leave'], fn ($d) => $d['leave'] > 0),
             'late' => $list($working, fn ($d) => $d['late_minutes'] > 0), 'off' => $list(['weekly_off', 'holiday'])->count(),
             // Left open on an earlier day: someone forgot to check out, or was not checked out. Not a night duty still on.
-            'missing_check_outs' => Attendance::query()->whereIn('employee_id', $ids)->where('state', 'open')->whereDate('work_date', '<', now()->toDateString())->whereNotIn('id', $inNow->pluck('id'))
+            'missing_check_outs' => Attendance::query()->whereIn('employee_id', $ids)->whereIn('state', ['open', 'review'])->whereNotNull('check_in')->whereNull('check_out')->whereDate('work_date', '<', now()->toDateString())->whereNotIn('id', $inNow->pluck('id'))
                 ->with('employee:id,name,employee_no')->orderBy('work_date')->limit(50)->get()
                 ->map(fn (Attendance $a) => ['id' => $a->id, 'employee' => ['id' => $a->employee->id, 'name' => $a->employee->name], 'work_date' => $a->work_date->format('Y-m-d'), 'check_in' => $a->check_in?->format('Y-m-d H:i')]),
             'corrections_waiting' => $user->allows('wf:attendance:view') ? Access::narrow(AttendanceCorrection::query(), $user, 'wf:attendance:view')->where('status', 'pending')->count() : null,
@@ -86,8 +86,7 @@ class OverviewController extends Controller
 
         return Attendance::query()->whereIn('employee_id', $ids)->where('state', 'open')->whereNotNull('check_in')
             ->whereDate('work_date', '>=', now()->subDay()->toDateString())->with('shift')->orderBy('check_in')->get()
-            ->filter(fn (Attendance $a) => $a->work_date->format('Y-m-d') === $today
-                || ($a->shift?->crossesMidnight() && now()->lt(AttendanceRules::window($a->work_date->format('Y-m-d'), $a->shift)[1]->addHours(4))))
+            ->filter(fn (Attendance $a) => $a->work_date->format('Y-m-d') === $today || AttendanceRules::stillOn($a))
             ->values();
     }
 
@@ -121,7 +120,7 @@ class OverviewController extends Controller
         $start = CarbonImmutable::parse($month.'-01');
         $days = AttendanceRules::days(collect([$employee]), $start->toDateString(), $start->endOfMonth()->toDateString())[$employee->id];
         $year = LeaveBook::yearOf(now()->toDateString());
-        $open = Attendance::query()->where('employee_id', $employee->id)->where('state', 'open')->latest('check_in')->first();
+        [$open, $forgotten] = $this->mineNow($employee);
         $records = Attendance::query()->where('employee_id', $employee->id)->whereBetween('work_date', [$start->toDateString(), $start->endOfMonth()->toDateString()])->orderBy('check_in')->get();
         $attendance = app(AttendanceController::class);
         $leave = app(LeaveController::class);
@@ -131,6 +130,7 @@ class OverviewController extends Controller
             'month' => $month, 'days' => array_values($days), 'totals' => AttendanceRules::totals($days),
             'records' => $records->map(fn (Attendance $a) => $attendance->record($a)),
             'open' => $open ? $attendance->record($open) : null,
+            'forgotten' => $forgotten ? $attendance->record($forgotten) : null,
             'self_check_in' => (bool) Settings::get('attendance')['self_check_in'],
             'leave_year' => $year,
             'leave_types' => LeaveType::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name', 'is_paid', 'allow_half_day'])
@@ -237,7 +237,7 @@ class OverviewController extends Controller
         }
         $attendance = app(AttendanceController::class);
         $today = now()->toDateString();
-        $open = Attendance::query()->where('employee_id', $employee->id)->where('state', 'open')->latest('check_in')->first();
+        [$open, $forgotten] = $this->mineNow($employee);
         // A night duty belongs to the day it began, so one that ended this morning counts as today's too.
         $done = Attendance::query()->where('employee_id', $employee->id)->where('state', '!=', 'open')
             ->where(fn ($q) => $q->whereDate('work_date', $today)->orWhereDate('check_out', $today))->orderBy('check_in')->get();
@@ -248,6 +248,8 @@ class OverviewController extends Controller
             // False when the hospital allows check-in only on its own internet and this phone is not on it.
             'here' => Network::mayCheckIn($request->ip()),
             'open' => $open ? $attendance->record($open) : null,
+            // An earlier duty that was never checked out. It does not stop today's check-in; the office puts it right.
+            'forgotten' => $forgotten ? $attendance->record($forgotten) : null,
             'done' => $done->map(fn (Attendance $a) => $attendance->record($a))->values(),
         ]);
     }
@@ -260,7 +262,9 @@ class OverviewController extends Controller
         abort_unless(Settings::get('attendance')['self_check_in'], 403, 'Marking your own attendance is not switched on. Ask whoever keeps the attendance.');
         abort_unless(Network::mayCheckIn($request->ip()), 403, 'Check-in works only on the hospital’s own internet. Connect your phone to the hospital Wi-Fi and try again.');
         $attendance = app(AttendanceController::class);
-        $open = Attendance::query()->where('employee_id', $employee->id)->where('state', 'open')->latest('check_in')->first();
+        // Out, if they are on duty now (last night's night duty counts until it is over); otherwise in. A duty long over
+        // and never checked out is not checked out now, which would count the days between as worked.
+        [$open] = $this->mineNow($employee);
         $record = $open ? $attendance->close($open, now()->format('Y-m-d H:i:s'), $user) : $attendance->open($employee, now()->format('Y-m-d H:i:s'), 'self', null, $user);
 
         return response()->json($attendance->record($record));
@@ -295,6 +299,21 @@ class OverviewController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * A person's own spells with no check-out: the duty they are on now, if any, and the latest earlier one that was
+     * simply never checked out (in the last month, so that an old slip does not follow them for good).
+     *
+     * @return array{0: ?Attendance, 1: ?Attendance}
+     */
+    private function mineNow(Employee $employee): array
+    {
+        $unfinished = Attendance::query()->where('employee_id', $employee->id)->whereIn('state', ['open', 'review'])->whereNotNull('check_in')->whereNull('check_out')
+            ->whereDate('work_date', '>=', now()->subDays(31)->toDateString())->with('shift')->latest('check_in')->get();
+        $open = $unfinished->first(fn (Attendance $a) => AttendanceRules::stillOn($a));
+
+        return [$open, $unfinished->first(fn (Attendance $a) => ! $open || $a->id !== $open->id)];
     }
 
     private function mine(User $user): Employee

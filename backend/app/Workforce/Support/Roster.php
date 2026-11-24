@@ -70,8 +70,15 @@ final class Roster
             }
         }
         $now = self::duty($employee, $today, $lines->get($employee->id.'|'.$today));
+        $shift = $now['shift_id'] ?? $employee->shift_id;
+        // With no duty set for them at all, someone arriving in the small hours is on the night that began the evening
+        // before: nobody starts a day's work at two in the morning. Not if they already worked that day.
+        if (! $shift && ! $before['shift_id'] && $moment->hour < AttendanceRules::NIGHT_ARRIVAL_BEFORE
+            && ! Attendance::query()->where('employee_id', $employee->id)->whereDate('work_date', $yesterday)->exists()) {
+            return ['shift_id' => null, 'work_date' => $yesterday];
+        }
 
-        return ['shift_id' => $now['shift_id'] ?? $employee->shift_id, 'work_date' => $today];
+        return ['shift_id' => $shift, 'work_date' => $today];
     }
 
     /** The shift for a day entered by hand: the rostered one, or the usual one on a rostered day off. */

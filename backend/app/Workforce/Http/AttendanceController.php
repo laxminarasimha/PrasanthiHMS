@@ -41,17 +41,36 @@ class AttendanceController extends Controller
         $staff = $this->staff($user, $date, $date, $filters);
         $days = AttendanceRules::days($staff, $date, $date);
         $records = Attendance::query()->whereIn('employee_id', $staff->pluck('id'))->whereDate('work_date', $date)->orderBy('check_in')->get()->groupBy('employee_id');
-        // A check-out still missing from an earlier day is shown wherever the person is looked at, until it is put right.
-        $stale = Attendance::query()->whereIn('employee_id', $staff->pluck('id'))->where('state', 'open')->whereDate('work_date', '<', $date)->get()->groupBy('employee_id');
+        // Spells from an earlier day with no check-out. One whose duty is still going on (last night's night duty, seen
+        // this morning) is someone at work, to be checked out here. Any other is a check-out that was forgotten, and
+        // is shown wherever the person is looked at until it is put right.
+        $unfinished = Attendance::query()->whereIn('employee_id', $staff->pluck('id'))->whereIn('state', ['open', 'review'])->whereNotNull('check_in')->whereNull('check_out')
+            ->whereDate('work_date', '<', $date)->with('shift')->orderBy('check_in')->get();
+        [$on, $stale] = $unfinished->partition(fn (Attendance $a) => $date === now()->toDateString() && AttendanceRules::stillOn($a));
+        $on = $on->groupBy('employee_id');
+        $stale = $stale->groupBy('employee_id');
 
         $rows = $staff->map(fn (Employee $e) => $this->brief($e) + [
             'shift' => $days[$e->id][$date]['shift'] ?? $e->shift?->name,
             'day' => $days[$e->id][$date],
             'records' => ($records->get($e->id) ?? collect())->map(fn (Attendance $a) => $this->record($a))->values(),
+            'on_duty' => ($on->get($e->id) ?? collect())->map(fn (Attendance $a) => $this->record($a))->values(),
             'open_earlier' => ($stale->get($e->id) ?? collect())->map(fn (Attendance $a) => $this->record($a))->values(),
         ])->filter(fn ($row) => $row['day']['status'] !== 'not_employed')->values();
 
-        return response()->json(['date' => $date, 'rows' => $rows, 'counts' => $this->counts($rows->pluck('day')->all())]);
+        // Someone still on last night's duty is in the hospital, though nothing is marked for them today yet.
+        $counts = $this->counts($rows->pluck('day')->all());
+        foreach ($rows->filter(fn ($row) => $row['on_duty']->isNotEmpty() && $row['records']->isEmpty()) as $row) {
+            $counts['in']++;
+            $counts['still_in']++;
+            foreach (['not_in' => ['not_in', 'absent'], 'later' => ['later']] as $count => $statuses) {
+                if (in_array($row['day']['status'], $statuses, true)) {
+                    $counts[$count]--;
+                }
+            }
+        }
+
+        return response()->json(['date' => $date, 'rows' => $rows, 'counts' => $counts]);
     }
 
     /** A month as a grid: one line a person, one box a day, and what the month adds up to. */
@@ -348,8 +367,21 @@ class AttendanceController extends Controller
         }
 
         return DB::transaction(function () use ($employee, $at, $origin, $note, $by) {
-            if (Attendance::query()->where('employee_id', $employee->id)->where('state', 'open')->lockForUpdate()->exists()) {
-                throw ValidationException::withMessages(['employee_id' => "{$employee->name} is already checked in. Check them out first, or correct the earlier entry."]);
+            $moment = CarbonImmutable::parse($at);
+            foreach (Attendance::query()->where('employee_id', $employee->id)->where('state', 'open')->with('shift')->lockForUpdate()->get() as $earlier) {
+                // Still on that duty (a night duty runs on into the next morning): they are checked out of it first.
+                if (AttendanceRules::stillOn($earlier, $moment)) {
+                    $since = $earlier->check_in->format('g:i A').match (true) {
+                        $earlier->check_in->isSameDay($moment) => '',
+                        $earlier->check_in->isSameDay($moment->subDay()) => ' yesterday',
+                        default => ' on '.$earlier->check_in->format('j M'),
+                    };
+                    throw ValidationException::withMessages(['employee_id' => "{$employee->name} is already checked in, since {$since}. Check them out first, or correct that entry."]);
+                }
+                // That duty is long over and was never checked out. It is set aside for the office to put right, and
+                // does not stand in the way of today's check-in.
+                $earlier->forceFill(['state' => 'review', 'updated_by' => $by->id])->save();
+                Audit::record('attendance.left_open', $earlier, ['state' => 'open'], ['state' => 'review'], 'No check-out was recorded before the next check-in', $employee->id);
             }
             $duty = Roster::forCheckIn($employee, $at);
             $record = new Attendance(['employee_id' => $employee->id, 'work_date' => $duty['work_date'], 'shift_id' => $duty['shift_id'], 'check_in' => $at, 'origin' => $origin, 'note' => $note, 'created_by' => $by->id, 'updated_by' => $by->id]);

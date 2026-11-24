@@ -56,6 +56,53 @@ final class AttendanceRules
         return ['state' => 'completed', 'worked_minutes' => $worked, 'late_minutes' => $late, 'early_minutes' => $early, 'overtime_minutes' => $over];
     }
 
+    /** How long after checking in someone left without a check-out still counts as at work, whatever their duty. */
+    public const ON_FOR_HOURS = 16;
+
+    /** How long past the end of its shift a duty is still taken to be going on, for a late handover. */
+    public const HANDOVER_HOURS = 4;
+
+    /**
+     * A check-in before this hour of the night, by someone with no duty set and nothing recorded the day before,
+     * belongs to the night duty that began the evening before, and so to that day.
+     */
+    public const NIGHT_ARRIVAL_BEFORE = 4;
+
+    /**
+     * Until when a spell with no check-out is a duty still going on, and not a forgotten check-out.
+     *
+     * A duty belongs to the day it began and runs on past midnight: someone who checks in at eight in the evening is
+     * on duty until the next morning, whether or not a night shift was set up for them. So it runs until the latest
+     * of: sixteen hours after the check-in (eight in the evening reaches noon the next day), a few hours past the end
+     * of its shift where it has one, and the end of the day it belongs to.
+     */
+    public static function onUntil(Attendance $spell): ?CarbonImmutable
+    {
+        if (! $spell->check_in) {
+            return null;
+        }
+        $day = $spell->work_date->format('Y-m-d');
+        $until = CarbonImmutable::parse($spell->check_in->format('Y-m-d H:i:s'))->addHours(self::ON_FOR_HOURS);
+        $until = $until->max(CarbonImmutable::parse($day)->endOfDay());
+        $shift = $spell->shift_id ? $spell->shift : null;
+
+        return $shift ? $until->max(self::window($day, $shift)[1]->addHours(self::HANDOVER_HOURS)) : $until;
+    }
+
+    /** Whether this spell is someone at work right now (or at the moment given): checked in, not out, and its duty not yet over. */
+    public static function stillOn(Attendance $spell, ?CarbonImmutable $at = null): bool
+    {
+        $until = $spell->state === 'open' && ! $spell->check_out ? self::onUntil($spell) : null;
+
+        return $until !== null && ($at ?? CarbonImmutable::now())->lt($until);
+    }
+
+    /** Whether this spell was never checked out: still open, or set aside for the office when the person next checked in. */
+    public static function unfinished(Attendance $spell): bool
+    {
+        return $spell->check_in && ! $spell->check_out && in_array($spell->state, ['open', 'review'], true);
+    }
+
     /**
      * When a shift starts and ends for a given day. An end time at or before the start is the next morning.
      *
@@ -146,7 +193,7 @@ final class AttendanceRules
             $day['late_minutes'] = max($day['late_minutes'], (int) $record->late_minutes);
             $day['early_minutes'] = max($day['early_minutes'], (int) $record->early_minutes);
             $day['overtime_minutes'] += (int) $record->overtime_minutes;
-            $day['open'] = $day['open'] || $record->state === 'open';
+            $day['open'] = $day['open'] || self::unfinished($record);
         }
 
         if ($records->isNotEmpty()) {

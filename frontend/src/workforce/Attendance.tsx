@@ -10,7 +10,7 @@ import { DAY_CLASS, DAY_LABEL, DAY_LETTER, REQUEST_CLASS, REQUEST_LABEL, addMont
 import { RosterView } from './Roster'
 import { WorkforceTabs } from './WorkforceTabs'
 
-type DayRow = StaffBrief & { shift: string | null; day: Day; records: Spell[]; open_earlier: Spell[] }
+type DayRow = StaffBrief & { shift: string | null; day: Day; records: Spell[]; /** Still on a duty that began on an earlier day: last night's night duty, seen this morning. */ on_duty?: Spell[]; open_earlier: Spell[] }
 type DayList = { date: string; rows: DayRow[]; counts: { staff: number; in: number; not_in: number; later?: number; on_leave: number; off: number; late: number; still_in: number } }
 type MonthList = { month: string; rows: (StaffBrief & { days: Day[]; totals: Totals })[] }
 type Sheet = { id: number; file_name: string | null; status: string; summary: Record<string, number>; rows: { id: number; employee_ref: string | null; staff_name: string | null; work_date: string | null; check_in: string | null; check_out: string | null; state: string; note: string | null }[] }
@@ -166,8 +166,10 @@ function DayView({ department, who }: { department: string; who: Who }) {
             </thead>
             <tbody>
               {shown?.rows.map((r) => {
-                const open = r.records.find((s) => s.state === 'open')
-                const first = r.records[0]
+                // Someone still on last night's duty has nothing marked today, but is in the hospital and is checked out here.
+                const carried = r.records.length === 0 ? r.on_duty?.[0] : undefined
+                const open = r.records.find((s) => s.state === 'open') ?? carried
+                const first = r.records[0] ?? carried
                 const last = r.records[r.records.length - 1]
                 return (
                   <tr key={r.id} className="static">
@@ -186,11 +188,21 @@ function DayView({ department, who }: { department: string; who: Who }) {
                       ))}
                     </td>
                     <td>
-                      <span className={`pill ${DAY_CLASS[r.day.status] ?? ''}`}>{DAY_LABEL[r.day.status] ?? r.day.status}</span>
+                      {carried ? (
+                        <>
+                          <span className="pill ok">On duty</span>
+                          <small className="muted block">Since {longDate(carried.work_date)}; this duty counts for that day</small>
+                        </>
+                      ) : (
+                        <span className={`pill ${DAY_CLASS[r.day.status] ?? ''}`}>{DAY_LABEL[r.day.status] ?? r.day.status}</span>
+                      )}
                       {r.day.late_minutes > 0 && <small className="due block">{r.day.late_minutes} min late</small>}
                       {(r.day.leave_type || r.day.holiday || r.day.note) && <small className="muted block">{r.day.leave_type ?? r.day.holiday ?? r.day.note}</small>}
                     </td>
-                    <td className="mono">{first?.check_in ? clock(first.check_in) : '—'}</td>
+                    <td className="mono">
+                      {first?.check_in ? clock(first.check_in) : '—'}
+                      {carried && <small className="muted block">{longDate(carried.check_in!.slice(0, 10))}</small>}
+                    </td>
                     <td className="mono">{last?.check_out ? clock(last.check_out) : open ? <span className="muted">still in</span> : '—'}</td>
                     <td className="num">{hours(r.day.worked_minutes) || '—'}</td>
                     <td className="num">

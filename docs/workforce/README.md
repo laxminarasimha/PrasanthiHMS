@@ -197,3 +197,13 @@ Each point is one of two kinds:
 
 The check changes no figure. Switching off "Take pay off for absence" under Setup removes the points that depend on it.
 
+## A duty that runs across midnight
+
+Changed 25 November 2026, after the owner found that a night duty checked in at 8 PM was shown after midnight as "not in" with a missing check-out, and could not be dealt with.
+
+- **A duty belongs to the day it began.** A check-in at 8 PM on Tuesday is Tuesday's attendance, whenever the check-out comes.
+- **It is still going on after midnight**, whether or not a night shift was set up for the person. A check-in with no check-out counts as someone at work until the latest of: sixteen hours after the check-in (8 PM reaches noon the next day), four hours past the end of its shift where it has one, and the end of its own day. One rule, `AttendanceRules::stillOn()`, is asked by the day list, the day's overview, a person's own record, the check-in card and the check-in itself.
+- **On the next day's list** such a person shows as "On duty", with the time and date they came, and a Check out button. They are counted as in.
+- **Arriving after midnight.** With no duty set for them and nothing recorded the day before, a check-in before 4 AM belongs to the night that began the evening before.
+- **A forgotten check-out no longer blocks the next check-in.** Once a duty is plainly over, its open entry is set aside (state `review`, no check-out, no hours invented) when the person next checks in. It stays on the overview and the day list as "never checked out" until the office puts in the time.
+
