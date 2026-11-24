@@ -187,6 +187,7 @@ export function LabDay({ orders, settings, canRun, onClose, onChange, onOpenResu
                     <tr key={i.id} className="static">
                       <td className="wrap">
                         <i className={`stage-dot ${STAGE_CLASS[i.stage]}`} aria-hidden="true" /> {i.test_name}
+                        {i.outside_lab && !i.reported_at && <small className="outside-lab"> · {i.sent_at ? 'at' : 'for'} {i.outside_lab}</small>}
                       </td>
                       <td className="num muted">{STAGE_LABEL[i.stage]}</td>
                     </tr>

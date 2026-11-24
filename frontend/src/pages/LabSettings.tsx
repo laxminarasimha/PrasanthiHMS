@@ -22,6 +22,7 @@ const LAYOUT: Toggle[] = [
   ['print_sample_date', 'Print the sample collection date', ''],
   ['print_approved_date', 'Print the approval date', ''],
   ['print_end_mark', 'Print "End of report" after the last result', ''],
+  ['print_outside_lab', 'Print where a test was done, when it was an outside lab', 'A small “Processed at …” with the outside lab’s name after the test name.'],
   ['print_template_version', 'Print the template version beside each test', 'A small “Template v2” after the test name, so a printed report says which version of its template it was made with.'],
 ]
 
@@ -45,7 +46,7 @@ export function LabSettings() {
     onChange: (value: string) => setForm({ ...form, [key]: value }),
     error: errors[key],
   })
-  const number = (key: 'letterhead_top_mm' | 'letterhead_bottom_mm') => ({
+  const number = (key: 'letterhead_top_mm' | 'letterhead_bottom_mm' | 'label_width_mm' | 'label_height_mm') => ({
     value: String(form[key]),
     onChange: (value: string) => setForm({ ...form, [key]: value === '' ? 0 : Number(value) }),
     error: errors[key],
@@ -222,6 +223,14 @@ export function LabSettings() {
               onChange={(e) => setForm({ ...form, report_note: e.target.value })}
             />
           </label>
+
+          <h3>Sample labels</h3>
+          <p className="muted small">The sticker for a sample tube, printed from an order with "Sample labels". Set the size of the stickers in your label printer.</p>
+          <div className="grid">
+            <TextField label="Label width (mm)" type="number" min={20} max={120} {...number('label_width_mm')} />
+            <TextField label="Label height (mm)" type="number" min={10} max={100} {...number('label_height_mm')} />
+          </div>
+          {toggles([['label_barcode', 'Print the order number as a barcode', 'A scanner pointed at the tube then types the order number, for example into the search box of the Lab screen.']])}
 
           <h3>Rules</h3>
           {toggles(RULES)}

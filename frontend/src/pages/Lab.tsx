@@ -204,6 +204,7 @@ export function Lab() {
                         <span key={i.id} className="lab-line" title={STAGE_LABEL[i.stage]}>
                           <i className={`stage-dot ${STAGE_CLASS[i.stage]}`} aria-hidden="true" />
                           {i.test_name}
+                          {i.outside_lab && !i.reported_at && <small className="outside-lab"> · {i.sent_at ? 'at' : 'for'} {i.outside_lab}</small>}
                           <span className="sr-only"> ({STAGE_LABEL[i.stage]})</span>
                         </span>
                       ))}

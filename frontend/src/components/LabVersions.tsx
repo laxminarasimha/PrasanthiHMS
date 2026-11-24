@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { clock, longDate } from '../format'
-import type { LabParameter } from '../types'
+import type { LabParameter, LabRange } from '../types'
+
+/** Who an extra normal range is for: "Female, 12 to 50 years". */
+const who = (r: LabRange) => {
+  const age = r.age_from !== null && r.age_to !== null ? `${r.age_from} to ${r.age_to} ${r.age_unit}` : r.age_from !== null ? `${r.age_from} ${r.age_unit} and over` : r.age_to !== null ? `up to ${r.age_to} ${r.age_unit}` : ''
+  return [r.sex ? r.sex.charAt(0).toUpperCase() + r.sex.slice(1) : '', age].filter(Boolean).join(', ')
+}
 
 type Version = {
   version: number
@@ -105,7 +111,14 @@ export function LabVersions({ testId }: { testId: number }) {
                             {p.method && <small className="muted block">{p.method}</small>}
                           </td>
                           <td>{p.unit ?? '—'}</td>
-                          <td className="wrap">{p.reference_range ?? '—'}</td>
+                          <td className="wrap">
+                            {p.reference_range ?? '—'}
+                            {(p.ranges ?? []).map((r, j) => (
+                              <small className="muted block" key={j}>
+                                {who(r)}: {r.range}
+                              </small>
+                            ))}
+                          </td>
                         </tr>
                       ),
                     )}

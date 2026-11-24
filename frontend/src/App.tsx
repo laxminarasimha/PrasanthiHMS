@@ -64,6 +64,7 @@ const IpdSummaryPrint = page(() => import('./pages/ipd/IpdSummaryPrint'), 'IpdSu
 const IpdSetup = page(() => import('./pages/ipd/IpdSetup'), 'IpdSetup')
 const Lab = page(() => import('./pages/Lab'), 'Lab')
 const LabReportPrint = page(() => import('./pages/LabReportPrint'), 'LabReportPrint')
+const LabLabels = page(() => import('./pages/LabLabels'), 'LabLabels')
 const LabPackages = page(() => import('./pages/LabPackages'), 'LabPackages')
 const LabSettings = page(() => import('./pages/LabSettings'), 'LabSettings')
 const LabTests = page(() => import('./pages/LabTests'), 'LabTests')
@@ -165,6 +166,7 @@ export default function App() {
           <Route path="/front-desk/patients/:id/bills/:date/print" element={<PrintOnly><DayBillsPrint /></PrintOnly>} />
           <Route path="/visits/:id/print" element={<PrintOnly><PrescriptionPrint /></PrintOnly>} />
           <Route path="/lab/orders/:id/print" element={<PrintOnly><LabReportPrint /></PrintOnly>} />
+          <Route path="/lab/orders/:id/labels" element={<PrintOnly><LabLabels /></PrintOnly>} />
           <Route path="/forms/:id/print" element={<PrintOnly><FormPrint /></PrintOnly>} />
           <Route path="/documents/:id/print" element={<PrintOnly><DocumentPrint /></PrintOnly>} />
           <Route path="/workforce/payslips/:id/print" element={<PrintOnly><PayslipPrint /></PrintOnly>} />

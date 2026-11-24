@@ -305,7 +305,19 @@ export type QueueEntry = {
   last_visit: string | null
 }
 
-export type LabParameter = { id?: number; name: string; is_heading?: boolean; unit: string | null; reference_range: string | null; method: string | null }
+/** A normal range for some patients only: one sex, an age band counted in completed years, months or days, or both. */
+export type LabRange = { sex: 'male' | 'female' | null; age_from: number | null; age_to: number | null; age_unit: 'years' | 'months' | 'days'; range: string }
+
+export type LabParameter = {
+  id?: number
+  name: string
+  is_heading?: boolean
+  unit: string | null
+  reference_range: string | null
+  /** Extra normal ranges by age and sex. The first that fits the patient is printed; otherwise `reference_range`. */
+  ranges?: LabRange[] | null
+  method: string | null
+}
 
 export type LabCatalogueTest = {
   id: number
@@ -320,6 +332,9 @@ export type LabCatalogueTest = {
   is_active: boolean
   /** Which version of its report template is in use now. An edit to the fields makes the next one. */
   version: number
+  /** Set when the test is sent to another lab: that lab's name, and what it charges the hospital. */
+  outside_lab?: string | null
+  outside_cost?: number | null
   parameters: LabParameter[]
 }
 
@@ -352,6 +367,10 @@ export type LabOrderItem = {
   collected_at: string | null
   reported_at: string | null
   approved_at: string | null
+  /** The outside lab this test is done at, when it is not done here; what that lab charges; when the sample was sent. */
+  outside_lab?: string | null
+  outside_cost?: number | null
+  sent_at?: string | null
   reporter?: { id: number; name: string; signature_text: string | null } | null
   approver?: { id: number; name: string; signature_text: string | null } | null
   results?: LabResult[]
@@ -387,6 +406,12 @@ export type LabSettings = {
   print_end_mark: boolean
   /** Which version of its template each test was reported on, beside the test's name. */
   print_template_version: boolean
+  /** "Processed at …" under a test that was done at an outside lab. */
+  print_outside_lab: boolean
+  /** The sticker for a sample tube: its size, and whether the order number is also printed as a barcode. */
+  label_width_mm: number
+  label_height_mm: number
+  label_barcode: boolean
   /** A line of the lab's own at the foot of every report. */
   report_note: string
   /** Signature pictures, sent as embedded images; null when none is uploaded. */
