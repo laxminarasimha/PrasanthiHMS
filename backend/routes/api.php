@@ -553,6 +553,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
     // A login given to a member of staff from their own page, and a forgotten PIN replaced. Each checks who may:
     // those who manage logins, and for an own-record login also those who keep the staff records.
     Route::post('/staff/for/{employee}', [StaffController::class, 'storeFor'])->whereNumber('employee');
+    Route::post('/staff/for-all', [StaffController::class, 'storeForAll'])->middleware('throttle:6,1');
     Route::post('/staff/{staff}/starting-pin', [StaffController::class, 'startingPin'])->whereNumber('staff');
 });
 

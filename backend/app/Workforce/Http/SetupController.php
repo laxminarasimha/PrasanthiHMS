@@ -34,6 +34,8 @@ class SetupController extends Controller
             'calendars' => HolidayCalendar::query()->with('holidays')->orderBy('name')->get(),
             'leave_types' => LeaveType::query()->orderBy('name')->get(),
             'settings' => collect(array_keys(Settings::DEFAULTS))->mapWithKeys(fn ($group) => [$group => Settings::get($group)]),
+            // The internet connection this computer is on, to offer as one of the hospital's own for check-in.
+            'your_address' => $request->ip(),
             // Who looks after each department's staff, and the logins that could.
             'departments' => AdminEntry::query()->where('kind', 'department')->where('is_active', true)->orderBy('name')->get(['id', 'name'])
                 ->map(fn (AdminEntry $d) => ['id' => $d->id, 'name' => $d->name, 'manager_ids' => $managers->get($d->id, collect())->pluck('user_id')->values()]),
@@ -123,7 +125,7 @@ class SetupController extends Controller
             'numbering.payslip_prefix' => ['sometimes', 'string', 'max:12', 'regex:/^[A-Za-z0-9\-\/]*$/'], 'numbering.advance_prefix' => ['sometimes', 'string', 'max:12', 'regex:/^[A-Za-z0-9\-\/]*$/'],
             'payroll.month_days' => ['sometimes', Rule::in(['calendar', 'fixed_30', 'fixed_26'])], 'payroll.round_net_to' => ['sometimes', Rule::in(['rupee', 'paise'])],
             'payroll.daily_paid_days_off' => ['sometimes', 'boolean'], 'payroll.deduct_absence' => ['sometimes', 'boolean'], 'payroll.salary_needs_approval' => ['sometimes', 'boolean'],
-            'attendance.self_check_in' => ['sometimes', 'boolean'], 'attendance.default_weekly_off' => ['sometimes', 'array', 'max:7'], 'attendance.default_weekly_off.*' => [Rule::in(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'])],
+            'attendance.self_check_in' => ['sometimes', 'boolean'], 'attendance.self_check_in_networks' => ['sometimes', 'array', 'max:10'], 'attendance.self_check_in_networks.*' => ['ip'], 'attendance.default_weekly_off' => ['sometimes', 'array', 'max:7'], 'attendance.default_weekly_off.*' => [Rule::in(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'])],
             'leave.year_starts_month' => ['sometimes', 'integer', 'between:1,12'], 'leave.count_days_off' => ['sometimes', 'boolean'], 'leave.allow_negative' => ['sometimes', 'boolean'],
         ]);
         $out = [];

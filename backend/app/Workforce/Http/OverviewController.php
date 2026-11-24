@@ -18,6 +18,7 @@ use App\Workforce\Support\Access;
 use App\Workforce\Support\AttendanceRules;
 use App\Workforce\Support\LeaveBook;
 use App\Workforce\Support\Money;
+use App\Workforce\Support\Network;
 use App\Workforce\Support\Period;
 use App\Workforce\Support\Roster;
 use App\Workforce\Support\Settings;
@@ -244,6 +245,8 @@ class OverviewController extends Controller
         return response()->json([
             'employee' => ['id' => $employee->id, 'name' => $employee->name],
             'self_check_in' => (bool) Settings::get('attendance')['self_check_in'],
+            // False when the hospital allows check-in only on its own internet and this phone is not on it.
+            'here' => Network::mayCheckIn($request->ip()),
             'open' => $open ? $attendance->record($open) : null,
             'done' => $done->map(fn (Attendance $a) => $attendance->record($a))->values(),
         ]);
@@ -255,6 +258,7 @@ class OverviewController extends Controller
         $user = $request->user();
         $employee = $this->mine($user);
         abort_unless(Settings::get('attendance')['self_check_in'], 403, 'Marking your own attendance is not switched on. Ask whoever keeps the attendance.');
+        abort_unless(Network::mayCheckIn($request->ip()), 403, 'Check-in works only on the hospital’s own internet. Connect your phone to the hospital Wi-Fi and try again.');
         $attendance = app(AttendanceController::class);
         $open = Attendance::query()->where('employee_id', $employee->id)->where('state', 'open')->latest('check_in')->first();
         $record = $open ? $attendance->close($open, now()->format('Y-m-d H:i:s'), $user) : $attendance->open($employee, now()->format('Y-m-d H:i:s'), 'self', null, $user);

@@ -218,4 +218,58 @@ class StaffSignInTest extends TestCase
         $this->postJson("/api/staff/for/{$noPhone->id}")->assertForbidden();
         $this->postJson("/api/staff/{$login->id}/starting-pin")->assertForbidden();
     }
+
+    public function test_everyone_without_a_login_is_given_one_and_the_unclear_are_left_out(): void
+    {
+        $taken = $this->user('frontdesk', ['name' => 'Desk Person', 'phone' => '9811111111']);
+        $people = Tenant::run($this->here->id, fn () => [
+            Employee::create(['employee_no' => 'A1', 'name' => 'Ayah One', 'phone' => '98222 22222']),
+            Employee::create(['employee_no' => 'A2', 'name' => 'Guard Two', 'phone' => '9833333333']),
+            Employee::create(['employee_no' => 'A3', 'name' => 'Same Number', 'phone' => '9811111111']),
+            Employee::create(['employee_no' => 'A4', 'name' => 'No Number']),
+            Employee::create(['employee_no' => 'A5', 'name' => 'Gone Away', 'phone' => '9844444444', 'status' => 'inactive']),
+            Employee::create(['employee_no' => 'A6', 'name' => 'Has One', 'phone' => '9811111111', 'user_id' => $taken->id]),
+        ]);
+        Sanctum::actingAs($this->user('frontdesk'));
+        $this->postJson('/api/staff/for-all')->assertForbidden();
+
+        Sanctum::actingAs($this->user('hr'));
+        $out = $this->postJson('/api/staff/for-all')->assertOk()->json();
+        $this->assertSame(['Ayah One', 'Guard Two'], array_column($out['given'], 'name'));
+        $this->assertSame(['No Number', 'Same Number'], array_column($out['skipped'], 'name'));
+        $this->assertNotSame($out['given'][0]['starting_pin'], $out['given'][1]['starting_pin']);
+        $ayah = User::where('login_mobile', '9822222222')->first();
+        $this->assertSame(['staff', 'pin', true, $people[0]->id], [$ayah->role->value, $ayah->sign_in_with, $ayah->must_change_secret, Employee::withoutGlobalScopes()->where('user_id', $ayah->id)->value('id')]);
+        // Nobody is given a second one.
+        $this->assertSame([], $this->postJson('/api/staff/for-all')->assertOk()->json('given'));
+        app('auth')->forgetGuards();
+        $this->postJson('/api/login', ['login' => '9822222222', 'password' => $out['given'][0]['starting_pin']])->assertOk()->assertJsonPath('user.must_change_secret', true);
+    }
+
+    public function test_check_in_can_be_kept_to_the_hospitals_own_internet(): void
+    {
+        $ward = $this->wardStaff();
+        Tenant::run($this->here->id, fn () => Employee::create(['employee_no' => 'W1', 'name' => $ward->name, 'phone' => '9000000001', 'user_id' => $ward->id]));
+        Sanctum::actingAs($this->user('admin'));
+        $this->getJson('/api/workforce/setup')->assertOk()->assertJsonPath('your_address', '127.0.0.1');
+        $this->putJson('/api/workforce/setup/settings', ['attendance' => ['self_check_in' => true, 'self_check_in_networks' => ['not an address']]])->assertStatus(422);
+        $this->putJson('/api/workforce/setup/settings', ['attendance' => ['self_check_in' => true, 'self_check_in_networks' => ['203.0.113.7', '2001:db8:1:2::9']]])->assertOk();
+
+        Sanctum::actingAs($ward);
+        // From home, or on mobile data: the card says so and the server refuses.
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.20']);
+        $this->getJson('/api/workforce/me/today')->assertOk()->assertJsonPath('here', false);
+        $this->assertStringContainsString('hospital Wi-Fi', $this->postJson('/api/workforce/me/punch')->assertForbidden()->json('message'));
+        // On the hospital's connection, including another device on its long-address network.
+        $this->withServerVariables(['REMOTE_ADDR' => '2001:db8:1:2:aaaa:bbbb:cccc:dddd']);
+        $this->getJson('/api/workforce/me/today')->assertOk()->assertJsonPath('here', true);
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.7']);
+        $this->postJson('/api/workforce/me/punch')->assertOk()->assertJsonPath('state', 'open');
+        // With no connection listed, anywhere will do, as before.
+        Sanctum::actingAs($this->user('admin'));
+        $this->putJson('/api/workforce/setup/settings', ['attendance' => ['self_check_in_networks' => []]])->assertOk();
+        Sanctum::actingAs($ward);
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.20']);
+        $this->postJson('/api/workforce/me/punch')->assertOk()->assertJsonPath('state', 'completed');
+    }
 }

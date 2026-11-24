@@ -9,8 +9,8 @@ import { WorkforceTabs } from './WorkforceTabs'
 type Shift = { id: number; name: string; starts_at: string; ends_at: string; grace_minutes: number; early_leave_minutes: number; break_minutes: number; half_day_minutes: number | null; full_day_minutes: number | null; overtime_after_minutes: number | null; is_active: boolean }
 type Calendar = { id: number; name: string; is_default: boolean; holidays: { id: number; on: string; name: string; is_optional: boolean }[] }
 type Kind = { id: number; code: string; name: string; is_paid: boolean; annual_allowance: number; accrual: string; carry_forward_max: number; carry_forward_expires_months: number | null; allow_half_day: boolean; needs_approval: boolean; is_active: boolean }
-type Settings = { payroll: { month_days: string; round_net_to: string; deduct_absence: boolean; daily_paid_days_off: boolean; salary_needs_approval: boolean }; numbering: { employee_prefix: string; employee_digits: number }; attendance: { self_check_in: boolean; default_weekly_off: string[] }; leave: { year_starts_month: number; count_days_off: boolean; allow_negative: boolean } }
-type All = { shifts: Shift[]; calendars: Calendar[]; leave_types: Kind[]; settings: Settings; departments: { id: number; name: string; manager_ids: number[] }[]; logins: { id: number; name: string; role: string }[] }
+type Settings = { payroll: { month_days: string; round_net_to: string; deduct_absence: boolean; daily_paid_days_off: boolean; salary_needs_approval: boolean }; numbering: { employee_prefix: string; employee_digits: number }; attendance: { self_check_in: boolean; self_check_in_networks: string[]; default_weekly_off: string[] }; leave: { year_starts_month: number; count_days_off: boolean; allow_negative: boolean } }
+type All = { shifts: Shift[]; calendars: Calendar[]; leave_types: Kind[]; settings: Settings; departments: { id: number; name: string; manager_ids: number[] }[]; logins: { id: number; name: string; role: string }[]; /** The internet connection this computer is on. */ your_address?: string | null }
 type Editing = { what: 'shift' | 'calendar' | 'holiday' | 'leave'; id: number | null; calendarId?: number }
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
@@ -277,6 +277,35 @@ export function WorkforceSetup() {
                     <small className="muted block">Off unless you are satisfied nobody can sign in for someone else. No location or fingerprint is taken; it records only the login and the time.</small>
                   </span>
                 </label>
+                {all.settings.attendance.self_check_in && (
+                  <div className="check-in-place">
+                    <strong>Where staff may check in from</strong>
+                    {all.settings.attendance.self_check_in_networks.length === 0 ? (
+                      <p className="muted small">Anywhere, including from home. To keep it to the hospital, add the hospital's own internet connection below while this computer is on it.</p>
+                    ) : (
+                      <>
+                        <p className="muted small">Only while their phone is on one of these internet connections (the hospital Wi-Fi). On mobile data or at home, check-in is refused.</p>
+                        <ul className="plain-list">
+                          {all.settings.attendance.self_check_in_networks.map((address) => (
+                            <li key={address}>
+                              <span className="mono">{address}</span>
+                              {address === all.your_address && <span className="muted"> · this computer is on it now</span>}{' '}
+                              <button type="button" className="link danger" onClick={() => void saveSettings({ attendance: { self_check_in_networks: all.settings.attendance.self_check_in_networks.filter((a) => a !== address) } })}>
+                                Remove
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                    {all.your_address && !all.settings.attendance.self_check_in_networks.includes(all.your_address) && (
+                      <button type="button" className="btn small-btn" onClick={() => window.confirm(`Add the connection this computer is on now (${all.your_address}) as the hospital's own? Do this only while you are at the hospital, on its Wi-Fi or network.`) && void saveSettings({ attendance: { self_check_in_networks: [...all.settings.attendance.self_check_in_networks, all.your_address!] } })}>
+                        Add the connection this computer is on now
+                      </button>
+                    )}
+                    <p className="muted small">If the internet company changes the hospital's connection, staff will be refused until the new one is added here.</p>
+                  </div>
+                )}
               </div>
 
               <div className="day-section">

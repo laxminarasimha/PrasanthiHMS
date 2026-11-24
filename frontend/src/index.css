@@ -2112,3 +2112,11 @@ td.fit-wrap { white-space: normal; min-width: 130px; overflow-wrap: anywhere; }
 .tabs.minor button { border: 1px solid var(--border); }
 .muted.flush { margin: 0; }
 
+/* Check-in kept to the hospital's own internet, and the list of starting PINs */
+.check-in-place { margin: 4px 0 12px 28px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.check-in-place p { margin: 4px 0 8px; }
+.punch-away { flex-basis: 100%; margin: 0; font-size: 0.88rem; color: var(--warn); }
+.plain-list.people { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.pin-sheet td.pin { font-size: 1.25rem; font-weight: 700; letter-spacing: 0.2em; }
+@media print { .pin-sheet { border: 0; box-shadow: none; padding: 0; } .pin-sheet .table-wrap { overflow: visible; } }
+

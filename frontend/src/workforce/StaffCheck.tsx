@@ -62,9 +62,90 @@ export function StaffCheck() {
   const settle = (employee_id: number, field: string, keep: 'staff' | 'login') => api.post('/workforce/staff-check/settle', { employee_id, field, keep }).then(() => 'Both now say the same.')
   const screen = (id: number, shared: boolean) => api.post(`/workforce/staff-check/shared-screen/${id}`, { shared }).then(() => (shared ? 'Marked as a shared screen.' : 'It is a person’s login again.'))
 
+  // The starting PINs just made for everyone who had no login: shown once, to print or copy and hand out.
+  const [sheet, setSheet] = useState<{ given: { name: string; employee_no: string; mobile: string; starting_pin: string }[]; skipped: { name: string; employee_no: string; why: string }[] } | null>(null)
+  const giveAll = async () => {
+    if (!check || !window.confirm(`Give a login to all ${check.without_login.length} staff who have none? Each will sign in with their mobile number and a starting PIN, and will see only their own attendance, leave and payslips.`)) return
+    setBusy(true)
+    setFailed('')
+    try {
+      setSheet((await api.post('/staff/for-all')).data)
+      load()
+    } catch (err) {
+      setFailed(Object.values(fieldErrors(err))[0] ?? 'That did not work. Try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const certain = check?.unjoined.filter((l) => l.match) ?? []
   const rest = check?.unjoined.filter((l) => !l.match) ?? []
   const inOrder = check && check.unjoined.length === 0 && check.differences.length === 0 && check.shared_numbers.length === 0
+
+  if (sheet) {
+    return (
+      <>
+        <WorkforceTabs />
+        <section className="card staff-check pin-sheet">
+          <div className="toolbar no-print">
+            <div className="grow">
+              <h1>Starting PINs</h1>
+              <span className="muted">Shown only this once. Print or copy this list now, hand each person their PIN, then destroy the list.</span>
+            </div>
+            <button className="btn" onClick={() => window.print()}>
+              Print
+            </button>
+            <button className="btn primary" onClick={() => window.confirm('Close the list? The PINs cannot be shown again; a forgotten one is replaced from the person’s page.') && setSheet(null)}>
+              Done
+            </button>
+          </div>
+          <p>Each person signs in with their mobile number and the starting PIN beside it, and then chooses a PIN of their own.</p>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Employee number</th>
+                  <th>Signs in with mobile</th>
+                  <th>Starting PIN</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sheet.given.map((g) => (
+                  <tr key={g.employee_no}>
+                    <td>
+                      <strong>{g.name}</strong>
+                    </td>
+                    <td>{g.employee_no}</td>
+                    <td className="mono">{g.mobile}</td>
+                    <td className="mono pin">{g.starting_pin}</td>
+                  </tr>
+                ))}
+                {sheet.given.length === 0 && (
+                  <tr className="empty">
+                    <td colSpan={4}>No login was given.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {sheet.skipped.length > 0 && (
+            <div className="no-print">
+              <h2>Left out</h2>
+              <p className="muted">Correct the mobile number on the person's page in Staff, then give the login from there.</p>
+              <ul className="plain-list">
+                {sheet.skipped.map((k) => (
+                  <li key={k.employee_no}>
+                    <strong>{k.name}</strong> <span className="muted">{k.employee_no}</span>: {k.why}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      </>
+    )
+  }
 
   return (
     <>
@@ -260,6 +341,27 @@ export function StaffCheck() {
                       <button className="link" disabled={busy} onClick={() => void act(() => screen(l.id, false))}>
                         It is a person after all
                       </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            {check.without_login.length > 0 && (
+              <>
+                <h2>
+                  Staff who do not sign in <span className="pill status-booked">{check.without_login.length}</span>
+                </h2>
+                <p className="muted">Nothing is wrong with this. To let them check in from their own phone, give each a login that opens only their own attendance, leave and payslips: one by one from their page in Staff, or all together here.</p>
+                <div className="row gap-bottom">
+                  <button className="btn" disabled={busy} onClick={() => void giveAll()}>
+                    Give all {check.without_login.length} a login
+                  </button>
+                </div>
+                <ul className="plain-list people">
+                  {check.without_login.map((p) => (
+                    <li key={p.id}>
+                      {p.name} <span className="muted">· {p.employee_no}{p.designation ? ` · ${p.designation}` : ''} · {p.phone ?? 'no mobile number'}</span>
                     </li>
                   ))}
                 </ul>
