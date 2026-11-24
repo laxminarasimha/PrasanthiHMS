@@ -60,9 +60,8 @@ export function Layout() {
   // Print pages open in their own tab and print at once, so the way prints are laid out is fetched here, ahead of time.
   const ownOnly = user ? ownRecordOnly(user) : true
   useEffect(() => {
-    // Not for an own-record login, which prints nothing of the hospital's and may not ask for its settings.
-    if (!ownOnly) void keepPrintPrefsFresh()
-  }, [ownOnly])
+    void keepPrintPrefsFresh()
+  }, [])
 
   // The browser tab says which part of the app it is showing, so several open tabs can be told apart.
   useEffect(() => {

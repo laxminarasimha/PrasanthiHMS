@@ -158,6 +158,8 @@ For whoever builds this; the owner can skip it.
 | 3 | 168 | Workforce → Staff is the one list; each person has Details, Login and access, Bank and identity. Setup → Staff is gone and its address opens the Staff list |
 | 4 | 169 | Staff check → "Give all a login" with the list of starting PINs. Workforce → Setup → "Where staff may check in from" |
 | 5 | 170 | A login's department follows the staff record's. The phone app's staff sign-in takes a mobile number and has the choose-your-PIN step |
+| After the plan | 171 | Doctors check in from a computer too. Workforce → Attendance → "In and out times", with a "Doctors and consultants" choice |
+| After the plan | 172 | An own-record login can print its own payslip under the hospital's heading |
 
 Where it differs from the plan:
 

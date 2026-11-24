@@ -26,12 +26,19 @@ class LoginLimits
         'api/workforce/me', 'api/workforce/me/*', 'api/workforce/access',
     ];
 
+    /**
+     * What an own-record login may read but never change: the hospital's name, address and letterhead, and how its
+     * prints are laid out. Their own payslip is printed under that heading.
+     */
+    private const OWN_RECORD_READS = ['api/clinic', 'api/billing-preferences'];
+
     public function handle(Request $request, Closure $next): Response
     {
         $user = $request->user();
         if ($user instanceof User) {
             abort_if($user->must_change_secret && ! $request->is(...self::WHILE_CHOOSING), 403, 'Choose your own PIN or password first.');
-            abort_if($user->role === Role::Staff && ! $request->is(...self::OWN_RECORD), 403, 'Your login opens only your own record.');
+            $own = $request->is(...self::OWN_RECORD) || ($request->isMethod('GET') && $request->is(...self::OWN_RECORD_READS));
+            abort_if($user->role === Role::Staff && ! $own, 403, 'Your login opens only your own record.');
         }
 
         return $next($request);
