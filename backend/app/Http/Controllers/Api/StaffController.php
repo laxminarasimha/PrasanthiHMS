@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\User;
 use App\Support\DoctorFee;
+use App\Support\DoctorList;
 use App\Support\SignInGuard;
 use App\Support\StaffLogin;
 use App\Workforce\Models\Employee;
@@ -16,7 +17,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
@@ -277,16 +277,9 @@ class StaffController extends Controller
 
                 return $login;
             }
-            $login = User::create($more + [
-                'name' => $employee->name, 'phone' => $employee->phone, 'gender' => $employee->gender, 'department' => $employee->department?->name, 'role' => Role::Doctor->value,
-                'branch_id' => $user->branch_id, 'is_active' => true, 'sign_in_with' => 'none', 'password' => Str::random(48),
-                // A consultant is not offered to patients in the phone app until someone says so.
-                'book_online' => $more['book_online'] ?? false,
-            ])->refresh();
-            $employee->update(['user_id' => $login->id]);
-            Audit::record('staff.doctor_on', $employee, ['doctor' => false], ['doctor' => true, 'user_id' => $login->id], 'Put on the list of doctors; does not sign in', $employee->id);
 
-            return $login;
+            // A consultant is not offered to patients in the phone app until someone says so.
+            return DoctorList::put($employee, $more, $user);
         });
         if (array_key_exists('opd_fee', $data)) {
             DoctorFee::change($login, $data['opd_fee'], $user);

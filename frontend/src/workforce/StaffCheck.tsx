@@ -13,7 +13,7 @@ type Check = {
   shared_numbers: { mobile: string; logins: Login[] }[]
   shared_screens: Login[]
   without_login: Person[]
-  /** Consultants on the staff list who cannot be chosen for an appointment or an admission yet. */
+  /** Doctors on the staff list (a consultant, or someone written as "Dr") who cannot be chosen for an appointment or an admission yet. */
   consultants_not_doctors?: Person[]
   totals: { staff: number; logins: number; joined: number }
 }
@@ -359,11 +359,11 @@ export function StaffCheck() {
             {(check.consultants_not_doctors?.length ?? 0) > 0 && (
               <>
                 <h2>
-                  Consultants not on the doctors' list <span className="pill status-arrived">{check.consultants_not_doctors!.length}</span>
+                  Doctors not on the doctors' list <span className="pill status-arrived">{check.consultants_not_doctors!.length}</span>
                 </h2>
-                <p className="muted">They are on the staff list as consultants, but cannot be chosen for an appointment, an admission or a consultant's visit until they are on the hospital's list of doctors. They do not need a login for it.</p>
+                <p className="muted">They are on the staff list as a consultant, or written as "Dr", but cannot be chosen for an appointment, an admission or a consultant's visit until they are on the hospital's list of doctors. They do not need a login for it. A consultant added from now on is put on the list as they are added.</p>
                 <div className="row gap-bottom">
-                  <button className="btn primary" disabled={busy} onClick={() => void act(() => toDoctors(check.consultants_not_doctors!), `Put these ${check.consultants_not_doctors!.length} consultants on the doctors' list?`)}>
+                  <button className="btn primary" disabled={busy} onClick={() => void act(() => toDoctors(check.consultants_not_doctors!), `Put these ${check.consultants_not_doctors!.length} on the doctors' list?`)}>
                     Put all {check.consultants_not_doctors!.length} on the doctors' list
                   </button>
                 </div>

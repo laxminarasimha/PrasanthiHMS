@@ -103,6 +103,7 @@ export function StaffDirectory() {
     setReason('')
     setWeeklyOff(target === 'new' ? null : target.weekly_off)
     setRegular(null)
+    setDoctorTouched(false)
     setDoctor(target === 'new' ? { on: false, qualification: '', book_online: false, fee: '' } : { on: Boolean(target.login?.is_doctor), qualification: target.login?.qualification ?? '', book_online: Boolean(target.login?.book_online), fee: feeOf(target) })
     setForm(
       target === 'new'
@@ -116,6 +117,11 @@ export function StaffDirectory() {
   // A doctor who sees patients: on the hospital's list of doctors, whether or not they sign in.
   const [doctor, setDoctor] = useState({ on: false, qualification: '', book_online: false, fee: '' })
   const canPrice = user?.can_set_prices ?? false
+  // The hospital's rule: a consultant is a doctor. So is, most likely, someone written as "Dr". For a person with no
+  // login the tick comes on by itself, and stays as it is once someone has ticked or unticked it by hand.
+  const [doctorTouched, setDoctorTouched] = useState(false)
+  const looksLikeDoctor = form.employment_type === 'consultant' || /^\s*(dr|doctor)\b/i.test(form.name)
+  const doctorOn = doctor.on || (!doctorTouched && looksLikeDoctor && form.status !== 'inactive' && (editing === 'new' || (editing !== null && !editing.login)))
   // In the daily attendance and on the payroll. Empty until it is ticked or unticked here: the usual rule then decides.
   const [regular, setRegular] = useState<boolean | null>(null)
 
@@ -140,10 +146,10 @@ export function StaffDirectory() {
    */
   const keepDoctorList = async (person: Employee, before: Employee | null) => {
     const was = { on: Boolean(before?.login?.is_doctor), qualification: before?.login?.qualification ?? '', book_online: Boolean(before?.login?.book_online), fee: before ? feeOf(before) : '' }
-    if (doctor.on === was.on && (!doctor.on || (doctor.qualification === was.qualification && doctor.book_online === was.book_online && doctor.fee === was.fee))) return
+    if (doctorOn === was.on && (!doctorOn || (doctor.qualification === was.qualification && doctor.book_online === was.book_online && doctor.fee === was.fee))) return
     try {
-      await api.put(`/staff/doctor-for/${person.id}`, doctor.on ? { doctor: true, qualification: doctor.qualification.trim() || null, book_online: doctor.book_online, ...(canPrice ? { opd_fee: doctor.fee === '' ? null : Number(doctor.fee) } : {}) } : { doctor: false })
-      if (doctor.on !== was.on) setNotice(doctor.on ? `${person.name} is now on the doctors' list, and can be chosen for appointments, admissions and consultants' visits.` : `${person.name} was taken off the doctors' list. Their past appointments and fees are kept.`)
+      await api.put(`/staff/doctor-for/${person.id}`, doctorOn ? { doctor: true, qualification: doctor.qualification.trim() || null, book_online: doctor.book_online, ...(canPrice ? { opd_fee: doctor.fee === '' ? null : Number(doctor.fee) } : {}) } : { doctor: false })
+      if (doctorOn !== was.on) setNotice(doctorOn ? `${person.name} is now on the doctors' list, and can be chosen for appointments, admissions and consultants' visits.` : `${person.name} was taken off the doctors' list. Their past appointments and fees are kept.`)
     } catch (err) {
       setNotice(`${person.name}'s details were saved, but the doctors' list was not changed: ${Object.values(fieldErrors(err))[0] ?? 'try again.'}`)
     }
@@ -152,7 +158,7 @@ export function StaffDirectory() {
   /** The login of someone just added, from the same form. If it cannot be given, the person stays added and their page opens where it can be put right. */
   const giveLogin = async (person: Employee) => {
     // Someone added as a doctor signs in as one.
-    const role = doctor.on ? 'doctor' : newRole
+    const role = doctorOn ? 'doctor' : newRole
     try {
       const given = await api.post<{ starting_pin?: string }>(`/staff/for/${person.id}`, role === 'staff' ? { role: 'staff' } : { role, email: form.email || null, password: newPassword })
       if (given.data.starting_pin) setSlip({ name: person.name, mobile: person.phone, pin: given.data.starting_pin })
@@ -383,10 +389,15 @@ export function StaffDirectory() {
 
                   <div className="signs-in">
                     <label className="check flush">
-                      <input type="checkbox" checked={doctor.on} disabled={Boolean(doctorFixed)} onChange={(e) => setDoctor((d) => ({ ...d, on: e.target.checked }))} />A doctor who sees patients
+                      <input type="checkbox" checked={doctorOn} disabled={Boolean(doctorFixed)} onChange={(e) => {
+                          setDoctorTouched(true)
+                          setDoctor((d) => ({ ...d, on: e.target.checked }))
+                        }}
+                      />
+                      A doctor who sees patients
                     </label>
-                    <p className="muted small">{doctorFixed || 'Ticked, they are on the hospital’s list of doctors: they can be chosen for appointments, admissions and consultants’ visits, and have a month under Pay → Consultants. They do not need a login for this.'}</p>
-                    {doctor.on && (
+                    <p className="muted small">{doctorFixed || 'Ticked, they are on the hospital’s list of doctors: they can be chosen for appointments, admissions and consultants’ visits, and have a month under Pay → Consultants. They do not need a login for this. It is ticked by itself for a consultant.'}</p>
+                    {doctorOn && (
                       <div className="grid gap-top">
                         <TextField label="Qualification, printed under their name" value={doctor.qualification} onChange={(v) => setDoctor((d) => ({ ...d, qualification: v }))} placeholder="For example: MS ENT" />
                         <TextField label="OPD consultation fee (₹)" type="number" min={0} step="1" placeholder="None of their own" value={doctor.fee} onChange={(v) => setDoctor((d) => ({ ...d, fee: v }))} disabled={!canPrice} title={canPrice ? 'Put on the bill by itself when this doctor is chosen for a visit' : 'Only someone allowed to set prices can change this'} />
@@ -399,7 +410,7 @@ export function StaffDirectory() {
                   </div>
 
                   <label className="check top gap-top">
-                    <input type="checkbox" checked={regular ?? (editing === 'new' ? form.employment_type !== 'consultant' && !doctor.on : (editing.regular ?? true))} onChange={(e) => setRegular(e.target.checked)} />
+                    <input type="checkbox" checked={regular ?? (editing === 'new' ? form.employment_type !== 'consultant' && !doctorOn : (editing.regular ?? true))} onChange={(e) => setRegular(e.target.checked)} />
                     <span>
                       In the daily attendance and on the payroll
                       <small className="muted block">Unticked for doctors and consultants: they are not marked absent, are not in a payroll, and are paid apart. They may still check in for the record.</small>
@@ -416,12 +427,12 @@ export function StaffDirectory() {
                         <>
                           {manages && roles.length > 0 && (
                             <div className="grid gap-top">
-                              {doctor.on ? <TextField label="Role" value="Doctor" onChange={() => undefined} disabled /> : <SelectField label="Role" required value={newRole} onChange={setNewRole} options={roles} />}
-                              {(doctor.on || newRole !== 'staff') && <TextField label="Password" required type="password" placeholder="At least 8 letters and numbers" value={newPassword} onChange={setNewPassword} autoComplete="new-password" />}
+                              {doctorOn ? <TextField label="Role" value="Doctor" onChange={() => undefined} disabled /> : <SelectField label="Role" required value={newRole} onChange={setNewRole} options={roles} />}
+                              {(doctorOn || newRole !== 'staff') && <TextField label="Password" required type="password" placeholder="At least 8 letters and numbers" value={newPassword} onChange={setNewPassword} autoComplete="new-password" />}
                             </div>
                           )}
                           <p className="muted small">
-                            {newRole === 'staff' && !doctor.on
+                            {newRole === 'staff' && !doctorOn
                               ? 'They will sign in with the mobile number above and a 6-digit PIN, and see only their own attendance, leave and payslips. The starting PIN is shown once when you add them.'
                               : 'They will sign in with the mobile number above, or the email if one is given, and this password. What the role allows can be changed for them afterwards under Login and access.'}
                           </p>
