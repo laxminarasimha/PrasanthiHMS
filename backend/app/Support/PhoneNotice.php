@@ -52,6 +52,32 @@ final class PhoneNotice
     }
 
     /**
+     * A doctor is told when the desk marks a patient who was booked earlier as having reached the hospital.
+     * It takes the place of the "New appointment" notice for the same visit on the phone, and sounds again.
+     * Not told when the doctor marked it themselves, nor for a visit of an earlier day being tidied up.
+     */
+    public static function patientArrived(Appointment $appointment, ?int $markedBy): void
+    {
+        $at = Carbon::parse($appointment->getRawOriginal('scheduled_at'));
+        if ($markedBy === (int) $appointment->doctor_id || $at->lt(today())) {
+            return;
+        }
+
+        $words = [$appointment->patient?->name ?? 'A patient', 'has arrived', 'booked for '.$at->format('g:i A')];
+        if ($appointment->token_no) {
+            $words[] = 'Token '.$appointment->token_no;
+        }
+
+        self::later((int) $appointment->doctor_id, [
+            'title' => 'Patient waiting',
+            'body' => implode(' · ', $words),
+            'url' => '/doctor',
+            'tag' => 'appointment-'.$appointment->id,
+            'kind' => 'appointment',
+        ]);
+    }
+
+    /**
      * Sends once the answer to the present request has gone out.
      *
      * @param  array<string, mixed>  $message
