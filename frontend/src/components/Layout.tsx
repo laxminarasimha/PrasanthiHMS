@@ -4,6 +4,8 @@ import { BottomBar } from './BottomBar'
 import { BrandMark } from './Brand'
 import { ErrorBoundary } from './ErrorBoundary'
 import { InstallHint } from './InstallHint'
+import { PushHint } from './PushControls'
+import { getsNotices, syncPush } from '../push'
 import { PatientSearch } from './PatientSearch'
 import { onLoadTrouble } from '../api'
 import { useAuth } from '../auth'
@@ -39,6 +41,13 @@ export function Layout() {
   // Until a screen has everything it first asked for, its figures are greyed and "nothing here" messages held back.
   const loading = useFirstLoad(pathname)
   useEffect(() => onLoadTrouble(setTrouble), [])
+  // A device already allowed to notify follows whoever is signed in on it; nobody is asked anything here.
+  const userId = user?.id
+  useEffect(() => {
+    if (user) void syncPush(user)
+    // Only when a different person signs in, not each time their details are read again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId])
   // "Later" on the backup reminder: the same message stays away on this computer until tomorrow. A new message shows at once.
   const [laterFor, setLaterFor] = useState(() => {
     try {
@@ -152,6 +161,8 @@ export function Layout() {
           </div>
         )}
         <InstallHint />
+        {/* A doctor is offered notifications on this device, on their first screen. */}
+        {pathname === homeFor(user) && getsNotices(user) && <PushHint />}
         {/* A person's first screen opens with their own attendance and the button to check in or out. */}
         {pathname === homeFor(user) && user.abilities?.['wf:self:view'] && <AttendanceCard />}
         {/* One broken screen shows a message in place; the menu stays, and going elsewhere starts afresh. */}

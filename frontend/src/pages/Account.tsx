@@ -3,6 +3,8 @@ import { api, fieldErrors } from '../api'
 import { useAuth } from '../auth'
 import { SecretForm } from '../components/SecretForm'
 import { GoogleButton } from '../components/GoogleButton'
+import { PushSettings } from '../components/PushControls'
+import { getsNotices } from '../push'
 import { useBrand } from '../brand'
 import { THEMES, applyAppearance, type Appearance } from '../appearance'
 import { allowedTabs } from '../nav'
@@ -119,6 +121,8 @@ export function Account() {
         ))}
       </div>
       {tabNotice && <p className="muted small">{tabNotice}</p>}
+
+      {getsNotices(user) && <PushSettings />}
 
       {brand?.google_client_id && (
         <>

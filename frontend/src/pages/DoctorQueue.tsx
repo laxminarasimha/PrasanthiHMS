@@ -7,6 +7,7 @@ import { PatientSearch } from '../components/PatientSearch'
 import { STATUS_LABELS, clock, longDate, today } from '../format'
 import type { Doctor, Patient, QueueEntry } from '../types'
 import { PatientLink } from '../components/PatientLink'
+import { ARRIVED } from '../push'
 
 /** Minutes since the patient arrived, shown only while they are still waiting. */
 function waiting(entry: QueueEntry, now: number) {
@@ -38,7 +39,12 @@ export function DoctorQueue() {
   useEffect(() => {
     load()
     const timer = setInterval(load, 30000)
-    return () => clearInterval(timer)
+    // A notification about a new appointment has just reached this device: show the patient at once.
+    window.addEventListener(ARRIVED, load)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener(ARRIVED, load)
+    }
   }, [load])
 
   useEffect(() => {

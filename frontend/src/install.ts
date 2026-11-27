@@ -27,6 +27,19 @@ export const runningInstalled = () => window.matchMedia('(display-mode: standalo
 
 export const onIphone = () => /iphone|ipad|ipod/i.test(navigator.userAgent)
 
+/** Where "Later" on the offer to install is remembered, and for how long it holds. */
+export const INSTALL_LATER = 'hms_install_later'
+const WEEK = 7 * 24 * 60 * 60 * 1000
+
+/** Whether the person said "Later" to installing within the last week. */
+export const installPutOff = () => {
+  try {
+    return Date.now() - Number(localStorage.getItem(INSTALL_LATER) ?? 0) < WEEK
+  } catch {
+    return false
+  }
+}
+
 /** `ready`: the browser will install at one tap. `install()` asks it to, and says whether the person agreed. */
 export function useInstall(): { ready: boolean; install: () => Promise<boolean> } {
   const [ready, setReady] = useState(offer !== null)

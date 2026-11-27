@@ -1,17 +1,8 @@
 import { useState } from 'react'
-import { onIphone, runningInstalled, useInstall } from '../install'
+import { INSTALL_LATER as KEY, installPutOff as putOff, onIphone, runningInstalled, useInstall } from '../install'
 import { usePhone } from '../phone'
 
-const KEY = 'hms_install_later'
 const WEEK = 7 * 24 * 60 * 60 * 1000
-
-const putOff = () => {
-  try {
-    return Date.now() - Number(localStorage.getItem(KEY) ?? 0) < WEEK
-  } catch {
-    return false
-  }
-}
 
 /**
  * On a phone's browser, a strip offering to put the app on the home screen, because only the installed app opens full
