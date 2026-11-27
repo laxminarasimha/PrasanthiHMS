@@ -93,7 +93,7 @@ class CaseHistoryController extends Controller
             ]);
 
         $labs = LabOrder::where('patient_id', $patient->id)
-            ->with(['items' => fn ($q) => $q->select('id', 'lab_order_id', 'test_name', 'collected_at', 'reported_at', 'approved_at')->with('results')])
+            ->with(['items' => fn ($q) => $q->select('id', 'lab_order_id', 'test_name', 'repeat_no', 'collected_at', 'reported_at', 'approved_at')->with('results')])
             ->latest('ordered_at')->limit(100)->get()
             ->map(fn (LabOrder $o) => [
                 'kind' => 'lab',
@@ -102,7 +102,7 @@ class CaseHistoryController extends Controller
                 'lab' => [
                     'id' => $o->id, 'order_no' => $o->order_no, 'status' => $o->status,
                     'tests' => $o->items->map(fn ($i) => [
-                        'name' => $i->test_name,
+                        'name' => $i->label(),
                         'reported' => $i->reported_at !== null,
                         'results' => $i->reported_at ? $i->results->where('is_heading', false)->filter(fn ($r) => filled($r->value))
                             ->map(fn ($r) => ['parameter' => $r->parameter, 'value' => $r->value, 'unit' => $r->unit, 'flag' => $r->flag])->values() : [],

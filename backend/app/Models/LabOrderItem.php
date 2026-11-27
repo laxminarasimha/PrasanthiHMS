@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
-    'lab_test_id', 'template_version', 'test_name', 'kind', 'package_name', 'department', 'sample_type', 'price', 'remarks', 'report_text',
+    'lab_test_id', 'template_version', 'test_name', 'repeat_no', 'kind', 'package_name', 'department', 'sample_type', 'price', 'remarks', 'report_text',
     'collected_at', 'collected_by', 'reported_at', 'reported_by', 'approved_at', 'approved_by',
     'outside_lab', 'outside_cost', 'sent_at', 'sent_by',
 ])]
@@ -38,6 +38,18 @@ class LabOrderItem extends Model
             $this->collected_at !== null => 'collected',
             default => 'booked',
         };
+    }
+
+    /** The test's name, with which time it is when the same test is on the order more than once: "CBP (2nd)". */
+    public function label(): string
+    {
+        $n = (int) $this->repeat_no;
+        if ($n < 1) {
+            return $this->test_name;
+        }
+        $th = ($n % 100 >= 11 && $n % 100 <= 13) ? 'th' : (['th', 'st', 'nd', 'rd'][$n % 10] ?? 'th');
+
+        return "{$this->test_name} ({$n}{$th})";
     }
 
     public function approver(): BelongsTo

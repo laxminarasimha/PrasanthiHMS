@@ -5,8 +5,9 @@ import { api } from '../api'
 import { clock, fullName } from '../format'
 import { useAutoPrint } from '../printPaper'
 import type { LabOrder, LabOrderItem, LabSettings } from '../types'
+import { testLabel } from '../labName'
 
-type Tube = { sample: string; outside: string; tests: string[]; taken: string | null }
+type Tube = { sample: string; outside: string; again: number; tests: string[]; taken: string | null }
 
 /** One sticker for each tube: tests share a tube when they need the same kind of sample and go to the same place. */
 function tubes(items: LabOrderItem[]): Tube[] {
@@ -14,12 +15,14 @@ function tubes(items: LabOrderItem[]): Tube[] {
   for (const item of items) {
     const sample = (item.sample_type ?? '').trim()
     const outside = (item.outside_lab ?? '').trim()
-    const tube = list.find((t) => t.sample.toLowerCase() === sample.toLowerCase() && t.outside.toLowerCase() === outside.toLowerCase())
+    // A test repeated in the day is a fresh sample taken later, so the 2nd and 3rd get tubes of their own.
+    const again = (item.repeat_no ?? 1) > 1 ? (item.repeat_no as number) : 0
+    const tube = list.find((t) => t.again === again && t.sample.toLowerCase() === sample.toLowerCase() && t.outside.toLowerCase() === outside.toLowerCase())
     if (tube) {
-      tube.tests.push(item.test_name)
+      tube.tests.push(testLabel(item))
       if (item.collected_at && (!tube.taken || item.collected_at < tube.taken)) tube.taken = item.collected_at
     } else {
-      list.push({ sample, outside, tests: [item.test_name], taken: item.collected_at })
+      list.push({ sample, outside, again, tests: [testLabel(item)], taken: item.collected_at })
     }
   }
   return list

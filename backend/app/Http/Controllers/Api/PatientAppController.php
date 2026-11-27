@@ -228,7 +228,7 @@ class PatientAppController extends Controller
             ->map(fn ($o) => [
                 'id' => $o->id, 'order_no' => $o->order_no, 'date' => $o->ordered_at->format('Y-m-d'),
                 'tests' => $o->items->map(fn ($i) => [
-                    'name' => $i->test_name, 'report' => $i->report_text, 'remarks' => $i->remarks,
+                    'name' => $i->label(), 'report' => $i->report_text, 'remarks' => $i->remarks,
                     'results' => $i->results->where('is_heading', false)->filter(fn ($r) => filled($r->value))
                         ->map(fn ($r) => ['parameter' => $r->parameter, 'value' => $r->value, 'unit' => $r->unit, 'range' => $r->reference_range, 'flag' => $r->flag])->values(),
                 ])->values(),

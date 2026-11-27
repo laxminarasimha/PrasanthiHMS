@@ -11,6 +11,7 @@ import { LabTabs } from '../components/LabTabs'
 import { clock, longDate, rupees, settlement, STAGE_CLASS, STAGE_LABEL, today } from '../format'
 import { earliestStep, STEP_CLASS, STEP_LABEL, stepOf, STEPS, type Step } from './labSteps'
 import type { LabCatalogueTest, LabOrder, LabPackage, LabSettings, Service } from '../types'
+import { testLabel } from '../labName'
 
 /** `day` is the window with all of one patient's orders of a day; its key names the patient and the day. */
 type Panel = { kind: 'new' } | { kind: 'results'; orderId: number } | { kind: 'bill'; billId: number } | { kind: 'day'; key: string } | null
@@ -203,7 +204,7 @@ export function Lab() {
                       {items.map((i) => (
                         <span key={i.id} className="lab-line" title={STAGE_LABEL[i.stage]}>
                           <i className={`stage-dot ${STAGE_CLASS[i.stage]}`} aria-hidden="true" />
-                          {i.test_name}
+                          {testLabel(i)}
                           {i.outside_lab && !i.reported_at && <small className="outside-lab"> · {i.sent_at ? 'at' : 'for'} {i.outside_lab}</small>}
                           <span className="sr-only"> ({STAGE_LABEL[i.stage]})</span>
                         </span>

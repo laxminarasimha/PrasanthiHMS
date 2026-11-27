@@ -34,6 +34,7 @@ class ChargeController extends Controller
             'services.*' => ['array'],
             'test_ids' => ['sometimes', 'array', 'max:60'],
             'package_ids' => ['sometimes', 'array', 'max:20'],
+            'test_counts' => ['sometimes', 'array'],
             'referred_by' => ['nullable', 'string', 'max:255'],
         ] + DiscountWhy::RULES, ['appointment_id.exists' => 'That visit belongs to another patient.']);
 
@@ -59,6 +60,7 @@ class ChargeController extends Controller
             $order = app(LabController::class)->storeOrder($this->ask($request, [
                 'patient_id' => $data['patient_id'], 'appointment_id' => $data['appointment_id'] ?? null,
                 'test_ids' => $data['test_ids'] ?? [], 'package_ids' => $data['package_ids'] ?? [], 'referred_by' => $data['referred_by'] ?? null,
+                'test_counts' => $data['test_counts'] ?? [],
             ]))->getData(true);
             $made[] = $order['bill_id'];
         }

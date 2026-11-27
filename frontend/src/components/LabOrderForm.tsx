@@ -58,6 +58,9 @@ export function LabOrderForm({ tests, packages = [], visit, onClose, onCreated }
   const [patient, setPatient] = useState<Patient | null>((visit?.patient as Patient | undefined) ?? null)
   const [chosen, setChosen] = useState<number[]>(advised?.ids ?? [])
   const [chosenPackages, setChosenPackages] = useState<number[]>([])
+  // How many times a ticked test is done, when that is more than once (a CBP repeated the same day).
+  const [counts, setCounts] = useState<Record<number, string>>({})
+  const times = (id: number) => Math.min(9, Math.max(1, Math.floor(Number(counts[id]) || 1)))
   const [filter, setFilter] = useState('')
   const [referredBy, setReferredBy] = useState(visit?.doctor ?? '')
   const [errors, setErrors] = useState<FieldErrors>({})
@@ -72,8 +75,8 @@ export function LabOrderForm({ tests, packages = [], visit, onClose, onCreated }
   const inPackage = new Set(packages.filter((p) => chosenPackages.includes(p.id)).flatMap((p) => p.tests.map((t) => t.id)))
   const total =
     packages.filter((p) => chosenPackages.includes(p.id)).reduce((sum, p) => sum + p.price, 0) +
-    tests.filter((t) => chosen.includes(t.id) && !inPackage.has(t.id)).reduce((sum, t) => sum + t.price, 0)
-  const count = new Set([...inPackage, ...chosen]).size
+    tests.filter((t) => chosen.includes(t.id) && !inPackage.has(t.id)).reduce((sum, t) => sum + t.price * times(t.id), 0)
+  const count = [...inPackage].length + chosen.filter((id) => !inPackage.has(id)).reduce((sum, id) => sum + times(id), 0)
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -84,7 +87,7 @@ export function LabOrderForm({ tests, packages = [], visit, onClose, onCreated }
     setSaving(true)
     setErrors({})
     try {
-      const res = await api.post<LabOrder>('/lab/orders', { patient_id: patient.id, appointment_id: visit?.appointmentId ?? null, test_ids: chosen, package_ids: chosenPackages, referred_by: referredBy || null })
+      const res = await api.post<LabOrder>('/lab/orders', { patient_id: patient.id, appointment_id: visit?.appointmentId ?? null, test_ids: chosen, package_ids: chosenPackages, referred_by: referredBy || null, test_counts: Object.fromEntries(chosen.filter((id) => !inPackage.has(id) && times(id) > 1).map((id) => [id, times(id)])) })
       onCreated(res.data)
     } catch (err) {
       setErrors(fieldErrors(err))
@@ -135,15 +138,27 @@ export function LabOrderForm({ tests, packages = [], visit, onClose, onCreated }
           </li>
         ))}
         {visible.map((t) => (
-          <li key={t.id}>
+          <li key={t.id} className="split">
             <label>
               <input type="checkbox" checked={chosen.includes(t.id) || inPackage.has(t.id)} disabled={inPackage.has(t.id)} onChange={() => setChosen(flip(t.id))} />
               <span className="grow">
                 {t.name}
                 {t.sample_type && <small className="muted"> · {t.sample_type}</small>}
               </span>
-              <span className="mono">{inPackage.has(t.id) ? 'in package' : rupees(t.price)}</span>
             </label>
+            {chosen.includes(t.id) && !inPackage.has(t.id) && (
+              <input
+                className="qty"
+                type="number"
+                min={1}
+                max={9}
+                value={counts[t.id] ?? '1'}
+                onChange={(e) => setCounts((c) => ({ ...c, [t.id]: e.target.value }))}
+                aria-label={`How many times ${t.name} is done`}
+                title="How many times this test is done today. Each time gets its own report."
+              />
+            )}
+            <span className="mono">{inPackage.has(t.id) ? 'in package' : rupees(t.price * times(t.id))}</span>
           </li>
         ))}
         {visible.length + visiblePackages.length === 0 && <li className="muted">No tests match.</li>}

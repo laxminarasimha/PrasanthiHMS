@@ -499,6 +499,10 @@ td.wrap { white-space: normal; max-width: 320px; }
 .checklist label { display: flex; gap: 10px; align-items: center; padding: 8px 0; cursor: pointer; }
 .checklist input { width: auto; }
 .checklist li.muted { padding: 10px; }
+/* A row with something beside the tick: how many times a test is done, and its price. */
+.checklist li.split { display: flex; align-items: center; gap: 10px; }
+.checklist li.split label { flex: 1; min-width: 0; }
+.checklist li.split input.qty { width: 58px; padding: 4px 6px; text-align: right; }
 .lab-test { border-top: 1px solid var(--border); padding: 14px 0; }
 .lab-test header { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-bottom: 8px; }
 .lab-test .panel-foot.row { flex-wrap: wrap; justify-content: flex-end; }

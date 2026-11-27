@@ -9,6 +9,7 @@ import { PatientDocuments } from '../components/PatientDocuments'
 import { AttachmentsPanel } from '../components/FrontDeskPanels'
 import { ADMISSION_STATUS, STATUS_LABELS, clock, fullName, longDate, nowLocal, rupees, settlement, stampDate } from '../format'
 import type { PatientOverview } from '../types'
+import { testLabel } from '../labName'
 
 const KIND = { appointment: 'Appointment', lab: 'Lab', other: 'Other services' } as const
 /** How many rows of each list show before "Show all". */
@@ -226,7 +227,7 @@ export function PatientDashboard() {
               <td className="mono">{o.order_no}</td>
               <td>
                 {longDate(o.ordered_at)}
-                <small className="muted block">{o.items.map((i) => i.test_name).join(', ')}</small>
+                <small className="muted block">{o.items.map(testLabel).join(', ')}</small>
               </td>
               <td>
                 <span className={`pill ${o.status === 'completed' ? 'ok' : 'status-arrived'}`}>{o.status === 'completed' ? 'Ready' : o.status === 'partial' ? 'Partly ready' : 'Pending'}</span>

@@ -11,6 +11,8 @@ type Result = { id: number; parameter: string; is_heading: boolean; unit: string
 type Item = {
   id: number
   test_name: string
+  /** Which time this is, when the same test is on the order more than once. */
+  repeat_no?: number | null
   kind?: 'values' | 'text'
   stage: Stage
   template_version?: number | null
@@ -22,6 +24,14 @@ type Item = {
   reporter?: { name: string } | null
   approver?: { name: string } | null
   results?: Result[]
+}
+
+/** "CBP (2nd)" when the same test is on the order more than once, so the samples are told apart. */
+function testLabel(item: Pick<Item, 'test_name' | 'repeat_no'>): string {
+  const n = item.repeat_no ?? 0
+  if (n < 1) return item.test_name
+  const th = n % 100 >= 11 && n % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th')
+  return `${item.test_name} (${n}${th})`
 }
 type Order = {
   id: number
@@ -131,7 +141,7 @@ export function LabBoard({ canRun, canApprove, refreshKey }: { canRun: boolean; 
           <Card key={item.id}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
               <View style={{ flex: 1 }}>
-                <Text style={text.strong}>{item.test_name}</Text>
+                <Text style={text.strong}>{testLabel(item)}</Text>
                 <Text style={text.muted}>{[item.sample_type, item.template_version ? `Template v${item.template_version}` : ''].filter(Boolean).join(' · ')}</Text>
               </View>
               <Tag label={STAGE[item.stage].label} tone={STAGE[item.stage].tone} />
@@ -212,7 +222,7 @@ export function LabBoard({ canRun, canApprove, refreshKey }: { canRun: boolean; 
               {o.items.map((i) => (
                 <Text key={i.id} style={text.body}>
                   <Text style={{ color: i.stage === 'booked' ? colors.muted : i.stage === 'collected' ? colors.accent : colors.ok }}>● </Text>
-                  {i.test_name}
+                  {testLabel(i)}
                 </Text>
               ))}
               {o.bill ? (

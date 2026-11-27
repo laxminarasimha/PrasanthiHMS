@@ -32,6 +32,9 @@ type Line = { key: string; type: 'service' | 'test' | 'package' | 'typed'; id: n
 type Found = { key: string; type: 'service' | 'test' | 'package'; id: number; name: string; price: number; note?: string }
 type Due = { id: number; bill_no: string; kind: 'appointment' | 'lab' | 'other'; order_no: string | null; total: number; paid: number; due: number; items: string[] }
 
+/** The most times one test may be put on one lab order; the server holds the same limit. */
+const MOST_TIMES = 9
+
 const TAG = { service: 'Service', test: 'Lab test', package: 'Lab package', typed: 'Typed' } as const
 const KIND = { appointment: 'Services', other: 'Services', lab: 'Lab' } as const
 
@@ -120,7 +123,13 @@ export function ChargePanel({ patient, appointmentId, doctor, advised, services,
 
   // A test that is inside a chosen package is done once and charged once, in the package.
   const inPackage = new Set(packages.filter((p) => have.has(`package-${p.id}`)).flatMap((p) => p.tests.map((t) => t.id)))
-  const worth = (l: Line) => (l.type === 'test' && inPackage.has(l.id ?? 0) ? 0 : Math.max(0, Number(l.price || 0) * Number(l.quantity || 1) - Number(l.discount || 0)))
+  /** How many times a line is wanted: a whole number, at least once. */
+  const times = (l: Line) => Math.max(1, Math.floor(Number(l.quantity) || 1))
+  // A test repeated in the day is charged each time; the one a package already has is not charged again.
+  const worth = (l: Line) =>
+    l.type === 'test'
+      ? Number(l.price || 0) * (times(l) - (inPackage.has(l.id ?? 0) ? 1 : 0))
+      : Math.max(0, Number(l.price || 0) * Number(l.quantity || 1) - Number(l.discount || 0))
   const newTotal = lines.reduce((sum, l) => sum + worth(l), 0)
   const hasLab = lines.some((l) => l.type === 'test' || l.type === 'package')
   const dueTotal = due.reduce((sum, b) => sum + b.due, 0)
@@ -140,6 +149,8 @@ export function ChargePanel({ patient, appointmentId, doctor, advised, services,
           .filter((l) => l.type === 'service' || l.type === 'typed')
           .map((l) => ({ service_id: l.type === 'service' ? l.id : null, description: l.type === 'typed' ? l.name : null, unit_price: l.price === '' ? null : l.price, quantity: l.quantity || 1, line_discount: l.discount || 0 })),
         test_ids: lines.filter((l) => l.type === 'test').map((l) => l.id),
+        // Only the tests wanted more than once need saying.
+        test_counts: Object.fromEntries(lines.filter((l) => l.type === 'test' && times(l) > 1).map((l) => [l.id, times(l)])),
         package_ids: lines.filter((l) => l.type === 'package').map((l) => l.id),
         referred_by: hasLab ? referredBy.trim() || null : null,
         ...(discounted ? whyFields(why) : {}),
@@ -251,16 +262,40 @@ export function ChargePanel({ patient, appointmentId, doctor, advised, services,
                     <td>
                       {l.name} <span className={`pill ${lab ? 'status-ongoing' : 'status-booked'}`}>{TAG[l.type]}</span>
                     </td>
-                    <td className="num">{lab ? '' : <input className="qty" type="number" min={1} value={l.quantity} onChange={(e) => change(l.key, { quantity: e.target.value })} aria-label={`Quantity of ${l.name}`} />}</td>
+                    <td className="num">
+                      {l.type === 'package' ? (
+                        ''
+                      ) : (
+                        <input
+                          className="qty"
+                          type="number"
+                          min={1}
+                          max={l.type === 'test' ? MOST_TIMES : undefined}
+                          value={l.quantity}
+                          onChange={(e) => change(l.key, { quantity: e.target.value })}
+                          aria-label={`Quantity of ${l.name}`}
+                          title={l.type === 'test' ? 'How many times this test is done today. Each time gets its own report in the lab.' : undefined}
+                        />
+                      )}
+                    </td>
                     <td className="num">
                       {lab ? (
-                        covered ? '' : rupees(Number(l.price))
+                        covered && times(l) === 1 ? '' : rupees(Number(l.price))
                       ) : (
                         <input className="qty" type="number" min={0} step="0.01" value={l.price} disabled={l.type === 'service' && !user?.can_change_price} onChange={(e) => change(l.key, { price: e.target.value })} aria-label={`Price of ${l.name}`} />
                       )}
                     </td>
                     <td className="num">{lab ? '' : <input className="qty" type="number" min={0} step="0.01" placeholder="0" value={l.discount} onChange={(e) => change(l.key, { discount: e.target.value })} aria-label={`Discount on ${l.name}`} />}</td>
-                    <td className="num">{covered ? <small className="muted">in package</small> : rupees(worth(l))}</td>
+                    <td className="num">
+                      {covered && times(l) === 1 ? (
+                        <small className="muted">in package</small>
+                      ) : (
+                        <>
+                          {rupees(worth(l))}
+                          {covered && <small className="muted block">1 in package</small>}
+                        </>
+                      )}
+                    </td>
                     <td className="num">
                       <button type="button" className="link danger" onClick={() => setLines((list) => list.filter((x) => x.key !== l.key))} aria-label={`Remove ${l.name}`}>
                         Remove

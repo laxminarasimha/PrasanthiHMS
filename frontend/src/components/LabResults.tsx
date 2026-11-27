@@ -6,6 +6,7 @@ import { clock, longDate, STAGE_CLASS, STAGE_LABEL } from '../format'
 import type { LabOrder, LabOrderFile, LabOrderItem, LabSettings } from '../types'
 import { flagFor } from './labFlag'
 import { PatientLink } from './PatientLink'
+import { testLabel } from '../labName'
 
 type Props = {
   orderId: number
@@ -266,11 +267,11 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
                   className="auto"
                   checked={!skip.includes(item.id)}
                   onChange={() => setSkip((ids) => (ids.includes(item.id) ? ids.filter((i) => i !== item.id) : [...ids, item.id]))}
-                  aria-label={`Print ${item.test_name}`}
+                  aria-label={`Print ${testLabel(item)}`}
                   title="Include in the printed report"
                 />
               )}
-              <strong>{item.test_name}</strong>
+              <strong>{testLabel(item)}</strong>
               {item.sample_type && <small className="muted"> · {item.sample_type}</small>}
               {item.package_name && <small className="muted"> · {item.package_name}</small>}
               {item.outside_lab && <small className="outside-lab"> · Done at {item.outside_lab}</small>}
@@ -310,7 +311,7 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
                 value={draft.text}
                 disabled={locked}
                 onChange={(e) => setDraft(item.id, { text: e.target.value })}
-                aria-label={`Report for ${item.test_name}`}
+                aria-label={`Report for ${testLabel(item)}`}
               />
             ) : (
               <table className="compact">
@@ -377,7 +378,7 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
               value={draft.remarks}
               disabled={locked}
               onChange={(e) => setDraft(item.id, { remarks: e.target.value })}
-              aria-label={`Comment for ${item.test_name}`}
+              aria-label={`Comment for ${testLabel(item)}`}
             />
             {canEdit && outside?.itemId === item.id && (
               <div className="outside-edit">
@@ -469,7 +470,7 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
                 </button>
                 <small className="muted">
                   {' '}
-                  {order.items.find((i) => i.id === f.lab_order_item_id)?.test_name ?? 'Whole order'} · {Math.max(1, Math.round(f.size / 1024))} KB
+                  {((of) => (of ? testLabel(of) : 'Whole order'))(order.items.find((i) => i.id === f.lab_order_item_id))} · {Math.max(1, Math.round(f.size / 1024))} KB
                   {f.uploader ? ` · ${f.uploader.name}` : ''} · {longDate(f.created_at)}
                 </small>
               </span>
@@ -489,7 +490,7 @@ export function LabResults({ orderId, onClose, onChange }: Props) {
               <option value="">Whole order</option>
               {order.items.map((i) => (
                 <option key={i.id} value={i.id}>
-                  {i.test_name}
+                  {testLabel(i)}
                 </option>
               ))}
             </select>

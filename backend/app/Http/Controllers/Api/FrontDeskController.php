@@ -207,7 +207,7 @@ class FrontDeskController extends Controller
             'visits' => Appointment::where('patient_id', $patient->id)->with(['doctor:id,name', 'service:id,name', 'consultation:id,appointment_id,diagnosis,completed_at'])
                 ->latest('scheduled_at')->limit(50)->get(),
             'bills' => $bills,
-            'lab_orders' => LabOrder::where('patient_id', $patient->id)->with('items:id,lab_order_id,test_name,reported_at')->latest('ordered_at')->limit(30)->get(),
+            'lab_orders' => LabOrder::where('patient_id', $patient->id)->with('items:id,lab_order_id,test_name,repeat_no,reported_at')->latest('ordered_at')->limit(30)->get(),
             'pharmacy_bills' => PharmacySale::where('patient_id', $patient->id)->whereNull('voided_at')->latest('sold_at')->limit(30)->get(),
             'admissions' => Admission::where('patient_id', $patient->id)->with(['doctor:id,name', 'bed:id,ward,bed_no'])->latest('admitted_at')->limit(20)->get(),
             'attachments' => Attachment::where('patient_id', $patient->id)->whereNull('past_record_id')->with('uploader:id,name')->latest('document_date')->get(),
