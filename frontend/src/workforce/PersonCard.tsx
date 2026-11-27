@@ -1,3 +1,4 @@
+import { useAuth } from '../auth'
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, fieldErrors } from '../api'
@@ -24,6 +25,7 @@ const days = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`
  * someone who may see it, and pay is never here. Closing it leaves the page behind exactly as it was.
  */
 export function PersonCard({ id, onClose, onChanged }: { id: number; onClose: () => void; /** After a check-in or check-out made here, so the page behind can catch up. */ onChanged?: () => void }) {
+  const managesLogins = Boolean(useAuth().user?.can_manage_staff)
   const [card, setCard] = useState<Card | null>(null)
   const [failed, setFailed] = useState('')
   const [busy, setBusy] = useState(false)
@@ -68,9 +70,16 @@ export function PersonCard({ id, onClose, onChanged }: { id: number; onClose: ()
       onClose={onClose}
       foot={
         p && (
-          <Link className="btn" to={`/workforce/staff?person=${p.id}`} onClick={onClose}>
-            {card?.can.edit ? 'Open full record to change it' : 'Open full record'}
-          </Link>
+          <>
+            {managesLogins && p.login && p.login.signs_in !== false && (
+              <Link className="btn ghost" to={`/workforce/staff?person=${p.id}&part=login`} onClick={onClose} title="Set a new password or PIN for someone who forgot theirs, or change what they may do">
+                {p.login.sign_in_with === 'pin' ? 'Login and PIN' : 'Login and password'}
+              </Link>
+            )}
+            <Link className="btn" to={`/workforce/staff?person=${p.id}`} onClick={onClose}>
+              {card?.can.edit ? 'Open full record to change it' : 'Open full record'}
+            </Link>
+          </>
         )
       }
     >

@@ -307,6 +307,33 @@ class StaffController extends Controller
         return response()->json(['starting_pin' => $pin]);
     }
 
+    /**
+     * A new password for someone who forgot theirs, set by those who manage logins. Nobody can read the old one: it
+     * is not kept in a form that can be read. The new one is typed here or made at random, every device signed in
+     * as the person is signed out, a login closed by wrong tries is opened, and, unless it is said otherwise, the
+     * person must choose their own password the next time they sign in.
+     */
+    public function newPassword(Request $request, User $staff): JsonResponse
+    {
+        abort_unless($request->user()->allows('canManageStaff'), 403, 'Only those who manage logins can set a new password.');
+        abort_if($staff->is($request->user()), 422, 'Change your own password under My account.');
+        $this->onlyAdminsTouchAdmins($request, $staff, $staff->role->value);
+        abort_if($staff->usesPin(), 422, 'This login is opened with a PIN. Give a new starting PIN instead.');
+        abort_unless($staff->signsIn(), 422, 'This person does not sign in. Give them a password under Login and access first.');
+        $data = $request->validate(['password' => ['nullable', ...$this->secretRule(false)], 'must_change' => ['sometimes', 'boolean']]);
+
+        $made = blank($data['password'] ?? null);
+        $password = $made ? StaffLogin::startingPassword() : $data['password'];
+        $mustChange = $data['must_change'] ?? true;
+        $staff->update(['password' => $password, 'must_change_secret' => $mustChange]);
+        $staff->tokens()->delete();
+        SignInGuard::clear('staff', StaffLogin::guardKey($staff));
+        AuditLog::record('staff.password_reset', null, $staff, "{$staff->name} · A new password was set".($mustChange ? '; they choose their own at next sign-in' : ''));
+
+        // Sent back only when it was made here: the one typed is already known to whoever typed it.
+        return response()->json(['starting_password' => $made ? $password : null, 'must_change' => $mustChange, 'is_active' => (bool) $staff->is_active]);
+    }
+
     private function make(Request $request): User
     {
         $pin = $request->input('role') === Role::Staff->value;

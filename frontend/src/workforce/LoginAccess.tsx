@@ -56,13 +56,18 @@ function PermissionHistory({ loginId }: { loginId: number }) {
 }
 
 /** A starting PIN just made: shown this once, for whoever is at the screen to hand to the person. */
-export function PinSlip({ name, mobile, pin, onDone }: { name: string; mobile: string | null; pin: string; onDone: () => void }) {
+export function PinSlip({ name, mobile, pin, onDone, password }: { name: string; mobile: string | null; pin: string; onDone: () => void; /** Set when what is handed over is a password: how they sign in, and whether they must choose their own next. */ password?: { email: string | null; mustChange: boolean } }) {
+  const with_ = [mobile ? `their mobile number ${mobile}` : '', password?.email ? `their email ${password.email}` : ''].filter(Boolean).join(' or ') || 'their mobile number'
   return (
-    <div className="pin-slip" role="alert">
-      <span>Starting PIN for {name}</span>
+    <div className={`pin-slip${password ? ' is-password' : ''}`} role="alert">
+      <span>
+        {password ? 'New password' : 'Starting PIN'} for {name}
+      </span>
       <strong className="mono">{pin}</strong>
       <p>
-        Tell them now: it is shown only this once. They sign in with their mobile number{mobile ? ` ${mobile}` : ''} and this PIN, and then choose a PIN of their own.
+        {password
+          ? `Tell them now: it is shown only this once, and nobody can look it up afterwards. They sign in with ${with_} and this password${password.mustChange ? ', and then choose a password of their own' : ''}. Their old password no longer works and their devices are signed out.`
+          : `Tell them now: it is shown only this once. They sign in with their mobile number${mobile ? ` ${mobile}` : ''} and this PIN, and then choose a PIN of their own.`}
       </p>
       <button type="button" className="btn" onClick={onDone}>
         Done, I have told them
@@ -86,6 +91,8 @@ export function LoginAccess({ person, loginId, onChanged }: { person?: Employee;
   const [login, setLogin] = useState<Login | null>(null)
   const [failed, setFailed] = useState('')
   const [pin, setPin] = useState('')
+  // A new password just set for someone who forgot theirs: shown once, like a starting PIN.
+  const [given, setGiven] = useState<{ password: string; mustChange: boolean } | null>(null)
 
   useEffect(() => {
     if (manages) api.get<Catalogue>('/staff/catalogue').then((res) => setCatalogue(res.data))
@@ -109,6 +116,21 @@ export function LoginAccess({ person, loginId, onChanged }: { person?: Employee;
     }
   }
 
+  if (given) {
+    return (
+      <PinSlip
+        name={person?.name ?? login?.name ?? 'this person'}
+        mobile={person?.phone ?? login?.phone ?? null}
+        pin={given.password}
+        password={{ email: login?.email ?? null, mustChange: given.mustChange }}
+        onDone={() => {
+          setGiven(null)
+          onChanged()
+          load()
+        }}
+      />
+    )
+  }
   if (pin) {
     return (
       <PinSlip
@@ -159,11 +181,76 @@ export function LoginAccess({ person, loginId, onChanged }: { person?: Employee;
   return (
     <>
       {failed && <div className="form-error">{failed}</div>}
-      <LoginForm key={`${login.id}-${login.role}-${login.is_active}-${login.sign_in_with}`} login={login} person={person} catalogue={catalogue} isAdmin={isAdmin} seesPay={Boolean(user?.can_pay_consultants)} isSelf={login.id === user?.id} mine={user?.abilities ?? {}} onNewPin={() => void newPin()} onSaved={(saved, message) => {
+      <LoginForm key={`${login.id}-${login.role}-${login.is_active}-${login.sign_in_with}`} login={login} person={person} catalogue={catalogue} isAdmin={isAdmin} seesPay={Boolean(user?.can_pay_consultants)} isSelf={login.id === user?.id} mine={user?.abilities ?? {}} onNewPin={() => void newPin()} onNewPassword={(password, mustChange) => setGiven({ password, mustChange })} onSaved={(saved, message) => {
         setLogin(saved)
         onChanged(message)
       }} />
     </>
+  )
+}
+
+/**
+ * A new password for someone who forgot theirs. The old one cannot be looked up by anyone. The one who manages
+ * logins types a new one, or leaves the box empty for one made at random, and it is shown once to hand over.
+ */
+function ForgottenPassword({ loginId, name, blocked, onSet }: { loginId: number; name: string; /** An admin's login, opened by someone who is not an admin. */ blocked: boolean; onSet: (password: string, mustChange: boolean) => void }) {
+  const [open, setOpen] = useState(false)
+  const [password, setPassword] = useState('')
+  const [mustChange, setMustChange] = useState(true)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const set = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      const res = await api.post<{ starting_password: string | null; must_change: boolean }>(`/staff/${loginId}/new-password`, { password: password || null, must_change: mustChange })
+      onSet(res.data.starting_password ?? password, res.data.must_change)
+    } catch (err) {
+      setError(Object.values(fieldErrors(err))[0] ?? 'That did not work. Try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (blocked) return <p className="muted small">Only an admin can set a new password for an admin.</p>
+  if (!open) {
+    return (
+      <p>
+        <button type="button" className="btn" onClick={() => setOpen(true)}>
+          Forgotten password: set a new one
+        </button>
+      </p>
+    )
+  }
+  return (
+    <div
+      className="forgotten-password"
+      onKeyDown={(e) => {
+        // The page around this is a form of its own: Enter here sets the password and does not save the page.
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          if (!busy) void set()
+        }
+      }}
+    >
+      <strong>A new password for {name}</strong>
+      <p className="muted small">Nobody can see their present password, so a forgotten one is replaced. Their present password stops working and their devices are signed out.</p>
+      <TextField label="New password" value={password} onChange={setPassword} placeholder="Leave empty to have one made for you" autoComplete="off" error={error} />
+      <p className="muted small">At least 8 letters and numbers.</p>
+      <label className="check flush">
+        <input type="checkbox" checked={mustChange} onChange={(e) => setMustChange(e.target.checked)} />
+        They must choose their own password when they next sign in
+      </label>
+      <div className="forgotten-foot">
+        <button type="button" className="btn primary" disabled={busy} onClick={() => void set()}>
+          {busy ? 'Setting…' : 'Set the new password'}
+        </button>
+        <button type="button" className="btn ghost" disabled={busy} onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -227,7 +314,7 @@ function GiveLogin({ person, catalogue, manages, onGiven }: { person: Employee; 
 }
 
 /** A login that exists: how it is opened, the role, what the person may do, and a doctor's own settings. */
-function LoginForm({ login, person, catalogue, isAdmin, seesPay, isSelf, mine, onNewPin, onSaved }: { login: Login; person?: Employee; catalogue: Catalogue; isAdmin: boolean; /** May see and set a doctor's share: those who look after consultants' fees. */ seesPay: boolean; isSelf: boolean; mine: Record<string, boolean>; onNewPin: () => void; onSaved: (saved: Login, message: string) => void }) {
+function LoginForm({ login, person, catalogue, isAdmin, seesPay, isSelf, mine, onNewPin, onNewPassword, onSaved }: { login: Login; person?: Employee; catalogue: Catalogue; isAdmin: boolean; /** May see and set a doctor's share: those who look after consultants' fees. */ seesPay: boolean; isSelf: boolean; mine: Record<string, boolean>; onNewPin: () => void; onNewPassword: (password: string, mustChange: boolean) => void; onSaved: (saved: Login, message: string) => void }) {
   const { roles, abilities } = catalogue
   const [part, setPart] = useState<Part>('sign-in')
   const [form, setForm] = useState({ name: login.name, phone: login.phone ?? '', gender: login.gender ?? '', email: login.email ?? '', password: '', role: login.role, signature_text: login.signature_text ?? '', is_active: login.is_active })
@@ -251,6 +338,8 @@ function LoginForm({ login, person, catalogue, isAdmin, seesPay, isSelf, mine, o
   const wasOwn = login.role === OWN_RECORD
   // A doctor who is on the hospital's lists and has no way to sign in. A password typed here gives them one.
   const none = login.sign_in_with === 'none'
+  // Someone else's login that is, and stays, opened with a password: a forgotten one is replaced in its own step.
+  const forgotten = !own && !wasOwn && !none && !isSelf
   const set = (key: keyof typeof form) => (value: string) => {
     setForm((f) => ({ ...f, [key]: value }))
     // A new role starts from that role's usual permissions.
@@ -370,7 +459,7 @@ function LoginForm({ login, person, catalogue, isAdmin, seesPay, isSelf, mine, o
             )}
             {isSelf ? <TextField label="Role" value={roles.find((r) => r.value === form.role)?.label ?? form.role} onChange={() => undefined} disabled title="You cannot change your own role" /> : <SelectField label="Role" required value={form.role} onChange={set('role')} options={roles.filter((r) => r.value !== 'admin' || isAdmin || login.role === 'admin')} error={errors.role} />}
             {!own && <TextField label="Login email (optional)" type="email" placeholder="Without one, they sign in with the mobile number" value={form.email} onChange={set('email')} error={errors.email} autoComplete="off" />}
-            {own === wasOwn && own ? null : (
+            {(own === wasOwn && own) || forgotten ? null : (
               <TextField
                 label={own ? 'Starting PIN' : none ? 'Password, to let them sign in' : wasOwn ? 'Password' : 'New password'}
                 required={own !== wasOwn}
@@ -386,6 +475,7 @@ function LoginForm({ login, person, catalogue, isAdmin, seesPay, isSelf, mine, o
           </div>
           {person && errors.phone && <p className="form-error">{errors.phone}</p>}
           {own !== wasOwn && <p className="muted small">{own ? 'An own-record login is opened with a PIN, so a starting PIN is needed. Their password stops working.' : 'This role is opened with a password, so one is needed. Their PIN stops working.'}</p>}
+          {forgotten && <ForgottenPassword loginId={login.id} name={person?.name ?? login.name} blocked={!isAdmin && login.role === 'admin'} onSet={onNewPassword} />}
           {own && wasOwn && !isSelf && (
             <p>
               <button type="button" className="btn" onClick={onNewPin}>

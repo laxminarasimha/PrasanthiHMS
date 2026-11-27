@@ -263,3 +263,13 @@ Added 25 November 2026. The owner: the desk only books an appointment for the pa
 - **Moved at the desk** to a day or doctor where it is no longer within the days, a follow-up is refused: cancel it and book a new appointment, which is charged.
 - **The days** are the hospital's own: Setup → Billing preferences → "Free follow-up" (`follow_up_days` in the `billing` settings, 15 to begin with, 0 switches the rule off).
 - Visits from before this was added are all treated as consultations.
+
+## A forgotten password
+
+Added 27 November 2026. The owner: the administrator should be able to set a new password for any member of staff who forgets theirs.
+
+- **Where:** Staff → the person → "Login and password" (or Login and access) → "Forgotten password: set a new one". For a login not yet joined to a staff record, the same button is on the login opened from the staff check.
+- **What it does** (`POST /staff/{id}/new-password`, `StaffController::newPassword`): the one who manages logins types a new password, or leaves the box empty and one is made at random (`StaffLogin::startingPassword()`, easy to read out). It is shown once on a slip to hand over. The old password stops working, every device signed in as the person is signed out, and a login closed by wrong tries is opened.
+- **Choosing their own:** unless the tick is taken off, the person must choose their own password the next time they sign in (`must_change_secret`, the same rule as a starting PIN). An installed phone app from before 25 November 2026 does not show that step: the person signs in once on the website first.
+- **Nobody can read a password.** They are kept only in a form that cannot be read back, so there is no "show password"; a forgotten one is always replaced.
+- **Who may:** those who manage logins. Only an admin for an admin's login. Nobody for their own (that is under My account). A PIN login has its own "Forgotten PIN" button, which HR may also use.

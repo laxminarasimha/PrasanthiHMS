@@ -574,6 +574,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
     Route::post('/staff/for-all', [StaffController::class, 'storeForAll'])->middleware('throttle:6,1');
     Route::put('/staff/doctor-for/{employee}', [StaffController::class, 'doctorFor'])->whereNumber('employee');
     Route::post('/staff/{staff}/starting-pin', [StaffController::class, 'startingPin'])->whereNumber('staff');
+    Route::post('/staff/{staff}/new-password', [StaffController::class, 'newPassword'])->whereNumber('staff');
 });
 
 // ---- Workforce: staff records, attendance, leave, payroll, advances and expenses (routes/workforce.php) ----
