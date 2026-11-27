@@ -130,7 +130,8 @@ export function StaffDirectory() {
   useEffect(() => {
     if (!wanted || !staff) return
     const show = (person: Employee) => {
-      open(person)
+      // "Login and password" from that window goes straight to the person's login.
+      open(person, search.get('part') === 'login' ? 'login' : 'details')
       setSearch({}, { replace: true })
     }
     const found = staff.find((s) => s.id === wanted)

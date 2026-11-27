@@ -2177,3 +2177,10 @@ tr.cancelled td { color: var(--muted); }
 .follow-up-note strong { color: var(--ok); }
 .follow-up-note p { margin: 4px 0 8px; font-size: 0.88rem; }
 .pill.follow-up { margin-right: 6px; white-space: nowrap; }
+
+/* A forgotten password replaced from the login page: the step, and the slip that shows the new one. */
+.forgotten-password { display: grid; gap: 6px; margin: 4px 0 14px; padding: 12px 14px; border: 1px solid var(--accent-line); border-radius: 10px; background: var(--accent-soft); }
+.forgotten-password p { margin: 0; }
+.forgotten-password .field { max-width: 340px; }
+.forgotten-foot { display: flex; gap: 8px; margin-top: 6px; }
+.pin-slip.is-password strong { font-size: 1.6rem; letter-spacing: 0.12em; word-break: break-all; }

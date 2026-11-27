@@ -126,6 +126,19 @@ final class StaffLogin
             || ($user?->login_mobile && str_ends_with($user->login_mobile, $pin));
     }
 
+    /**
+     * A starting password to hand to a person who forgot theirs: random, easy to read out and to type on a phone
+     * (no letters or digits that are mistaken for each other), and within the rule for a password.
+     */
+    public static function startingPassword(): string
+    {
+        $letters = 'abcdefghjkmnpqrstuvwxyz';
+        $digits = '23456789';
+        $pick = fn (string $from, int $many) => implode('', array_map(fn () => $from[random_int(0, strlen($from) - 1)], range(1, $many)));
+
+        return $pick($letters, 4).$pick($digits, 2).$pick($letters, 4).$pick($digits, 2);
+    }
+
     /** A starting PIN to hand to a person: random, and not one of the easy ones. */
     public static function startingPin(?User $user = null): string
     {

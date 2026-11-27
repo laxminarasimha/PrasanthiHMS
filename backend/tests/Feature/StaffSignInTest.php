@@ -409,4 +409,45 @@ class StaffSignInTest extends TestCase
         Sanctum::actingAs($nurseLogin);
         $this->getJson("/api/workforce/employees/{$doc->id}/card")->assertForbidden();
     }
+
+    public function test_a_forgotten_password_is_replaced_by_those_who_manage_logins(): void
+    {
+        $admin = $this->user('admin');
+        $nurse = $this->user('nurse', ['phone' => '98480 12345']);
+        $token = $this->postJson('/api/login', ['login' => '9848012345', 'password' => 'password'])->assertOk()->json('token');
+
+        // A password made by the system: shown once, and to be replaced by the person at their next sign-in.
+        Sanctum::actingAs($admin);
+        $made = $this->postJson("/api/staff/{$nurse->id}/new-password")->assertOk()->assertJsonPath('must_change', true)->json('starting_password');
+        $this->assertMatchesRegularExpression('/^[a-z]{4}[2-9]{2}[a-z]{4}[2-9]{2}$/', $made);
+        $this->assertSame(0, $nurse->tokens()->count());
+        $this->app['auth']->forgetGuards();
+        $this->withHeader('Authorization', "Bearer {$token}")->getJson('/api/me')->assertStatus(401);
+        $this->withHeaders(['Authorization' => ''])->postJson('/api/login', ['login' => '9848012345', 'password' => 'password'])->assertStatus(422);
+        $again = $this->postJson('/api/login', ['login' => '9848012345', 'password' => $made])->assertOk()->assertJsonPath('user.must_change_secret', true)->json('token');
+        $this->app['auth']->forgetGuards();
+        $this->withHeader('Authorization', "Bearer {$again}")->getJson('/api/patients')->assertStatus(403);
+        $this->withHeader('Authorization', "Bearer {$again}")->postJson('/api/me/password', ['current_password' => $made, 'password' => 'MyOwnWord77', 'password_confirmation' => 'MyOwnWord77'])->assertOk();
+        $this->assertFalse($nurse->fresh()->must_change_secret);
+
+        // One typed by the admin, to be kept as it is. It is not sent back.
+        $this->app['auth']->forgetGuards();
+        $this->withHeaders(['Authorization' => '']);
+        Sanctum::actingAs($admin);
+        $this->postJson("/api/staff/{$nurse->id}/new-password", ['password' => 'short'])->assertStatus(422)->assertJsonValidationErrors('password');
+        $this->postJson("/api/staff/{$nurse->id}/new-password", ['password' => 'Hospital2026', 'must_change' => false])->assertOk()->assertJsonPath('starting_password', null);
+        $this->assertSame([true, false], [Hash::check('Hospital2026', $nurse->fresh()->password), $nurse->fresh()->must_change_secret]);
+
+        // Not for one's own login, a PIN login or a doctor who does not sign in; and not by those who cannot manage logins.
+        $this->postJson("/api/staff/{$admin->id}/new-password")->assertStatus(422);
+        $this->postJson('/api/staff/'.$this->wardStaff()->id.'/new-password')->assertStatus(422);
+        $this->postJson('/api/staff/'.$this->user('doctor', ['sign_in_with' => 'none'])->id.'/new-password')->assertStatus(422);
+        $manager = $this->user('manager');
+        $manager->forceFill(['permissions' => ['canManageStaff' => true]])->save();
+        Sanctum::actingAs($manager->fresh());
+        $this->postJson("/api/staff/{$nurse->id}/new-password")->assertOk();
+        $this->postJson("/api/staff/{$admin->id}/new-password")->assertStatus(422)->assertJsonValidationErrors('role');
+        Sanctum::actingAs($this->user('hr'));
+        $this->postJson("/api/staff/{$nurse->id}/new-password")->assertStatus(403);
+    }
 }
