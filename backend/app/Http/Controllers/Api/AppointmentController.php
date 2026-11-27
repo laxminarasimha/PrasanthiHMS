@@ -307,7 +307,12 @@ class AppointmentController extends Controller
             $data['arrived_at'] = now();
         }
 
+        // A patient who was booked earlier and has now come: their doctor is told.
+        $justArrived = ($data['status'] ?? null) === 'arrived' && $appointment->status === 'booked';
         $appointment->update($data);
+        if ($justArrived) {
+            PhoneNotice::patientArrived($appointment, $request->user()->id);
+        }
 
         return response()->json($appointment->load(self::WITH)->load(self::extras()));
     }

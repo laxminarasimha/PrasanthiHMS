@@ -70,7 +70,7 @@ export function PushHint() {
   return (
     <div className="install-hint no-print">
       <div>
-        <strong>Get a notification when an appointment is added for you</strong>
+        <strong>Get notified of new appointments and patients arriving</strong>
         <span>It reaches this device even when the app is closed. You can switch it off any time under Profile.</span>
         {note && <span className="install-steps">{note}</span>}
       </div>
@@ -108,7 +108,7 @@ export function PushSettings() {
     <>
       <h3>Notifications</h3>
       <p className="muted small">
-        When the front desk adds an appointment for you, or a patient books one from the patient app, this device is notified, even with the app closed. Each phone or computer is switched on by itself, and signing out switches it off there.
+        When the front desk adds an appointment for you, a booked patient arrives, or a patient books from the patient app, this device is notified, even with the app closed. Each phone or computer is switched on by itself, and signing out switches it off there.
       </p>
       {state === null ? (
         <p className="muted small">Checking this device…</p>

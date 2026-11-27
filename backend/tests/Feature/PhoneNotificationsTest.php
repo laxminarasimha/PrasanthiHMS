@@ -231,6 +231,54 @@ class PhoneNotificationsTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_the_doctor_is_told_when_a_booked_patient_arrives(): void
+    {
+        Http::fake(['*' => Http::response('', 201)]);
+        $doctor = User::factory()->create(['role' => 'doctor']);
+        $other = User::factory()->create(['role' => 'doctor']);
+        $this->switchOn($doctor);
+        $desk = User::factory()->create(['role' => 'frontdesk']);
+
+        Sanctum::actingAs($desk);
+        $visit = $this->book($doctor);
+        $old = Appointment::create(['patient_id' => Patient::factory()->create()->id, 'doctor_id' => $doctor->id, 'scheduled_at' => today()->subDay()->format('Y-m-d').' 10:30', 'status' => 'booked', 'token_no' => 1]);
+        Http::assertSentCount(1); // the booking itself
+
+        // A change that is not an arrival says nothing.
+        $this->putJson("/api/appointments/{$visit['id']}", ['notes' => 'Bring old reports'])->assertOk();
+        Http::assertSentCount(1);
+
+        $this->putJson("/api/appointments/{$visit['id']}", ['status' => 'arrived'])->assertOk()->assertJsonPath('status', 'arrived');
+        Http::assertSentCount(2);
+        $this->assertSame([
+            'title' => 'Patient waiting',
+            'body' => 'Sample Father Tester · has arrived · booked for 4:30 PM · Token 1',
+            'url' => '/doctor',
+            // The same mark as the booking's notice, so on the phone this one takes its place.
+            'tag' => 'appointment-'.$visit['id'],
+            'kind' => 'appointment',
+        ], $this->read(Http::recorded()[1][0]->body()));
+
+        // Said once: marking it again, or moving on from it, is silent. So is tidying up yesterday's visit.
+        $this->putJson("/api/appointments/{$visit['id']}", ['status' => 'arrived'])->assertOk();
+        $this->putJson("/api/appointments/{$visit['id']}", ['status' => 'ongoing'])->assertOk();
+        $this->putJson("/api/appointments/{$old->id}", ['status' => 'arrived'])->assertOk();
+        Http::assertSentCount(2);
+
+        // The doctor marking their own patient as here already knows.
+        $own = $this->book($doctor, ['scheduled_at' => today()->format('Y-m-d').' 17:15']);
+        Http::assertSentCount(3);
+        Sanctum::actingAs($doctor);
+        $this->putJson("/api/appointments/{$own['id']}", ['status' => 'arrived'])->assertOk();
+        Http::assertSentCount(3);
+
+        // A doctor who has not switched notifications on is sent nothing.
+        Sanctum::actingAs($desk);
+        $quiet = $this->book($other);
+        $this->putJson("/api/appointments/{$quiet['id']}", ['status' => 'arrived'])->assertOk();
+        Http::assertSentCount(3);
+    }
+
     public function test_a_test_notice_can_be_sent_to_the_device_in_hand(): void
     {
         Http::fake(['fcm.googleapis.com/*' => Http::sequence()->push('', 201)->push('', 500)->push('', 410)]);
