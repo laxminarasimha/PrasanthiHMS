@@ -13,6 +13,7 @@ import { PhraseChips } from '../components/PhraseChips'
 import { ReferralList } from '../components/ReferralList'
 import { clock, longDate, rupees, stampDate, stampTime, today } from '../format'
 import type { Consultation, DoctorLibrary, LabCatalogueTest, LabOrder, PhraseKind, PrescribedMedicine as Medicine, PrescriptionTemplate, RxGroup, Visit } from '../types'
+import { testLabel } from '../labName'
 
 const VITALS = [
   { key: 'weight_kg', label: 'Weight (kg)' },
@@ -794,7 +795,7 @@ export function VisitPad() {
             </summary>
             {o.items.map((item) => (
               <div key={item.id} className="lab-mini">
-                <b>{item.test_name}</b>
+                <b>{testLabel(item)}</b>
                 {item.reported_at ? (
                   <table className="compact">
                     <tbody>

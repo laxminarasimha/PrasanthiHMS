@@ -82,6 +82,51 @@ class FrontDeskChargesTest extends TestCase
         $this->postJson('/api/front-desk/charges', ['patient_id' => $other->id, 'test_ids' => [$cbp->id]])->assertCreated()->assertJsonCount(1, 'made')->assertJsonPath('due.0.kind', 'lab')->assertJsonPath('due.0.due', 350);
     }
 
+    public function test_a_lab_test_done_more_than_once_is_billed_that_many_times_and_reported_each_time(): void
+    {
+        $patient = Patient::factory()->create();
+        $cbp = LabTest::create(['name' => 'CBP', 'price' => 350]);
+        $cbp->parameters()->create(['name' => 'Haemoglobin']);
+        $fbs = LabTest::create(['name' => 'FBS', 'price' => 80]);
+        $fbs->parameters()->create(['name' => 'Fasting Blood Sugar']);
+        $rbs = LabTest::create(['name' => 'RBS', 'price' => 60]);
+        $rbs->parameters()->create(['name' => 'Random Blood Sugar']);
+        $package = LabPackage::create(['name' => 'Sugar check', 'price' => 100, 'is_active' => true]);
+        $package->tests()->sync([$fbs->id]);
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->postJson('/api/front-desk/charges', ['patient_id' => $patient->id, 'test_ids' => [$cbp->id], 'test_counts' => [$cbp->id => 40]])->assertStatus(422)->assertJsonValidationErrors("test_counts.{$cbp->id}");
+        $this->assertSame(0, LabOrder::count());
+
+        // CBP twice, RBS once (nothing said), and FBS three times with a package that already has it once.
+        $saved = $this->postJson('/api/front-desk/charges', [
+            'patient_id' => $patient->id, 'test_ids' => [$cbp->id, $fbs->id, $rbs->id], 'package_ids' => [$package->id],
+            'test_counts' => [$cbp->id => 2, $fbs->id => 3],
+        ])->assertCreated()->assertJsonCount(1, 'made')->json();
+
+        $bill = Bill::find($saved['made'][0]);
+        $this->assertSame(
+            [['Sugar check (package)', 1, 100.0], ['CBP', 2, 700.0], ['FBS', 2, 160.0], ['RBS', 1, 60.0]],
+            $bill->items->map(fn ($i) => [$i->description, (int) $i->quantity, (float) $i->amount])->all(),
+        );
+        $this->assertSame(1020.0, (float) $bill->total);
+
+        // The lab has a line for each time, with its own results to fill, numbered where there is more than one.
+        $items = LabOrder::first()->items()->with('results')->orderBy('id')->get();
+        $this->assertSame(
+            [['FBS', 1, 'Sugar check', 0.0], ['CBP', 1, null, 350.0], ['CBP', 2, null, 350.0], ['FBS', 2, null, 80.0], ['FBS', 3, null, 80.0], ['RBS', null, null, 60.0]],
+            $items->map(fn ($i) => [$i->test_name, $i->repeat_no, $i->package_name, (float) $i->price])->all(),
+        );
+        $this->assertSame([1, 1, 1, 1, 1, 1], $items->map(fn ($i) => $i->results->count())->all());
+        $this->assertSame(['CBP (1st)', 'CBP (2nd)', 'RBS'], [$items[1]->label(), $items[2]->label(), $items[5]->label()]);
+
+        // The lab's own order screen takes the same counts.
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $order = $this->postJson('/api/lab/orders', ['patient_id' => $patient->id, 'test_ids' => [$rbs->id], 'test_counts' => [$rbs->id => 3]])->assertCreated()->json();
+        $this->assertSame([1, 2, 3], array_column($order['items'], 'repeat_no'));
+        $this->assertSame(180.0, (float) Bill::find($order['bill_id'])->total);
+    }
+
     public function test_all_of_a_patients_bills_for_the_day_come_back_together(): void
     {
         $doctor = User::factory()->create(['role' => 'doctor', 'name' => 'Dr Sample']);

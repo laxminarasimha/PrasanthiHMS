@@ -5,6 +5,7 @@ import { ClinicFooter, ClinicHeader } from '../components/ClinicHeader'
 import { useSignature } from '../components/useSignature'
 import { clock, longDate, fullName } from '../format'
 import type { LabOrder, LabOrderItem, LabSettings } from '../types'
+import { nth } from '../labName'
 
 const stamp = (at: string) => `${longDate(at)}, ${clock(at)}`
 const earliest = (times: (string | null)[]) => (times.filter(Boolean) as string[]).sort()[0]
@@ -141,6 +142,7 @@ export function LabReportPrint() {
       <tr className="lab-test-name">
         <td colSpan={4}>
           {item.test_name}
+          {item.repeat_no ? ` (${nth(item.repeat_no)} sample)` : ''}
           {(item.sample_type || version(item) || processedAt(item)) && <small>{[item.sample_type ? `Sample: ${item.sample_type}` : '', processedAt(item), version(item)].filter(Boolean).join(' · ')}</small>}
         </td>
       </tr>

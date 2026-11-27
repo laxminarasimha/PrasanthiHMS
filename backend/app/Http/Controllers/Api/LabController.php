@@ -27,7 +27,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class LabController extends Controller
 {
-    private const ORDER_WITH = ['patient:id,uhid,title,name,gender,date_of_birth,mobile', 'items:id,lab_order_id,test_name,package_name,collected_at,reported_at,approved_at,outside_lab,sent_at'];
+    /** The most times one test may be put on one order. */
+    private const MOST_TIMES = 9;
+
+    private const ORDER_WITH = ['patient:id,uhid,title,name,gender,date_of_birth,mobile', 'items:id,lab_order_id,test_name,repeat_no,package_name,collected_at,reported_at,approved_at,outside_lab,sent_at'];
 
     // ---- Test catalogue ----
 
@@ -390,7 +393,10 @@ class LabController extends Controller
             'test_ids.*' => ['integer', 'distinct', Rule::exists('lab_tests', 'id')->where('is_active', true)],
             'package_ids' => ['nullable', 'array', 'max:20'],
             'package_ids.*' => ['integer', 'distinct', Rule::exists('lab_packages', 'id')->where('is_active', true)],
-        ], ['test_ids.required_without' => 'Choose at least one test or package.']);
+            // How many times a test is done on this order, by its id: a CBP repeated the same day is 2. Left out, it is once.
+            'test_counts' => ['nullable', 'array'],
+            'test_counts.*' => ['integer', 'between:1,'.self::MOST_TIMES],
+        ], ['test_ids.required_without' => 'Choose at least one test or package.', 'test_counts.*.between' => 'A test can be done 1 to '.self::MOST_TIMES.' times on one order.']);
 
         if (empty($data['test_ids']) && empty($data['package_ids'])) {
             throw ValidationException::withMessages(['test_ids' => 'Choose at least one test or package.']);
@@ -418,12 +424,10 @@ class LabController extends Controller
                 'created_by' => $user->id,
             ]);
 
+            // How many times each test is on this order so far.
             $added = [];
             $addTest = function (LabTest $test, ?string $package, float $price) use ($order, $patient, &$added) {
-                if (isset($added[$test->id])) {
-                    return; // already on this order, singly or through another package
-                }
-                $added[$test->id] = true;
+                $added[$test->id] = ($added[$test->id] ?? 0) + 1;
 
                 $item = $order->items()->create([
                     'lab_test_id' => $test->id,
@@ -454,22 +458,35 @@ class LabController extends Controller
 
             foreach (LabPackage::with('tests.parameters')->whereIn('id', $data['package_ids'] ?? [])->orderBy('name')->get() as $package) {
                 foreach ($package->tests as $test) {
-                    $addTest($test, $package->name, 0);
+                    if (! isset($added[$test->id])) { // once, even when two packages both have it
+                        $addTest($test, $package->name, 0);
+                    }
                 }
                 $bill->addLine($package->name.' (package)', $package->price);
             }
 
             foreach (LabTest::with('parameters')->whereIn('id', $data['test_ids'] ?? [])->orderBy('print_order')->orderBy('name')->get() as $test) {
-                if (! isset($added[$test->id])) {
+                // A test inside a chosen package is done once there: only the times beyond that are done and charged singly.
+                $more = (int) ($data['test_counts'][$test->id] ?? 1) - ($added[$test->id] ?? 0);
+                for ($n = 0; $n < $more; $n++) {
                     $addTest($test, null, $test->price);
-                    $bill->addLine($test->name, $test->price);
+                }
+                if ($more > 0) {
+                    $bill->addLine($test->name, $test->price, $more);
+                }
+            }
+
+            // A test that is on the order more than once is numbered, so the lab and the report tell the samples apart.
+            foreach ($order->items()->orderBy('id')->get()->groupBy('lab_test_id') as $same) {
+                if ($same->count() > 1) {
+                    $same->values()->each(fn (LabOrderItem $item, int $at) => $item->update(['repeat_no' => $at + 1]));
                 }
             }
 
             return $order;
         });
 
-        $made = $order->items()->get(['test_name', 'template_version'])->map(fn (LabOrderItem $i) => $this->withVersion($i))->implode(', ');
+        $made = $order->items()->get(['test_name', 'repeat_no', 'template_version'])->map(fn (LabOrderItem $i) => $this->withVersion($i))->implode(', ');
         AuditLog::record('lab.ordered', $order->patient_id, $order, "{$order->order_no} · {$made}");
 
         return response()->json($this->present($order), 201);
@@ -641,7 +658,7 @@ class LabController extends Controller
         if (! $waiting->exists()) {
             throw ValidationException::withMessages(['approved' => 'Nothing on this order is waiting for approval.']);
         }
-        $approved = (clone $waiting)->get(['test_name', 'template_version'])->map(fn (LabOrderItem $i) => $this->withVersion($i))->implode(', ');
+        $approved = (clone $waiting)->get(['test_name', 'repeat_no', 'template_version'])->map(fn (LabOrderItem $i) => $this->withVersion($i))->implode(', ');
         $waiting->update(['approved_at' => now(), 'approved_by' => $request->user()->id]);
         AuditLog::record('lab.approved', $order->patient_id, $order, "{$order->order_no} · {$approved}");
 
@@ -690,7 +707,7 @@ class LabController extends Controller
     /** A test named with the version of its template, as written in the record of who did what. */
     private function withVersion(LabOrderItem $item): string
     {
-        return $item->test_name.($item->template_version ? " (template version {$item->template_version})" : '');
+        return $item->label().($item->template_version ? " (template version {$item->template_version})" : '');
     }
 
     /** Signing off a result is its own permission: a person may enter results without being the one who approves them. */

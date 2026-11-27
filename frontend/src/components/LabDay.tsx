@@ -6,6 +6,7 @@ import type { LabOrder, LabSettings } from '../types'
 import { SelectField, TextField } from './Field'
 import { PatientLink } from './PatientLink'
 import { useBillingPreferences } from './useBillingPreferences'
+import { testLabel } from '../labName'
 
 type Props = {
   /** The patient's lab orders of one day, as the work list has them. The list refreshes them after every change. */
@@ -186,7 +187,7 @@ export function LabDay({ orders, settings, canRun, onClose, onChange, onOpenResu
                   {o.items.map((i) => (
                     <tr key={i.id} className="static">
                       <td className="wrap">
-                        <i className={`stage-dot ${STAGE_CLASS[i.stage]}`} aria-hidden="true" /> {i.test_name}
+                        <i className={`stage-dot ${STAGE_CLASS[i.stage]}`} aria-hidden="true" /> {testLabel(i)}
                         {i.outside_lab && !i.reported_at && <small className="outside-lab"> · {i.sent_at ? 'at' : 'for'} {i.outside_lab}</small>}
                       </td>
                       <td className="num muted">{STAGE_LABEL[i.stage]}</td>
