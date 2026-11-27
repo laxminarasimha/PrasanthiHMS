@@ -3,6 +3,7 @@ import type { AxiosError } from 'axios'
 import { api, getToken, onRefused, setToken, USER_KEY } from './api'
 import { setMayExport } from './format'
 import { applyAppearance } from './appearance'
+import { forgetPushOnSignOut } from './push'
 import type { User } from './types'
 
 type AuthState = {
@@ -118,6 +119,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signOut = async () => {
+    // While still signed in: this device stops being notified for this person.
+    await forgetPushOnSignOut().catch(() => undefined)
     await api.post('/logout').catch(() => undefined)
     setUser(null)
     setToken(null)

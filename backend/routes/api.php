@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\PharmacyManagerController;
 use App\Http\Controllers\Api\PharmacyReportController;
 use App\Http\Controllers\Api\PharmacySalesController;
 use App\Http\Controllers\Api\PharmacyStockController;
+use App\Http\Controllers\Api\PushController;
 use App\Http\Controllers\Api\RecordReaderController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ServiceController;
@@ -126,6 +127,11 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
     Route::post('/backups/files/done', [BackupController::class, 'filesDone']);
     Route::get('/backups/{name}/download', [BackupController::class, 'download']);
     Route::put('/me/tabs', [AuthController::class, 'saveTabs']);
+    // Notifications on the person's own phone or computer.
+    Route::get('/me/push/key', [PushController::class, 'key']);
+    Route::post('/me/push', [PushController::class, 'store'])->middleware('throttle:30,1');
+    Route::delete('/me/push', [PushController::class, 'destroy']);
+    Route::post('/me/push/test', [PushController::class, 'test'])->middleware('throttle:6,1');
     Route::put('/me/appearance', [AuthController::class, 'saveAppearance']);
     Route::post('/me/password', [AuthController::class, 'changePassword'])->middleware('throttle:10,1');
 

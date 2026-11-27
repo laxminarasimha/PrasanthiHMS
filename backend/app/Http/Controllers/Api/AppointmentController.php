@@ -16,6 +16,7 @@ use App\Support\DiscountWhy;
 use App\Support\DoctorFee;
 use App\Support\DoctorHours;
 use App\Support\FreeFollowUp;
+use App\Support\PhoneNotice;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -267,8 +268,10 @@ class AppointmentController extends Controller
 
             return $appointment;
         });
+        $appointment = $appointment->fresh();
+        PhoneNotice::appointmentAdded($appointment, $request->user()->id);
 
-        return response()->json($appointment->fresh()->load(self::WITH)->load(self::extras()), 201);
+        return response()->json($appointment->load(self::WITH)->load(self::extras()), 201);
     }
 
     public function update(Request $request, Appointment $appointment): JsonResponse

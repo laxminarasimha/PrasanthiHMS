@@ -16,6 +16,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Support\DoctorHours;
 use App\Support\GoogleIdToken;
+use App\Support\PhoneNotice;
 use App\Support\SignInGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -293,6 +294,8 @@ class PatientAppController extends Controller
                 'token_no' => (int) Appointment::where('doctor_id', $doctor->id)->whereDate('scheduled_at', $at->toDateString())->max('token_no') + 1,
             ]);
         });
+
+        PhoneNotice::appointmentAdded($appointment, null, true);
 
         return response()->json($this->presentAppointment($appointment->load(['doctor:id,name,department', 'patient:id,name'])), 201);
     }
