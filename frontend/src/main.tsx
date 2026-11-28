@@ -1,3 +1,5 @@
+// First of all: a phone that stops websites saving data must not stop the app from starting.
+import './storageGuard'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
@@ -6,6 +8,7 @@ import './unsaved'
 // Before the app: the browser may offer to install it before any screen is drawn.
 import './install'
 import App from './App.tsx'
+import { CrashScreen } from './components/CrashScreen'
 import { applyAppearance, remembered } from './appearance'
 
 // Wear the remembered look before anything is drawn, so the page does not flash the standard colours first.
@@ -28,6 +31,8 @@ if ('serviceWorker' in navigator) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <CrashScreen>
+      <App />
+    </CrashScreen>
   </StrictMode>,
 )

@@ -14,8 +14,15 @@
     <meta name="apple-mobile-web-app-title" content="Prasanthi" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Prasanthi HMS</title>
+    <!-- Before the app: if it cannot start on a phone, this says why instead of leaving a blank page. -->
+    <script src="/boot-check.js"></script>
   </head>
   <body>
+    <noscript>
+      <p style="font-family: system-ui, sans-serif; max-width: 560px; margin: 40px auto; padding: 0 20px; line-height: 1.5">
+        Prasanthi HMS needs JavaScript. In Chrome: Settings, then Site settings, then JavaScript: allow it for this site, and open the page again.
+      </p>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
