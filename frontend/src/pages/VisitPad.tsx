@@ -14,6 +14,7 @@ import { ReferralList } from '../components/ReferralList'
 import { clock, longDate, rupees, stampDate, stampTime, today } from '../format'
 import type { Consultation, DoctorLibrary, LabCatalogueTest, LabOrder, PhraseKind, PrescribedMedicine as Medicine, PrescriptionTemplate, RxGroup, Visit } from '../types'
 import { testLabel } from '../labName'
+import { LabOrderLink } from '../components/RecordLinks'
 
 const VITALS = [
   { key: 'weight_kg', label: 'Weight (kg)' },
@@ -806,7 +807,10 @@ export function VisitPad() {
           <details key={o.id} className="past" open={o.status !== 'pending' && labOrders[0].id === o.id}>
             <summary>
               <strong>{longDate(o.ordered_at)}</strong>
-              <span className="muted"> · {o.order_no} · </span>
+              <span className="muted">
+                {' · '}
+                <LabOrderLink id={o.id}>{o.order_no}</LabOrderLink> ·{' '}
+              </span>
               <span className={`pill ${o.status === 'completed' ? 'ok' : o.status === 'partial' ? 'status-ongoing' : 'status-arrived'}`}>
                 {o.status === 'completed' ? 'Ready' : o.status === 'partial' ? 'Partly ready' : 'Pending'}
               </span>

@@ -11,6 +11,7 @@ import { useBillingPreferences } from './useBillingPreferences'
 import { PatientLink } from './PatientLink'
 import { EarlierDate } from './EarlierDate'
 import { dayOf, earlier } from '../earlierDay'
+import { LabOrderLink } from './RecordLinks'
 
 type Props = {
   billId: number
@@ -193,7 +194,12 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
               {bill.patient.name}
             </PatientLink>{' '}
             · {bill.patient.uhid} · {KIND[bill.kind]}
-            {bill.lab_order ? ` · ${bill.lab_order.order_no}` : ''}
+            {bill.lab_order ? (
+              <>
+                {' · '}
+                <LabOrderLink id={bill.lab_order.id}>{bill.lab_order.order_no}</LabOrderLink>
+              </>
+            ) : null}
           </span>
           {bill.entered_at && (
             <small className="muted block">

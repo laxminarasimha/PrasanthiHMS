@@ -10,6 +10,7 @@ import { DateRange } from '../components/DateRange'
 import { fullName, rupees, settlement, stampDate, stampTime } from '../format'
 import type { BillKind, Patient, Service } from '../types'
 import { PatientLink } from '../components/PatientLink'
+import { LabOrderLink } from '../components/RecordLinks'
 
 type Row = {
   id: number
@@ -24,7 +25,7 @@ type Row = {
   cancel_reason?: string | null
   patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'title' | 'mobile'> | null
   appointment: { doctor: { name: string } | null } | null
-  lab_order: { order_no: string } | null
+  lab_order: { id: number; order_no: string } | null
 }
 
 const KINDS: [BillKind | '', string][] = [['', 'All'], ['appointment', 'Appointments'], ['lab', 'Lab'], ['other', 'Other services']]
@@ -133,7 +134,15 @@ export function AllBills() {
                   </td>
                   <td className="fit-wrap">
                     {KIND_LABEL[b.kind]}
-                    <small className="muted block">{b.lab_order ? `Order ${b.lab_order.order_no}` : (b.appointment?.doctor?.name ?? '')}</small>
+                    <small className="muted block">
+                      {b.lab_order ? (
+                        <>
+                          Order <LabOrderLink id={b.lab_order.id}>{b.lab_order.order_no}</LabOrderLink>
+                        </>
+                      ) : (
+                        (b.appointment?.doctor?.name ?? '')
+                      )}
+                    </small>
                   </td>
                   <td className="num">{rupees(b.total)}</td>
                   <td className="num">{rupees(b.paid)}</td>

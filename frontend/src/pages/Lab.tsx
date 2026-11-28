@@ -31,8 +31,15 @@ export function Lab() {
   const [settings, setSettings] = useState<LabSettings | null>(null)
   const approval = Boolean(settings?.approval_required)
   const [step, setStep] = useState<Step | ''>('')
-  const [panel, setPanel] = useState<Panel>(null)
+  // Opened from an order number elsewhere (/lab?open=ID): that order's results, once.
+  const [panel, setPanel] = useState<Panel>(() => {
+    const asked = Number(new URLSearchParams(window.location.search).get('open'))
+    return asked > 0 ? { kind: 'results', orderId: asked } : null
+  })
   const [notice, setNotice] = useState('')
+  useEffect(() => {
+    if (window.location.search.includes('open=')) window.history.replaceState(null, '', window.location.pathname)
+  }, [])
   const [busy, setBusy] = useState(0)
   // The time the list was last fetched: waiting times are counted up to it.
   const [asOf, setAsOf] = useState(0)

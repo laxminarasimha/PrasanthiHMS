@@ -11,6 +11,7 @@ import { ADMISSION_STATUS, STATUS_LABELS, clock, fullName, longDate, nowLocal, r
 import type { PatientOverview } from '../types'
 import { testLabel } from '../labName'
 import { DoctorLink } from '../components/DoctorLink'
+import { IpdLink, LabOrderLink } from '../components/RecordLinks'
 
 const KIND = { appointment: 'Appointment', lab: 'Lab', other: 'Other services' } as const
 /** How many rows of each list show before "Show all". */
@@ -130,7 +131,7 @@ export function PatientDashboard() {
         )}
         {admitted && (
           <p className="notice">
-            Admitted now · {admitted.ipd_no}
+            Admitted now · <IpdLink id={admitted.id}>{admitted.ipd_no}</IpdLink>
             {admitted.bed ? ` · ${admitted.bed.ward} bed ${admitted.bed.bed_no}` : ''} · since {longDate(admitted.admitted_at)} ·{' '}
             <Link className="link" to={`/ipd/${admitted.id}`}>
               Open the case
@@ -225,7 +226,9 @@ export function PatientDashboard() {
         <History title="Lab orders" rows={data.lab_orders} empty="No lab orders yet.">
           {(o) => (
             <tr key={o.id} className="static">
-              <td className="mono">{o.order_no}</td>
+              <td className="mono">
+                <LabOrderLink id={o.id}>{o.order_no}</LabOrderLink>
+              </td>
               <td>
                 {longDate(o.ordered_at)}
                 <small className="muted block">{o.items.map(testLabel).join(', ')}</small>

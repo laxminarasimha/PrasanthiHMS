@@ -5,6 +5,7 @@ import { LabOrderForm } from '../../components/LabOrderForm'
 import { clock, longDate } from '../../format'
 import { testLabel } from '../../labName'
 import type { Admission, LabCatalogueTest, LabOrder, LabPackage } from '../../types'
+import { LabOrderLink } from '../../components/RecordLinks'
 
 type Chart = {
   dates: string[]
@@ -95,7 +96,9 @@ export function IpdInvestigations({ admission, canOrder, onOrdered }: Props) {
           <ul>
             {awaited.map((o) => (
               <li key={o.id}>
-                <strong className="mono">{o.order_no}</strong>
+                <strong className="mono">
+                  <LabOrderLink id={o.id}>{o.order_no}</LabOrderLink>
+                </strong>
                 <small className="muted">
                   {longDate(o.ordered_at).replace(/ \d{4}$/, '')} {clock(o.ordered_at)}
                 </small>

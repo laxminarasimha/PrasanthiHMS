@@ -5,6 +5,7 @@ import { MedicineLink } from '../../components/MedicineLink'
 import { PatientLink } from '../../components/PatientLink'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { clock, longDate, placeLabel, rupees } from '../../format'
+import { StockistLink } from '../../components/RecordLinks'
 
 type Page = {
   medicine: {
@@ -154,7 +155,7 @@ export function MedicinePage() {
                       <li key={i}>
                         <Link to={`/pharmacy/purchases?invoice=${p.invoice_id}`}>{p.invoice_no}</Link>{' '}
                         <span className="muted">
-                          {p.on ? longDate(p.on) : ''} · {p.stockist} · {p.packs}
+                          {p.on ? longDate(p.on) : ''} · <StockistLink id={p.stockist_id}>{p.stockist}</StockistLink> · {p.packs}
                           {p.free_packs ? ` + ${p.free_packs} free` : ''} pack{p.packs === 1 ? '' : 's'} at {rupees(p.pack_price)} (MRP {rupees(p.pack_mrp)})
                         </span>
                       </li>
