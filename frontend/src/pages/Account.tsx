@@ -5,7 +5,8 @@ import { SecretForm } from '../components/SecretForm'
 import { GoogleButton } from '../components/GoogleButton'
 import { PushSettings } from '../components/PushControls'
 import { PhoneBarSettings } from '../components/PhoneBarSettings'
-import { getsNotices } from '../push'
+import { getsNotices } from '../notices'
+import { syncPush } from '../push'
 import { useBrand } from '../brand'
 import { THEMES, applyAppearance, type Appearance } from '../appearance'
 import { allowedTabs } from '../nav'
@@ -151,7 +152,14 @@ export function Account() {
 
       <h3>Change {word}</h3>
       {notice && <p className="notice">{notice}</p>}
-      <SecretForm pin={pin} onDone={() => setNotice(`Your ${word} is changed. Any other phone or computer signed in with your account has been signed out.`)} />
+      <SecretForm
+        pin={pin}
+        onDone={() => {
+          setNotice(`Your ${word} is changed. Any other phone or computer signed in with your account has been signed out.`)
+          // The server lets go of every device of theirs with the old one; this one, still signed in, is noted again.
+          if (user) void syncPush(user)
+        }}
+      />
       <p className="muted small">If you have forgotten your {word}, ask the hospital office to give you a new one.</p>
     </section>
   )

@@ -7,6 +7,7 @@ import { Popup } from '../components/Popup'
 import { SelectField, TextField } from '../components/Field'
 import { PAYMENT_MODES, longDate, modeLabel, rupees, today } from '../format'
 import { useLoadOnChange } from '../loading'
+import { useNotice } from '../notices'
 import { useChoiceInAddress, useRangeInAddress } from '../rangeInAddress'
 import { useUnsaved } from '../unsaved'
 import { saveFile } from '../workforce/sensitiveStep'
@@ -54,6 +55,9 @@ export function Expenses() {
   }, [from, to, query, list])
   // At once when the screen opens; after a short pause when a search or filter changes.
   useLoadOnChange(load)
+  // One of the person's expenses was approved or turned down while the list is open: it shows at once. An expense
+  // being written stays as it is.
+  useNotice(['expense'], load)
   const shown = data?.show === list ? data : null
   const vendors = useVendors()
 

@@ -7,7 +7,7 @@ import { PatientSearch } from '../components/PatientSearch'
 import { STATUS_LABELS, clock, longDate, today } from '../format'
 import type { Doctor, Patient, QueueEntry } from '../types'
 import { PatientLink } from '../components/PatientLink'
-import { ARRIVED } from '../push'
+import { useNotice } from '../notices'
 import { DoctorLink } from '../components/DoctorLink'
 
 /** Minutes since the patient arrived, shown only while they are still waiting. */
@@ -43,13 +43,11 @@ export function DoctorQueue() {
   useEffect(() => {
     load()
     const timer = setInterval(load, 30000)
-    // A notification about a new appointment has just reached this device: show the patient at once.
-    window.addEventListener(ARRIVED, load)
-    return () => {
-      clearInterval(timer)
-      window.removeEventListener(ARRIVED, load)
-    }
+    return () => clearInterval(timer)
   }, [load])
+  // A notification about an appointment, a report ready or a representative waiting has just reached this device:
+  // show it at once. Notices about tasks, leave and the like are not about this list.
+  useNotice(['appointment', 'lab', 'rep'], load)
 
   useEffect(() => {
     if (!isDoctor) api.get<Doctor[]>('/doctors').then((res) => setDoctors(res.data))

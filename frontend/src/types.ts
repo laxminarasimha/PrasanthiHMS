@@ -48,6 +48,11 @@ export type User = {
   bar_tabs?: string[]
   /** This person's own theme and text size. */
   appearance?: { theme: string; text: 'small' | 'normal' | 'large' }
+  /**
+   * The kinds of notice this login can be sent to a phone or computer, as the server works them out (see notices.ts).
+   * Empty: this login is never offered notices. Missing only in details saved on the device before the server sent it.
+   */
+  notices?: string[]
   branch: { id: number; name: string; city: string | null } | null
 }
 
@@ -712,6 +717,9 @@ export type DischargeSummary = {
   advice?: string | null
   follow_up_on: string | null
   approved_at: string | null
+  /** When it was sent to the admission's doctor as ready for approval ('Y-m-d H:i'), and by whom. Cleared when an approval is withdrawn. */
+  ready_at?: string | null
+  ready_by?: { id: number; name: string } | null
   preparer?: { id: number; name: string } | null
   approver?: { id: number; name: string; signature_text?: string | null } | null
 }

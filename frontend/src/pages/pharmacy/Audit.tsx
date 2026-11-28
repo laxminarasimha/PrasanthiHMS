@@ -4,6 +4,7 @@ import { api, fieldErrors } from '../../api'
 import { useAuth } from '../../auth'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { downloadCsv, expiryLabel, longDate, rupees, today } from '../../format'
+import { useNotice } from '../../notices'
 import { COUNT_STATUS, COUNT_STATUS_CLASS, stamp, type CountBrief, type CountFull } from './auditTypes'
 import { MedicineLink } from '../../components/MedicineLink'
 
@@ -129,9 +130,12 @@ function OverviewTab({ go }: { go: (tab: Tab, extra?: Record<string, string>) =>
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => {
+  const load = useCallback(() => {
     api.get<Overview>('/pharmacy/audit/overview').then((res) => setData(res.data))
   }, [])
+  useEffect(load, [load])
+  // A count handed in for approval while this is open: it joins the list waiting at once.
+  useNotice(['stock_count'], load)
 
   const spotCheck = async () => {
     setStarting(true)
@@ -310,14 +314,19 @@ function CountsTab({ auditor }: { auditor: boolean }) {
   const [starting, setStarting] = useState(false)
   const [show, setShow] = useState<'open' | 'approved' | 'all'>('open')
 
-  const load = useCallback(() => {
+  const loadCounts = useCallback(() => {
     api.get<CountBrief[]>('/pharmacy/audit/counts').then((res) => setCounts(res.data))
+  }, [])
+  useEffect(() => {
+    loadCounts()
     api.get<Scopes>('/pharmacy/audit/scopes').then((res) => {
       setScopes(res.data)
       setSize(String(res.data.spot_size))
     })
-  }, [])
-  useEffect(load, [load])
+  }, [loadCounts])
+  // A count handed in for approval while the list is open: it shows at once. Only the list is read again, so a count
+  // being set up here keeps what was chosen.
+  useNotice(['stock_count'], loadCounts)
 
   const start = async (e: FormEvent) => {
     e.preventDefault()
