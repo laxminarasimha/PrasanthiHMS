@@ -9,9 +9,11 @@ import { SelectField, TextField } from '../../components/Field'
 import { MedicinePick } from '../../components/MedicinePick'
 import { PatientPicker } from '../../components/PatientPicker'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
-import { PAYMENT_MODES, clock, daysUntil, expiryLabel, longDate, placeLabel, rupees } from '../../format'
+import { PAYMENT_MODES, clock, daysUntil, expiryLabel, longDate, placeLabel, rupees, today } from '../../format'
 import type { Patient, PharmacyInpatient, PharmacySale, PrescriptionForPharmacy, SellableMedicine } from '../../types'
 import { PharmacyDay } from '../../components/PharmacyDay'
+import { EarlierDate } from '../../components/EarlierDate'
+import { earlier } from '../../earlierDay'
 
 type Line = {
   batchId: number
@@ -183,6 +185,8 @@ export function PharmacyBilling() {
     else setError('No pharmacy bill has been made today yet. Older bills can be printed from All bills.')
   }
 
+  // The day the medicines were given, when a bill that was missed is entered later. Money taken with it counts on that day too.
+  const [soldOn, setSoldOn] = useState(today)
   const reset = () => {
     setLines([])
     setPatient(null)
@@ -197,6 +201,8 @@ export function PharmacyBilling() {
     setReference('')
     setError('')
     setGiven('')
+    // Every bill starts as today's: an earlier day is chosen again for each bill that was missed.
+    setSoldOn(today())
     searchBox.current?.focus()
   }
 
@@ -223,6 +229,7 @@ export function PharmacyBilling() {
         ...(toIpd ? { admission_id: admitted!.admission_id } : {}),
         payment_mode: mode,
         reference: reference || null,
+        sold_on: earlier(soldOn),
         items: lines.map((l) => ({ stock_batch_id: l.batchId, quantity: l.quantity || 0, discount_percent: l.discount || 0 })),
       })
       reset()
@@ -508,6 +515,7 @@ export function PharmacyBilling() {
             )}
           </div>
 
+          {canSell && <EarlierDate key={done?.id ?? 0} what="bill" value={soldOn} onChange={setSoldOn} />}
           {error && <p className="form-error">{error}</p>}
           {!canSell && <p className="muted gap-top">Only pharmacy staff can save bills.</p>}
           <div className="bill-actions">

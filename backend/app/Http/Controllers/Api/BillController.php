@@ -11,6 +11,7 @@ use App\Models\PatientDeposit;
 use App\Models\Payment;
 use App\Models\Service;
 use App\Support\DiscountWhy;
+use App\Support\EarlierDay;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -89,16 +90,20 @@ class BillController extends Controller
             'patient_id' => ['required', 'exists:patients,id'],
             'appointment_id' => ['nullable', 'exists:appointments,id'],
             'kind' => ['nullable', Rule::in(['appointment', 'other'])],
-        ] + $this->lineRules('sometimes'));
+            // The day the bill belongs to, when a bill that was missed is being entered later.
+            'billed_on' => EarlierDay::rule(),
+        ] + $this->lineRules('sometimes'), EarlierDay::messages('billed_on'));
+        $at = EarlierDay::at($data['billed_on'] ?? null);
 
-        $bill = DB::transaction(function () use ($data, $request) {
-            $bill = Bill::create([
+        $bill = DB::transaction(function () use ($data, $request, $at) {
+            $bill = EarlierDay::date(new Bill([
                 'patient_id' => $data['patient_id'],
                 'appointment_id' => $data['appointment_id'] ?? null,
                 'kind' => $data['kind'] ?? (($data['appointment_id'] ?? null) ? 'appointment' : 'other'),
                 'branch_id' => $request->user()->branch_id,
                 'created_by' => $request->user()->id,
-            ]);
+            ]), $at);
+            $bill->save();
 
             if (isset($data['service_id']) || isset($data['description'])) {
                 $this->addLineFrom($bill, $data);
@@ -107,6 +112,7 @@ class BillController extends Controller
             return $bill;
         });
         AuditLog::record('bill.created', $bill->patient_id, $bill, 'Bill '.$bill->fresh()->bill_no);
+        EarlierDay::log($at, $bill->patient_id, $bill, 'Bill '.$bill->bill_no);
 
         return response()->json($this->present($bill), 201);
     }
@@ -244,8 +250,13 @@ class BillController extends Controller
             'amount' => ['required', 'numeric', 'gt:0'],
             'mode' => ['required', Rule::in(Payment::MODES)],
             'reference' => ['nullable', 'string', 'max:255'],
-        ]);
+            // The day the money actually changed hands, when it is entered later.
+            'paid_on' => EarlierDay::rule(),
+        ], EarlierDay::messages('paid_on'));
         $bill = $this->forChange($request, $bill);
+        $at = EarlierDay::at($data['paid_on'] ?? null);
+        EarlierDay::notBefore($at, $bill->created_at);
+        unset($data['paid_on']);
 
         if ($data['type'] === 'payment' && $data['amount'] > $bill->due) {
             throw ValidationException::withMessages(['amount' => "Only ₹{$bill->due} is due on this bill."]);
@@ -254,9 +265,10 @@ class BillController extends Controller
             throw ValidationException::withMessages(['amount' => "Only ₹{$bill->paid} has been paid on this bill."]);
         }
 
-        $bill->payments()->create($data + ['received_by' => $request->user()->id]);
+        EarlierDay::date($bill->payments()->make($data + ['received_by' => $request->user()->id]), $at)->save();
         $bill->recalculate();
         AuditLog::record('bill.payment', $bill->patient_id, $bill, 'Bill '.$bill->bill_no.': '.($data['type'] === 'refund' ? 'refunded' : 'received').' ₹'.(float) $data['amount'].' by '.$data['mode']);
+        EarlierDay::log($at, $bill->patient_id, $bill, 'Bill '.$bill->bill_no.': ₹'.(float) $data['amount'].' '.($data['type'] === 'refund' ? 'refunded' : 'received'));
 
         return response()->json($this->present($bill), 201);
     }

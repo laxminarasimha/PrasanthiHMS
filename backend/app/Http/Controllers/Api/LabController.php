@@ -13,6 +13,7 @@ use App\Models\LabResult;
 use App\Models\LabTest;
 use App\Models\Patient;
 use App\Models\Setting;
+use App\Support\EarlierDay;
 use App\Support\LabDepartments;
 use App\Support\LabRanges;
 use App\Support\LabTemplate;
@@ -396,23 +397,27 @@ class LabController extends Controller
             // How many times a test is done on this order, by its id: a CBP repeated the same day is 2. Left out, it is once.
             'test_counts' => ['nullable', 'array'],
             'test_counts.*' => ['integer', 'between:1,'.self::MOST_TIMES],
-        ], ['test_ids.required_without' => 'Choose at least one test or package.', 'test_counts.*.between' => 'A test can be done 1 to '.self::MOST_TIMES.' times on one order.']);
+            // The day the tests were asked for, when an order that was missed is being entered later.
+            'billed_on' => EarlierDay::rule(),
+        ], ['test_ids.required_without' => 'Choose at least one test or package.', 'test_counts.*.between' => 'A test can be done 1 to '.self::MOST_TIMES.' times on one order.'] + EarlierDay::messages('billed_on'));
+        $at = EarlierDay::at($data['billed_on'] ?? null);
 
         if (empty($data['test_ids']) && empty($data['package_ids'])) {
             throw ValidationException::withMessages(['test_ids' => 'Choose at least one test or package.']);
         }
 
-        $order = DB::transaction(function () use ($data, $request) {
+        $order = DB::transaction(function () use ($data, $request, $at) {
             $user = $request->user();
             // Whose tests these are: a normal range can depend on the patient's age and sex.
             $patient = Patient::find($data['patient_id']);
-            $bill = Bill::create([
+            $bill = EarlierDay::date(new Bill([
                 'branch_id' => $user->branch_id,
                 'patient_id' => $data['patient_id'],
                 'appointment_id' => $data['appointment_id'] ?? null,
                 'kind' => 'lab',
                 'created_by' => $user->id,
-            ]);
+            ]), $at);
+            $bill->save();
 
             $order = LabOrder::create([
                 'branch_id' => $user->branch_id,
@@ -420,7 +425,7 @@ class LabController extends Controller
                 'appointment_id' => $data['appointment_id'] ?? null,
                 'bill_id' => $bill->id,
                 ...Referral::fields($data['referred_by'] ?? null),
-                'ordered_at' => now(),
+                'ordered_at' => $at ?? now(),
                 'created_by' => $user->id,
             ]);
 
@@ -488,6 +493,7 @@ class LabController extends Controller
 
         $made = $order->items()->get(['test_name', 'repeat_no', 'template_version'])->map(fn (LabOrderItem $i) => $this->withVersion($i))->implode(', ');
         AuditLog::record('lab.ordered', $order->patient_id, $order, "{$order->order_no} · {$made}");
+        EarlierDay::log($at, $order->patient_id, $order, "Lab order {$order->order_no}");
 
         return response()->json($this->present($order), 201);
     }

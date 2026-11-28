@@ -15,6 +15,7 @@ use App\Models\Patient;
 use App\Support\DiscountWhy;
 use App\Support\DoctorFee;
 use App\Support\DoctorHours;
+use App\Support\EarlierDay;
 use App\Support\FreeFollowUp;
 use App\Support\PhoneNotice;
 use Illuminate\Http\JsonResponse;
@@ -244,13 +245,17 @@ class AppointmentController extends Controller
                     throw ValidationException::withMessages(['discount' => 'The discount cannot be more than the charge.']);
                 }
 
-                $bill = Bill::create([
+                // A visit being entered for an earlier day was missed then: its bill and its money belong to that day.
+                $at = Carbon::parse($data['scheduled_at'])->lt(today()) ? EarlierDay::at($day) : null;
+                $bill = EarlierDay::date(new Bill([
                     'branch_id' => $appointment->branch_id,
                     'patient_id' => $appointment->patient_id,
                     'appointment_id' => $appointment->id,
                     'kind' => 'appointment',
                     'created_by' => $request->user()->id,
-                ]);
+                ]), $at);
+                $bill->save();
+                EarlierDay::log($at, $bill->patient_id, $bill, 'Bill '.$bill->fresh()->bill_no.' of a visit');
                 if ($discount > 0) {
                     DiscountWhy::need($bill, $billing);
                 }
@@ -261,7 +266,7 @@ class AppointmentController extends Controller
                     throw ValidationException::withMessages(['paid' => 'That is more than the bill amount.']);
                 }
                 if ($paid > 0) {
-                    $bill->payments()->create(['type' => 'payment', 'amount' => $paid, 'mode' => $billing['payment_mode'], 'received_by' => $request->user()->id]);
+                    EarlierDay::date($bill->payments()->make(['type' => 'payment', 'amount' => $paid, 'mode' => $billing['payment_mode'], 'received_by' => $request->user()->id]), $at)->save();
                     $bill->recalculate();
                 }
             }

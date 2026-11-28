@@ -7,6 +7,7 @@ use App\Models\Bill;
 use App\Models\Patient;
 use App\Models\Payment;
 use App\Support\DiscountWhy;
+use App\Support\EarlierDay;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -36,7 +37,10 @@ class ChargeController extends Controller
             'package_ids' => ['sometimes', 'array', 'max:20'],
             'test_counts' => ['sometimes', 'array'],
             'referred_by' => ['nullable', 'string', 'max:255'],
-        ] + DiscountWhy::RULES, ['appointment_id.exists' => 'That visit belongs to another patient.']);
+            // The day these charges belong to, when a bill that was missed is being entered later.
+            'billed_on' => EarlierDay::rule(),
+        ] + DiscountWhy::RULES, ['appointment_id.exists' => 'That visit belongs to another patient.'] + EarlierDay::messages('billed_on'));
+        $on = ['billed_on' => $data['billed_on'] ?? null];
 
         $services = array_values($data['services'] ?? []);
         $hasLab = ! empty($data['test_ids']) || ! empty($data['package_ids']);
@@ -50,7 +54,7 @@ class ChargeController extends Controller
             // Why any discount on these lines is given, and who allowed it: asked once for the whole bill.
             $why = array_filter(['discount_reason' => $data['discount_reason'] ?? null, 'discount_allowed_by' => $data['discount_allowed_by'] ?? null]);
             $bills = app(BillController::class);
-            $billId = $bills->store($this->ask($request, $about + $services[0] + $why))->getData(true)['id'];
+            $billId = $bills->store($this->ask($request, $about + $on + $services[0] + $why))->getData(true)['id'];
             foreach (array_slice($services, 1) as $line) {
                 $bills->addItem($this->ask($request, $line + $why), Bill::findOrFail($billId));
             }
@@ -61,11 +65,11 @@ class ChargeController extends Controller
                 'patient_id' => $data['patient_id'], 'appointment_id' => $data['appointment_id'] ?? null,
                 'test_ids' => $data['test_ids'] ?? [], 'package_ids' => $data['package_ids'] ?? [], 'referred_by' => $data['referred_by'] ?? null,
                 'test_counts' => $data['test_counts'] ?? [],
-            ]))->getData(true);
+            ] + $on))->getData(true);
             $made[] = $order['bill_id'];
         }
 
-        return response()->json(['made' => $made, 'due' => $this->present($this->owed((int) $data['patient_id'], $data['appointment_id'] ?? null))], 201);
+        return response()->json(['made' => $made, 'due' => $this->present($this->owed((int) $data['patient_id'], $data['appointment_id'] ?? null, $on['billed_on']))], 201);
     }
 
     /**
@@ -99,12 +103,12 @@ class ChargeController extends Controller
         ]);
     }
 
-    /** What the patient still owes for this visit, or for today when there is no visit. */
+    /** What the patient still owes for this visit, or with no visit for the day being billed (today unless said). */
     public function due(Request $request): JsonResponse
     {
-        $data = $request->validate(['patient_id' => ['required', 'exists:patients,id'], 'appointment_id' => ['nullable', 'integer']]);
+        $data = $request->validate(['patient_id' => ['required', 'exists:patients,id'], 'appointment_id' => ['nullable', 'integer'], 'date' => ['nullable', 'date']]);
 
-        return response()->json(['due' => $this->present($this->owed((int) $data['patient_id'], $data['appointment_id'] ?? null))]);
+        return response()->json(['due' => $this->present($this->owed((int) $data['patient_id'], $data['appointment_id'] ?? null, $data['date'] ?? null))]);
     }
 
     /**
@@ -121,7 +125,10 @@ class ChargeController extends Controller
             'amount' => ['required', 'numeric', 'gt:0'],
             'mode' => ['required', Rule::in(Payment::MODES)],
             'reference' => ['nullable', 'string', 'max:255'],
-        ]);
+            // The day the money actually changed hands, when it is entered later; and the day whose bills are being looked at.
+            'paid_on' => EarlierDay::rule(),
+            'date' => ['nullable', 'date'],
+        ], EarlierDay::messages('paid_on'));
 
         $bills = Bill::whereIn('id', $data['bill_ids'])->where('patient_id', $data['patient_id'])->lockForUpdate()->get()->keyBy('id');
         if ($bills->count() !== count($data['bill_ids'])) {
@@ -140,11 +147,11 @@ class ChargeController extends Controller
             if ($part <= 0) {
                 continue;
             }
-            $controller->addPayment($this->ask($request, ['type' => 'payment', 'amount' => $part, 'mode' => $data['mode'], 'reference' => $data['reference'] ?? null]), $bill);
+            $controller->addPayment($this->ask($request, ['type' => 'payment', 'amount' => $part, 'mode' => $data['mode'], 'reference' => $data['reference'] ?? null, 'paid_on' => $data['paid_on'] ?? null]), $bill);
             $left = round($left - $part, 2);
         }
 
-        return response()->json(['due' => $this->present($this->owed((int) $data['patient_id'], $data['appointment_id'] ?? null))]);
+        return response()->json(['due' => $this->present($this->owed((int) $data['patient_id'], $data['appointment_id'] ?? null, $data['date'] ?? null))]);
     }
 
     /**
@@ -161,14 +168,14 @@ class ChargeController extends Controller
     }
 
     /**
-     * Bills with money still due: those of the visit, or with no visit those made today.
+     * Bills with money still due: those of the visit, or with no visit those of the day being billed (today unless said).
      *
      * @return Collection<int, Bill>
      */
-    private function owed(int $patientId, ?int $appointmentId): Collection
+    private function owed(int $patientId, ?int $appointmentId, ?string $day = null): Collection
     {
         return Bill::where('patient_id', $patientId)
-            ->when($appointmentId, fn ($q) => $q->where('appointment_id', $appointmentId), fn ($q) => $q->whereDate('created_at', today()))
+            ->when($appointmentId, fn ($q) => $q->where('appointment_id', $appointmentId), fn ($q) => $q->whereDate('created_at', Carbon::parse($day ?? today())->toDateString()))
             ->with(['items:id,bill_id,description,amount', 'labOrder:id,bill_id,order_no'])->oldest('id')->get()
             ->filter(fn (Bill $b) => $b->due > 0)->values();
     }

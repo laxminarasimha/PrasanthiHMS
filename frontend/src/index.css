@@ -2046,6 +2046,12 @@ td.fit-wrap { white-space: normal; min-width: 130px; overflow-wrap: anywhere; }
 /* A visit booked ahead outside the doctor's hours: why it was stopped, and the tick to book it anyway. */
 .outside-hours { padding: 10px 12px; border: 1px solid var(--accent-line); border-radius: 8px; background: var(--warn-soft); color: var(--warn); }
 .outside-hours p { margin: 0 0 6px; }
+/* The day a bill or a payment belongs to, when it is being entered later: a quiet question until a day is chosen. */
+.earlier-day { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px 14px; margin: 10px 0 0; }
+.earlier-day.ask { margin: 8px 0 0; font-size: 0.85rem; }
+.earlier-day .field { margin: 0; flex: 0 0 auto; }
+.earlier-day p { margin: 0; flex: 1 1 240px; font-size: 0.85rem; }
+.earlier-day.on { padding: 10px 12px; border: 1px solid var(--accent-line); border-radius: 8px; background: var(--warn-soft); color: var(--warn); }
 /* The note under a "referred by" box saying whether the name is on the hospital's list. */
 .field-hint { font-size: 0.8rem; color: var(--muted); }
 .field-hint.ok { color: var(--ok); }

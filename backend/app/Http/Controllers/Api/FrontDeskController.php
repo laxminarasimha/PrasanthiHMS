@@ -14,6 +14,7 @@ use App\Models\Patient;
 use App\Models\PatientDeposit;
 use App\Models\Payment;
 use App\Models\PharmacySale;
+use App\Support\EarlierDay;
 use App\Support\FollowUps;
 use App\Support\MoneyFigures;
 use Illuminate\Http\JsonResponse;
@@ -180,16 +181,21 @@ class FrontDeskController extends Controller
             'amount' => ['required', 'numeric', 'gt:0', 'max:9999999'],
             'mode' => ['required', Rule::in(Payment::MODES)],
             'reference' => ['nullable', 'string', 'max:255'],
-        ]);
+            // The day the money actually changed hands, when it is entered later.
+            'paid_on' => EarlierDay::rule(),
+        ], EarlierDay::messages('paid_on'));
+        $at = EarlierDay::at($data['paid_on'] ?? null);
+        unset($data['paid_on']);
 
-        DB::transaction(function () use ($data, $patient, $request) {
+        DB::transaction(function () use ($data, $patient, $request, $at) {
             Patient::whereKey($patient->id)->lockForUpdate()->first();
             $balance = PatientDeposit::balance($patient->id);
             if ($data['type'] === 'refund' && $data['amount'] > $balance) {
                 throw ValidationException::withMessages(['amount' => "Only ₹{$balance} is on deposit."]);
             }
-            PatientDeposit::create($data + ['patient_id' => $patient->id, 'received_by' => $request->user()->id]);
+            EarlierDay::date(new PatientDeposit($data + ['patient_id' => $patient->id, 'received_by' => $request->user()->id]), $at)->save();
         });
+        EarlierDay::log($at, $patient->id, $patient, 'Deposit: ₹'.(float) $data['amount'].' '.($data['type'] === 'refund' ? 'handed back' : 'taken'));
 
         return response()->json([
             'deposit_balance' => PatientDeposit::balance($patient->id),

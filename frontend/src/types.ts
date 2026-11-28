@@ -194,6 +194,8 @@ export type Payment = {
   mode: string
   reference: string | null
   created_at: string
+  /** Set when the money was entered on a later day than the one it is counted on. */
+  entered_at?: string | null
   receiver: { id: number; name: string } | null
 }
 
@@ -212,6 +214,8 @@ export type Bill = {
   paid: number
   due: number
   created_at: string
+  /** Set when the bill was entered on a later day than the one it is dated. */
+  entered_at?: string | null
   items: BillItem[]
   payments: Payment[]
   /** Set when the bill was cancelled as a mistake: it then counts for nothing, and its lines are kept only as a record. */

@@ -510,6 +510,7 @@ export function FrontDesk() {
           appointmentId={panel.appointmentId}
           doctor={panel.doctor}
           advised={panel.advised}
+          date={date}
           services={services}
           tests={labTests.filter((t) => t.is_active !== false)}
           packages={labPackages.filter((p) => p.is_active !== false)}

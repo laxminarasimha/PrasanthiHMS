@@ -68,6 +68,8 @@ class PhoneNotificationsTest extends TestCase
             'patient_id' => Patient::factory()->create(['name' => 'Sample Father Tester'])->id,
             'doctor_id' => $doctor->id,
             'scheduled_at' => today()->format('Y-m-d').' 16:30',
+            // Whatever the day and the hour the tests are run at, the time is taken: the doctor's hours are not what is tested here.
+            'outside_hours' => true,
         ])->assertCreated()->json();
     }
 

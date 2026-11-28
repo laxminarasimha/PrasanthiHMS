@@ -15,7 +15,7 @@ class PatientDeposit extends Model
      */
     protected function casts(): array
     {
-        return ['amount' => 'float'];
+        return ['amount' => 'float', 'entered_at' => 'datetime'];
     }
 
     public function receiver(): BelongsTo
