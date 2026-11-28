@@ -2307,3 +2307,5 @@ tr.faded td { opacity: 0.6; }
 .option-offers { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 8px; padding: 8px 10px; border-left: 3px solid var(--info); background: var(--info-soft); border-radius: 0 8px 8px 0; }
 .option-offers > strong { flex-basis: 100%; font-size: 0.82rem; color: var(--info); }
 .option-offer { font-size: 0.92rem; }
+span.soon { color: var(--warn); font-weight: 600; }
+.sample-went { margin-left: 10px; }

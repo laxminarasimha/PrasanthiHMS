@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\IpdRecordsController;
 use App\Http\Controllers\Api\LabController;
 use App\Http\Controllers\Api\MedicalRepController;
 use App\Http\Controllers\Api\RepCatalogueController;
+use App\Http\Controllers\Api\RepSampleController;
 use App\Http\Controllers\Api\PastRecordController;
 use App\Http\Controllers\Api\PatientAccountController;
 use App\Http\Controllers\Api\PatientAppController;
@@ -148,6 +149,15 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
         Route::get('/files/{file}/download', 'downloadFile');
         Route::delete('/files/{file}', 'removeFile');
         Route::put('/hours', 'saveHours');
+    });
+    // Samples left by representatives: what came in, what was given out, what is left. Not the pharmacy's stock.
+    Route::prefix('reps/samples')->controller(RepSampleController::class)->group(function () {
+        Route::get('/', 'index');
+        Route::post('/', 'store');
+        Route::delete('/issues/{issue}', 'removeIssue');
+        Route::put('/{sample}', 'update');
+        Route::delete('/{sample}', 'destroy');
+        Route::post('/{sample}/issues', 'issue');
     });
     // The companies' catalogues: each brand, what it contains and what is on offer.
     Route::prefix('reps/products')->controller(RepCatalogueController::class)->group(function () {
