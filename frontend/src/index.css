@@ -1008,6 +1008,12 @@ td.advice { white-space: normal; min-width: 120px; }
 .advice-chip.next { color: var(--warn); background: var(--accent-soft); border-color: var(--accent-line); }
 .advice-chip.admit { color: var(--danger); background: var(--danger-soft); border-color: var(--danger-line); }
 .advice-chip.refer { color: var(--muted); background: var(--bg); border-color: var(--border); cursor: default; }
+/* A visit the patient booked on the patient app: a small mark, not a button. */
+.app-tag { display: inline-block; padding: 0 6px; border: 1px solid var(--brand-line); border-radius: 5px; background: var(--brand-soft); color: var(--brand); font-size: 0.72rem; font-weight: 700; line-height: 1.5; white-space: nowrap; cursor: default; }
+.app-tag.block { display: block; width: max-content; margin-top: 2px; }
+.tile .app-tag { color: var(--brand); font-size: 0.72rem; }
+.cal-chip .app-tag { padding: 0 4px; margin-right: 2px; font-size: 0.68rem; line-height: 1.35; }
+.legend .app-key { display: inline-block; font-size: 0.84rem; margin: 8px 4px 0 0; }
 .btn .count { display: inline-block; min-width: 1.5em; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 0.8rem; text-align: center; }
 .menu > button:disabled { color: var(--muted); cursor: default; }
 .menu > button:disabled:hover { background: none; }

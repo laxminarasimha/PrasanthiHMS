@@ -155,6 +155,8 @@ export type Appointment = {
   /** When the front desk marked the patient as here. */
   arrived_at?: string | null
   notes: string | null
+  /** 'app' when the patient booked it themself on the patient app. */
+  booked_via?: string | null
   patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'age_label' | 'title' | 'mobile'>
   doctor: { id: number; name: string }
   service: { id: number; name: string } | null
@@ -314,7 +316,7 @@ export type RxPrint = {
 export type Visit = {
   /** How the visit's doctor wants prescriptions printed. */
   rx_print?: Pick<RxSettings, 'print_language' | 'translations' | 'capitalize_name' | 'print'>
-  appointment: { id: number; scheduled_at: string; status: AppointmentStatus; awaiting_reports?: boolean; notes: string | null }
+  appointment: { id: number; scheduled_at: string; status: AppointmentStatus; awaiting_reports?: boolean; notes: string | null; /** 'app' when the patient booked it on the patient app. The visit pad does not send it yet. */ booked_via?: string | null }
   patient: VisitPatient
   doctor: { id: number; name: string; department: string | null; signature_text: string | null }
   service: { id: number; name: string } | null
@@ -328,6 +330,8 @@ export type QueueEntry = {
   scheduled_at: string
   /** A free follow-up of an earlier consultation with this doctor. */
   is_follow_up?: boolean
+  /** 'app' when the patient booked it themself on the patient app. */
+  booked_via?: string | null
   arrived_at: string | null
   status: AppointmentStatus
   patient: VisitPatient
@@ -950,12 +954,46 @@ export type PatientOverview = {
   outstanding: number
   deposit_balance: number
   deposits: PatientDeposit[]
-  visits: { id: number; scheduled_at: string; status: AppointmentStatus; doctor: { id: number; name: string }; service: { name: string } | null; consultation: { id: number; diagnosis: string | null; completed_at: string | null } | null }[]
+  visits: { id: number; scheduled_at: string; status: AppointmentStatus; /** 'app' when the patient booked it on the patient app. */ booked_via?: string | null; doctor: { id: number; name: string }; service: { name: string } | null; consultation: { id: number; diagnosis: string | null; completed_at: string | null } | null }[]
   bills: { id: number; bill_no: string; kind: BillKind; total: number; paid: number; due: number; moved_to_ipd: number | null; created_at: string; cancelled_at?: string | null; lab_order: { order_no: string } | null }[]
   lab_orders: { id: number; order_no: string; status: string; ordered_at: string; items: { id: number; test_name: string; repeat_no?: number | null }[] }[]
   pharmacy_bills: { id: number; bill_no: string; sold_at: string; total: number; due: number; ipd_transfer: number }[]
   admissions: { id: number; ipd_no: string; status: string; admitted_at: string; discharged_at: string | null; due: number; doctor: { id: number; name: string }; bed: { ward: string; bed_no: string } | null }[]
   attachments: Attachment[]
+  /**
+   * Approved discharge summaries of the stays listed, newest first, to print. Sent only to those who read clinical
+   * notes, who also get the diagnosis, and to those who work in IPD (the front desk), who do not.
+   */
+  discharge_summaries?: { admission_id: number; ipd_no: string; status: string; admitted_at: string; discharged_at: string | null; doctor: { id: number; name: string } | null; approved_at: string; follow_up_on: string | null; diagnosis?: string | null }[]
+  /**
+   * What the latest finished visits prescribed and what approved discharge summaries sent home, newest first. Sent
+   * only to those who read clinical notes and to the pharmacy. `medicine_id` comes only for those who may open the
+   * pharmacy's screens, and only where exactly one active medicine has the very same name.
+   */
+  medicines_prescribed?: {
+    key: string
+    kind: 'visit' | 'discharge'
+    date: string
+    doctor: { id: number; name: string } | null
+    appointment_id?: number
+    admission_id?: number
+    ipd_no?: string
+    medicines: { medicine: string; directions: string; medicine_id?: number | null }[]
+  }[]
+  /** The patient's monthly medicine lists from the patient app, active and paused, the next due first. Sent only to those who read clinical notes and to the pharmacy. */
+  monthly_medicines?: {
+    id: number
+    title: string
+    status: 'active' | 'paused'
+    day_of_month: number
+    next_due_on: string
+    /** Active and due within the week the pharmacy makes packs up for. */
+    due_soon: boolean
+    last_prepared_on: string | null
+    notes: string | null
+    /** A medicine chosen from the pharmacy's list has its id; one the patient typed in has none. */
+    items: { medicine_id: number | null; name: string; quantity: number | null }[]
+  }[]
 }
 
 export type PhraseKind = 'complaint' | 'diagnosis' | 'advice'
