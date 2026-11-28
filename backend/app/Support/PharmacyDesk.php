@@ -113,10 +113,11 @@ class PharmacyDesk
     }
 
     /**
-     * Units of each medicine on order and not in yet: a draft in full, and an open order less the paid packs that
-     * have already come against it, as the order is matched with its invoices. Free packs come on top of an order
-     * and do not count towards it. Without taking off what has come, half an order would be counted twice: once
-     * on the shelf and once still on order.
+     * Units of each medicine on order and not in yet: a draft in full, and an open order less the paid units that
+     * have already come against it, as the order is matched with its invoices (see OrderMatch::forOrder). Units, not
+     * packs, as the stockist may send another pack size. Free packs come on top of an order and do not count towards
+     * it. Without taking off what has come, half an order would be counted twice: once on the shelf and once still
+     * on order.
      *
      * @param  list<int>|null  $medicineIds  only these medicines; every medicine when left out
      * @return Collection<int, int> units, keyed by medicine
@@ -130,13 +131,13 @@ class PharmacyDesk
         $open = $lines->where('status', 'open')->pluck('purchase_order_id')->unique()->values();
         $received = $open->isEmpty() ? collect() : DB::table('stock_batches as b')->join('purchase_invoices as p', 'p.id', '=', 'b.purchase_invoice_id')
             ->whereIn('p.purchase_order_id', $open->all())
-            ->selectRaw('p.purchase_order_id, b.medicine_id, sum(b.packs) as packs')->groupBy('p.purchase_order_id', 'b.medicine_id')->get()
-            ->mapWithKeys(fn ($r) => [$r->purchase_order_id.':'.$r->medicine_id => (int) $r->packs]);
+            ->selectRaw('p.purchase_order_id, b.medicine_id, sum(b.packs * b.units_per_pack) as units')->groupBy('p.purchase_order_id', 'b.medicine_id')->get()
+            ->mapWithKeys(fn ($r) => [$r->purchase_order_id.':'.$r->medicine_id => (int) $r->units]);
 
         return $lines->groupBy('medicine_id')->map(fn (Collection $rows) => (int) $rows->sum(function ($line) use ($received) {
             $come = $line->status === 'open' ? (int) ($received[$line->purchase_order_id.':'.$line->medicine_id] ?? 0) : 0;
 
-            return max(0, (int) $line->packs - $come) * (int) $line->units_per_pack;
+            return max(0, (int) $line->packs * (int) $line->units_per_pack - $come);
         }));
     }
 

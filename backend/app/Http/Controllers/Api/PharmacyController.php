@@ -291,8 +291,9 @@ class PharmacyController extends Controller
     }
 
     /** One stockist with every bill from them and everything sent back, newest first: the stockist's own page. */
-    public function showStockist(Stockist $stockist): JsonResponse
+    public function showStockist(Request $request, Stockist $stockist): JsonResponse
     {
+        $this->authorizeReading($request);
         $invoices = PurchaseInvoice::where('stockist_id', $stockist->id)->withCount('batches')->latest('invoice_date')->latest('id')
             ->get(['id', 'invoice_no', 'invoice_date', 'due_date', 'total', 'paid', 'remarks']);
         $returns = StockReturn::where('stockist_id', $stockist->id)->latest('returned_on')->latest('id')->get(['id', 'return_no', 'returned_on', 'total', 'remarks']);
@@ -340,16 +341,29 @@ class PharmacyController extends Controller
 
     // ---- Purchase invoices (stock coming in) ----
 
-    public function purchases(): JsonResponse
+    public function purchases(Request $request): JsonResponse
     {
+        $this->authorizeReading($request);
+
         return response()->json(
             PurchaseInvoice::with('stockist:id,name')->withCount('batches')->latest('invoice_date')->latest('id')->limit(200)->get()
         );
     }
 
-    public function showPurchase(PurchaseInvoice $purchase): JsonResponse
+    public function showPurchase(Request $request, PurchaseInvoice $purchase): JsonResponse
     {
+        $this->authorizeReading($request);
+
         return response()->json($purchase->present());
+    }
+
+    /**
+     * What the pharmacy bought and at what rates, and the stock it holds: for those who run the pharmacy or may look
+     * at it, and for those who audit its stock, as the medicine's own page is. Not for the rest of the hospital.
+     */
+    private function authorizeReading(Request $request): void
+    {
+        abort_unless($request->user()->mayInPharmacy($request) || $request->user()->allows('canAuditPharmacy'), 403, 'You are not allowed to see the pharmacy’s purchases and stock.');
     }
 
     /** Records a supplier invoice and puts every line into stock as its own batch. */
@@ -474,6 +488,7 @@ class PharmacyController extends Controller
     /** Every batch on the shelf, soonest expiry first. Empty batches are hidden unless asked for. */
     public function stock(Request $request): JsonResponse
     {
+        $this->authorizeReading($request);
         $term = trim((string) $request->query('q'));
 
         $batches = StockBatch::query()

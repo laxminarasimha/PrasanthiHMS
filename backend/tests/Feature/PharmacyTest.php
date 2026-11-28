@@ -159,7 +159,8 @@ class PharmacyTest extends TestCase
 
         $this->sell([['stock_batch_id' => $batchId, 'quantity' => 1]])->assertForbidden();
         $this->postJson('/api/pharmacy/medicines', ['name' => 'X', 'gst_percent' => 5, 'units_per_pack' => 1])->assertForbidden();
-        $this->getJson('/api/pharmacy/stock')->assertOk();
+        // The stock list carries what each batch cost, so it is the pharmacy's to read (see PharmacyReadAccessTest).
+        $this->getJson('/api/pharmacy/stock')->assertForbidden();
     }
 
     public function test_medicines_carry_inventory_classes_and_stockists_show_what_is_owed(): void

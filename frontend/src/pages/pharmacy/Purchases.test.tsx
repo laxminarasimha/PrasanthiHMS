@@ -167,4 +167,83 @@ describe('entering a stockist’s invoice against a purchase order', () => {
     expect(body.items[0]).toMatchObject({ medicine_id: '11', batch_no: 'B77', expiry: '2027-06', units_per_pack: '10', packs: '2', pack_price: '21', pack_mrp: '32' })
     expect(body.items[0].from_order).toBeUndefined()
   })
+
+  it('lets go of what the order said of a line once a new medicine is added on it', async () => {
+    answer(order({ still_to_come: [still()] }))
+    post.mockImplementation((url: string) =>
+      url === '/pharmacy/medicines'
+        ? Promise.resolve({ data: { id: 99, name: 'Samplenew 100', units_per_pack: 10, gst_percent: 12, hsn_code: null, rack_no: null, box_no: null, is_active: true } })
+        : Promise.reject(new Error(url)),
+    )
+    show('/pharmacy/purchases?order=7')
+    await waitFor(() => expect(boxes('Qty (packs)').map((b) => b.value)).toEqual(['4']))
+    expect(screen.getByText('From PO00007 · 4 packs still to come')).toBeTruthy()
+
+    // A medicine not in the list is typed on the line filled in from the order, and added there as a new one.
+    chooseMedicine(1, 'Samplenew 100')
+    fireEvent.click(await screen.findByText('Add and use it'))
+    await waitFor(() => expect(boxes('Medicine 1')[0].value).toBe('Samplenew 100'))
+    expect(post).toHaveBeenCalledWith('/pharmacy/medicines', expect.objectContaining({ name: 'Samplenew 100' }))
+    // It is an ordinary line now: nothing from the order, and no last rate of the other medicine greyed in.
+    expect(screen.queryByText(/From PO00007/)).toBeNull()
+    expect(screen.queryByText(/Last bought/)).toBeNull()
+    expect([boxes('Purchase rate / pack ₹')[0].placeholder, boxes('MRP / pack ₹')[0].placeholder]).toEqual(['', ''])
+    fireEvent.change(boxes('Qty (packs)')[0], { target: { value: '1' } })
+    expect(screen.queryByText(/stays? on order|more than ordered/)).toBeNull()
+  })
+
+  it('sets every line of a medicine against the order, and says it once, on the line filled in from it', async () => {
+    answer(order({ still_to_come: [still({ packs: 10, received: 0 })] }))
+    show('/pharmacy/purchases?order=7')
+    await waitFor(() => expect(boxes('Qty (packs)').map((b) => b.value)).toEqual(['10']))
+    // Six of the ten came in one batch…
+    fireEvent.change(boxes('Qty (packs)')[0], { target: { value: '6' } })
+    expect(screen.getByText('4 stay on order')).toBeTruthy()
+    // …and four in another, typed on a line of its own: nothing stays on order.
+    fireEvent.click(screen.getByText('+ Add another medicine'))
+    await waitFor(() => {
+      chooseMedicine(2, 'Sampleatorva')
+      expect(boxes('Medicine 2')[0].value).toBe('Sampleatorva 10')
+    })
+    fireEvent.change(boxes('Qty (packs)')[1], { target: { value: '4' } })
+    expect(screen.queryByText(/stays? on order|more than ordered/)).toBeNull()
+    expect(screen.getAllByText(/From PO00007/)).toHaveLength(1)
+    // One more than the order is told once, on the first line.
+    fireEvent.change(boxes('Qty (packs)')[1], { target: { value: '5' } })
+    expect(screen.getAllByText(/stays? on order|more than ordered/).map((e) => e.textContent)).toEqual(['1 more than ordered'])
+  })
+
+  it('gives the order’s note only to the first of two lines already typed for a medicine', async () => {
+    answer(order({ still_to_come: [still({ packs: 10, received: 0 })] }))
+    await newInvoice()
+    await waitFor(() => {
+      chooseMedicine(1, 'Sampleatorva')
+      expect(boxes('Medicine 1')[0].value).toBe('Sampleatorva 10')
+    })
+    fireEvent.change(boxes('Qty (packs)')[0], { target: { value: '6' } })
+    fireEvent.click(screen.getByText('+ Add another medicine'))
+    chooseMedicine(2, 'Sampleatorva')
+    fireEvent.change(boxes('Qty (packs)')[1], { target: { value: '3' } })
+
+    fireEvent.change(screen.getByLabelText('Against purchase order'), { target: { value: '7' } })
+    await waitFor(() => expect(screen.getAllByText(/From PO00007/)).toHaveLength(1))
+    expect(screen.getByText('From PO00007 · 10 packs still to come').closest('.purchase-line')).toBe(boxes('Medicine 1')[0].closest('.purchase-line'))
+    expect(boxes('Qty (packs)').map((b) => b.value)).toEqual(['6', '3'])
+    expect(screen.getByText(/Already on this invoice, and left as typed: Sampleatorva 10\./)).toBeTruthy()
+    expect(screen.getAllByText(/stays? on order|more than ordered/).map((e) => e.textContent)).toEqual(['1 stays on order'])
+  })
+
+  it('counts in units when the stockist’s bill is in another pack size', async () => {
+    answer(order({ still_to_come: [still({ packs: 10, received: 0 })] }))
+    show('/pharmacy/purchases?order=7')
+    await waitFor(() => expect(boxes('Qty (packs)').map((b) => b.value)).toEqual(['10']))
+    // The order is for 10 packs of 10; the bill says packs of 25.
+    fireEvent.change(boxes('Units in a pack')[0], { target: { value: '25' } })
+    fireEvent.change(boxes('Qty (packs)')[0], { target: { value: '3' } })
+    expect(screen.getByText('25 units stay on order')).toBeTruthy()
+    fireEvent.change(boxes('Qty (packs)')[0], { target: { value: '4' } })
+    expect(screen.queryByText(/stays? on order|more than ordered/)).toBeNull()
+    fireEvent.change(boxes('Qty (packs)')[0], { target: { value: '5' } })
+    expect(screen.getByText('25 units more than ordered')).toBeTruthy()
+  })
 })

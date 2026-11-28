@@ -367,4 +367,41 @@ class PharmacyManagerTest extends TestCase
         $row = collect($this->getJson('/api/pharmacy/manager')->assertOk()->json('reorder'))->firstWhere('medicine_id', $m->id);
         $this->assertSame(['low', 80, 90], [$row['class'], $row['usable'], $row['on_order']]);
     }
+
+    public function test_an_order_is_matched_in_units_when_the_stockist_sends_another_pack_size(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $supplier = Stockist::create(['name' => 'Sample Distributors', 'lead_days' => 2]);
+        // Kept at 500 at least: on the reorder list, with what is on order beside it.
+        $m = $this->medicine('Sampleatorva 10', ['reorder_level' => 500]);
+        $this->batch($m, 20);
+
+        // 10 packs of 10 ordered: 100 tablets.
+        $order = $this->postJson('/api/pharmacy/purchase-orders', ['stockist_id' => $supplier->id, 'order_date' => today()->toDateString(), 'items' => [
+            ['medicine_id' => $m->id, 'units_per_pack' => 10, 'packs' => 10],
+        ]])->assertCreated()->json();
+        $line = fn (string $batch, int $packs) => ['medicine_id' => $m->id, 'batch_no' => $batch, 'expiry' => now()->addYear()->format('Y-m'), 'units_per_pack' => 25, 'packs' => $packs, 'pack_price' => 50, 'pack_mrp' => 75, 'gst_percent' => 12];
+        $invoice = fn (string $no, array $items) => $this->postJson('/api/pharmacy/purchases', ['stockist_id' => $supplier->id, 'invoice_no' => $no, 'invoice_date' => today()->toDateString(), 'purchase_order_id' => $order['id'], 'items' => $items]);
+
+        // The stockist sends 3 packs of 25: 75 of the 100 tablets. The 25 still to come are 3 of the order's packs of 10.
+        $got = $invoice('INV-1', [$line('N1', 3)])->assertCreated()->json();
+        $this->assertSame(['open', 3, 1], [$got['order']['status'], $got['order']['packs_to_come'], $got['order']['medicines_to_come']]);
+        $this->assertSame(['Came in packs of 25; the order is for packs of 10.', 'Ordered 100 units; 75 received so far.'], $got['batches'][0]['flags']);
+
+        $shown = $this->getJson("/api/pharmacy/purchase-orders/{$order['id']}")->assertOk()->assertJsonPath('match.complete', false)->json();
+        $matched = $shown['match']['lines'][0];
+        // The packs received are the paid packs as billed; the matching is in units.
+        $this->assertSame([10, 3, 100, 75, 3, 'short'], [$matched['ordered'], $matched['received'], $matched['ordered_units'], $matched['received_units'], $matched['to_come'], $matched['state']]);
+        $this->assertSame([3, 10], [$shown['still_to_come'][0]['packs'], $shown['still_to_come'][0]['units_per_pack']]);
+        // On order: the 25 tablets not in yet, not 7 packs of 10.
+        $this->assertSame([$m->id => 25], PharmacyDesk::onOrder([$m->id])->all());
+        $row = collect($this->getJson('/api/pharmacy/manager')->assertOk()->json('reorder'))->firstWhere('medicine_id', $m->id);
+        $this->assertSame([95, 25], [$row['usable'], $row['on_order']]);
+
+        // One more pack of 25 makes up the 100: the order is complete, though 4 packs came against the 10 ordered.
+        $done = $invoice('INV-2', [$line('N2', 1)])->assertCreated()->json('order');
+        $this->assertSame(['received', 0, 0], [$done['status'], $done['packs_to_come'], $done['medicines_to_come']]);
+        $this->getJson("/api/pharmacy/purchase-orders/{$order['id']}")->assertOk()->assertJsonPath('match.complete', true)->assertJsonPath('match.lines.0.state', 'full')->assertJsonPath('still_to_come', []);
+        $this->assertSame([], PharmacyDesk::onOrder([$m->id])->all());
+    }
 }

@@ -168,6 +168,27 @@ class RepCatalogueOrderTest extends TestCase
         $order([['rep_product_id' => $noStockist->id, 'stockist_id' => $this->far->id, 'packs' => 4]])->assertCreated()->assertJsonPath('orders.0.stockist', 'Far Sample Distributors');
     }
 
+    public function test_a_brand_taken_out_of_the_catalogue_after_it_was_chosen_is_refused_in_plain_words(): void
+    {
+        $this->company->update(['stockist_id' => $this->city->id]);
+        $gone = $this->linked->id;
+        $order = fn (array $lines) => $this->postJson('/api/pharmacy/manager/orders', ['from' => 'catalogue', 'lines' => $lines]);
+        $said = fn ($response, string $field) => $response->assertStatus(422)->assertJsonValidationErrors($field)->json('errors')[$field][0];
+
+        // Someone takes the brand out of the catalogue, on another screen, while it waits to be ordered here.
+        $this->signIn('frontdesk');
+        $this->deleteJson("/api/reps/products/{$gone}")->assertNoContent();
+
+        $this->signIn('pharmacist');
+        // With the supplier chosen on the line, and without it, as the catalogue sends it when the company has a stockist.
+        $this->assertSame('That brand is no longer in the catalogue.', $said($order([['rep_product_id' => $gone, 'stockist_id' => $this->city->id, 'packs' => 1]]), 'lines.0.rep_product_id'));
+        $this->assertSame('That brand is no longer in the catalogue.', $said($order([['rep_product_id' => $gone, 'packs' => 1]]), 'lines.0.rep_product_id'));
+        // A supplier that is not on the list is told plainly too.
+        $theirs = Medicine::create(['name' => 'Otherpan 40', 'gst_percent' => 12, 'units_per_pack' => 10]);
+        $this->assertSame('That supplier is not in the list of stockists. Choose another.', $said($order([['medicine_id' => $theirs->id, 'stockist_id' => 99999, 'packs' => 1]]), 'lines.0.stockist_id'));
+        $this->assertSame(0, PurchaseOrder::count());
+    }
+
     public function test_the_catalogue_tells_only_the_pharmacy_what_is_on_order(): void
     {
         $this->signIn('pharmacist');
