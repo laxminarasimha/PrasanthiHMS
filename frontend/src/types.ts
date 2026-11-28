@@ -717,9 +717,15 @@ export type DischargeSummary = {
   advice?: string | null
   follow_up_on: string | null
   approved_at: string | null
-  /** When it was sent to the admission's doctor as ready for approval ('Y-m-d H:i'), and by whom. Cleared when an approval is withdrawn. */
+  /** When it was sent as ready for approval ('Y-m-d H:i'), and by whom. Cleared when an approval is withdrawn. */
   ready_at?: string | null
   ready_by?: { id: number; name: string } | null
+  /**
+   * Whether the admission's doctor is the one told when it is sent for approval: active, signing in, not a wall screen,
+   * and allowed to approve and work in IPD. When not (a visiting doctor who does not sign in, say), those who approve
+   * summaries are told instead.
+   */
+  doctor_hears?: boolean
   preparer?: { id: number; name: string } | null
   approver?: { id: number; name: string; signature_text?: string | null } | null
 }

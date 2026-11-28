@@ -1,5 +1,6 @@
 import axios, { AxiosError, type AxiosResponse } from 'axios'
 import { loadEnded, loadStarted } from './loading'
+import { stopNoticesHere } from './pushDevice'
 
 const TOKEN_KEY = 'hms_token'
 
@@ -83,10 +84,14 @@ api.interceptors.response.use(
     return response
   },
   (error: AxiosError) => {
-    // An expired or revoked token sends the user back to the sign-in page.
+    // An expired or revoked token sends the user back to the sign-in page. First this device stops showing their
+    // notifications, so the next person to use it is not shown them. The server is not asked: it no longer knows who
+    // is asking, and it forgets the device the next time it tries to send to it.
     if (error.response?.status === 401 && getToken()) {
       setToken(null)
-      window.location.assign('/login')
+      void stopNoticesHere()
+        .catch(() => undefined)
+        .then(() => window.location.assign('/login'))
     }
     if (error.response?.status === 403) refusedListeners.forEach((tell) => tell())
     // No answer at all, or the server itself failing. A refusal (not allowed, not found) is the screen's own business.

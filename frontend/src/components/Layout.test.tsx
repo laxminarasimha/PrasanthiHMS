@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Layout } from './Layout'
@@ -9,18 +9,18 @@ let user: User
 let mine: MyToday | null = null
 const syncPush = vi.fn()
 vi.mock('../auth', () => ({ useAuth: () => ({ user, signOut: vi.fn() }) }))
-vi.mock('../api', () => ({ onLoadTrouble: () => () => undefined }))
+vi.mock('../api', () => ({ onLoadTrouble: () => () => undefined, api: { get: vi.fn(), post: vi.fn() }, fieldErrors: () => ({}) }))
 vi.mock('../printPaper', () => ({ keepPrintPrefsFresh: vi.fn() }))
 vi.mock('../todoCount', () => ({ useTodoCount: () => 0 }))
 vi.mock('../push', () => ({ syncPush: (...args: unknown[]) => syncPush(...args) }))
-vi.mock('../workforce/myToday', () => ({ useMyToday: () => mine }))
+// Today's attendance is made up here; whether the call-out was put away is the app's own, shared by the call-out and the screen.
+vi.mock('../workforce/myToday', async (original) => ({ ...(await original<typeof import('../workforce/myToday')>()), useMyToday: () => mine }))
 vi.mock('./PushControls', () => ({ PushHint: () => <p>Offer of notifications</p> }))
 vi.mock('./InstallHint', () => ({ InstallHint: () => null }))
 vi.mock('./PatientSearch', () => ({ PatientSearch: () => null }))
 vi.mock('./BottomBar', () => ({ BottomBar: () => null }))
 vi.mock('./Brand', () => ({ BrandMark: () => null }))
 vi.mock('../workforce/AttendanceCard', () => ({ AttendanceCard: () => null }))
-vi.mock('../workforce/CheckInPrompt', () => ({ CheckInPrompt: () => null }))
 
 const nurse = (over: Partial<User> = {}) => ({ id: 4, name: 'Sample Nurse', role: 'nurse', role_label: 'Nurse', branch: null, can_front_desk: true, notices: ['task'], abilities: { 'wf:self:view': true }, ...over }) as User
 const day = (over: Partial<MyToday> = {}): MyToday => ({ employee: { id: 8, name: 'Sample Nurse' }, self_check_in: true, regular: true, here: true, open: null, done: [], ...over })
@@ -51,6 +51,24 @@ describe('the offer of notifications on the first screen', () => {
     cleanup()
 
     mine = day({ open: { id: 1, employee_id: 8, work_date: '2026-11-28', check_in: '2026-11-28 09:00', check_out: null, state: 'open' } as MyToday['open'] })
+    firstScreen()
+    expect(offered()).toBe(true)
+  })
+
+  it('comes as soon as the call-out is put away for today, though the person has not checked in', () => {
+    // A person of their own, so what is put away here reaches none of the other tests.
+    user = nurse({ id: 41 })
+    mine = day()
+    firstScreen()
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(offered()).toBe(false)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(offered()).toBe(true)
+    cleanup()
+
+    // Still put away when the first screen is opened again today.
     firstScreen()
     expect(offered()).toBe(true)
   })
