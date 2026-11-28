@@ -581,6 +581,30 @@ describe('the counter, the visit a bill is linked to', () => {
     expect(body.consultation_id).toBe(31)
   })
 
+  it('will not date a bill before the prescription its medicines came from', async () => {
+    auth.user = { can_run_pharmacy: true, can_view_pharmacy: true, abilities: { canEnterEarlierDays: true } }
+    const { container } = open({ 7: [visit(32, 1, [cefixime], 'Dr Sample Skin'), visit(31, 4, [amlodipine(5)], 'Dr Sample Heart')] })
+    const cards = await theCards(container, 2)
+    // The Cefixime is given from yesterday's prescription, and the Amlodipine from the one four days back…
+    fireEvent.click(inCard(cards[0], 'Add all in stock (1)'))
+    fireEvent.click(inCard(cards[1], 'Add all in stock (1)'))
+    // …and the bill is then dated three days back: before yesterday's prescription.
+    fireEvent.click(screen.getByRole('button', { name: 'Was this missed on an earlier day?' }))
+    fireEvent.change(screen.getByLabelText('Bill date'), { target: { value: daysAgo(3) } })
+    const said = `Medicines on this bill came from the prescription of ${longDate(daysAgo(1))} by Dr Sample Skin, so the bill cannot be dated earlier. Date it that day or later, or take them off.`
+    expect(screen.getByText(said)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(post).not.toHaveBeenCalled()
+    expect(screen.getAllByText(said)).toHaveLength(1)
+
+    // Dated yesterday, it saves, linked to yesterday's prescription.
+    fireEvent.change(screen.getByLabelText('Bill date'), { target: { value: daysAgo(1) } })
+    expect(screen.queryByText(said)).toBeNull()
+    const body = (await saved()) as unknown as { sold_on: string; consultation_id: number | null; referred_doctor: string | null }
+    expect([body.sold_on, body.consultation_id, body.referred_doctor]).toEqual([daysAgo(1), 32, 'Dr Sample Skin'])
+  })
+
   it('does not link a take-home bill to an old visit by going to the line', async () => {
     const takeHome: PrescriptionForPharmacy = { id: 4, kind: 'discharge', completed_at: `${daysAgo(2)} 09:00`, doctor: 'Dr Sample One', note: 'To take home.', medicines: [amlodipine(5)] }
     const { container } = open({ 7: [takeHome, visit(31, 18, [amlodipine(5), cefixime])] })
@@ -773,5 +797,18 @@ describe('the counter, safe against slow answers, midnight, typed quantities and
     fireEvent.click(screen.getByRole('button', { name: 'Open patient 7' }))
     await waitFor(() => expect(container.querySelector('.rx-card')?.textContent).toContain('Sample Cefixime'))
     expect(screen.getByText('No longer on this card: Sample Pred 10 Tablet (“1 tablet · 1-0-1 · 5 days”). The bill has 10: check it.')).toBeTruthy()
+  })
+})
+
+describe('the counter, a batch received after the card was read', () => {
+  it('puts the count on the batch that expires first, even one the card does not list yet', async () => {
+    // The card was read before batch B103 came in; the search offers it first, as it expires first.
+    const card = visitCard({ medicines: [{ ...visitCard().medicines[0], directions: '1-0-1 · 5 days', quantity: 10, worked_out: '1-0-1 for 5 days = 10' }] })
+    show([card], [tablet([batch(103, 30, '2026-12-31'), batch(101, 15, '2027-01-31'), batch(102, 40, '2027-06-30')])])
+    await screen.findByRole('button', { name: 'Add 10' })
+    await pickByName('Sample Aml', /Batch B101/)
+    await pickByName('Sample Aml', /Batch B103/)
+    fireEvent.click(screen.getByRole('button', { name: 'Add 10' }))
+    expect((await saved()).items.map((i) => [i.stock_batch_id, i.quantity])).toEqual([[103, '10']])
   })
 })

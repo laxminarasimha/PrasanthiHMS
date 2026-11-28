@@ -177,12 +177,9 @@ function withRows(lines: Line[], match: SellableMedicine, rows: CardRow[], from:
   // The 1 a medicine starts at, picked by name or from a row with no count, gives way to the count; it is not added to.
   const fresh = prescribed > 0 && there.length > 0 && there.every(startingOne)
   const had = (l: Line) => (fresh ? 0 : Number(l.quantity) || 0)
-  // In place of the 1s, the batch that expires first goes first, as everywhere at the counter.
-  const rank = (l: Line) => {
-    const at = match.sellable_batches.findIndex((b) => b.id === l.batchId)
-    return at < 0 ? match.sellable_batches.length : at
-  }
-  const order = fresh ? there.slice().sort((a, b) => rank(a) - rank(b)) : there
+  // In place of the 1s, the batch that expires first goes first, as everywhere at the counter. Each line's own batch is
+  // used, in the server's order (expiry, then batch): the card's list of batches may be older than the bill.
+  const order = fresh ? there.slice().sort((a, b) => (a.expiry < b.expiry ? -1 : a.expiry > b.expiry ? 1 : a.batchId - b.batchId)) : there
   let left = prescribed
   const onto: Record<number, number> = {}
   for (const l of order) {
@@ -470,6 +467,18 @@ export function PharmacyBilling() {
   // from, made on or before the bill's day, as the server requires.
   const visitFor = (day: string) => (walkIn || !patient ? null : visitOf(lines.reduce<CardTag[]>((all, l) => withCards(all, l.cards ?? []), []), patient.id, day))
   const linkedVisit = visitFor(soldOn)
+  // A bill whose medicines came from a visit card's rows is made from that prescription, so it cannot be dated before
+  // it, as the server holds. A card only pressed for medicines already on the bill puts no rows on it and does not count.
+  const tooEarly = (day: string) => {
+    if (walkIn || !patient) return null
+    const late = lines
+      .reduce<CardTag[]>((all, l) => withCards(all, l.cards ?? []), [])
+      .filter((t) => t.kind === 'visit' && t.patientId === patient.id && t.at.slice(0, 10) > day && lines.some((l) => (l.rxRows ?? []).some((k) => k.startsWith(`${t.patientId}-visit-${t.id}:`))))
+    if (late.length === 0) return null
+    const newest = late.reduce((a, b) => (b.at > a.at ? b : a))
+    return `Medicines on this bill came from the prescription of ${longDate(newest.at)}${newest.doctor ? ` by ${newest.doctor}` : ''}, so the bill cannot be dated earlier. Date it that day or later, or take them off.`
+  }
+  const dateProblem = tooEarly(soldOn)
   const reset = () => {
     setLines([])
     setPatient(null)
@@ -494,6 +503,11 @@ export function PharmacyBilling() {
     const customer = walkIn ? name.trim() : patient?.name
     if (!customer) {
       setError(walkIn ? 'Enter the customer name.' : fromWard ? 'Choose the inpatient.' : 'Choose a patient.')
+      return
+    }
+    const problem = tooEarly(earlierOn ?? today())
+    if (problem) {
+      setError(problem)
       return
     }
     setSaving(true)
@@ -874,7 +888,19 @@ export function PharmacyBilling() {
               {linkedVisit.doctor ? ` by ${linkedVisit.doctor}` : ''}.
             </p>
           )}
-          {canSell && <EarlierDate key={done?.id ?? 0} what="bill" value={soldOn} onChange={(day) => setEarlierOn(day === today() ? null : day)} />}
+          {canSell && (
+            <EarlierDate
+              key={done?.id ?? 0}
+              what="bill"
+              value={soldOn}
+              onChange={(day) => {
+                setEarlierOn(day === today() ? null : day)
+                // What was said about the day before no longer holds.
+                setError('')
+              }}
+            />
+          )}
+          {dateProblem && dateProblem !== error && <p className="form-error">{dateProblem}</p>}
           {error && <p className="form-error">{error}</p>}
           {!canSell && <p className="muted gap-top">Only pharmacy staff can save bills.</p>}
           <div className="bill-actions">
