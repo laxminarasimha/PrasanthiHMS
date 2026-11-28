@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from './api'
 import { ownRecordOnly } from './access'
+import { useNotice } from './notices'
 import type { User } from './types'
 
 /** Sent whenever a task is written, ticked or withdrawn, so the number on the menu follows at once. */
@@ -11,6 +12,8 @@ export const todoChanged = () => window.dispatchEvent(new Event(TODO_CHANGED))
 export function useTodoCount(user: User | null | undefined): number {
   const [count, setCount] = useState(0)
   const id = user && !ownRecordOnly(user) ? user.id : null
+  // A task given by someone else has just reached this device: the number follows at once. Only tasks are counted.
+  useNotice(['task'], todoChanged)
   useEffect(() => {
     if (id === null) return
     let live = true

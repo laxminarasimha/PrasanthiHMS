@@ -6,6 +6,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
 import { canLeave } from '../../unsaved'
 import { useAuth } from '../../auth'
+import { useChoiceInAddress } from '../../rangeInAddress'
 import { mayDateBack } from '../../earlierDay'
 import { SelectField, TextField } from '../../components/Field'
 import { Popup } from '../../components/Popup'
@@ -29,6 +30,10 @@ const PAYMENT_TYPES = [
   { value: 'payment', label: 'Payment' },
   { value: 'refund', label: 'Refund' },
 ]
+const CASE_TABS = ['bill', 'notes', 'charts', 'consultants', 'summary', 'results', 'files', 'forms'] as const
+type CaseTab = (typeof CASE_TABS)[number]
+/** The charts are written by those who consult; nobody else is taken to them, even by a link. */
+const NOT_CHARTS = CASE_TABS.filter((t) => t !== 'charts')
 
 /** How long one bed was occupied, in days and hours. */
 const stayLength = (from: string, to: string | null) => {
@@ -64,7 +69,9 @@ export function IpdCase() {
   const [discount, setDiscount] = useState('')
   const [closing, setClosing] = useState({ status: 'discharged', discharged_at: nowLocal() })
   const { user } = useAuth()
-  const [tab, setTab] = useState<'bill' | 'notes' | 'charts' | 'consultants' | 'summary' | 'results' | 'files' | 'forms'>('bill')
+  // The open tab is kept in the address, so a link can open the case at it: a notice that a discharge summary is
+  // ready opens it at the summary. With none named, the case opens at the bill, as it always has.
+  const [tab, setTab] = useChoiceInAddress<CaseTab>('tab', 'bill', user?.can_consult ? CASE_TABS : NOT_CHARTS)
   const [templates, setTemplates] = useState<IpdBillTemplate[]>([])
   const [bedId, setBedId] = useState('')
   const [outstanding, setOutstanding] = useState<OutstandingBill[]>([])
@@ -285,7 +292,7 @@ export function IpdCase() {
             <IpdNotes admissionId={admission.id} canEdit={canEdit} />
           </>
         )}
-        {tab === 'summary' && <IpdSummary admissionId={admission.id} canEdit={canEdit} canApprove={Boolean(user?.can_approve_ipd)} dischargedOn={admission.discharged_at?.slice(0, 10)} />}
+        {tab === 'summary' && <IpdSummary admissionId={admission.id} canEdit={canEdit} canApprove={Boolean(user?.can_approve_ipd)} dischargedOn={admission.discharged_at?.slice(0, 10)} doctor={admission.doctor} userId={user?.id} />}
         {tab === 'bill' && (
         <>
         {notice && <p className="notice">{notice}</p>}

@@ -1881,6 +1881,8 @@ table.compact td.lab-last { white-space: nowrap; font-variant-numeric: tabular-n
 .summary-part .chip.on { border-color: var(--brand); color: var(--brand); font-weight: 700; }
 .summary-save { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: 12px; margin: 18px -20px -20px; padding: 12px 20px; background: var(--surface); border-top: 1px solid var(--border); border-radius: 0 0 14px 14px; box-shadow: 0 -8px 16px -12px var(--shadow); }
 @media screen and (max-width: 700px) { .summary-save { margin: 16px -12px -12px; padding: 10px 12px; } .summary-jump { margin-left: 0; margin-right: 0; padding: 0; box-shadow: none; } }
+/* The button that sends a summary for approval carries the doctor's name: on a phone it may take two lines. */
+@media screen and (max-width: 700px) { .print-bar .send-ready { white-space: normal; text-align: center; } }
 
 /* Patient page */
 .patient-avatar { width: 46px; height: 46px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); font-weight: 700; font-size: 1.05rem; letter-spacing: 0.02em; }

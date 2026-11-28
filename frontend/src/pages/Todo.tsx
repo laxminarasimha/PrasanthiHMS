@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { api, fieldErrors } from '../api'
 import { useAuth } from '../auth'
 import { longDate } from '../format'
+import { useNotice } from '../notices'
 import { todoChanged } from '../todoCount'
 
 type Person = { id: number; name: string }
@@ -89,6 +90,9 @@ export function Todo() {
     const timer = window.setInterval(load, 2 * 60 * 1000)
     return () => window.clearInterval(timer)
   }, [load])
+  // Every notice is about a task or about work listed here, so whatever arrives, the screen looks again at once.
+  // Only the lists are read again: what is being typed, and the line opened, stay as they are.
+  useNotice('any', load)
   useEffect(() => {
     if (view === 'given') void loadGiven()
   }, [view, loadGiven])

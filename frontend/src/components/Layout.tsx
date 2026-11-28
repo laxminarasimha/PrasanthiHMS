@@ -6,7 +6,8 @@ import { ErrorBoundary } from './ErrorBoundary'
 import { InstallHint } from './InstallHint'
 import { PushHint } from './PushControls'
 import { useTodoCount } from '../todoCount'
-import { getsNotices, syncPush } from '../push'
+import { syncPush } from '../push'
+import { getsNotices, useOpenFromNotice } from '../notices'
 import { PatientSearch } from './PatientSearch'
 import { onLoadTrouble } from '../api'
 import { useAuth } from '../auth'
@@ -16,6 +17,7 @@ import { allowedTabs, menuTabs, onTab } from '../nav'
 import { NAV_ICONS } from '../navIcons'
 import { AttendanceCard } from '../workforce/AttendanceCard'
 import { CheckInPrompt } from '../workforce/CheckInPrompt'
+import { useMyToday, type MyToday } from '../workforce/myToday'
 import { canLeave } from '../unsaved'
 import { today } from '../format'
 import { loadEnded, loadStarted, useFirstLoad } from '../loading'
@@ -23,6 +25,12 @@ import { loadEnded, loadStarted, useFirstLoad } from '../loading'
 /** The first letters of a person's name, for the round badge beside it. */
 const initials = (name: string) =>
   name.replace(/^(dr|mr|mrs|ms)\.?\s+/i, '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('')
+
+/**
+ * Whether the check-in call-out is asking this person, or is about to: the same rule it asks by. Someone in the daily
+ * attendance who has not checked in today is asked that first. Until their day is known, it counts as asking.
+ */
+const checkInAsks = (mine: MyToday | null) => mine === null || Boolean(mine.employee && mine.self_check_in && mine.regular !== false && !mine.open && (mine.done ?? []).length === 0)
 
 /** Shown while a screen's own code is being fetched; that counts as the screen still loading. */
 function ScreenComing() {
@@ -43,7 +51,11 @@ export function Layout() {
   // Until a screen has everything it first asked for, its figures are greyed and "nothing here" messages held back.
   const loading = useFirstLoad(pathname)
   useEffect(() => onLoadTrouble(setTrouble), [])
-  // A device already allowed to notify follows whoever is signed in on it; nobody is asked anything here.
+  // A notice tapped while the app is open goes to its page, asking first if something typed is not saved.
+  useOpenFromNotice()
+  // Today's attendance, read once for the card and the call-out: while the call-out asks, nothing else is asked.
+  const mine = useMyToday()
+  // A device is noted for whoever is signed in, if they switched notifications on here; nobody is asked anything here.
   const userId = user?.id
   useEffect(() => {
     if (user) void syncPush(user)
@@ -176,8 +188,9 @@ export function Layout() {
           </div>
         )}
         <InstallHint />
-        {/* A doctor is offered notifications on this device, on their first screen. */}
-        {pathname === homeFor(user) && getsNotices(user) && <PushHint />}
+        {/* Each person the hospital can notify is offered it on this device, on their first screen: one ask at a time,
+            so not while the call-out is asking them to check in. */}
+        {pathname === homeFor(user) && getsNotices(user) && !(user.abilities?.['wf:self:view'] && checkInAsks(mine)) && <PushHint />}
         {/* A person's first screen opens with their own attendance and the button to check in or out. */}
         {pathname === homeFor(user) && user.abilities?.['wf:self:view'] && <AttendanceCard />}
         {/* One broken screen shows a message in place; the menu stays, and going elsewhere starts afresh. */}

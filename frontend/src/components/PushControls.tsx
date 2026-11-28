@@ -1,17 +1,25 @@
 import { useState } from 'react'
+import type { AxiosError } from 'axios'
+import { useAuth } from '../auth'
 import { installPutOff, onIphone, runningInstalled } from '../install'
+import { inWords, noticesFor } from '../notices'
 import { usePhone } from '../phone'
 import { sendTestPush, turnOffPush, turnOnPush, usePush, type PushState } from '../push'
+import type { User } from '../types'
 
-const LATER = 'hms_push_later'
+/** "Later" is kept for each person, so one person putting it off on a shared device does not put it off for the next. */
+const laterKey = (id: number) => `hms_push_later:${id}`
 const WEEK = 7 * 24 * 60 * 60 * 1000
-const putOff = () => {
+const putOff = (id: number) => {
   try {
-    return Date.now() - Number(localStorage.getItem(LATER) ?? 0) < WEEK
+    return Date.now() - Number(localStorage.getItem(laterKey(id)) ?? 0) < WEEK
   } catch {
     return false
   }
 }
+
+/** What this person is told of, in words, for the strip and My profile alike. */
+const toldOf = (user: User | null) => inWords(noticesFor(user)) || 'news from the hospital'
 
 /** Why they cannot be switched on from here, in the person's own terms. */
 function whyNot(state: PushState): string {
@@ -25,18 +33,20 @@ function whyNot(state: PushState): string {
 }
 
 /** Switching on, with what went wrong said plainly. Shared by the strip on the first screen and the account page. */
-function useSwitchOn(): { busy: boolean; note: string; setNote: (note: string) => void; switchOn: () => Promise<PushState | null> } {
+function useSwitchOn(user: User | null): { busy: boolean; note: string; setNote: (note: string) => void; switchOn: () => Promise<PushState | null> } {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')
   const switchOn = async () => {
+    if (!user) return null
     setBusy(true)
     setNote('')
     try {
-      const now = await turnOnPush()
+      const now = await turnOnPush(user)
       if (now !== 'on') setNote(now === 'off' ? 'Notifications were not allowed. Press the button again and choose “Allow”.' : whyNot(now))
       return now
-    } catch {
-      setNote('Could not switch notifications on. Check the internet connection and try again.')
+    } catch (err) {
+      // The server's own words when it refused; otherwise the line is the likely cause.
+      setNote((err as AxiosError<{ message?: string }>).response?.data?.message ?? 'Could not switch notifications on. Check the internet connection and try again.')
       return null
     } finally {
       setBusy(false)
@@ -46,22 +56,23 @@ function useSwitchOn(): { busy: boolean; note: string; setNote: (note: string) =
 }
 
 /**
- * On a doctor's first screen: a strip offering notifications on this device, until they are on or the doctor says
- * "Later" (asked again after a week). One thing is asked at a time: on a phone still in the browser the strip
- * above it offers to install the app, and this one waits until that is done or put off.
+ * On a person's first screen: a strip offering notifications on this device, saying what they would be told of,
+ * until they are on or the person says "Later" (asked again after a week). One thing is asked at a time: on a phone
+ * still in the browser the strip above it offers to install the app, and this one waits until that is done or put off.
  */
 export function PushHint() {
-  const { state } = usePush()
-  const { busy, note, switchOn } = useSwitchOn()
-  const [later, setLater] = useState(putOff)
+  const { user } = useAuth()
+  const { state } = usePush(user)
+  const { busy, note, switchOn } = useSwitchOn(user)
+  const [later, setLater] = useState(() => (user ? putOff(user.id) : true))
   const phone = usePhone()
 
-  if (later || state !== 'off' || (phone && !runningInstalled() && !installPutOff())) return null
+  if (!user || later || state !== 'off' || (phone && !runningInstalled() && !installPutOff())) return null
 
   const notNow = () => {
     setLater(true)
     try {
-      localStorage.setItem(LATER, String(Date.now()))
+      localStorage.setItem(laterKey(user.id), String(Date.now()))
     } catch {
       // Without storage it is only hidden until the page is loaded again.
     }
@@ -70,8 +81,8 @@ export function PushHint() {
   return (
     <div className="install-hint no-print">
       <div>
-        <strong>Get notified of new appointments and patients arriving</strong>
-        <span>It reaches this device even when the app is closed. You can switch it off any time under Profile.</span>
+        <strong>Get notified on this device</strong>
+        <span>You will be told of {toldOf(user)}, even when the app is closed. You can switch it off any time under My profile.</span>
         {note && <span className="install-steps">{note}</span>}
       </div>
       <div className="install-actions">
@@ -86,15 +97,17 @@ export function PushHint() {
   )
 }
 
-/** On the account page: whether this device is notified, switching it on or off, and sending one to see it arrive. */
+/** On the account page: whether this device is notified for this person, switching it on or off, and sending one to see it arrive. */
 export function PushSettings() {
-  const { state } = usePush()
-  const { busy, note, setNote, switchOn } = useSwitchOn()
+  const { user } = useAuth()
+  const { state } = usePush(user)
+  const { busy, note, setNote, switchOn } = useSwitchOn(user)
   const [working, setWorking] = useState(false)
 
   const switchOff = async () => {
+    if (!user) return
     setWorking(true)
-    await turnOffPush()
+    await turnOffPush(user)
     setNote('Switched off on this device.')
     setWorking(false)
   }
@@ -108,7 +121,7 @@ export function PushSettings() {
     <>
       <h3>Notifications</h3>
       <p className="muted small">
-        When the front desk adds an appointment for you, a booked patient arrives, or a patient books from the patient app, this device is notified, even with the app closed. Each phone or computer is switched on by itself, and signing out switches it off there.
+        This device can tell you of {toldOf(user)}, even with the app closed. Each person switches this on for themselves, on each phone or computer they use. Signing out stops yours on this device until you sign in here again.
       </p>
       {state === null ? (
         <p className="muted small">Checking this device…</p>

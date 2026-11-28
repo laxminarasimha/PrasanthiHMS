@@ -64,10 +64,24 @@ function GrowingText({ value, rows, placeholder, onChange, label }: { value: str
   return <textarea ref={box} rows={rows} placeholder={placeholder ?? ''} value={value} onChange={(e) => onChange(e.target.value)} aria-label={label} />
 }
 
-type Props = { admissionId: number; canEdit: boolean; canApprove: boolean; /** The day the patient left, when the case is closed: review dates count from it. */ dischargedOn?: string | null }
+type Props = {
+  admissionId: number
+  canEdit: boolean
+  canApprove: boolean
+  /** The day the patient left, when the case is closed: review dates count from it. */
+  dischargedOn?: string | null
+  /** The admission's doctor, who is sent the summary when it is ready for approval. */
+  doctor: { id: number; name: string }
+  /** Who is looking. */
+  userId?: number
+}
 
-/** The discharge summary of one stay: written in parts, helped by what the stay's records already say, then approved by a doctor, which locks it. */
-export function IpdSummary({ admissionId, canEdit, canApprove, dischargedOn }: Props) {
+/**
+ * The discharge summary of one stay: written in parts, helped by what the stay's records already say, then approved
+ * by a doctor, which locks it. Whoever writes it for the admission's doctor sends it to them once it is ready, and the
+ * doctor is told.
+ */
+export function IpdSummary({ admissionId, canEdit, canApprove, dischargedOn, doctor, userId }: Props) {
   const [summary, setSummary] = useState<DischargeSummary | null>(null)
   const [texts, setTexts] = useState<Texts>({})
   const [medicines, setMedicines] = useState<PrescribedMedicine[]>([emptyMedicine()])
@@ -118,6 +132,13 @@ export function IpdSummary({ admissionId, canEdit, canApprove, dischargedOn }: P
       api.put(url, { ...Object.fromEntries(Object.entries(texts).map(([k, v]) => [k, v || null])), medicines: filledMedicines(medicines), follow_up_on: followUp || null }),
       'Discharge summary saved.',
     )
+  // The saved summary goes to the admission's doctor, who is told it is ready. What comes back is the summary as it now
+  // stands; should the answer not carry it, it is read again.
+  const sendForApproval = () =>
+    run(
+      api.post<DischargeSummary | ''>(`${url}/ready`).then((res) => (res.data && typeof res.data === 'object' ? { data: res.data } : api.get<DischargeSummary>(url))),
+      `Sent to ${doctor.name} for approval.`,
+    )
 
   // Ctrl+S (or ⌘S) saves, as in the visit pad. The latest save is kept in a ref so the key handler never goes stale.
   const saveNow = useRef(save)
@@ -155,6 +176,10 @@ export function IpdSummary({ admissionId, canEdit, canApprove, dischargedOn }: P
   const missing = allParts.filter((p) => [...NEEDED, 'follow_up_on'].includes(p.key) && !written(p.key))
   const jumpTo = (key: string) => document.getElementById(`summary-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   const reviewFrom = dischargedOn ?? today()
+  // Someone writing it for the admission's doctor sends it to them, once it is saved, until the doctor approves it.
+  const handsIn = canEdit && userId !== doctor.id && Boolean(summary.id) && !approved
+  const sentAt = !approved ? (summary.ready_at ?? null) : null
+  const sentLine = sentAt ? `Sent to ${userId === doctor.id ? 'you' : doctor.name} for approval on ${longDate(sentAt)} ${clock(sentAt)}${summary.ready_by ? `, by ${summary.ready_by.name}` : ''}.` : null
 
   const part = (p: { key: string; label: string; hint?: string; rows?: number }) => {
     const offer = offered(p.key)
@@ -198,12 +223,23 @@ export function IpdSummary({ admissionId, canEdit, canApprove, dischargedOn }: P
             </>
           ) : summary.id ? (
             <>
-              <span className="pill status-arrived">Draft</span> <span className="muted small">Prepared by {summary.preparer?.name ?? 'staff'}. A doctor approves it to make it final.</span>
+              <span className={`pill ${sentLine ? 'status-ongoing' : 'status-arrived'}`}>{sentLine ? 'Sent for approval' : 'Draft'}</span>{' '}
+              <span className="muted small">
+                Prepared by {summary.preparer?.name ?? 'staff'}. {sentLine ?? 'A doctor approves it to make it final.'}
+              </span>
             </>
           ) : (
             <span className="muted small">Not written yet. The diagnosis below is suggested from the reason for admission.</span>
           )}
         </span>
+        {handsIn && !sentLine && (
+          <>
+            <button className="btn send-ready" disabled={saving || dirty} title={dirty ? 'Save the summary first' : `${doctor.name} is told that it is ready to approve`} onClick={() => void sendForApproval()}>
+              Ready — send to {doctor.name} for approval
+            </button>
+            {dirty && <small className="muted">Save the changes first.</small>}
+          </>
+        )}
         {summary.id && canApprove && (
           <button
             className={approved ? 'btn ghost' : 'btn primary'}
