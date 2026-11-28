@@ -5,10 +5,12 @@ namespace Tests\Feature;
 use App\Models\Admission;
 use App\Models\Branch;
 use App\Models\LabOrder;
+use App\Models\LabPackage;
 use App\Models\LabTest;
 use App\Models\Medicine;
 use App\Models\Patient;
 use App\Models\PatientAccount;
+use App\Models\PurchaseInvoice;
 use App\Models\PurchaseOrder;
 use App\Models\Service;
 use App\Models\StockCount;
@@ -21,6 +23,7 @@ use App\Workforce\Models\SalaryStructure;
 use App\Workforce\Support\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -167,6 +170,111 @@ class ToDoStageCTest extends TestCase
         $this->assertSame('RBS', $rows['Bill Cancelled']['tests']);
     }
 
+    public function test_a_short_name_is_never_looked_for_inside_another_word_so_studies_done_outside_stay_off_the_desk(): void
+    {
+        $rao = User::factory()->create(['role' => 'doctor', 'name' => 'Dr Rao']);
+        Sanctum::actingAs($this->admin);
+        $aso = $this->labTest('Antistreptolysin O - ASO');
+        $this->labTest('Serum Uric Acid');
+        $this->labTest('SGOT (AST)');
+        $thyroid = $this->labTest('Thyroid Profile (T3, T4, TSH)');
+        $cbp = $this->labTest('Complete Blood Picture - CBP');
+        // Names as the hospital's own list has them: "echo" is inside "catecholamines", and two tests have "creatinine".
+        $this->labTest('24 Hours Catecholamines - Adrenaline/Nor Adrenaline');
+        $this->labTest('24 Hours Creatinine');
+        $this->labTest('Serum Creatinine');
+
+        $outside = Patient::factory()->create(['name' => 'Outside Only']);
+        $throat = Patient::factory()->create(['name' => 'Throat Patient']);
+        $blood = Patient::factory()->create(['name' => 'Blood Count']);
+        $kidney = Patient::factory()->create(['name' => 'Kidney Patient']);
+        // "aso" is inside "ultrasound", "sua" (Serum Uric Acid) inside "visual acuity", "ast" inside "gastroscopy" and
+        // "echo" inside "catecholamines": none of these is a test of our lab.
+        $this->visit($rao, $outside, 'Ultrasound abdomen, Visual acuity, Gastroscopy, Echo');
+        $this->travelTo('2026-11-24 10:05');
+        $this->visit($rao, $throat, 'ASO, Ultrasound pelvis');
+        $this->travelTo('2026-11-24 10:10');
+        $this->visit($rao, $blood, 'CBC, TSH');
+        $this->travelTo('2026-11-24 10:15');
+        $last = $this->visit($rao, $kidney, 'Creatinine, 2D Echo');
+        Sanctum::actingAs($this->admin);
+        $this->postJson('/api/lab/orders', ['patient_id' => $throat->id, 'test_ids' => [$aso['id']]])->assertCreated();
+        // "CBC" is the lab's "CBP", and "TSH" is one of the thyroid profile's short forms.
+        $this->postJson('/api/lab/orders', ['patient_id' => $blood->id, 'test_ids' => [$cbp['id'], $thyroid['id']]])->assertCreated();
+
+        // The desk is asked only for the creatinine, under the lab's nearest name for it.
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->assertSame([['text' => "Token {$last['token_no']} · Kidney Patient", 'detail' => 'Dr Rao · Serum Creatinine', 'to' => '/front-desk']], $this->todo()['front_desk.tests_not_ordered']['rows']);
+
+        // The report keeps the studies to be done outside, as the doctor wrote them; the blood count and the thyroid are done.
+        Sanctum::actingAs($this->admin);
+        $rows = collect($this->getJson('/api/reports/list/tests-not-done?from=2026-11-24&to=2026-11-24')->assertOk()->json('rows'))->keyBy('patient');
+        $this->assertSame(['Outside Only', 'Throat Patient', 'Kidney Patient'], $rows->keys()->all());
+        $this->assertSame(['Ultrasound abdomen, Visual acuity, Gastroscopy, Echo', 4], [$rows['Outside Only']['tests'], $rows['Outside Only']['missing']]);
+        $this->assertSame(['Ultrasound pelvis', 2, 1], [$rows['Throat Patient']['tests'], $rows['Throat Patient']['advised'], $rows['Throat Patient']['missing']]);
+        $this->assertSame('Creatinine, 2D Echo', $rows['Kidney Patient']['tests']);
+    }
+
+    public function test_an_advised_package_nobody_ordered_reaches_the_desk_under_the_package_name(): void
+    {
+        $rao = User::factory()->create(['role' => 'doctor', 'name' => 'Dr Rao']);
+        Sanctum::actingAs($this->admin);
+        $sugar = $this->labTest('RBS');
+        $creatinine = $this->labTest('Serum Creatinine');
+        $kidney = $this->postJson('/api/lab/packages', ['name' => 'Kidney Check', 'price' => 400, 'test_ids' => [$sugar['id'], $creatinine['id']]])->assertCreated()->json();
+        // A package no longer offered is not ours to order.
+        $this->postJson('/api/lab/packages', ['name' => 'Fever Panel', 'price' => 600, 'is_active' => false, 'test_ids' => [$sugar['id'], $creatinine['id']]])->assertCreated();
+        $this->assertSame(1, LabPackage::where('is_active', true)->count());
+
+        $patient = Patient::factory()->create(['name' => 'Package Patient']);
+        $visit = $this->visit($rao, $patient, 'Kidney check, Fever panel');
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->assertSame([['text' => "Token {$visit['token_no']} · Package Patient", 'detail' => 'Dr Rao · Kidney Check', 'to' => '/front-desk']], $this->todo()['front_desk.tests_not_ordered']['rows']);
+
+        // Ordered as the package, it leaves the line; the panel no longer offered is left to the report.
+        Sanctum::actingAs($this->admin);
+        $this->postJson('/api/lab/orders', ['patient_id' => $patient->id, 'package_ids' => [$kidney['id']]])->assertCreated();
+        $this->assertSame('Fever panel', $this->getJson('/api/reports/list/tests-not-done?from=2026-11-24&to=2026-11-24')->assertOk()->json('rows.0.tests'));
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->assertArrayNotHasKey('front_desk.tests_not_ordered', $this->todo());
+    }
+
+    public function test_a_test_ordered_on_the_day_of_the_visit_counts_when_the_pad_is_finished_the_next_day(): void
+    {
+        $rao = User::factory()->create(['role' => 'doctor', 'name' => 'Dr Rao']);
+        Sanctum::actingAs($this->admin);
+        $lipid = $this->labTest('Lipid Profile');
+        $late = Patient::factory()->create(['name' => 'Late Pad Patient']);
+        $early = Patient::factory()->create(['name' => 'Ordered Before Patient']);
+        // An order from the day before the visit is for something else.
+        $this->travelTo('2026-11-22 10:00');
+        $this->postJson('/api/lab/orders', ['patient_id' => $early->id, 'test_ids' => [$lipid['id']]])->assertCreated();
+
+        // Seen in the evening: the doctor writes the tests without finishing the pad, and the desk orders them for one
+        // patient from the Tests button straight away.
+        $this->travelTo('2026-11-23 18:00');
+        $first = $this->booking($rao, $late);
+        $second = $this->booking($rao, $early);
+        Sanctum::actingAs($rao);
+        foreach ([$first, $second] as $visit) {
+            $this->putJson("/api/appointments/{$visit['id']}/consultation", ['tests_advised' => 'Lipid profile'])->assertSuccessful();
+        }
+        Sanctum::actingAs($this->admin);
+        $this->postJson('/api/lab/orders', ['patient_id' => $late->id, 'appointment_id' => $first['id'], 'test_ids' => [$lipid['id']]])->assertCreated();
+
+        // The next morning the doctor finishes both pads. The test ordered on the day of the visit counts.
+        $this->travelTo('2026-11-24 09:00');
+        Sanctum::actingAs($rao);
+        foreach ([$first, $second] as $visit) {
+            $this->putJson("/api/appointments/{$visit['id']}/consultation", ['tests_advised' => 'Lipid profile', 'complete' => true])->assertSuccessful();
+        }
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->assertSame([['text' => "Token {$second['token_no']} · Ordered Before Patient", 'detail' => 'Dr Rao · Lipid Profile', 'to' => '/front-desk']], $this->todo()['front_desk.tests_not_ordered']['rows']);
+        Sanctum::actingAs($this->admin);
+        $this->assertSame(['Ordered Before Patient'], array_column($this->getJson('/api/reports/list/tests-not-done?from=2026-11-24&to=2026-11-24')->assertOk()->json('rows'), 'patient'));
+    }
+
     public function test_a_test_sent_to_an_outside_lab_waits_on_its_own_line_until_its_result_is_entered(): void
     {
         $rao = User::factory()->create(['role' => 'doctor', 'name' => 'Dr Rao']);
@@ -300,6 +408,46 @@ class ToDoStageCTest extends TestCase
         $this->travelTo('2026-12-02 10:05');
         $this->postJson("/api/consultants/payments/{$rest}/cancel", ['reason' => 'Written down twice'])->assertOk();
         $this->assertSame('November 2026 · part paid · 2 ward visits', $this->todo()['office.consultants']['rows'][0]['detail']);
+    }
+
+    public function test_the_consultants_line_keeps_one_answer_in_the_cache_however_often_it_is_worked_out_afresh(): void
+    {
+        // Kept as the hospital keeps it when not told otherwise: in the database, where an old answer would stay for good.
+        config(['cache.default' => 'database']);
+        $here = Branch::create(['name' => 'Sample Hospital']);
+        $user = fn (string $role, array $more = []) => User::factory()->create($more + ['role' => $role, 'branch_id' => $here->id]);
+        $admin = $user('admin');
+        $nurse = $user('nurse');
+        $visiting = $user('doctor', ['name' => 'Dr Visiting']);
+        $admission = Admission::create(['branch_id' => $here->id, 'patient_id' => Patient::factory()->create()->id, 'doctor_id' => $user('doctor')->id, 'admitted_at' => '2026-11-20 09:00', 'status' => 'admitted', 'created_by' => $admin->id]);
+        $kept = fn () => DB::table('cache')->where('key', 'like', '%todo.consultants%')->count();
+        $detail = function () use ($admin): string {
+            Sanctum::actingAs($admin);
+
+            return $this->todo()['office.consultants']['rows'][0]['detail'];
+        };
+
+        // Three days of December, with ward visits for November written down and a payment made in between: each
+        // change is shown at once, and the cache holds one answer, the latest.
+        $seen = [];
+        foreach (['2026-12-02', '2026-12-03', '2026-12-04'] as $i => $day) {
+            $this->travelTo("{$day} 10:00");
+            Sanctum::actingAs($nurse);
+            $this->postJson("/api/ipd/admissions/{$admission->id}/consultant-visits", ['doctor_id' => $visiting->id, 'visited_on' => '2026-11-2'.($i + 1)])->assertCreated();
+            $seen[] = $detail();
+            $this->assertSame(1, $kept(), $day);
+            $this->travelTo("{$day} 11:00");
+            $seen[] = $detail();
+        }
+        $this->postJson("/api/consultants/{$visiting->id}/payments", ['month' => '2026-11', 'paid_on' => '2026-12-04', 'amount' => 500, 'mode' => 'cash'])->assertCreated();
+        $seen[] = $detail();
+        $this->assertSame(1, $kept());
+        $this->assertSame([
+            'November 2026 · nothing paid yet · 1 ward visit', 'November 2026 · nothing paid yet · 1 ward visit',
+            'November 2026 · nothing paid yet · 2 ward visits', 'November 2026 · nothing paid yet · 2 ward visits',
+            'November 2026 · nothing paid yet · 3 ward visits', 'November 2026 · nothing paid yet · 3 ward visits',
+            'November 2026 · part paid · 3 ward visits',
+        ], $seen);
     }
 
     public function test_a_payroll_waits_for_each_person_at_their_own_step_and_names_no_pay(): void
@@ -440,23 +588,28 @@ class ToDoStageCTest extends TestCase
         $count = StockCount::create(['title' => 'Rack A count', 'scope' => 'rack', 'status' => 'submitted', 'submitted_at' => now()]);
         $rows = [['text' => 'Rack A count', 'detail' => 'Handed in 24 Nov', 'to' => "/pharmacy/audit/counts/{$count->id}"]];
         // A supplier order well past its day: a line only for those who run the pharmacy.
-        PurchaseOrder::create(['stockist_id' => Stockist::create(['name' => 'City Pharma'])->id, 'order_date' => '2026-11-10', 'status' => 'open']);
+        $supplier = Stockist::create(['name' => 'City Pharma']);
+        PurchaseOrder::create(['stockist_id' => $supplier->id, 'order_date' => '2026-11-10', 'status' => 'open']);
+        // A supplier's bill past its date: for those who run the pharmacy and are trusted with its audit, who may pay it.
+        PurchaseInvoice::create(['stockist_id' => $supplier->id, 'invoice_no' => 'INV-9', 'invoice_date' => '2026-10-01', 'due_date' => '2026-10-15', 'subtotal' => 1000, 'tax' => 0, 'total' => 1000, 'paid' => 0]);
 
-        // A manager trusted with the audit: the count and nothing else of the pharmacy.
+        // A manager trusted with the audit: the count and nothing else of the pharmacy, not even the bill they cannot pay.
         $approver = User::factory()->create(['role' => 'manager', 'permissions' => ['canAuditPharmacy' => true]]);
         Sanctum::actingAs($approver);
         $this->assertSame(['pharmacy.stock_counts'], $this->linesIn('pharmacy'));
         $this->assertSame($rows, $this->todo()['pharmacy.stock_counts']['rows']);
 
-        // The admin gets it with the rest; a pharmacist counts but does not approve; a manager without the tick, and
-        // anyone who may not even look at the pharmacy, get no pharmacy line at all.
+        // The admin gets it with the rest, the late bill too; a pharmacist counts but does not approve; a manager
+        // without the tick, and anyone who may not even look at the pharmacy, get no pharmacy line at all.
         Sanctum::actingAs($this->admin);
         $admin = $this->todo();
         $this->assertSame($rows, $admin['pharmacy.stock_counts']['rows']);
         $this->assertArrayHasKey('pharmacy.orders_late', $admin);
+        $this->assertSame([['text' => 'City Pharma · INV-9', 'detail' => '₹1,000 · 40 days late', 'to' => '/pharmacy/purchases']], $admin['pharmacy.supplier_bills']['rows']);
         Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
         $this->assertContains('pharmacy.orders_late', $this->linesIn('pharmacy'));
         $this->assertNotContains('pharmacy.stock_counts', $this->linesIn('pharmacy'));
+        $this->assertNotContains('pharmacy.supplier_bills', $this->linesIn('pharmacy'));
         foreach ([User::factory()->create(['role' => 'manager']), User::factory()->create(['role' => 'nurse', 'permissions' => ['canAuditPharmacy' => true]]), User::factory()->create(['role' => 'frontdesk'])] as $who) {
             Sanctum::actingAs($who);
             $this->assertSame([], $this->linesIn('pharmacy'), $who->role->value);
@@ -466,5 +619,45 @@ class ToDoStageCTest extends TestCase
         Sanctum::actingAs($approver);
         $this->postJson("/api/pharmacy/audit/counts/{$count->id}/approve")->assertOk();
         $this->assertSame([], $this->linesIn('pharmacy'));
+    }
+
+    public function test_a_discharge_summary_to_approve_opens_at_the_summary_and_says_whether_it_was_sent_for_approval(): void
+    {
+        $rao = User::factory()->create(['role' => 'doctor', 'name' => 'Dr Rao']);
+        $devi = User::factory()->create(['role' => 'doctor', 'name' => 'Dr Devi']);
+        $nurse = User::factory()->create(['role' => 'nurse']);
+        $case = fn (User $doctor, string $name, string $admitted) => Admission::create([
+            'patient_id' => Patient::factory()->create(['name' => $name])->id, 'doctor_id' => $doctor->id, 'admitted_at' => $admitted, 'status' => 'admitted', 'created_by' => $this->admin->id,
+        ]);
+        $sent = $case($rao, 'Sent Patient', '2026-11-20 09:00');
+        $draft = $case($rao, 'Draft Patient', '2026-11-21 09:00');
+        $other = $case($devi, 'Other Patient', '2026-11-22 09:00');
+        Sanctum::actingAs($nurse);
+        foreach ([$sent, $draft, $other] as $admission) {
+            $this->putJson("/api/ipd/admissions/{$admission->id}/summary", ['diagnosis' => 'Sample diagnosis words'])->assertOk();
+        }
+        $this->travelTo('2026-11-24 11:30');
+        $this->postJson("/api/ipd/admissions/{$sent->id}/summary/ready")->assertOk();
+
+        // The doctor sees their own cases, each opening the case at its summary; the nurse who wrote them approves none.
+        $row = fn (Admission $a, string $name, string $detail) => ['text' => "{$a->ipd_no} · {$name}", 'detail' => $detail, 'to' => "/ipd/{$a->id}?tab=summary"];
+        Sanctum::actingAs($rao);
+        $line = $this->todo()['ipd.summaries'];
+        $this->assertSame([
+            $row($sent, 'Sent Patient', 'Admitted 20 Nov · sent for approval 24 Nov'),
+            $row($draft, 'Draft Patient', 'Admitted 21 Nov · draft'),
+        ], $line['rows']);
+        $this->assertStringNotContainsString('Sample diagnosis', json_encode($line));
+        Sanctum::actingAs($devi);
+        $this->assertSame([$row($other, 'Other Patient', 'Admitted 22 Nov · draft')], $this->todo()['ipd.summaries']['rows']);
+        Sanctum::actingAs($nurse);
+        $this->assertArrayNotHasKey('ipd.summaries', $this->todo());
+        Sanctum::actingAs($this->admin);
+        $this->assertSame(3, $this->todo()['ipd.summaries']['count']);
+
+        // Approved, it leaves the line.
+        Sanctum::actingAs($rao);
+        $this->postJson("/api/ipd/admissions/{$sent->id}/summary/approve", ['approved' => true])->assertOk();
+        $this->assertSame([$row($draft, 'Draft Patient', 'Admitted 21 Nov · draft')], $this->todo()['ipd.summaries']['rows']);
     }
 }
