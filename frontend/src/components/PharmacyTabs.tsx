@@ -6,7 +6,7 @@ const GROUPS: TabGroup[] = [
   ['Manager', [['/pharmacy/manager', 'To do today'], ['/pharmacy/audit', 'Stock audit'], ['/pharmacy/reports', 'Reports']]],
   ['Billing', [['/pharmacy/dashboard', 'Dashboard'], ['/pharmacy', 'Billing'], ['/pharmacy/bills', 'All bills'], ['/pharmacy/orders', 'Prescriptions'], ['/pharmacy/subscriptions', 'Monthly medicines']]],
   ['Inventory', [['/pharmacy/inventory', 'Inventory'], ['/pharmacy/opening-stock', 'Opening stock'], ['/pharmacy/medicines', 'Medicines'], ['/pharmacy/national-list', 'National drug list'], ['/pharmacy/shelves', 'Racks and boxes']]],
-  ['Purchases', [['/pharmacy/purchases', 'Invoices'], ['/pharmacy/stockists', 'Stockists'], ['/pharmacy/stock-returns', 'Stock returns'], ['/pharmacy/purchase-orders', 'Purchase orders']]],
+  ['Purchases', [['/pharmacy/purchases', 'Invoices'], ['/pharmacy/stockists', 'Stockists'], ['/pharmacy/stock-returns', 'Stock returns'], ['/pharmacy/purchase-orders', 'Purchase orders'], ['/reps', 'Company catalogues']]],
 ]
 
 /** Pages that only make sense for someone who works in the pharmacy: making a bill, entering opening stock. */

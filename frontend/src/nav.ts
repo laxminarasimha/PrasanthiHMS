@@ -30,7 +30,7 @@ export function allowedTabs(user: User): NavTab[] {
     ...(user.can_consult ? [{ key: 'doctor', label: 'Doctor', to: '/doctor', also: ['/visits', '/patients', ...(user.role === 'doctor' || !user.can_front_desk ? ['/reps'] : [])] }] : []),
     ...(user.can_run_lab || user.can_front_desk ? [{ key: 'lab', label: 'Lab', to: '/lab' }] : []),
     // Those who run the pharmacy land on billing; those who may only look land on the manager's page.
-    ...(user.can_run_pharmacy ? [{ key: 'pharmacy', label: 'Pharmacy', to: '/pharmacy' }] : user.can_view_pharmacy ? [{ key: 'pharmacy', label: 'Pharmacy', to: '/pharmacy/manager', also: ['/pharmacy'] }] : []),
+    ...(user.can_run_pharmacy ? [{ key: 'pharmacy', label: 'Pharmacy', to: '/pharmacy', ...(!user.can_front_desk && !user.can_consult ? { also: ['/reps'] } : {}) }] : user.can_view_pharmacy ? [{ key: 'pharmacy', label: 'Pharmacy', to: '/pharmacy/manager', also: ['/pharmacy'] }] : []),
     ...(user.can_ipd ? [{ key: 'ipd', label: 'IPD', to: '/ipd' }] : []),
     ...(patients === 'patients' ? [{ key: 'patients', label: 'Patients', to: '/patients' }] : []),
     ...(user.can_view_reports ? [{ key: 'reports', label: 'Reports', to: '/reports' }] : []),

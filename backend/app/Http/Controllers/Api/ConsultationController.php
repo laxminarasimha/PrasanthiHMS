@@ -12,6 +12,7 @@ use App\Models\LabOrder;
 use App\Models\Medicine;
 use App\Models\Patient;
 use App\Models\PrescriptionItem;
+use App\Models\RepProduct;
 use App\Models\User;
 use App\Support\PrescriptionSafety;
 use Illuminate\Http\JsonResponse;
@@ -320,7 +321,17 @@ class ConsultationController extends Controller
             ->sortBy(fn ($m) => [$m['in_stock'] > 0 ? 0 : 1, $m['combination'] ? 1 : 0, mb_strtolower($m['name'])])
             ->take(25)->values();
 
-        return response()->json($found);
+        // Brands from the companies' catalogues that the pharmacy does not list: offered last, and named as such.
+        $listed = $found->map(fn ($m) => mb_strtolower($m['name']))->all();
+        $catalogue = RepProduct::where(fn ($w) => $w->where('name', 'like', "%{$term}%")->orWhere('composition', 'like', "%{$term}%"))
+            ->whereNull('medicine_id')->with('company:id,name')->withCount('ingredients')->orderBy('name')->limit(40)->get()
+            ->reject(fn (RepProduct $p) => in_array(mb_strtolower($p->name), $listed, true))
+            ->map(fn (RepProduct $p) => [
+                'name' => $p->name, 'composition' => $p->composition, 'type' => $p->form, 'in_stock' => 0, 'combination' => $p->ingredients_count > 1,
+                'by_drug' => mb_stripos($p->name, $term) === false, 'catalogue' => $p->company?->name,
+            ])->take(max(0, 30 - $found->count()))->values();
+
+        return response()->json($found->concat($catalogue)->values());
     }
 
     /**
