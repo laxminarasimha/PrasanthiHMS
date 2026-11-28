@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AppointmentController;
 use App\Http\Controllers\Api\AuditController;
+use App\Http\Controllers\Api\DoctorCardController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BackupController;
 use App\Http\Controllers\Api\BillController;
@@ -194,6 +195,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
     Route::apiResource('patients', PatientController::class)->except('destroy');
 
     Route::get('/doctors', [ServiceController::class, 'doctors']);
+    Route::get('/doctors/{doctor}/card', [DoctorCardController::class, 'show']);
     Route::get('/services', [ServiceController::class, 'index']);
     Route::get('/appointments', [AppointmentController::class, 'index']);
     Route::get('/appointments/calendar', [AppointmentController::class, 'calendar']);

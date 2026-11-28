@@ -13,6 +13,7 @@ import { OutsideHours } from '../components/AppointmentForm'
 import { SelectField, TextField } from '../components/Field'
 import { clock, longDate, today } from '../format'
 import type { Doctor } from '../types'
+import { DoctorLink } from '../components/DoctorLink'
 
 type Company = { id: number; name: string; notes: string | null; reps_count?: number; last_visit_at?: string | null; reps?: Rep[]; files?: CompanyFile[] }
 type CompanyFile = { id: number; title: string; original_name: string; size: number; created_at: string; uploader?: { id: number; name: string } | null }
@@ -224,7 +225,7 @@ export function MedicalReps() {
                             {v.purpose ? ` · ${v.purpose}` : ''}
                           </small>
                         </td>
-                        {!isDoctor && <td>{v.doctor?.name}</td>}
+                        {!isDoctor && <td><DoctorLink id={v.doctor?.id}>{v.doctor?.name}</DoctorLink></td>}
                         <td>
                           <span className={`pill ${STATUS[v.status].pill}`}>{STATUS[v.status].label}</span>
                           {v.next_on && <small className="muted block">{v.status === 'come_back' ? 'Come on' : 'Next'} {longDate(v.next_on)}</small>}
@@ -628,7 +629,7 @@ function RepPanel({ rep, startName, canChange, showVisits, onClose, onSaved }: {
             {visits?.map((v) => (
               <li key={v.id}>
                 <span>
-                  {longDate(v.arrived_at)} · {v.doctor?.name}
+                  {longDate(v.arrived_at)} · <DoctorLink id={v.doctor?.id}>{v.doctor?.name}</DoctorLink>
                   {(v.drugs ?? []).map((d) => (
                     <small className="block" key={d.id}>
                       <strong>{d.name}</strong>

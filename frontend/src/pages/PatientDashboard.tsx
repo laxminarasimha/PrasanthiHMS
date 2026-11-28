@@ -10,6 +10,7 @@ import { AttachmentsPanel } from '../components/FrontDeskPanels'
 import { ADMISSION_STATUS, STATUS_LABELS, clock, fullName, longDate, nowLocal, rupees, settlement, stampDate } from '../format'
 import type { PatientOverview } from '../types'
 import { testLabel } from '../labName'
+import { DoctorLink } from '../components/DoctorLink'
 
 const KIND = { appointment: 'Appointment', lab: 'Lab', other: 'Other services' } as const
 /** How many rows of each list show before "Show all". */
@@ -204,7 +205,7 @@ export function PatientDashboard() {
                 {longDate(v.scheduled_at)} <small className="muted">{clock(v.scheduled_at)}</small>
               </td>
               <td>
-                {v.doctor.name}
+                <DoctorLink id={v.doctor.id}>{v.doctor.name}</DoctorLink>
                 <small className="muted block">{v.consultation?.diagnosis?.split('\n')[0] || v.service?.name || ''}</small>
               </td>
               <td>
@@ -309,7 +310,7 @@ export function PatientDashboard() {
                 {longDate(a.admitted_at)}
                 {a.discharged_at ? ` to ${longDate(a.discharged_at)}` : ''}
                 <small className="muted block">
-                  {a.doctor.name}
+                  <DoctorLink id={a.doctor.id}>{a.doctor.name}</DoctorLink>
                   {a.bed ? ` · ${a.bed.ward} bed ${a.bed.bed_no}` : ''}
                 </small>
               </td>

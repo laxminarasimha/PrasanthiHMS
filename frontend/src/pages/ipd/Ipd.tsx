@@ -9,6 +9,7 @@ import { PatientPicker } from '../../components/PatientPicker'
 import { ADMISSION_STATUS, clock, longDate, nowLocal, rupees } from '../../format'
 import { PatientLink } from '../../components/PatientLink'
 import type { AdminEntry, Admission, AdmitAdvice, Bed, Doctor, Patient } from '../../types'
+import { DoctorLink } from '../../components/DoctorLink'
 
 const FILTERS = ['admitted', 'discharged', 'lama', 'dama', 'absconded', 'died', 'all']
 
@@ -220,7 +221,7 @@ export function Ipd() {
                       {a.reason || 'No reason written'}
                       <span className="muted">
                         {' '}
-                        · {a.doctor?.name ?? 'Doctor'} · {longDate(a.advised_at)} {clock(a.advised_at)}
+                        · {a.doctor ? <DoctorLink id={a.doctor.id}>{a.doctor.name}</DoctorLink> : 'Doctor'} · {longDate(a.advised_at)} {clock(a.advised_at)}
                       </span>
                     </small>
                   </div>
@@ -359,7 +360,7 @@ export function Ipd() {
                       {c.is_day_care && <small className="muted block">Day care</small>}
                     </td>
                     <td className="wrap">
-                      {c.doctor.name}
+                      <DoctorLink id={c.doctor.id}>{c.doctor.name}</DoctorLink>
                       {c.payer && <small className="muted block">{c.payer.name}</small>}
                     </td>
                     <td className="wrap">

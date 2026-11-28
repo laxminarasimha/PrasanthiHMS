@@ -934,11 +934,11 @@ export type PatientOverview = {
   outstanding: number
   deposit_balance: number
   deposits: PatientDeposit[]
-  visits: { id: number; scheduled_at: string; status: AppointmentStatus; doctor: { name: string }; service: { name: string } | null; consultation: { id: number; diagnosis: string | null; completed_at: string | null } | null }[]
+  visits: { id: number; scheduled_at: string; status: AppointmentStatus; doctor: { id: number; name: string }; service: { name: string } | null; consultation: { id: number; diagnosis: string | null; completed_at: string | null } | null }[]
   bills: { id: number; bill_no: string; kind: BillKind; total: number; paid: number; due: number; moved_to_ipd: number | null; created_at: string; cancelled_at?: string | null; lab_order: { order_no: string } | null }[]
   lab_orders: { id: number; order_no: string; status: string; ordered_at: string; items: { id: number; test_name: string; repeat_no?: number | null }[] }[]
   pharmacy_bills: { id: number; bill_no: string; sold_at: string; total: number; due: number; ipd_transfer: number }[]
-  admissions: { id: number; ipd_no: string; status: string; admitted_at: string; discharged_at: string | null; due: number; doctor: { name: string }; bed: { ward: string; bed_no: string } | null }[]
+  admissions: { id: number; ipd_no: string; status: string; admitted_at: string; discharged_at: string | null; due: number; doctor: { id: number; name: string }; bed: { ward: string; bed_no: string } | null }[]
   attachments: Attachment[]
 }
 

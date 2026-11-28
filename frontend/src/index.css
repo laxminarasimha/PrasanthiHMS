@@ -2214,6 +2214,11 @@ tr.cancelled td { color: var(--muted); }
 
 /* A doctor's own consultation fee, on their settings. */
 .doctor-fee { margin-bottom: 16px; }
+/* A doctor's card: the day at a glance, then their inpatients and hours. */
+.doctor-card h3 { margin: 14px 0 4px; font-size: 0.95rem; }
+.doctor-card .tiles { margin: 8px 0 4px; }
+.doctor-away { margin: 4px 0 8px; padding: 8px 10px; border-left: 4px solid var(--warn); border-radius: 6px; background: var(--accent-soft); }
+.doctor-away p { margin: 2px 0; }
 .doctor-fee .field { max-width: 260px; margin-bottom: 6px; }
 
 /* The booking form saying a visit is a free follow-up, and its mark on the day list. */

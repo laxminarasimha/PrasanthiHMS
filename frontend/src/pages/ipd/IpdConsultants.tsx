@@ -3,6 +3,7 @@ import { api, fieldErrors, type FieldErrors } from '../../api'
 import { SelectField, TextField } from '../../components/Field'
 import { longDate, rupees, today } from '../../format'
 import type { Doctor } from '../../types'
+import { DoctorLink } from '../../components/DoctorLink'
 
 type Visit = { id: number; doctor: { id: number; name: string | null }; visited_on: string; kind: 'first' | 'later'; note: string | null; can_cancel: boolean; /** Sent only to those who look after consultants' fees. */ fee?: number }
 
@@ -95,7 +96,9 @@ export function IpdConsultants({ admissionId, canEdit, minDate, maxDate }: { adm
               <tr key={v.id} className="static">
                 <td>{longDate(v.visited_on)}</td>
                 <td>
-                  <strong>{v.doctor.name}</strong>
+                  <strong>
+                    <DoctorLink id={v.doctor.id}>{v.doctor.name}</DoctorLink>
+                  </strong>
                 </td>
                 <td>
                   <span className={`pill ${v.kind === 'first' ? 'status-ongoing' : 'status-booked'}`}>{v.kind === 'first' ? 'First visit' : 'Later visit'}</span>

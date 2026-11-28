@@ -2,7 +2,7 @@ import { FrontDeskTabs } from '../components/FrontDeskTabs'
 import { Popup } from '../components/Popup'
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { AppointmentForm } from '../components/AppointmentForm'
 import { BillPanel } from '../components/BillPanel'
@@ -10,6 +10,7 @@ import { SelectField, TextField } from '../components/Field'
 import { EditAppointmentPanel } from '../components/FrontDeskPanels'
 import { STATUS_LABELS, clock, today } from '../format'
 import type { Appointment, CalendarSettings, Doctor, DoctorBlock, Service } from '../types'
+import { DoctorLink } from '../components/DoctorLink'
 
 type View = 'day' | 'week'
 type Column = { key: string; title: string; sub?: string; date: string; doctorId: string; today: boolean }
@@ -146,7 +147,9 @@ function LeavePanel({ date, doctorId, doctors, blocks, onClose, onChange }: { da
           {blocks.map((b) => (
             <li key={b.id}>
               <span>
-                <strong>{b.doctor.name}</strong>
+                <strong>
+                  <DoctorLink id={b.doctor.id}>{b.doctor.name}</DoctorLink>
+                </strong>
                 <small className="muted block">
                   {blockWhen(b)}
                   {b.reason ? ` · ${b.reason}` : ''}
@@ -176,7 +179,9 @@ export function Calendar() {
   const toPad = user?.role === 'doctor' && Boolean(user.can_consult)
   const [view, setView] = useState<View>('day')
   const [date, setDate] = useState(today())
-  const [doctorId, setDoctorId] = useState('')
+  // Opened from a doctor's card: that doctor's calendar.
+  const [params] = useSearchParams()
+  const [doctorId, setDoctorId] = useState(() => params.get('doctor') ?? '')
   const [doctors, setDoctors] = useState<Doctor[]>([])
   const [services, setServices] = useState<Service[]>([])
   const [settings, setSettings] = useState<CalendarSettings | null>(null)
