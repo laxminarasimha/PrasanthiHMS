@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AxiosError } from 'axios'
 import { api } from './api'
+import { ownRecordOnly } from './access'
 import { onIphone, runningInstalled } from './install'
 import { ARRIVED, TAPPED, getsNotices } from './notices'
+import { able, dropHere, held, worker } from './pushDevice'
 import type { User } from './types'
 
 /**
@@ -11,8 +13,9 @@ import type { User } from './types'
  * A device is asked once, by a tap, whether it may show them, and each person switches them on for themselves. The
  * device remembers who did. When one of them opens the app, the device is noted on the server as theirs. When anyone
  * else opens it, the device is taken away from whoever held it, so a shared phone or desk computer never shows one
- * person's notifications to the next, and nobody is signed up by someone else's yes. Signing out lets go of the
- * device too. Nothing of a notification is kept on the phone by this: it is shown and that is all.
+ * person's notifications to the next, and nobody is signed up by someone else's yes. Where the server cannot be asked
+ * to let go of it, the device lets go by itself. Signing out, or being signed out, lets go of the device too. Nothing of
+ * a notification is kept on the phone by this: it is shown and that is all.
  */
 export type PushState =
   /** This browser cannot show them at all. */
@@ -29,8 +32,6 @@ const AGREED = 'hms_push_people'
 /** From before each person was asked for themselves: someone had switched them off on this device. */
 const OFF = 'hms_push_off'
 const CHANGED = 'hms:push'
-
-const able = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
 
 /** Who switched them on here, or null on a device where nobody has been asked for themselves yet. */
 function agreed(): number[] | null {
@@ -69,24 +70,38 @@ const switchedOffHere = () => {
 
 /**
  * Before each person was asked for themselves, only a doctor could switch notifications on, and a device that was on
- * followed whoever signed in. A doctor who had them on keeps them, without being asked again.
+ * followed whoever signed in. Such a doctor keeps them without being asked again, but only on a device that still has
+ * its arrangement from then and that the server still has noted as theirs, so a shared computer is never handed on to
+ * the next doctor. A doctor who had signed out there, which ended the arrangement, is asked once.
  */
 const carriedOver = (user: User) => user.role === 'doctor' && getsNotices(user)
 
-/** Whether this person switched them on on this device. `holding`: the device still has its arrangement from before. */
-function agreedHere(id: number, carried: boolean, holding: boolean): boolean {
+/** What the server said, for each person and device, about whether it has this browser noted as theirs. Asked once a page load. */
+const answers = new Map<string, Promise<boolean>>()
+
+/** Whether the server has this browser noted as this person's own device. No answer counts as no. */
+function theirs(id: number, sub: PushSubscription): Promise<boolean> {
+  const key = `${id} ${sub.endpoint}`
+  let answer = answers.get(key)
+  if (!answer) {
+    answer = api.post<{ held?: unknown }>('/me/push/held', { endpoint: sub.endpoint }).then(
+      (res) => res.data?.held === true,
+      () => false,
+    )
+    answers.set(key, answer)
+  }
+  return answer
+}
+
+/**
+ * Whether this person switched them on on this device. On a device where nobody has been asked for themselves yet, a
+ * doctor from before counts as having done so while the device still has its arrangement and the server has it as theirs.
+ */
+async function agreedHere(id: number, carried: boolean, sub: PushSubscription | null): Promise<boolean> {
   const people = agreed()
-  return people === null ? carried && holding && !switchedOffHere() : people.includes(id)
+  if (people !== null) return people.includes(id)
+  return carried && sub !== null && !switchedOffHere() && (await theirs(id, sub))
 }
-
-/** The part of the app that stays awake to show a notification. It is started as the page loads, so it may not be there yet. */
-async function worker(): Promise<ServiceWorkerRegistration | null> {
-  if (!able()) return null
-  const waited = new Promise<null>((done) => window.setTimeout(() => done(null), 5000))
-  return Promise.race([navigator.serviceWorker.ready, waited]).catch(() => null)
-}
-
-const held = async (reg: ServiceWorkerRegistration | null) => (await reg?.pushManager.getSubscription().catch(() => null)) ?? null
 
 function bytes(key: string): Uint8Array<ArrayBuffer> {
   const plain = atob(key.replace(/-/g, '+').replace(/_/g, '/'))
@@ -109,7 +124,7 @@ async function stateOf(id: number | null, carried: boolean): Promise<PushState> 
   if (Notification.permission !== 'granted') return 'off'
   const sub = await held(await worker())
   // The device may be on for someone else who uses it: for this person it is on only if they said so here.
-  return sub && id !== null && agreedHere(id, carried, true) ? 'on' : 'off'
+  return sub && id !== null && (await agreedHere(id, carried, sub)) ? 'on' : 'off'
 }
 
 /** Where things stand on this device for this person. */
@@ -130,9 +145,23 @@ async function join(reg: ServiceWorkerRegistration): Promise<void> {
 /**
  * Takes the device away from whoever holds it on the server, so their notifications stop coming here. The device keeps
  * its arrangement, for when someone who switched them on here signs in again. Having the device in hand is the proof.
+ * Says whether the server did so.
  */
-async function release(sub: PushSubscription): Promise<void> {
-  await api.post('/me/push/release', { endpoint: sub.endpoint }).catch(() => undefined)
+async function release(sub: PushSubscription): Promise<boolean> {
+  return api.post('/me/push/release', { endpoint: sub.endpoint }).then(
+    () => true,
+    () => false,
+  )
+}
+
+/**
+ * Stops the notices of whoever holds this device coming here, for someone who did not switch them on here. The server
+ * is asked to let go of it. A login that opens only its own record may not ask, and the server may refuse or not
+ * answer: then the device ends its arrangement itself. Whoever switched them on here is given a new one at their next
+ * sign-in, without being asked again.
+ */
+async function letGo(user: User, sub: PushSubscription): Promise<void> {
+  if (ownRecordOnly(user) || !(await release(sub))) await dropHere(sub)
 }
 
 const changed = () => window.dispatchEvent(new Event(CHANGED))
@@ -159,7 +188,7 @@ async function leave(): Promise<void> {
   const sub = await held(await worker())
   if (!sub) return
   await api.delete('/me/push', { data: { endpoint: sub.endpoint } }).catch(() => undefined)
-  await sub.unsubscribe().catch(() => undefined)
+  await dropHere(sub)
 }
 
 /** The person switching them off on this device. It stays off here for them until they switch it on again; others who use it keep their own choice. */
@@ -178,21 +207,23 @@ export async function forgetPushOnSignOut(): Promise<void> {
 
 /**
  * On opening the app, and again after the person changes their own password: the device is noted as the signed-in
- * person's, without asking, if they switched notifications on here themselves. For anyone else it is let go of on the
- * server, so the person who used it before stops being notified here. Nothing is asked, and nothing happens on a device
- * that was never switched on.
+ * person's, without asking, if they switched notifications on here themselves. For anyone else it is let go of, so the
+ * person who used it before stops being notified here. Nothing is asked, and nothing happens on a device that was never
+ * switched on.
  */
 export async function syncPush(user: User): Promise<void> {
   if (!able()) return
   const reg = await worker()
   if (!reg) return
   const sub = await held(reg)
-  if (Notification.permission === 'granted' && getsNotices(user) && agreedHere(user.id, carriedOver(user), Boolean(sub))) {
+  if (Notification.permission === 'granted' && getsNotices(user) && (await agreedHere(user.id, carriedOver(user), sub))) {
     // A doctor who had them on before each person was asked: noted now as having said yes here.
     if (agreed() === null) agree(user.id, true)
     await join(reg).catch(() => undefined)
   } else if (sub) {
-    await release(sub)
+    // Someone else's: they stop being notified here. Nothing is written down for anyone, so a doctor from before whom
+    // the server did not confirm is offered notifications like anyone else.
+    await letGo(user, sub)
   }
   changed()
 }

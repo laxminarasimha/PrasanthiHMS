@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { api, fieldErrors } from '../api'
 import { useAuth } from '../auth'
+import { today } from '../format'
 import type { Spell } from './shared'
 
 /** A person's own attendance for today, as the check-in card and the call-out on opening the app both show it. */
@@ -73,4 +74,44 @@ export function useMyToday(): MyToday | null {
     if (id) void loadMyToday(id)
   }, [id])
   return id && now.for === id ? now.data : null
+}
+
+/**
+ * Whether the call-out on opening the app asks this person to check in: someone in the daily attendance who marks
+ * their own, is not in, and has done no duty today. Doctors and consultants are not in the daily attendance: they may
+ * check in from the card, and are not asked to.
+ */
+export const checkInDue = (mine: MyToday | null) => Boolean(mine?.employee && mine.self_check_in && mine.regular !== false && !mine.open && (mine.done ?? []).length === 0)
+
+// The call-out put away today, as "person:day", kept for as long as this tab is open. Shared, so that whatever waits
+// while the call-out asks (the offer of notifications) comes as soon as it is put away.
+const ASKED = 'hms_check_in_asked'
+let putAway: string | null = null
+const putAwayMark = () => {
+  if (putAway === null) {
+    try {
+      putAway = sessionStorage.getItem(ASKED) ?? ''
+    } catch {
+      putAway = ''
+    }
+  }
+  return putAway
+}
+const markFor = (userId: number) => `${userId}:${today()}`
+
+/** The call-out is put away for today, by "Not now" or by checking in from it. It asks again when the app is next opened. */
+export function putCheckInAway(userId: number): void {
+  putAway = markFor(userId)
+  try {
+    sessionStorage.setItem(ASKED, putAway)
+  } catch {
+    // Without storage it is only put away until the page is loaded again.
+  }
+  tell()
+}
+
+/** Whether this person put the call-out away today. */
+export function useCheckInPutAway(userId: number | null | undefined): boolean {
+  const mark = useSyncExternalStore(subscribe, putAwayMark)
+  return typeof userId === 'number' && mark === markFor(userId)
 }

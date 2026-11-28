@@ -17,7 +17,7 @@ import { allowedTabs, menuTabs, onTab } from '../nav'
 import { NAV_ICONS } from '../navIcons'
 import { AttendanceCard } from '../workforce/AttendanceCard'
 import { CheckInPrompt } from '../workforce/CheckInPrompt'
-import { useMyToday, type MyToday } from '../workforce/myToday'
+import { checkInDue, useCheckInPutAway, useMyToday } from '../workforce/myToday'
 import { canLeave } from '../unsaved'
 import { today } from '../format'
 import { loadEnded, loadStarted, useFirstLoad } from '../loading'
@@ -25,12 +25,6 @@ import { loadEnded, loadStarted, useFirstLoad } from '../loading'
 /** The first letters of a person's name, for the round badge beside it. */
 const initials = (name: string) =>
   name.replace(/^(dr|mr|mrs|ms)\.?\s+/i, '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('')
-
-/**
- * Whether the check-in call-out is asking this person, or is about to: the same rule it asks by. Someone in the daily
- * attendance who has not checked in today is asked that first. Until their day is known, it counts as asking.
- */
-const checkInAsks = (mine: MyToday | null) => mine === null || Boolean(mine.employee && mine.self_check_in && mine.regular !== false && !mine.open && (mine.done ?? []).length === 0)
 
 /** Shown while a screen's own code is being fetched; that counts as the screen still loading. */
 function ScreenComing() {
@@ -55,6 +49,10 @@ export function Layout() {
   useOpenFromNotice()
   // Today's attendance, read once for the card and the call-out: while the call-out asks, nothing else is asked.
   const mine = useMyToday()
+  const checkInPutAway = useCheckInPutAway(user?.id)
+  // The call-out is asking this person to check in, or is about to: until their day is known, it counts as asking.
+  // Once they are in, their day is done, or they put it away for today, it is not.
+  const checkInAsks = Boolean(user?.abilities?.['wf:self:view']) && (mine === null || (checkInDue(mine) && !checkInPutAway))
   // A device is noted for whoever is signed in, if they switched notifications on here; nobody is asked anything here.
   const userId = user?.id
   useEffect(() => {
@@ -190,7 +188,7 @@ export function Layout() {
         <InstallHint />
         {/* Each person the hospital can notify is offered it on this device, on their first screen: one ask at a time,
             so not while the call-out is asking them to check in. */}
-        {pathname === homeFor(user) && getsNotices(user) && !(user.abilities?.['wf:self:view'] && checkInAsks(mine)) && <PushHint />}
+        {pathname === homeFor(user) && getsNotices(user) && !checkInAsks && <PushHint />}
         {/* A person's first screen opens with their own attendance and the button to check in or out. */}
         {pathname === homeFor(user) && user.abilities?.['wf:self:view'] && <AttendanceCard />}
         {/* One broken screen shows a message in place; the menu stays, and going elsewhere starts afresh. */}

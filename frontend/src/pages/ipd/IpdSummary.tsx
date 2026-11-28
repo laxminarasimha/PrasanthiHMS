@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, fieldErrors } from '../../api'
+import { useNotice } from '../../notices'
 import { useUnsaved } from '../../unsaved'
 import { MedicineRows, emptyMedicine, filledMedicines } from '../../components/MedicineRows'
 import { clock, longDate, today } from '../../format'
@@ -52,6 +53,17 @@ const plusDays = (from: string, days: number) => {
 }
 const snapshot = (texts: Texts, medicines: PrescribedMedicine[], followUp: string) => JSON.stringify([texts, filledMedicines(medicines), followUp])
 
+/**
+ * The line saying a summary was sent for approval: when, by whom, and who was told. The admission's doctor is named
+ * only when they are the one told; for a doctor who does not sign in, those who approve summaries were told instead.
+ */
+function sentWords(summary: DischargeSummary, doctor: { id: number; name: string }, userId: number | undefined, sentAt: string): string {
+  const when = `on ${longDate(sentAt)} ${clock(sentAt)}${summary.ready_by ? `, by ${summary.ready_by.name}` : ''}`
+  if (userId === doctor.id) return summary.doctor_hears === false ? `Sent for approval ${when}.` : `Sent to you for approval ${when}.`
+  if (summary.doctor_hears) return `Sent to ${doctor.name} for approval ${when}.`
+  return `Sent for approval ${when}.${summary.doctor_hears === false ? ` ${doctor.name} does not sign in, so those who approve summaries were told.` : ''}`
+}
+
 /** A text box that grows with what is written in it, so a long part is read without scrolling inside a small box. */
 function GrowingText({ value, rows, placeholder, onChange, label }: { value: string; rows: number; placeholder?: string; onChange: (value: string) => void; label: string }) {
   const box = useRef<HTMLTextAreaElement>(null)
@@ -70,7 +82,7 @@ type Props = {
   canApprove: boolean
   /** The day the patient left, when the case is closed: review dates count from it. */
   dischargedOn?: string | null
-  /** The admission's doctor, who is sent the summary when it is ready for approval. */
+  /** The admission's doctor, whose approval the summary waits for. */
   doctor: { id: number; name: string }
   /** Who is looking. */
   userId?: number
@@ -78,8 +90,9 @@ type Props = {
 
 /**
  * The discharge summary of one stay: written in parts, helped by what the stay's records already say, then approved
- * by a doctor, which locks it. Whoever writes it for the admission's doctor sends it to them once it is ready, and the
- * doctor is told.
+ * by a doctor, which locks it. Whoever writes it for the admission's doctor sends it for approval once it is ready:
+ * the doctor is told, or, for a doctor who does not sign in, those who approve summaries are. A notice that a summary
+ * is ready loads it again, so what is approved is what was last saved.
  */
 export function IpdSummary({ admissionId, canEdit, canApprove, dischargedOn, doctor, userId }: Props) {
   const [summary, setSummary] = useState<DischargeSummary | null>(null)
@@ -113,12 +126,30 @@ export function IpdSummary({ admissionId, canEdit, canApprove, dischargedOn, doc
   const locked = !canEdit || approved
   const dirty = Boolean(summary) && !locked && snapshot(texts, medicines, followUp) !== saved
 
-  const run = async (request: Promise<{ data: DischargeSummary }>, done: string) => {
+  // A notice that a summary is ready loads this one again, so the doctor reads and approves what was last saved.
+  // Writing here that is not saved yet is never replaced: not when the notice comes, nor while the summary is on its way.
+  const latest = useRef({ url, writing: false })
+  useEffect(() => {
+    latest.current = { url, writing: dirty || saving }
+  })
+  useNotice(['summary'], () => {
+    if (dirty || saving) return
+    const asked = url
+    api
+      .get<DischargeSummary>(asked)
+      .then((res) => {
+        if (latest.current.url === asked && !latest.current.writing) apply(res.data)
+      })
+      .catch(() => undefined)
+  })
+
+  const run = async (request: Promise<{ data: DischargeSummary }>, done: string | ((now: DischargeSummary) => string)) => {
     setNotice('')
     setSaving(true)
     try {
-      apply((await request).data)
-      setNotice(done)
+      const now = (await request).data
+      apply(now)
+      setNotice(typeof done === 'string' ? done : done(now))
       return true
     } catch (err) {
       setError(Object.values(fieldErrors(err))[0])
@@ -132,12 +163,12 @@ export function IpdSummary({ admissionId, canEdit, canApprove, dischargedOn, doc
       api.put(url, { ...Object.fromEntries(Object.entries(texts).map(([k, v]) => [k, v || null])), medicines: filledMedicines(medicines), follow_up_on: followUp || null }),
       'Discharge summary saved.',
     )
-  // The saved summary goes to the admission's doctor, who is told it is ready. What comes back is the summary as it now
-  // stands; should the answer not carry it, it is read again.
+  // The saved summary is sent for approval. What comes back is the summary as it now stands, saying who was told;
+  // should the answer not carry it, it is read again.
   const sendForApproval = () =>
     run(
       api.post<DischargeSummary | ''>(`${url}/ready`).then((res) => (res.data && typeof res.data === 'object' ? { data: res.data } : api.get<DischargeSummary>(url))),
-      `Sent to ${doctor.name} for approval.`,
+      (now) => (now.doctor_hears ? `Sent to ${doctor.name} for approval.` : 'Sent for approval.'),
     )
 
   // Ctrl+S (or ⌘S) saves, as in the visit pad. The latest save is kept in a ref so the key handler never goes stale.
@@ -176,10 +207,10 @@ export function IpdSummary({ admissionId, canEdit, canApprove, dischargedOn, doc
   const missing = allParts.filter((p) => [...NEEDED, 'follow_up_on'].includes(p.key) && !written(p.key))
   const jumpTo = (key: string) => document.getElementById(`summary-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   const reviewFrom = dischargedOn ?? today()
-  // Someone writing it for the admission's doctor sends it to them, once it is saved, until the doctor approves it.
+  // Someone writing it for the admission's doctor sends it for approval, once it is saved, until it is approved.
   const handsIn = canEdit && userId !== doctor.id && Boolean(summary.id) && !approved
   const sentAt = !approved ? (summary.ready_at ?? null) : null
-  const sentLine = sentAt ? `Sent to ${userId === doctor.id ? 'you' : doctor.name} for approval on ${longDate(sentAt)} ${clock(sentAt)}${summary.ready_by ? `, by ${summary.ready_by.name}` : ''}.` : null
+  const sentLine = sentAt ? sentWords(summary, doctor, userId, sentAt) : null
 
   const part = (p: { key: string; label: string; hint?: string; rows?: number }) => {
     const offer = offered(p.key)
@@ -234,8 +265,13 @@ export function IpdSummary({ admissionId, canEdit, canApprove, dischargedOn, doc
         </span>
         {handsIn && !sentLine && (
           <>
-            <button className="btn send-ready" disabled={saving || dirty} title={dirty ? 'Save the summary first' : `${doctor.name} is told that it is ready to approve`} onClick={() => void sendForApproval()}>
-              Ready — send to {doctor.name} for approval
+            <button
+              className="btn send-ready"
+              disabled={saving || dirty}
+              title={dirty ? 'Save the summary first' : summary.doctor_hears ? `${doctor.name} is told that it is ready to approve` : 'Marks the summary as ready to approve'}
+              onClick={() => void sendForApproval()}
+            >
+              {summary.doctor_hears ? `Ready — send to ${doctor.name} for approval` : 'Ready — send for approval'}
             </button>
             {dirty && <small className="muted">Save the changes first.</small>}
           </>
