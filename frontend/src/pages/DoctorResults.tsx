@@ -4,6 +4,7 @@ import { api } from '../api'
 import { DoctorTabs } from '../components/DoctorTabs'
 import { PatientLink } from '../components/PatientLink'
 import { clock, longDate } from '../format'
+import { useNotice } from '../notices'
 
 type Value = { test: string; parameter: string; value: string; unit: string | null; range: string | null; flag: 'high' | 'low' }
 
@@ -60,6 +61,8 @@ export function DoctorResults() {
     api.get<Abnormal[]>('/doctor/abnormal-results').then((res) => setAbnormal(res.data))
   }, [])
   useEffect(load, [load])
+  // A report has just been made ready and this device was told: it shows at once.
+  useNotice(['lab'], load)
 
   const seen = (o: Ready) => api.put(`/lab/orders/${o.id}/seen`).then(load)
   const waiting = ready?.filter((o) => !o.seen_at) ?? []

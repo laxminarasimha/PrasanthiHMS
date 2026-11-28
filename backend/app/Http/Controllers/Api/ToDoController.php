@@ -89,8 +89,8 @@ class ToDoController extends Controller
             'due_on' => $this->day($data), 'important' => (bool) ($data['important'] ?? false), 'repeats' => $data['repeats'] ?? 'none',
         ])));
         // Someone given a task is told on their phone, where they have notifications on.
-        foreach ($made->where('assigned_to', '!=', $user->id) as $task) {
-            PhoneNotice::later($task->assigned_to, ['title' => 'New task from '.$user->name, 'body' => $task->title.($task->due_on ? ' · by '.$task->due_on->format('j M') : ''), 'url' => '/todo', 'tag' => "task-{$task->id}", 'kind' => 'task']);
+        foreach ($made as $task) {
+            PhoneNotice::taskGiven($task, $user);
         }
 
         return response()->json($made->map->load(self::WITH)->values(), 201);

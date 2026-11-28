@@ -1,6 +1,7 @@
 import { MedicineChoose } from '../../components/MedicineChoose'
 import { NewMedicine } from '../../components/NewMedicine'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
 import { useAuth } from '../../auth'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
@@ -87,12 +88,23 @@ export function PharmacyPurchaseOrders() {
 
   const [packs, setPacks] = useState<Record<number, string>>({})
   const [viewError, setViewError] = useState('')
-  const view = (order: PurchaseOrder) =>
-    api.get<PurchaseOrder>(`/pharmacy/purchase-orders/${order.id}`).then((res) => {
-      setViewing(res.data)
-      setViewError('')
-      setPacks(Object.fromEntries((res.data.items ?? []).map((i) => [i.id, String(i.packs)])))
-    })
+  const view = useCallback(
+    (id: number) =>
+      api.get<PurchaseOrder>(`/pharmacy/purchase-orders/${id}`).then((res) => {
+        setViewing(res.data)
+        setViewError('')
+        setPacks(Object.fromEntries((res.data.items ?? []).map((i) => [i.id, String(i.packs)])))
+      }),
+    [],
+  )
+  // Opened from elsewhere, such as the To do list (/pharmacy/purchase-orders?open=ID): that order is shown, once.
+  const [params, setParams] = useSearchParams()
+  const asked = Number(params.get('open')) || 0
+  useEffect(() => {
+    if (!asked) return
+    view(asked).catch(() => undefined)
+    setParams({}, { replace: true })
+  }, [asked, view, setParams])
   const setStatus = async (status: string) => {
     if (!viewing) return
     try {
@@ -196,7 +208,7 @@ export function PharmacyPurchaseOrders() {
                 </thead>
                 <tbody>
                   {orders.map((o) => (
-                    <tr key={o.id} onClick={() => view(o)} className={viewing?.id === o.id ? 'selected' : ''}>
+                    <tr key={o.id} onClick={() => view(o.id)} className={viewing?.id === o.id ? 'selected' : ''}>
                       <td className="mono">
                         <strong>{o.order_no}</strong>
                       </td>

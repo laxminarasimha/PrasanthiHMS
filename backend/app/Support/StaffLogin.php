@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Enums\Role;
 use App\Models\AdminEntry;
+use App\Models\PushSubscription;
 use App\Models\User;
 use App\Workforce\Models\Employee;
 use App\Workforce\Support\Audit;
@@ -180,9 +181,19 @@ final class StaffLogin
             $user->save();
         }
         if ($closing) {
-            $user->tokens()->delete();
+            self::signOutEverywhere($user);
             Audit::record('staff.login_closed', $employee, ['login' => 'open'], ['login' => 'closed'], 'Marked as left', $employee->id);
         }
+    }
+
+    /**
+     * Signs a person out on every phone and computer: each sign-in ends, and no device is sent their notices any
+     * more. A device is noted again only when the person signs in on it and has notifications on there.
+     */
+    public static function signOutEverywhere(User $user): void
+    {
+        $user->tokens()->delete();
+        PushSubscription::where('user_id', $user->id)->delete();
     }
 
     /**

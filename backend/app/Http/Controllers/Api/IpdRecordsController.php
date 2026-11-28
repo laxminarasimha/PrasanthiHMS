@@ -7,10 +7,12 @@ use App\Models\Admission;
 use App\Models\AdmissionBed;
 use App\Models\AdmissionNote;
 use App\Models\AdmissionPayment;
+use App\Models\AuditLog;
 use App\Models\Bed;
 use App\Models\DischargeSummary;
 use App\Models\IpdBillTemplate;
 use App\Support\MoneyFigures;
+use App\Support\PhoneNotice;
 use App\Support\StaySummary;
 use App\Support\ReportLinks;
 use Illuminate\Http\JsonResponse;
@@ -113,7 +115,31 @@ class IpdRecordsController extends Controller
         return response()->json($this->presentSummary($admission));
     }
 
-    /** Approves the summary (locking it) or withdraws the approval. */
+    /**
+     * Hands the written summary to the doctor for approval. The doctor of the case is told on their phone (or, where
+     * they cannot be, those who approve summaries), once: handing it over again, before an approval is withdrawn, tells
+     * nobody a second time.
+     */
+    public function markSummaryReady(Request $request, Admission $admission): JsonResponse
+    {
+        $summary = $admission->summary;
+        if (! $summary) {
+            throw ValidationException::withMessages(['summary' => 'Write and save the summary first.']);
+        }
+        if ($summary->approved_at) {
+            throw ValidationException::withMessages(['summary' => 'The summary is already approved.']);
+        }
+        // Marked in one step, so two people pressing at the same moment send the doctor one notice, not two.
+        $marked = DischargeSummary::whereKey($summary->id)->whereNull('ready_at')->whereNull('approved_at')->update(['ready_at' => now(), 'ready_by' => $request->user()->id]);
+        if ($marked === 1) {
+            AuditLog::record('ipd.summary_ready', $admission->patient_id, $admission, 'IPD '.$admission->ipd_no.': discharge summary sent for approval');
+            PhoneNotice::summaryReady($summary->fresh(), $admission, $request->user());
+        }
+
+        return response()->json($this->presentSummary($admission));
+    }
+
+    /** Approves the summary (locking it) or withdraws the approval. Withdrawn, it is no longer waiting for approval either. */
     public function approveSummary(Request $request, Admission $admission): JsonResponse
     {
         abort_unless($request->user()->allows('canApproveIpd'), 403, 'You are not allowed to approve discharge summaries.');
@@ -122,25 +148,33 @@ class IpdRecordsController extends Controller
         if (! $summary) {
             throw ValidationException::withMessages(['summary' => 'Write and save the summary first.']);
         }
-        $summary->update($data['approved'] ? ['approved_at' => now(), 'approved_by' => $request->user()->id] : ['approved_at' => null, 'approved_by' => null]);
+        $summary->update($data['approved'] ? ['approved_at' => now(), 'approved_by' => $request->user()->id] : ['approved_at' => null, 'approved_by' => null, 'ready_at' => null, 'ready_by' => null]);
 
         return response()->json($this->presentSummary($admission));
     }
 
     /**
-     * The summary with the people who wrote and approved it. Before one is written, the diagnosis and
-     * course are suggested from what the case already records, so the doctor is not starting blank.
+     * The summary with the people who wrote, handed over and approved it, and whether the admission's doctor is the one
+     * told when it is handed over (`doctor_hears`), so the screen names whoever really is. Before one is written, the
+     * diagnosis and course are suggested from what the case already records, so the doctor is not starting blank.
      *
      * @return array<string, mixed>
      */
     private function presentSummary(Admission $admission): array
     {
-        $summary = $admission->summary()->with(['preparer:id,name', 'approver:id,name,signature_text'])->first();
+        // The very check the notice is sent by, so the screen and the phone never disagree.
+        $doctorHears = PhoneNotice::doctorHearsSummary($admission);
+        $summary = $admission->summary()->with(['preparer:id,name', 'approver:id,name,signature_text', 'readier:id,name'])->first();
+        if (! $summary) {
+            return [
+                'id' => null, 'diagnosis' => $admission->reason, 'course' => $admission->discharge_summary, 'medicines' => null,
+                'approved_at' => null, 'follow_up_on' => null, 'ready_at' => null, 'ready_by' => null, 'doctor_hears' => $doctorHears,
+            ];
+        }
+        $shown = $summary->toArray();
+        unset($shown['readier']);
 
-        return $summary?->toArray() ?? [
-            'id' => null, 'diagnosis' => $admission->reason, 'course' => $admission->discharge_summary, 'medicines' => null,
-            'approved_at' => null, 'follow_up_on' => null,
-        ];
+        return array_replace($shown, ['ready_by' => $summary->readier?->only(['id', 'name']), 'doctor_hears' => $doctorHears]);
     }
 
     // ---- Bill templates ----

@@ -5,6 +5,7 @@ import { TextField } from '../components/Field'
 import { clock, longDate, today } from '../format'
 import { Link } from 'react-router-dom'
 import { useChoiceInAddress } from '../rangeInAddress'
+import { useNotice } from '../notices'
 import { LeaveForm } from './Leave'
 import { shortTime } from './dutyWords'
 import { ADVANCE_CLASS, ADVANCE_LABEL, PAYMENT_CLASS, PAYMENT_LABEL, inr, type Advance } from './pay'
@@ -51,6 +52,8 @@ export function MyRecord() {
       .catch(() => setFailed('Could not load your record. Check the connection and try again.'))
   }, [month])
   useEffect(load, [load])
+  // Leave decided while the record is open: it shows at once. A request being written stays as it is.
+  useNotice(['leave'], load)
   const shown = mine && (mine.employee === null || mine.month === month) ? mine : null
 
   const punch = async () => {

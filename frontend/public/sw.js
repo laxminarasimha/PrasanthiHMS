@@ -6,8 +6,9 @@
  * and it never keeps the app's own pages or files either: those always come fresh from the server, so a new
  * release is never held back by an old copy.
  *
- * It also shows the notifications the hospital sends (a new appointment, to the doctor it is for). A notification
- * arrives already written; it is shown and nothing of it is kept here.
+ * It also shows the notifications the hospital sends to the person signed in on this device: a new appointment, a
+ * task given to them, their leave decided and the like. A notification arrives already written; it is shown and
+ * nothing of it is kept here.
  */
 const CACHE = 'hms-shell-1'
 const OFFLINE = '/offline.html'
@@ -58,12 +59,20 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const url = new URL((event.notification.data && event.notification.data.url) || '/', self.location.origin).href
+  const target = new URL((event.notification.data && event.notification.data.url) || '/', self.location.origin)
+  // Only a page of this app is ever opened inside an open window.
+  const page = target.origin === self.location.origin ? target.pathname + target.search + target.hash : null
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((open) => {
-      // With the app already open it is only brought to the front: whatever is being written there is left alone.
-      const app = open.find((client) => 'focus' in client)
-      return app ? app.focus() : self.clients.openWindow(url)
+      const windows = open.filter((client) => 'focus' in client)
+      const app = windows.find((client) => client.focused) || windows.find((client) => client.visibilityState === 'visible') || windows[0]
+      if (!app) return self.clients.openWindow(target.href)
+      // With the app already open it is brought to the front and asked to go to the page. The app goes there only if
+      // nothing being written would be lost: otherwise it asks first, and staying leaves everything as it was.
+      return app
+        .focus()
+        .catch(() => app)
+        .then((shown) => page && (shown || app).postMessage({ type: 'hms-open', url: page }))
     }),
   )
 })

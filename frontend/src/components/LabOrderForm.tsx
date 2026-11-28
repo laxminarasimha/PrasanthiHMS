@@ -26,30 +26,47 @@ const SAME_TEST = [
   ['fbs', 'fasting blood sugar'],
 ]
 
-/** Every way a lab test may be written: its name, a short form in brackets such as "(TSH)", its initials, and common other names. */
-export function namesOf(test: LabCatalogueTest) {
+/** The first letter of each word: "cbp" for "complete blood picture". */
+const initialsOf = (name: string) => name.split(' ').map((w) => w[0]).join('')
+
+/**
+ * The ways a lab test may be written, in two lists. `names`: its name, a short form in brackets such as "(TSH)", its
+ * initials, and common other names. `sides`: each side of a dash and its initials, so "Complete Blood Picture - CBP" is
+ * also "CBP" (and so "CBC" and "Hemogram"). A side counts only when written exactly so: one such as "Serum" is in the
+ * names of many other tests.
+ */
+function spellings(test: LabCatalogueTest): { names: Set<string>; sides: Set<string> } {
   const full = test.name.toLowerCase().trim()
   const short = [...full.matchAll(/\(([^)]+)\)/g)].map((m) => m[1].trim())
   const plain = full.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim()
-  const initials = plain.split(' ').map((w) => w[0]).join('')
+  const initials = initialsOf(plain)
   const names = new Set([full, plain, ...short, ...(initials.length >= 3 ? [initials] : [])])
-  for (const group of SAME_TEST) if (group.some((n) => names.has(n))) group.forEach((n) => names.add(n))
-  return names
+  const parts = plain.split(/\s+[-–—]\s+/).filter(Boolean)
+  const sides = new Set(parts.length > 1 ? parts.flatMap((part) => [part, ...(initialsOf(part).length >= 3 ? [initialsOf(part)] : [])]) : [])
+  for (const group of SAME_TEST) if (group.some((n) => names.has(n) || sides.has(n))) group.forEach((n) => names.add(n))
+  return { names, sides }
+}
+
+/** Every way a lab test may be written: its name, a short form in brackets such as "(TSH)", each side of a dash, initials, and common other names. */
+export function namesOf(test: LabCatalogueTest) {
+  const { names, sides } = spellings(test)
+  return new Set([...names, ...sides])
 }
 
 /**
  * Matches what the doctor typed ("CBC, TSH" or one test per line) to tests the lab offers.
- * A line matches a test's name, short form or common other name, or a longer line that contains the name;
- * the rest are returned as not found.
+ * A line matches a test's name, short form, side of a dash or common other name, or a longer line that contains the
+ * name; the rest are returned as not found. A short form of fewer than four letters, or one side of a dash, never
+ * matches inside other words: "ASO" is not found in "Ultrasound".
  */
 export function matchAdvised(advised: string, tests: LabCatalogueTest[]) {
-  const known = tests.map((t) => ({ id: t.id, names: namesOf(t) }))
+  const known = tests.map((t) => ({ id: t.id, ...spellings(t) }))
   const ids: number[] = []
   const missing: string[] = []
   for (const line of advised.split(/[\n,;]+/).map((l) => l.trim()).filter(Boolean)) {
     const term = line.toLowerCase()
     const found =
-      known.find((t) => t.names.has(term)) ??
+      known.find((t) => t.names.has(term) || t.sides.has(term)) ??
       (term.length >= 4 ? known.find((t) => [...t.names].some((n) => n.length >= 4 && (n.includes(term) || term.includes(n)))) : undefined)
     if (found) ids.push(found.id)
     else missing.push(line)

@@ -27,6 +27,7 @@ use App\Support\DoctorMoney;
 use App\Support\MoneyFigures;
 use App\Support\Referral;
 use App\Support\ReportLinks;
+use App\Support\TestsNotDone;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -442,37 +443,16 @@ class HospitalReportController extends Controller
 
     /**
      * Patients whose doctor advised tests that our lab has not been asked to do since: one row for each visit,
-     * with the tests still outstanding. A test counts as done once the patient has a lab order for it on or after
-     * the day of the visit, whoever placed the order. Names are compared loosely ("CBP" finds "Complete Blood
-     * Picture - CBP"), so a test done under quite another name can still be listed.
+     * with the tests still outstanding as the doctor wrote them. How a test counts as done, and how loosely names
+     * are compared, is set out in App\Support\TestsNotDone, which the front desk's To do reads as well.
      */
     private function testsNotDone(Carbon $from, Carbon $to): array
     {
-        $visits = $this->completed($from, $to)->whereNotNull('tests_advised')->where('tests_advised', '!=', '')
-            ->with(['patient:id,uhid,name,mobile', 'doctor:id,name'])->orderBy('completed_at')->get(['id', 'patient_id', 'doctor_id', 'tests_advised', 'completed_at']);
-        $plain = fn (string $name) => preg_replace('/[^a-z0-9]+/', '', mb_strtolower($name));
-        // Every test our lab was asked to do for these patients from the first of these visits on.
-        $ordered = LabOrderItem::join('lab_orders as o', 'o.id', '=', 'lab_order_items.lab_order_id')
-            ->whereIn('o.patient_id', $visits->pluck('patient_id')->unique())->where('o.ordered_at', '>=', $from)->toBase()
-            ->get(['o.patient_id', 'o.ordered_at', 'lab_order_items.test_name'])
-            ->map(fn ($item) => ['patient_id' => $item->patient_id, 'at' => (string) $item->ordered_at, 'name' => $plain($item->test_name)])->groupBy('patient_id');
-
-        $rows = $visits->map(function (Consultation $visit) use ($ordered, $plain) {
-            $advised = collect(preg_split('/[\r\n,;]+/', (string) $visit->tests_advised))->map(fn ($name) => trim($name))->filter()->unique(fn ($name) => $plain($name))->values();
-            $since = $visit->completed_at->copy()->startOfDay()->format('Y-m-d H:i:s');
-            $done = ($ordered[$visit->patient_id] ?? collect())->filter(fn (array $item) => $item['at'] >= $since)->pluck('name');
-            $missing = $advised->reject(function (string $name) use ($done, $plain) {
-                $key = $plain($name);
-
-                return $key === '' || $done->contains(fn (string $have) => $have === $key || (strlen($key) >= 3 && str_contains($have, $key)) || (strlen($have) >= 3 && str_contains($key, $have)));
-            });
-
-            return $missing->isEmpty() ? null : [
-                'date' => $visit->completed_at->format('Y-m-d'), 'days' => (int) $visit->completed_at->copy()->startOfDay()->diffInDays(today()),
-                'patient' => $visit->patient?->name, 'uhid' => $visit->patient?->uhid, 'mobile' => $visit->patient?->mobile, 'doctor' => $visit->doctor?->name,
-                'advised' => $advised->count(), 'missing' => $missing->count(), 'tests' => $missing->implode(', '),
-            ];
-        })->filter()->values();
+        $rows = TestsNotDone::between($from, $to)->map(fn (array $row) => [
+            'date' => $row['visit']->completed_at->format('Y-m-d'), 'days' => (int) $row['visit']->completed_at->copy()->startOfDay()->diffInDays(today()),
+            'patient' => $row['visit']->patient?->name, 'uhid' => $row['visit']->patient?->uhid, 'mobile' => $row['visit']->patient?->mobile, 'doctor' => $row['visit']->doctor?->name,
+            'advised' => $row['advised']->count(), 'missing' => $row['missing']->count(), 'tests' => $row['missing']->implode(', '),
+        ]);
 
         return [[
             self::col('date', 'Visit'), self::col('days', 'Days ago', 'number', false), self::col('patient', 'Patient'), self::col('uhid', 'Patient ID'),

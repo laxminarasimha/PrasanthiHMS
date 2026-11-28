@@ -1,17 +1,9 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useAuth } from '../auth'
-import { clock, today } from '../format'
-import { loadMyToday, punchMyToday, useMyToday } from './myToday'
+import { clock } from '../format'
+import { checkInDue, loadMyToday, punchMyToday, putCheckInAway, useCheckInPutAway, useMyToday } from './myToday'
 
-const ASKED = 'hms_check_in_asked'
-const remembered = () => {
-  try {
-    return sessionStorage.getItem(ASKED) ?? ''
-  } catch {
-    return ''
-  }
-}
 const greeting = () => {
   const hour = new Date().getHours()
   return hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
@@ -23,32 +15,25 @@ const firstName = (name: string) => name.replace(/^(dr|mr|mrs|ms)\.?\s+/i, '').s
  * The call-out on opening the app. Someone who has not checked in today is asked to, before anything else, with one
  * large button that marks them as in the hospital. "Not now" puts it away until the app is opened again; the check-in
  * card on their first screen stays. It is shown only where the hospital lets staff mark their own attendance and the
- * login belongs to a member of staff, and never to someone already in or whose day is done.
+ * login belongs to a member of staff, and never to someone already in or whose day is done. Whether it was put away is
+ * kept with today's attendance, so what waits for it hears at once.
  */
 export function CheckInPrompt() {
   const { user } = useAuth()
   const mine = useMyToday()
-  const mark = `${user?.id ?? 0}:${today()}`
-  const [asked, setAsked] = useState(remembered)
+  const putAwayToday = useCheckInPutAway(user?.id)
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState('')
   // Just checked in from here: the window says so for a moment before it goes.
   const [justIn, setJustIn] = useState(false)
 
-  // Doctors and consultants are not in the daily attendance: they may check in from the card, and are not asked to.
-  const due = Boolean(mine?.employee && mine.self_check_in && mine.regular !== false && !mine.open && (mine.done ?? []).length === 0)
   // It stays up while the check-in is on its way and for the moment it says "you are checked in": the answer arrives
   // before this window hears of it, and must not close it in between.
-  const showing = Boolean(user) && (justIn || busy || (due && asked !== mark))
+  const showing = Boolean(user) && (justIn || busy || (checkInDue(mine) && !putAwayToday))
 
   const putAway = () => {
-    setAsked(mark)
+    if (user) putCheckInAway(user.id)
     setFailed('')
-    try {
-      sessionStorage.setItem(ASKED, mark)
-    } catch {
-      // Without storage it is only put away until the page is loaded again.
-    }
   }
   useEffect(() => {
     if (!showing) return

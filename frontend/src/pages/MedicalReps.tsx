@@ -12,6 +12,7 @@ import { useChoiceInAddress } from '../rangeInAddress'
 import { OutsideHours } from '../components/AppointmentForm'
 import { SelectField, TextField } from '../components/Field'
 import { clock, longDate, today } from '../format'
+import { useNotice } from '../notices'
 import type { Doctor } from '../types'
 import { DoctorLink } from '../components/DoctorLink'
 
@@ -108,6 +109,8 @@ export function MedicalReps() {
     const timer = window.setInterval(loadDay, 60000)
     return () => window.clearInterval(timer)
   }, [loadDay])
+  // And at once when this device is told that one has come to see the doctor.
+  useNotice(['rep'], loadDay)
   useEffect(() => {
     if (tab !== 'reps') return
     const wait = window.setTimeout(loadReps, 250)

@@ -102,7 +102,8 @@ final class WebPush
         if (! self::allowed($endpoint)) {
             return 0;
         }
-        $body = self::encrypt((string) json_encode($message, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $p256dh, $auth);
+        // A name typed with a broken letter is sent with that one letter replaced, never as an empty notification.
+        $body = self::encrypt((string) json_encode($message, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE), $p256dh, $auth);
 
         try {
             return Http::withHeaders([

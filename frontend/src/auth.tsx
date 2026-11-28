@@ -120,7 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     // While still signed in: this device stops being notified for this person.
-    await forgetPushOnSignOut().catch(() => undefined)
+    await forgetPushOnSignOut(user).catch(() => undefined)
     await api.post('/logout').catch(() => undefined)
     setUser(null)
     setToken(null)
