@@ -76,7 +76,7 @@ export function PatientDashboard() {
   const now = nowLocal().replace('T', ' ')
   // Seen means the patient came: a visit only booked, or cancelled, does not count.
   const seen = data.visits.filter((v) => v.status === 'arrived' || v.status === 'ongoing' || v.status === 'reviewed')
-  const coming = data.visits.filter((v) => v.status === 'booked' && v.scheduled_at.slice(0, 16) > now).at(-1)
+  const coming = data.visits.filter((v) => v.status === 'booked' && v.scheduled_at.slice(0, 16) > now).slice(-1)[0]
   const admitted = data.admissions.find((a) => a.status === 'admitted')
   const pendingLab = data.lab_orders.filter((o) => o.status !== 'completed').length
   const facts: [string, ReactNode][] = [
