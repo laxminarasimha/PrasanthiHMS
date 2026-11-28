@@ -212,6 +212,7 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
         {errors.outside_hours && <OutsideHours message={errors.outside_hours} checked={anyway} onChange={setAnyway} />}
         <div className="span-2">
           <TextField label="Notes (optional)" value={notes} onChange={setNotes} error={errors.notes} />
+          <p className="muted small">If the patient uses the patient app, they can see this note there.</p>
         </div>
       </div>
 

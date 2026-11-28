@@ -227,9 +227,13 @@ class PatientPage
         return implode(' · ', array_filter(array_map(fn ($part) => is_scalar($part) ? trim((string) $part) : '', $parts), fn (string $part) => $part !== ''));
     }
 
+    /**
+     * The text up to its first line break. Only the plain breaks count: a search for any kind of break, read byte
+     * by byte, also finds one inside letters such as Telugu 'అ' or the sign '★', and cuts them in half.
+     */
     private static function firstLine(?string $text): ?string
     {
-        $line = trim(preg_split('/\R/', trim((string) $text), 2)[0]);
+        $line = trim(preg_split('/\r\n|\r|\n/', trim((string) $text), 2)[0]);
 
         return $line === '' ? null : $line;
     }

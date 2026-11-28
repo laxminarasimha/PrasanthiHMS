@@ -34,6 +34,8 @@ class OpeningStockImport
         $inStock = StockBatch::where('units_in_stock', '>', 0)->get(['medicine_id', 'batch_no'])
             ->mapWithKeys(fn (StockBatch $b) => [$b->medicine_id.'|'.self::key($b->batch_no) => true]);
         $seen = [];
+        // The first line without mistakes of each medicine not in the list: its sheet row and pack size, by name.
+        $firstNew = [];
         $soon = today()->addDays(90);
 
         $checked = [];
@@ -122,6 +124,17 @@ class OpeningStockImport
                 }
                 if ($medicine && isset($inStock[$medicine->id.'|'.self::key($batch)])) {
                     $errors[] = 'This batch is already in stock. Remove the line; to correct its count use Stock by batch.';
+                }
+            }
+
+            // A new medicine is made once, from its first line (see save()), so a later line that says another pack
+            // size is pointed out: the medicine's own pack size is what reorders and purchase orders count in.
+            if (! $medicine && $name !== '' && $perPack) {
+                $first = $firstNew[self::key($name)] ?? null;
+                if ($first === null && ! $errors) {
+                    $firstNew[self::key($name)] = ['row' => $index + 2, 'per_pack' => (int) $perPack];
+                } elseif ($first !== null && (int) $perPack !== $first['per_pack']) {
+                    $warnings[] = "Row {$first['row']} gives this new medicine {$first['per_pack']} in a pack; this row says ".(int) $perPack.". It will be added with {$first['per_pack']}.";
                 }
             }
 
