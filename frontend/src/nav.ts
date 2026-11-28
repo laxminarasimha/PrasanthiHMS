@@ -26,8 +26,8 @@ export function allowedTabs(user: User): NavTab[] {
   return [
     // Everyone's own list of what is waiting for them and what they have been asked to do.
     { key: 'todo', label: 'To do', to: '/todo' },
-    ...(user.can_front_desk ? [{ key: 'front-desk', label: 'Front Desk', to: '/front-desk', also: ['/past-records', '/expenses', ...(patients === 'front-desk' ? ['/patients'] : [])] }] : []),
-    ...(user.can_consult ? [{ key: 'doctor', label: 'Doctor', to: '/doctor', also: ['/visits', '/patients'] }] : []),
+    ...(user.can_front_desk ? [{ key: 'front-desk', label: 'Front Desk', to: '/front-desk', also: ['/past-records', '/expenses', ...(user.role === 'doctor' ? [] : ['/reps']), ...(patients === 'front-desk' ? ['/patients'] : [])] }] : []),
+    ...(user.can_consult ? [{ key: 'doctor', label: 'Doctor', to: '/doctor', also: ['/visits', '/patients', ...(user.role === 'doctor' || !user.can_front_desk ? ['/reps'] : [])] }] : []),
     ...(user.can_run_lab || user.can_front_desk ? [{ key: 'lab', label: 'Lab', to: '/lab' }] : []),
     // Those who run the pharmacy land on billing; those who may only look land on the manager's page.
     ...(user.can_run_pharmacy ? [{ key: 'pharmacy', label: 'Pharmacy', to: '/pharmacy' }] : user.can_view_pharmacy ? [{ key: 'pharmacy', label: 'Pharmacy', to: '/pharmacy/manager', also: ['/pharmacy'] }] : []),

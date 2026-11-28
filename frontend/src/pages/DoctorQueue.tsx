@@ -26,6 +26,7 @@ export function DoctorQueue() {
   const [now, setNow] = useState(() => Date.now())
   const [search, setSearch] = useState('')
   const [notice, setNotice] = useState('')
+  const [reps, setReps] = useState<string[]>([])
   const navigate = useNavigate()
 
   const load = useCallback(() => {
@@ -33,7 +34,9 @@ export function DoctorQueue() {
       setQueue(res.data)
       setNow(Date.now())
     })
-  }, [date, doctorId])
+    // Medical representatives who came to meet this doctor and are still waiting.
+    if (isDoctor) api.get<{ id: number; rep?: { name: string; company?: { name: string } } }[]>('/reps/waiting').then((res) => setReps(res.data.map((v) => [v.rep?.name, v.rep?.company?.name].filter(Boolean).join(' of ')))).catch(() => undefined)
+  }, [date, doctorId, isDoctor])
 
   // Refresh every half minute so new arrivals from the front desk show up on their own.
   useEffect(() => {
@@ -105,6 +108,14 @@ export function DoctorQueue() {
       </div>
 
       {notice && <p className="form-error">{notice}</p>}
+      {reps.length > 0 && date === today() && (
+        <p className="reps-waiting">
+          <strong>
+            {reps.length} medical {reps.length === 1 ? 'representative is' : 'representatives are'} waiting:
+          </strong>{' '}
+          {reps.join(', ')}. <Link to="/reps">See them, or ask them to come another day</Link>
+        </p>
+      )}
       <div className="table-wrap">
         <table>
           <thead>

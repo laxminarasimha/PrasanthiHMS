@@ -55,6 +55,7 @@ const Admin = page(() => import('./pages/Admin'), 'Admin')
 const AllBills = page(() => import('./pages/AllBills'), 'AllBills')
 const Expenses = page(() => import('./pages/Expenses'), 'Expenses')
 const Todo = page(() => import('./pages/Todo'), 'Todo')
+const MedicalReps = page(() => import('./pages/MedicalReps'), 'MedicalReps')
 const FormPrint = page(() => import('./pages/FormPrint'), 'FormPrint')
 const Ipd = page(() => import('./pages/ipd/Ipd'), 'Ipd')
 const IpdCase = page(() => import('./pages/ipd/IpdCase'), 'IpdCase')
@@ -188,6 +189,7 @@ export default function App() {
           <Route element={<Protected />}>
             <Route path="/account" element={<Account />} />
             <Route path="/todo" element={<Todo />} />
+            <Route path="/reps" element={<MedicalReps />} />
             <Route path="/front-desk" element={<Only when="can_front_desk"><FrontDesk /></Only>} />
             <Route path="/front-desk/bills" element={<Only when="can_front_desk"><AllBills /></Only>} />
             <Route path="/expenses" element={<Only when="can_record_expenses"><Expenses /></Only>} />

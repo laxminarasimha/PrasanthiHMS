@@ -16,6 +16,7 @@ export function FrontDeskTabs() {
       {patientsSection(user) === 'front-desk' && <NavLink to="/patients">Patients</NavLink>}
       {user.can_record_expenses && <NavLink to="/expenses">Expenses</NavLink>}
       {user.can_file_past_records && <NavLink to="/past-records">Old papers</NavLink>}
+      <NavLink to="/reps">Medical reps</NavLink>
     </nav>
   )
 }

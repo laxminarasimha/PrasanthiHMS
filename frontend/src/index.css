@@ -2285,3 +2285,17 @@ tr.cancelled td { color: var(--muted); }
 .bar-place svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .bar-acts { display: inline-flex; align-items: center; gap: 6px; flex: none; }
 .bar-acts .link { margin-left: 6px; font-size: 0.86rem; }
+
+/* ---- Medical representatives ---- */
+.reps-waiting { margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--info-line); border-left: 4px solid var(--info); border-radius: 8px; background: var(--info-soft); }
+.reps-waiting a { color: var(--brand-dark); font-weight: 600; }
+.rep-chosen { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.rep-companies { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.rep-company { display: flex; flex-direction: column; gap: 4px; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.rep-names { margin: 4px 0; font-size: 0.88rem; }
+.rep-attach { align-self: flex-start; margin-top: 6px; cursor: pointer; }
+.rep-hours { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border); }
+.rep-hours summary { cursor: pointer; font-weight: 600; color: var(--brand-dark); }
+.rep-hours .row { align-items: flex-end; gap: 10px; margin-top: 8px; }
+.rep-hours .field { margin: 0; }
+tr.faded td { opacity: 0.6; }
