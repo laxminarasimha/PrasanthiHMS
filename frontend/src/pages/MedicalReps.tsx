@@ -81,7 +81,8 @@ export function MedicalReps() {
   const [reps, setReps] = useState<Rep[] | null>(null)
   const [companies, setCompanies] = useState<Company[] | null>(null)
   const [doctors, setDoctors] = useState<Doctor[]>([])
-  const [query, setQuery] = useState('')
+  // From the top search, a rep's name arrives in the address.
+  const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '')
   const [failed, setFailed] = useState('')
   const [notice, setNotice] = useState('')
   // Set when samples are being entered straight from a visit.

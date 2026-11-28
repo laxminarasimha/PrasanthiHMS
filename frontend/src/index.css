@@ -2219,6 +2219,7 @@ tr.cancelled td { color: var(--muted); }
 .doctor-card .tiles { margin: 8px 0 4px; }
 .doctor-away { margin: 4px 0 8px; padding: 8px 10px; border-left: 4px solid var(--warn); border-radius: 6px; background: var(--accent-soft); }
 .doctor-away p { margin: 2px 0; }
+.picker .found-kind { font-size: 0.7rem; padding: 0 6px; margin-right: 4px; vertical-align: 1px; }
 .doctor-fee .field { max-width: 260px; margin-bottom: 6px; }
 
 /* The booking form saying a visit is a free follow-up, and its mark on the day list. */

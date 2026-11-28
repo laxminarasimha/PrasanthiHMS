@@ -79,4 +79,39 @@ class InterlinkStageBTest extends TestCase
         Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
         $this->getJson("/api/pharmacy/medicines/{$paracetamol->id}/page")->assertForbidden();
     }
+
+    public function test_the_top_search_finds_numbers_medicines_doctors_and_reps_for_those_whose_work_opens_them(): void
+    {
+        $patient = Patient::factory()->create(['name' => 'Sample Searched']);
+        $bill = \App\Models\Bill::create(['patient_id' => $patient->id, 'kind' => 'other', 'created_by' => User::factory()->create()->id]);
+        $order = \App\Models\LabOrder::create(['patient_id' => $patient->id, 'bill_id' => $bill->id, 'ordered_at' => now()]);
+        $stay = Admission::create(['patient_id' => $patient->id, 'doctor_id' => User::factory()->create(['role' => 'doctor'])->id, 'admitted_at' => now(), 'status' => 'admitted']);
+        $medicine = \App\Models\Medicine::create(['name' => 'Searchomycin 250', 'gst_percent' => 12, 'units_per_pack' => 10]);
+        $doctor = User::factory()->create(['role' => 'doctor', 'name' => 'Dr Searchable']);
+        $rep = \App\Models\MedicalRep::create(['name' => 'Searchable Rep', 'rep_company_id' => \App\Models\RepCompany::create(['name' => 'Sample Co'])->id]);
+        $number = (int) substr($bill->bill_no, 1);
+
+        // The admin finds each number typed short or in full, whatever the case.
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $this->getJson('/api/search?q=b'.$number)->assertOk()->assertJsonCount(1)->assertJsonPath('0.kind', 'bill')->assertJsonPath('0.to', "/front-desk/bills?open={$bill->id}");
+        $this->getJson('/api/search?q='.$order->order_no)->assertJsonPath('0.kind', 'lab_order')->assertJsonPath('0.to', "/lab?open={$order->id}");
+        $this->getJson('/api/search?q='.$stay->ipd_no)->assertJsonPath('0.kind', 'ipd')->assertJsonPath('0.to', "/ipd/{$stay->id}");
+        $this->getJson('/api/search?q=searcho')->assertJsonPath('0.kind', 'medicine')->assertJsonPath('0.to', "/pharmacy/medicines/{$medicine->id}");
+        $found = collect($this->getJson('/api/search?q=searchable')->assertOk()->json());
+        $this->assertSame($doctor->id, $found->firstWhere('kind', 'doctor')['doctor_id']);
+        $this->assertSame('/reps?tab=reps&q=Searchable%20Rep', $found->firstWhere('kind', 'rep')['to']);
+
+        // The pharmacist finds medicines but no front desk bill, IPD case or rep.
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $this->getJson('/api/search?q=B'.$number)->assertOk()->assertJsonCount(0);
+        $this->getJson('/api/search?q='.$stay->ipd_no)->assertJsonCount(0);
+        $this->assertSame(['medicine'], array_column($this->getJson('/api/search?q=searcho')->json(), 'kind'));
+        $this->assertNotContains('rep', array_column($this->getJson('/api/search?q=searchable')->json(), 'kind'));
+        // A nurse opens a lab order as its report; a doctor, who also works in the lab, opens it there.
+        Sanctum::actingAs(User::factory()->create(['role' => 'nurse']));
+        $this->getJson('/api/search?q='.$order->order_no)->assertJsonPath('0.to', "/lab/orders/{$order->id}/print")->assertJsonPath('0.new_tab', true);
+        // A login that only keeps its own attendance finds nothing here.
+        Sanctum::actingAs(User::factory()->create(['role' => 'staff']));
+        $this->getJson('/api/search?q=searchable')->assertOk()->assertJsonCount(0);
+    }
 }
