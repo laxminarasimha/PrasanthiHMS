@@ -155,7 +155,11 @@ a.tile { color: inherit; text-decoration: none; }
 .btn.ghost.danger { color: var(--danger); }
 .payslip table { margin-top: 14px; }
 .payslip td small { font-size: 0.8rem; }
-@media (max-width: 600px) { .wf-pay-line input[type='number'] { width: 104px; } }
+/* Printing: the rules further down that rearrange a screen for a phone are all written "screen and (max-width: …)".
+   A sheet of paper is as narrow as a phone to the browser (an A5 sheet is about 480px across), so a rule without
+   "screen" would rearrange the printed page as well, and it would no longer match what is shown before printing.
+   Any new phone rule must carry "screen" too. */
+@media screen and (max-width: 600px) { .wf-pay-line input[type='number'] { width: 104px; } }
 .row.wrap { flex-wrap: wrap; }
 .row.end { justify-content: flex-end; }
 @media (max-width: 900px) { .wf-day thead { display: none; } .wf-day tr { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 10px 0; border-top: 1px solid var(--border); } .wf-day td { border: 0; padding: 0; } .wf-day td:first-child, .wf-day td:last-child { grid-column: 1 / -1; } .wf-day td:nth-child(3)::before { content: 'In '; color: var(--muted); } .wf-day td:nth-child(4)::before { content: 'Out '; color: var(--muted); } .wf-day td.num { text-align: left; } .wf-day tr.empty { display: block; } .wf-staff th:nth-child(3), .wf-staff td:nth-child(3), .wf-staff th:nth-child(4), .wf-staff td:nth-child(4) { display: none; } }
@@ -223,7 +227,7 @@ tbody.stale { opacity: 0.4; pointer-events: none; transition: opacity 0.15s; }
 .patient-search.on-page input { background: var(--surface); color: var(--text); border: 1px dashed var(--brand); border-radius: 6px; padding: 7px 10px; }
 .patient-search.on-page input::placeholder { color: var(--brand); font-weight: 600; }
 .patient-search.on-page .picker { left: 0; right: auto; }
-@media (max-width: 700px) { .patient-search:not(.on-page) { flex: 1; width: auto; min-width: 0; max-width: 420px; margin: 0 4px 0 auto; } }
+@media screen and (max-width: 700px) { .patient-search:not(.on-page) { flex: 1; width: auto; min-width: 0; max-width: 420px; margin: 0 4px 0 auto; } }
 .whoami { display: flex; align-items: center; gap: 12px; text-align: right; white-space: nowrap; }
 .avatar { width: 34px; height: 34px; flex: none; border-radius: 50%; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-weight: 700; font-size: 0.85rem; letter-spacing: 0.02em; text-decoration: none; transition: box-shadow 0.15s; }
 .avatar:hover { box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.35); }
@@ -313,7 +317,7 @@ tbody tr.empty td { text-align: center; color: var(--muted); padding: 32px; whit
 .day-bill-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 18px; margin: 0; padding: 8px 12px; border-top: 1px solid var(--border); font-size: 0.9rem; }
 .day-collect { margin-top: 16px; padding-top: 12px; border-top: 2px solid var(--border); }
 .day-collect h3 { margin: 0 0 10px; }
-@media (max-width: 640px) {
+@media screen and (max-width: 640px) {
   .modal-back { padding: 12px 8px; }
   .modal { padding: 14px; }
   .modal .grid.three { grid-template-columns: 1fr 1fr; }
@@ -332,7 +336,7 @@ tbody tr.empty td { text-align: center; color: var(--muted); padding: 32px; whit
   .split.main-first { flex-direction: column; }
   .panel { width: 100%; }
 }
-@media (max-width: 520px) {
+@media screen and (max-width: 520px) {
   .grid { grid-template-columns: 1fr; }
   .span-2 { grid-column: auto; }
 }
@@ -446,7 +450,7 @@ table.compact th, table.compact td { padding: 6px 6px; white-space: normal; }
 /* The strip above a bill on screen: which paper it is going on. Never printed. */
 .paper-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0 0 16px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
 .paper-bar .tabs { margin: 0; }
-@media (max-width: 640px) { .paper-bar .grow { flex-basis: 100%; } }
+@media screen and (max-width: 640px) { .paper-bar .grow { flex-basis: 100%; } }
 /* On letterhead paper the hospital's heading is already on the sheet; only the title of the document is printed. */
 .receipt header.on-letterhead { border-bottom: 1px solid var(--text); padding-bottom: 8px; }
 .receipt header.on-letterhead h2 { margin-top: 0; }
@@ -546,7 +550,7 @@ tr.added-line td { background: var(--ok-soft); }
 .bill-details .grid { margin-top: 8px; }
 .qty.wide { width: 110px; }
 .todays-bills .toolbar h2 { margin: 0; }
-@media (max-width: 640px) {
+@media screen and (max-width: 640px) {
   /* On a phone the balance column gives way and the two actions stack, so nothing runs off the side. */
   .todays-bills th:nth-child(4), .todays-bills td:nth-child(4) { display: none; }
   .todays-bills td.actions { white-space: normal; }
@@ -560,7 +564,7 @@ tr.added-line td { background: var(--ok-soft); }
 /* Expenses: what went out under each heading, and the list as cards on a phone. */
 .expense-headings { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
 .expense-headings .chip { cursor: default; }
-@media (max-width: 640px) {
+@media screen and (max-width: 640px) {
   .expense-list thead { display: none; }
   .expense-list, .expense-list tbody { display: block; width: 100%; }
   .expense-list tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "what amount" "no mode" "act act"; gap: 2px 12px; padding: 12px 4px; border-bottom: 1px solid var(--border); }
@@ -610,7 +614,7 @@ tr.added-line td { background: var(--ok-soft); }
 .backup-alert:hover { background: var(--brand-soft); }
 @media print { .backup-alert { display: none; } }
 @media (max-width: 1000px) { .panel.narrow { width: 100%; } }
-@media (max-width: 700px) { .grid.three, .grid.four { grid-template-columns: 1fr; } }
+@media screen and (max-width: 700px) { .grid.three, .grid.four { grid-template-columns: 1fr; } }
 .receipt table { font-size: 0.88rem; }
 .receipt th, .receipt td { padding: 6px 5px; white-space: normal; }
 
@@ -776,7 +780,7 @@ tr.lab-heading td { font-weight: 700; background: var(--bg); text-transform: upp
 /* The template editor has more across each row than other side panels, so it is given more room where there is some. */
 @media (min-width: 1300px) { .panel.wide.template-editor { width: 690px; } }
 .param-move .link:disabled { opacity: 0.3; cursor: default; }
-@media (max-width: 700px) { .inv-row { grid-template-columns: 1fr 1fr; } }
+@media screen and (max-width: 700px) { .inv-row { grid-template-columns: 1fr 1fr; } }
 .note { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
 .note header { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 .note p { margin: 6px 0 0; }
@@ -786,7 +790,7 @@ tr.lab-heading td { font-weight: 700; background: var(--bg); text-transform: upp
 .template-row { grid-template-columns: 2fr 90px 110px auto; }
 .report-text { white-space: pre-wrap; }
 .form-line { display: grid; grid-template-columns: 2fr 1.1fr 1.6fr auto; gap: 6px; align-items: center; margin-top: 6px; }
-@media (max-width: 700px) { .form-line { grid-template-columns: 1fr 1fr; } }
+@media screen and (max-width: 700px) { .form-line { grid-template-columns: 1fr 1fr; } }
 .filled-form h4 { margin: 14px 0 4px; color: var(--brand-dark); }
 .form-heading { margin: 14px 0 4px; border-bottom: 1px solid var(--border); }
 .form-answer { margin: 4px 0; white-space: pre-wrap; }
@@ -849,7 +853,7 @@ h3.flush { margin-top: 0; }
   .lab-report .lab-signatures, .lab-report .lab-dept { break-inside: avoid; break-after: avoid; }
   .lab-report .lab-signatures { break-after: auto; }
 }
-@media (max-width: 640px) {
+@media screen and (max-width: 640px) {
   .lab-report .lab-patient { grid-template-columns: 1fr; }
 }
 
@@ -880,7 +884,7 @@ td.wrap.wide { max-width: 640px; }
 
 /* The full menu on phones and small tablets: a sheet over the screen, opened by "More" on the bar at the foot */
 .nav-foot { display: none; }
-@media (max-width: 768px) {
+@media screen and (max-width: 768px) {
   .topbar nav { display: none; position: fixed; top: calc(55px + env(safe-area-inset-top, 0px)); left: 0; right: 0; bottom: calc(var(--tab-h) + env(safe-area-inset-bottom, 0px)); flex-direction: column; gap: 2px; padding: 12px; background: var(--bar-2); overflow-y: auto; z-index: 39; }
   .topbar.open nav { display: flex; }
   .topbar nav a { padding: 14px 16px; font-size: 1.05rem; border-radius: 8px; opacity: 0.92; }
@@ -890,7 +894,7 @@ td.wrap.wide { max-width: 640px; }
 }
 
 /* Phones */
-@media (max-width: 700px) {
+@media screen and (max-width: 700px) {
   :root { font-size: 15px; }
   .content { padding: 12px; }
   .card { padding: 12px; border-radius: 10px; }
@@ -968,7 +972,7 @@ td.wrap.wide { max-width: 640px; }
 .hours-range { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .hours-range input { min-width: 0; padding-left: 6px; padding-right: 4px; }
 .gap-bottom { margin-bottom: 14px; }
-@media (max-width: 700px) { .hours { grid-template-columns: 1fr; } .hours > .field-label, .hours > span:empty { display: none; } .hours-row strong { margin-top: 8px; } }
+@media screen and (max-width: 700px) { .hours { grid-template-columns: 1fr; } .hours > .field-label, .hours > span:empty { display: none; } .hours-row strong { margin-top: 8px; } }
 .cal td.slot.full, .cal-key.full { background: var(--accent-soft); }
 .cal th .away { color: var(--danger); font-weight: 700; }
 .cal-key { display: inline-block; font-size: 0.84rem; border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; margin: 8px 4px 0 0; }
@@ -980,7 +984,7 @@ td.wrap.wide { max-width: 640px; }
 .same-mobile li { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 2px 0; }
 .same-mobile small { color: var(--muted); }
 .legend .cal-chip { display: inline-block; width: auto; cursor: default; margin: 8px 4px 0 0; }
-@media (max-width: 700px) {
+@media screen and (max-width: 700px) {
   .cal { max-height: none; }
   .cal th { min-width: 132px; }
   .cal .cal-time { min-width: 64px; width: 64px; padding-left: 6px; padding-right: 4px; }
@@ -1026,7 +1030,7 @@ tbody tr.not-here { color: var(--muted); }
 .point.high { border-color: var(--danger); color: var(--danger); background: var(--danger-soft); }
 .point.low { border-color: var(--info); color: var(--info); }
 .point:hover { border-color: var(--brand); }
-@media (max-width: 700px) {
+@media screen and (max-width: 700px) {
   .timeline > li { grid-template-columns: 1fr; gap: 0; }
   .timeline .when { text-align: left; flex-direction: row; gap: 8px; align-items: baseline; padding: 12px 0 4px; }
   .patient-search.on-page { width: 100%; }
@@ -1046,7 +1050,7 @@ tbody tr.not-here { color: var(--muted); }
 .finder label { display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem; color: var(--muted); font-weight: 600; }
 .finder label.wide { grid-column: span 2; }
 .finder-actions { display: flex; gap: 8px; }
-@media (max-width: 520px) { .finder { grid-template-columns: 1fr 1fr; } }
+@media screen and (max-width: 520px) { .finder { grid-template-columns: 1fr 1fr; } }
 
 /* Health summary: the lasting facts of a patient's health */
 .health-summary { display: flex; flex-direction: column; gap: 10px; }
@@ -1102,7 +1106,7 @@ tbody tr.not-here { color: var(--muted); }
 .doses li b { color: var(--ok); min-width: 62px; }
 .doses li.held b, .doses li.refused b { color: var(--danger); }
 .doses li button { margin-left: auto; }
-@media (max-width: 700px) { .chart-form label, .chart-form label.short { width: calc(50% - 5px); min-width: 0; } .chart-form label.grow { width: 100%; } }
+@media screen and (max-width: 700px) { .chart-form label, .chart-form label.short { width: calc(50% - 5px); min-width: 0; } .chart-form label.grow { width: 100%; } }
 
 /* Certificates, letters and consent forms */
 .document-form { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 12px; background: var(--bg); }
@@ -1512,7 +1516,7 @@ td strong { font-weight: 650; }
 .pad-jump button.here { color: var(--brand-dark); border-bottom-color: var(--brand); background: var(--brand-soft); }
 .pad-section { scroll-margin-top: calc(var(--bar-h) + 150px); }
 .pad-section:empty { display: none; }
-@media (max-width: 700px) {
+@media screen and (max-width: 700px) {
   :root { --bar-h: 52px; }
   /* On a phone the header would take half the screen, so it scrolls away and only the jump bar stays. */
   .pad-head { display: contents; }
@@ -1531,7 +1535,7 @@ td.status-cell > * { vertical-align: middle; }
 td.status-cell .btn { margin-right: 8px; }
 small.waiting { color: var(--warn); font-weight: 600; }
 tbody tr.empty .link { font-weight: 600; }
-@media (max-width: 700px) { .dues-toggle { margin-left: 0; } }
+@media screen and (max-width: 700px) { .dues-toggle { margin-left: 0; } }
 
 /* ---- One header row on laptops: the menu sits beside the name, with the person shown as a badge ---- */
 @media (min-width: 1200px) and (max-width: 1699px) {
@@ -1542,7 +1546,7 @@ tbody tr.empty .link { font-weight: 600; }
   .who-text, .signout span { display: none; }
   .topbar .btn.signout { padding: 5px 9px; }
 }
-@media (max-width: 700px) {
+@media screen and (max-width: 700px) {
   .subnav { margin: -12px -12px 12px; padding: 0 6px; }
   /* On a phone a group's list opens under the whole menu, as wide as the screen. */
   .subnav.grouped { flex-wrap: wrap; position: relative; }
@@ -1557,7 +1561,7 @@ small.soon { color: var(--warn); font-weight: 600; }
 .totals dd.bill-total { font-size: 1.6rem; font-weight: 800; color: var(--brand-dark); letter-spacing: -0.01em; }
 .change { display: flex; align-items: center; min-height: 38px; font-size: 1.15rem; color: var(--muted); }
 .change.has { color: var(--ok); }
-@media (max-width: 700px) { .key-hint { display: none; } }
+@media screen and (max-width: 700px) { .key-hint { display: none; } }
 .bill-actions { display: flex; gap: 8px; margin-top: 18px; }
 .bill-actions .btn { flex: 1; }
 .bill-actions .btn.primary { flex: 1.6; }
@@ -1642,7 +1646,7 @@ ol.rx-list li::marker { font-weight: 700; color: var(--brand-dark); }
 .letterhead-picture.foot { margin-top: 24px; max-height: 40mm; }
 .letterhead-box { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .letterhead-box .signature-box img { max-height: 90px; max-width: 100%; }
-@media (max-width: 700px) { .letterhead-box { grid-template-columns: 1fr; } }
+@media screen and (max-width: 700px) { .letterhead-box { grid-template-columns: 1fr; } }
 .paper-size { display: inline-flex; align-items: center; gap: 6px; }
 .paper-bar .paper-size select { width: auto; max-width: 190px; padding-top: 5px; padding-bottom: 5px; }
 .paper-bar .grow { flex: 1 1 200px; }
@@ -1683,13 +1687,13 @@ ol.rx-list li::marker { font-weight: 700; color: var(--brand-dark); }
 .day-trend .trend-day { white-space: nowrap; }
 .day-trend .trend-cell { width: 26%; min-width: 90px; padding-left: 4px; }
 .day-trend .trend-bar { display: block; height: 10px; min-width: 2px; border-radius: 0 4px 4px 0; background: var(--brand); }
-@media (max-width: 700px) { .day-trend .trend-cell { display: none; } .day-trend th:nth-child(4) { display: none; } }
+@media screen and (max-width: 700px) { .day-trend .trend-cell { display: none; } .day-trend th:nth-child(4) { display: none; } }
 /* On a phone the billed figure gives way, so the day, what came in, what went out and what is left fit across. */
-@media (max-width: 500px) { .day-trend th:nth-child(2), .day-trend td:nth-child(2) { display: none; } }
+@media screen and (max-width: 500px) { .day-trend th:nth-child(2), .day-trend td:nth-child(2) { display: none; } }
 @media print { .day-trend .trend-bar { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
 /* A doctor's share of collections on the staff form. */
 .doctor-shares { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-@media (max-width: 600px) { .doctor-shares { grid-template-columns: 1fr; } }
+@media screen and (max-width: 600px) { .doctor-shares { grid-template-columns: 1fr; } }
 
 /* Lab template: extra normal ranges of a parameter, by age and sex, on lines under its row. */
 .lab-param-block { display: flex; flex-direction: column; gap: 4px; min-width: 520px; }
@@ -1728,7 +1732,7 @@ table.compact td.lab-last { white-space: nowrap; font-variant-numeric: tabular-n
 /* Beside an open panel the list is narrow: the bill column steps aside so the next step stays in view, and returns when the panel closes. */
 @media (min-width: 1001px) and (max-width: 1599px) { .lab-list.beside-panel .col-bill { display: none; } }
 .unit-inline { display: none; }
-@media (max-width: 700px) {
+@media screen and (max-width: 700px) {
   /* On a phone the unit sits beside the value, so the range and the last value fit without sliding the table. */
   .lab-test .col-unit { display: none; }
   .lab-test .unit-inline { display: inline; }
@@ -1737,7 +1741,7 @@ table.compact td.lab-last { white-space: nowrap; font-variant-numeric: tabular-n
   .lab-test td .row { flex-wrap: wrap; gap: 4px 6px; }
   .print-bar .grow { flex-basis: 100%; }
 }
-@media (max-width: 700px) {
+@media screen and (max-width: 700px) {
   /* On a phone each order is a card, so the next step and its button are on screen without sliding a table. */
   .lab-list thead { display: none; }
   .lab-list table, .lab-list tbody { display: block; width: 100%; }
@@ -1775,7 +1779,7 @@ table.compact td.lab-last { white-space: nowrap; font-variant-numeric: tabular-n
 .bed.free { border-style: dashed; background: var(--surface-2); }
 .bed.free strong { color: var(--ok); }
 .bed.free .admit-here { margin-top: auto; color: var(--brand); font-weight: 700; }
-@media (max-width: 700px) {
+@media screen and (max-width: 700px) {
   .view-switch { margin-left: 0; }
   .beds { grid-template-columns: 1fr 1fr; gap: 8px; }
   .bed { min-height: 112px; padding: 10px; }
@@ -1789,7 +1793,7 @@ table.compact td.lab-last { white-space: nowrap; font-variant-numeric: tabular-n
 .case-facts dd small { font-weight: 500; }
 .case-facts .money { margin-left: auto; text-align: right; }
 .case-facts .money dd { font-size: 1.1rem; font-variant-numeric: tabular-nums; }
-@media (max-width: 700px) { .case-facts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 14px; padding: 10px 12px; } .case-facts .money { margin-left: 0; text-align: left; } }
+@media screen and (max-width: 700px) { .case-facts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 14px; padding: 10px 12px; } .case-facts .money { margin-left: 0; text-align: left; } }
 
 /* Second-level tabs inside a tab: underlined text, so they do not read as a second row of the same tabs */
 .tabs.sub { display: flex; gap: 2px 18px; padding: 0; background: none; border-radius: 0; border-bottom: 1px solid var(--border); margin-bottom: 14px; align-items: flex-end; }
@@ -1828,14 +1832,14 @@ table.compact td.lab-last { white-space: nowrap; font-variant-numeric: tabular-n
 .note.nursing { border-left-color: var(--ok); }
 .note.ot { border-left-color: var(--warn); }
 .note header .pill { font-size: 0.7rem; padding: 2px 8px; }
-@media (max-width: 700px) { .order-head > .grow { flex-basis: 100%; } .obs-latest { grid-template-columns: repeat(3, minmax(0, 1fr)); } .obs-latest strong { font-size: 1.05rem; } .tabs.sub { gap: 2px 14px; } }
+@media screen and (max-width: 700px) { .order-head > .grow { flex-basis: 100%; } .obs-latest { grid-template-columns: repeat(3, minmax(0, 1fr)); } .obs-latest strong { font-size: 1.05rem; } .tabs.sub { gap: 2px 14px; } }
 
 /* Ward round times in IPD setup */
 .round-times { display: grid; gap: 12px; }
 .round-row { display: grid; grid-template-columns: minmax(180px, 220px) auto 1fr; gap: 8px 16px; align-items: center; }
 .round-row .row { flex-wrap: wrap; gap: 8px; }
 .round-row input[type='time'] { width: 128px; }
-@media (max-width: 700px) { .round-row { grid-template-columns: minmax(0, 1fr); gap: 4px; } .round-row input[type='time'] { width: calc(50% - 4px); } }
+@media screen and (max-width: 700px) { .round-row { grid-template-columns: minmax(0, 1fr); gap: 4px; } .round-row input[type='time'] { width: calc(50% - 4px); } }
 
 /* Discharge summary */
 .summary-jump { position: sticky; top: var(--bar-h); z-index: 5; background: var(--surface); margin: 10px 0 4px; border-bottom: 1px solid var(--border); }
@@ -1846,7 +1850,7 @@ table.compact td.lab-last { white-space: nowrap; font-variant-numeric: tabular-n
 .summary-part .from-stay { display: block; margin-top: 6px; text-align: left; font-weight: 600; }
 .summary-part .chip.on { border-color: var(--brand); color: var(--brand); font-weight: 700; }
 .summary-save { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: 12px; margin: 18px -20px -20px; padding: 12px 20px; background: var(--surface); border-top: 1px solid var(--border); border-radius: 0 0 14px 14px; box-shadow: 0 -8px 16px -12px var(--shadow); }
-@media (max-width: 700px) { .summary-save { margin: 16px -12px -12px; padding: 10px 12px; } .summary-jump { margin-left: 0; margin-right: 0; padding: 0; box-shadow: none; } }
+@media screen and (max-width: 700px) { .summary-save { margin: 16px -12px -12px; padding: 10px 12px; } .summary-jump { margin-left: 0; margin-right: 0; padding: 0; box-shadow: none; } }
 
 /* Patient page */
 .patient-avatar { width: 46px; height: 46px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); font-weight: 700; font-size: 1.05rem; letter-spacing: 0.02em; }
@@ -1858,7 +1862,7 @@ table.compact td.lab-last { white-space: nowrap; font-variant-numeric: tabular-n
 @media (min-width: 701px) { .patient-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 h2 .count { display: inline-block; min-width: 1.6em; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--stripe-1); color: var(--muted); font-size: 0.78rem; font-weight: 700; text-align: center; vertical-align: 2px; }
 .show-all { display: block; margin-top: 10px; font-weight: 600; }
-@media (max-width: 700px) {
+@media screen and (max-width: 700px) {
   .patient-avatar { width: 40px; height: 40px; }
   .quick-actions .btn { flex: 1 1 auto; text-align: center; justify-content: center; }
   /* On a phone each patient is a card: name and ID, then the facts, with Edit in reach. */
@@ -1904,7 +1908,7 @@ h2 .count { display: inline-block; min-width: 1.6em; margin-left: 6px; padding: 
 .batch-history > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; padding: 12px 0; cursor: pointer; }
 .batch-history[open] > summary { border-bottom: 1px solid var(--border); margin-bottom: 6px; }
 .batch-history tr.corrected td { background: var(--warn-soft); }
-@media (max-width: 700px) {
+@media screen and (max-width: 700px) {
   .count-choice .btn { margin-left: 0; width: 100%; }
   .count-actions { margin: 16px -12px -12px; padding: 10px 12px; }
   .count-actions .btn { flex: 1 1 auto; }
@@ -1961,7 +1965,7 @@ th.sortable button:focus-visible { outline: 3px solid var(--ring); outline-offse
 .stock-actions { white-space: nowrap; }
 .stock-actions .link + .link { margin-left: 14px; }
 .stock-actions.under-name { display: none; margin-top: 4px; }
-@media (max-width: 700px) {
+@media screen and (max-width: 700px) {
   .stock-actions.under-name { display: block; }
   th.stock-actions, td.stock-actions { display: none; }
 }
@@ -2042,7 +2046,7 @@ td.fit-wrap { white-space: normal; min-width: 130px; overflow-wrap: anywhere; }
 /* Front desk: the reason and name asked for whenever a discount is given. */
 .discount-why { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; padding: 10px 12px; border: 1px dashed var(--border); border-radius: 8px; background: var(--surface); text-align: left; }
 .totals .discount-why { grid-template-columns: 1fr; min-width: 240px; }
-@media (max-width: 640px) { .discount-why { grid-template-columns: 1fr; } }
+@media screen and (max-width: 640px) { .discount-why { grid-template-columns: 1fr; } }
 /* A visit booked ahead outside the doctor's hours: why it was stopped, and the tick to book it anyway. */
 .outside-hours { padding: 10px 12px; border: 1px solid var(--accent-line); border-radius: 8px; background: var(--warn-soft); color: var(--warn); }
 .outside-hours p { margin: 0 0 6px; }
@@ -2060,7 +2064,7 @@ td.fit-wrap { white-space: normal; min-width: 130px; overflow-wrap: anywhere; }
 /* ---- Phones and small tablets: laid out as a phone app. A slim bar at the top with the hospital's name, the search
    and sign out; the few places a person goes most on a bar at the foot. Not on a computer. ---- */
 .bottom-bar { display: none; }
-@media (max-width: 768px) {
+@media screen and (max-width: 768px) {
   :root { --tab-h: 58px; --bar-h: calc(52px + env(safe-area-inset-top, 0px)); }
   /* Clear of a notch at the top and of rounded corners at the sides. */
   .topbar { height: calc(52px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) max(12px, env(safe-area-inset-right, 0px)) 0 max(12px, env(safe-area-inset-left, 0px)); gap: 10px; }
@@ -2143,7 +2147,7 @@ td.fit-wrap { white-space: normal; min-width: 130px; overflow-wrap: anywhere; }
 .readiness li { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 12px; align-items: start; }
 .readiness li > div { display: grid; gap: 2px; justify-items: start; }
 .readiness .check { margin: 12px 0 0; }
-@media (max-width: 700px) { .readiness li { grid-template-columns: 1fr; gap: 4px; } }
+@media screen and (max-width: 700px) { .readiness li { grid-template-columns: 1fr; gap: 4px; } }
 
 /* The call-out on opening the app: check in before anything else */
 .check-in-back { align-items: center; padding-top: 24px; }
