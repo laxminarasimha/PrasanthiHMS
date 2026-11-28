@@ -36,6 +36,7 @@ use App\Http\Controllers\Api\PharmacyReportController;
 use App\Http\Controllers\Api\PharmacySalesController;
 use App\Http\Controllers\Api\PharmacyStockController;
 use App\Http\Controllers\Api\PushController;
+use App\Http\Controllers\Api\ToDoController;
 use App\Http\Controllers\Api\RecordReaderController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ServiceController;
@@ -127,6 +128,18 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
     Route::post('/backups/files/done', [BackupController::class, 'filesDone']);
     Route::get('/backups/{name}/download', [BackupController::class, 'download']);
     Route::put('/me/tabs', [AuthController::class, 'saveTabs']);
+    // Each person's To do screen: the work waiting for them, and the tasks written for them.
+    Route::controller(ToDoController::class)->group(function () {
+        Route::get('/todo', 'index');
+        Route::get('/todo/count', 'count');
+        Route::get('/tasks/given', 'given');
+        Route::get('/tasks/people', 'people');
+        Route::post('/tasks', 'store')->middleware('throttle:60,1');
+        Route::put('/tasks/{task}', 'update');
+        Route::post('/tasks/{task}/done', 'done');
+        Route::post('/tasks/{task}/reopen', 'reopen');
+        Route::delete('/tasks/{task}', 'destroy');
+    });
     // Notifications on the person's own phone or computer.
     Route::get('/me/push/key', [PushController::class, 'key']);
     Route::post('/me/push', [PushController::class, 'store'])->middleware('throttle:30,1');

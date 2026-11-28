@@ -123,6 +123,15 @@ enum Role: string
         return $this === self::Admin;
     }
 
+    /**
+     * Roles allowed to give a task to another person and to see whether it was done. Everyone writes tasks for
+     * themself; giving one to somebody else is for those who run the place.
+     */
+    public function canGiveTasks(): bool
+    {
+        return in_array($this, [self::Admin, self::Manager], true);
+    }
+
     /** Roles allowed to charge a different price from the price list while billing. */
     public function canChangePrice(): bool
     {

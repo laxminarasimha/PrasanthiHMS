@@ -82,6 +82,7 @@ class User extends Authenticatable
         'canWorkFrontDesk' => ['Front desk: appointments and billing', 'Book appointments, change their status, take vitals and make bills.'],
         'canChangePrice' => ['Change the price while billing', 'Charge a price different from the price list for a service.'],
         'canEnterEarlierDays' => ['Bill for an earlier day', 'Enter a bill, or money that was taken, for a day already gone, so that it counts on that day in the lists and reports. Without this, everything a person enters is today’s.'],
+        'canGiveTasks' => ['Give tasks to others', 'Put a task on another person’s To do list, and see whether and when it was done. Everyone can write tasks for themself without this.'],
         'canRecordExpenses' => ['Expenses', 'Write down money paid out (wages advanced, tea, repairs and the like), and correct or cancel an entry.'],
         'canFilePastRecords' => ['Old paper records', 'Scan the papers a patient brings from before, check what was read from them and file them in the record.'],
         'canConsult' => ['Doctor: visit pad', 'Open the visit pad, write notes and prescriptions, and use the doctor library.'],

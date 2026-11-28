@@ -27,7 +27,7 @@ class HospitalManagerTest extends TestCase
         $manager = User::factory()->create(['role' => 'manager']);
 
         $this->assertSame(
-            ['canWorkFrontDesk', 'canRecordExpenses', 'canFilePastRecords', 'canViewClinical', 'canViewPharmacy', 'canWorkIpd', 'canViewReports', 'canManageSetup', 'canManageStaff'],
+            ['canWorkFrontDesk', 'canGiveTasks', 'canRecordExpenses', 'canFilePastRecords', 'canViewClinical', 'canViewPharmacy', 'canWorkIpd', 'canViewReports', 'canManageSetup', 'canManageStaff'],
             // The workforce module's own permissions are checked in WorkforcePermissionsTest.
             array_values(array_filter(array_keys(array_filter($manager->abilities)), fn (string $key) => ! str_starts_with($key, 'wf:'))),
         );
@@ -126,7 +126,7 @@ class HospitalManagerTest extends TestCase
         $this->assertSame('Owner Admin', $history[0]['by']);
         $this->assertNotEmpty($history[0]['at']);
         $this->assertStringContainsString('Role: Front Desk → Hospital Manager', $history[0]['what']);
-        $this->assertStringContainsString('Given: See clinical records, Reports, Price lists and setup, Staff and permissions', $history[0]['what']);
+        $this->assertStringContainsString('Given: Give tasks to others, See clinical records, Reports, Price lists and setup, Staff and permissions', $history[0]['what']);
         $this->assertStringContainsString('Taken away: Change the price while billing, Export to a file', $history[0]['what']);
         $this->assertStringContainsString('Reason: Promoted to run the front office', $history[0]['what']);
         // The change takes hold on the person's very next request: nothing is remembered from before.

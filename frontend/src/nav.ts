@@ -24,6 +24,8 @@ export function allowedTabs(user: User): NavTab[] {
   const setup = setupPages(user)
   const patients = patientsSection(user)
   return [
+    // Everyone's own list of what is waiting for them and what they have been asked to do.
+    { key: 'todo', label: 'To do', to: '/todo' },
     ...(user.can_front_desk ? [{ key: 'front-desk', label: 'Front Desk', to: '/front-desk', also: ['/past-records', '/expenses', ...(patients === 'front-desk' ? ['/patients'] : [])] }] : []),
     ...(user.can_consult ? [{ key: 'doctor', label: 'Doctor', to: '/doctor', also: ['/visits', '/patients'] }] : []),
     ...(user.can_run_lab || user.can_front_desk ? [{ key: 'lab', label: 'Lab', to: '/lab' }] : []),
@@ -75,7 +77,7 @@ export function bottomTabs(user: User): BottomTab[] {
     bar.push({ key: 'patients', label: 'Patients', to: '/patients', paths: ['/patients'] })
   } else {
     // Staff: the next section they work in, then their own attendance.
-    const next = tabs.find((t) => t !== homeTab && t.key !== 'workforce' && t.key !== 'setup')
+    const next = tabs.find((t) => t !== homeTab && t.key !== 'workforce' && t.key !== 'setup' && t.key !== 'todo')
     if (next) bar.push({ key: next.key, label: next.label, to: next.to, paths: whole(next) })
     // Not when their own record is already their first screen.
     if (user.abilities?.['wf:self:view'] && home !== '/workforce/me') bar.push({ key: 'attendance', label: 'Attendance', to: '/workforce/me', paths: ['/workforce/me'] })
