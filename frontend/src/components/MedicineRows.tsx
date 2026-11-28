@@ -3,7 +3,7 @@ import { api } from '../api'
 import type { PrescribedMedicine as Medicine } from '../types'
 
 /** A medicine the pharmacy lists, as offered while prescribing. */
-type Found = { name: string; composition: string | null; type: string | null; in_stock: number; combination: boolean; by_drug: boolean; before?: boolean }
+type Found = { name: string; composition: string | null; type: string | null; in_stock: number; combination: boolean; by_drug: boolean; before?: boolean; /** A brand from a company's catalogue that the pharmacy does not list: the company's name. */ catalogue?: string | null }
 /** What the pharmacy knows about a medicine named on the prescription. */
 type About = { name: string; listed: boolean; composition: string | null; in_stock: number; combination: boolean }
 type FieldKey = 'dose' | 'frequency' | 'timing' | 'duration'
@@ -286,7 +286,7 @@ export function MedicineRows({ rows, onChange, names = [], defaults = [], invali
               <button type="button" className={n === offer.at ? 'on' : ''} onMouseDown={(e) => { e.preventDefault(); choose(offer.row, f.name) }} onMouseEnter={() => setOffer({ ...offer, at: n })}>
                 <span className="rx-pick-line">
                   <strong>{f.name}</strong>
-                  {f.before ? <span className="pill status-booked">written before</span> : f.in_stock > 0 ? <span className="pill ok">In stock · {f.in_stock}</span> : <span className="pill status-booked">Not in stock</span>}
+                  {f.before ? <span className="pill status-booked">written before</span> : f.catalogue ? <span className="pill status-ongoing">{f.catalogue} catalogue · not in our pharmacy</span> : f.in_stock > 0 ? <span className="pill ok">In stock · {f.in_stock}</span> : <span className="pill status-booked">Not in stock</span>}
                 </span>
                 {(f.composition || f.type) && (
                   <small className="muted">

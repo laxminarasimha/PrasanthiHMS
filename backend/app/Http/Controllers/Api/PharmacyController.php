@@ -105,6 +105,8 @@ class PharmacyController extends Controller
             'medicines' => $medicines,
             'compositions' => Medicine::whereNotNull('composition')->where('composition', '!=', '')->distinct()->orderBy('composition')->pluck('composition'),
             'drugs' => DrugIngredient::has('medicines')->orderBy('name')->pluck('name'),
+            // The same drugs as offered in the catalogues of the companies whose representatives call.
+            'offers' => RepCatalogueController::offers(),
         ]);
     }
 

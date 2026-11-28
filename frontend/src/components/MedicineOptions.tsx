@@ -19,6 +19,8 @@ type Option = {
   usual_stockist: string | null
   suppliers: Supplier[]
 }
+/** A brand in a medicine company's catalogue that contains the same thing, with what is on offer and whom to ring. */
+type Offer = { id: number; name: string; company: string | null; composition: string; form: string | null; pack: string | null; mrp: number | null; rate: number | null; scheme: string | null; reps: { name: string; mobile: string | null }[] }
 type Show = 'all' | 'out' | 'untagged'
 type Made = { id: number; order_no: string; stockist: string; items: number }
 
@@ -35,6 +37,7 @@ export function MedicineOptions({ canEdit, startWith, onOpen }: { canEdit: boole
   const [options, setOptions] = useState<Option[] | null>(null)
   const [compositions, setCompositions] = useState<string[]>([])
   const [drugs, setDrugs] = useState<string[]>([])
+  const [offers, setOffers] = useState<Offer[]>([])
   const [query, setQuery] = useState('')
   const [show, setShow] = useState<Show>(startWith ?? 'all')
   const [many, setMany] = useState(60)
@@ -47,19 +50,21 @@ export function MedicineOptions({ canEdit, startWith, onOpen }: { canEdit: boole
   const [ordering, setOrdering] = useState(false)
 
   const reload = () =>
-    api.get<{ medicines: Option[]; compositions: string[]; drugs: string[] }>('/pharmacy/medicines/options').then((res) => {
+    api.get<{ medicines: Option[]; compositions: string[]; drugs: string[]; offers?: Offer[] }>('/pharmacy/medicines/options').then((res) => {
       setOptions(res.data.medicines)
       setCompositions(res.data.compositions)
       setDrugs(res.data.drugs)
+      setOffers(res.data.offers ?? [])
     })
 
   useEffect(() => {
     api.get<{ id: number; name: string }[]>('/pharmacy/stockists').then((res) => setStockists(res.data))
-    api.get<{ medicines: Option[]; compositions: string[]; drugs: string[] }>('/pharmacy/medicines/options').then(
+    api.get<{ medicines: Option[]; compositions: string[]; drugs: string[]; offers?: Offer[] }>('/pharmacy/medicines/options').then(
       (res) => {
         setOptions(res.data.medicines)
         setCompositions(res.data.compositions)
         setDrugs(res.data.drugs)
+        setOffers(res.data.offers ?? [])
       },
       () => setError('Could not load the medicines.'),
     )
@@ -83,6 +88,17 @@ export function MedicineOptions({ canEdit, startWith, onOpen }: { canEdit: boole
       })
       .sort((a, b) => Number(!a.composition) - Number(!b.composition) || (a.composition ?? a.brands[0].name).localeCompare(b.composition ?? b.brands[0].name))
   }, [options, query, show])
+
+  // Catalogue brands under the composition they share with the pharmacy's own, less those the pharmacy already lists by name.
+  const offersFor = useMemo(() => {
+    const listed = new Set((options ?? []).map((o) => o.name.toLowerCase()))
+    const by = new Map<string, Offer[]>()
+    for (const f of offers) {
+      if (listed.has(f.name.toLowerCase())) continue
+      by.set(same(f.composition), [...(by.get(same(f.composition)) ?? []), f])
+    }
+    return by
+  }, [offers, options])
 
   const counts = useMemo(() => {
     const list = options ?? []
@@ -268,6 +284,20 @@ export function MedicineOptions({ canEdit, startWith, onOpen }: { canEdit: boole
                   </div>
                 </div>
               ))}
+              {g.composition && (offersFor.get(same(g.composition)) ?? []).length > 0 && (
+                <div className="option-offers">
+                  <strong>Also offered by medical representatives</strong>
+                  {(offersFor.get(same(g.composition)) ?? []).map((f) => (
+                    <span key={f.id} className="option-offer">
+                      {f.name} <span className="muted">· {f.company}</span>
+                      <small className="muted block">
+                        {[f.pack, f.rate !== null ? `${rupees(f.rate)} a pack offered` : null, f.mrp !== null ? `MRP ${rupees(f.mrp)}` : null, f.scheme ? `scheme ${f.scheme}` : null].filter(Boolean).join(' · ')}
+                        {f.reps.length > 0 && ` · ring ${f.reps.map((r) => [r.name, r.mobile].filter(Boolean).join(' ')).join(', ')}`}
+                      </small>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )
         })}

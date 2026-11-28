@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\DrugIngredient;
 use App\Models\Medicine;
+use App\Models\RepProduct;
 
 /**
  * What a medicine contains, as individual drugs. A combination is written with a plus sign
@@ -66,6 +67,30 @@ class Composition
      */
     public static function apply(Medicine $medicine, ?string $text): void
     {
+        [$links, $composition] = self::resolve($text);
+        $medicine->ingredients()->sync($links);
+        $medicine->forceFill(['composition' => $composition])->saveQuietly();
+    }
+
+    /**
+     * The same for a brand in a company's catalogue, so it can be set beside the pharmacy's own medicines by what
+     * it contains. The composition is what the staff typed from the catalogue; nothing is worked out for them.
+     */
+    public static function applyToProduct(RepProduct $product, ?string $text): void
+    {
+        [$links, $composition] = self::resolve($text);
+        $product->ingredients()->sync($links);
+        $product->forceFill(['composition' => $composition])->saveQuietly();
+    }
+
+    /**
+     * The drugs of a composition as links to their records (made when a drug is new), and the composition written
+     * the standard way.
+     *
+     * @return array{0: array<int, array{strength: ?string, position: int}>, 1: ?string}
+     */
+    private static function resolve(?string $text): array
+    {
         $links = [];
         $named = [];
         foreach (self::parts($text) as $part) {
@@ -81,7 +106,6 @@ class Composition
             $links[$id]['position'] = $position++;
         }
 
-        $medicine->ingredients()->sync($links);
-        $medicine->forceFill(['composition' => $named ? mb_substr(implode(' + ', $named), 0, 255) : null])->saveQuietly();
+        return [$links, $named ? mb_substr(implode(' + ', $named), 0, 255) : null];
     }
 }

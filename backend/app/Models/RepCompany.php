@@ -24,6 +24,12 @@ class RepCompany extends Model
         return $this->hasMany(MedicalRep::class)->orderBy('name');
     }
 
+    /** The brands in the company's catalogue. */
+    public function products(): HasMany
+    {
+        return $this->hasMany(RepProduct::class)->orderBy('name');
+    }
+
     /** Every time one of the company's people came. */
     public function visits(): HasManyThrough
     {

@@ -3,6 +3,9 @@ import { api, fieldErrors, type FieldErrors } from '../api'
 import { useAuth } from '../auth'
 import { DoctorTabs } from '../components/DoctorTabs'
 import { FrontDeskTabs } from '../components/FrontDeskTabs'
+import { PharmacyTabs } from '../components/PharmacyTabs'
+import { RepCatalogue } from '../components/RepCatalogue'
+import { useChoiceInAddress } from '../rangeInAddress'
 import { OutsideHours } from '../components/AppointmentForm'
 import { SelectField, TextField } from '../components/Field'
 import { clock, longDate, today } from '../format'
@@ -47,7 +50,7 @@ const STATUS: Record<Status, { label: string; pill: string }> = {
 }
 const STATUS_CHOICES = (['met', 'come_back', 'not_met', 'waiting'] as const).map((value) => ({ value, label: STATUS[value].label }))
 const noRep = { name: '', company: '', mobile: '', division: '', area: '', manager_name: '', manager_mobile: '', notes: '' }
-const TABS = ['visits', 'reps', 'companies'] as const
+const TABS = ['visits', 'reps', 'companies', 'catalogue'] as const
 
 const hm = (time: string) => clock(`2000-01-01 ${time}`)
 /** A doctor's own hours for representatives, in words. */
@@ -64,7 +67,8 @@ export function MedicalReps() {
   const isDoctor = user?.role === 'doctor'
   const canLog = Boolean(user?.can_front_desk)
   const seesVisits = canLog || Boolean(user?.can_consult)
-  const [tab, setTab] = useState<(typeof TABS)[number]>(seesVisits ? 'visits' : 'reps')
+  // Kept in the address, so a link can open the catalogue straight away. Someone who does not see visits starts there.
+  const [tab, setTab] = useChoiceInAddress('tab', seesVisits ? 'visits' : 'catalogue', TABS)
   const [date, setDate] = useState(today())
   const [day, setDay] = useState<Day | null>(null)
   const [reps, setReps] = useState<Rep[] | null>(null)
@@ -127,7 +131,7 @@ export function MedicalReps() {
 
   return (
     <>
-      {isDoctor ? <DoctorTabs /> : <FrontDeskTabs />}
+      {isDoctor ? <DoctorTabs /> : canLog ? <FrontDeskTabs /> : user?.can_view_pharmacy ? <PharmacyTabs /> : <DoctorTabs />}
       <div className="split">
         <section className="card">
           <div className="toolbar">
@@ -145,7 +149,7 @@ export function MedicalReps() {
                 + Log a visit
               </button>
             )}
-            {canLog && tab !== 'visits' && (
+            {canLog && (tab === 'reps' || tab === 'companies') && (
               <button className="btn primary" onClick={() => setPanel({ kind: 'rep', rep: null })}>
                 + New representative
               </button>
@@ -162,7 +166,10 @@ export function MedicalReps() {
               Representatives
             </button>
             <button className={tab === 'companies' ? 'active' : ''} onClick={() => setTab('companies')}>
-              Companies and catalogues
+              Companies and their files
+            </button>
+            <button className={tab === 'catalogue' ? 'active' : ''} onClick={() => setTab('catalogue')}>
+              Catalogue of brands
             </button>
           </div>
 
@@ -282,6 +289,7 @@ export function MedicalReps() {
           )}
 
           {tab === 'companies' && <Companies companies={companies} canChange={canLog} onChange={loadCompanies} />}
+          {tab === 'catalogue' && <RepCatalogue />}
         </section>
 
         {panel?.kind === 'log' && <LogVisit doctors={doctors} hours={day?.hours ?? {}} onClose={() => setPanel(null)} onLogged={(v) => done(`${v.rep?.name} is on ${v.doctor?.name}’s waiting list.`)} />}
