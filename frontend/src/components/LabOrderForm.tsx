@@ -1,9 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
-import { rupees } from '../format'
+import { rupees, today } from '../format'
 import type { LabCatalogueTest, LabOrder, LabPackage, Patient } from '../types'
 import { PatientPicker } from './PatientPicker'
 import { ReferredBy } from './ReferredBy'
+import { EarlierDate } from './EarlierDate'
+import { earlier } from '../earlierDay'
 
 type Props = {
   tests: LabCatalogueTest[]
@@ -78,6 +80,8 @@ export function LabOrderForm({ tests, packages = [], visit, onClose, onCreated }
     tests.filter((t) => chosen.includes(t.id) && !inPackage.has(t.id)).reduce((sum, t) => sum + t.price * times(t.id), 0)
   const count = [...inPackage].length + chosen.filter((id) => !inPackage.has(id)).reduce((sum, id) => sum + times(id), 0)
 
+  // The day the tests were asked for, when an order that was missed is entered later.
+  const [billedOn, setBilledOn] = useState(today)
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     if (!patient) {
@@ -87,7 +91,7 @@ export function LabOrderForm({ tests, packages = [], visit, onClose, onCreated }
     setSaving(true)
     setErrors({})
     try {
-      const res = await api.post<LabOrder>('/lab/orders', { patient_id: patient.id, appointment_id: visit?.appointmentId ?? null, test_ids: chosen, package_ids: chosenPackages, referred_by: referredBy || null, test_counts: Object.fromEntries(chosen.filter((id) => !inPackage.has(id) && times(id) > 1).map((id) => [id, times(id)])) })
+      const res = await api.post<LabOrder>('/lab/orders', { patient_id: patient.id, appointment_id: visit?.appointmentId ?? null, test_ids: chosen, package_ids: chosenPackages, referred_by: referredBy || null, billed_on: earlier(billedOn), test_counts: Object.fromEntries(chosen.filter((id) => !inPackage.has(id) && times(id) > 1).map((id) => [id, times(id)])) })
       onCreated(res.data)
     } catch (err) {
       setErrors(fieldErrors(err))
@@ -165,7 +169,8 @@ export function LabOrderForm({ tests, packages = [], visit, onClose, onCreated }
       </ul>
       {errors.test_ids && <span className="field-error">{errors.test_ids}</span>}
 
-      {errors._ && <p className="form-error">{errors._}</p>}
+      {count > 0 && <EarlierDate what="bill" value={billedOn} onChange={setBilledOn} />}
+      {(errors._ ?? errors.billed_on) && <p className="form-error">{errors._ ?? errors.billed_on}</p>}
       <div className="panel-foot between">
         <span>
           {count} test{count === 1 ? '' : 's'} · <strong>{rupees(total)}</strong>

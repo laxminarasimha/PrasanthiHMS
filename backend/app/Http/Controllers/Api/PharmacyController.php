@@ -17,6 +17,7 @@ use App\Models\Stockist;
 use App\Models\StockMovement;
 use App\Models\StockReturn;
 use App\Support\Composition;
+use App\Support\EarlierDay;
 use App\Support\OrderMatch;
 use App\Support\PharmacyOnIpd;
 use App\Support\ShelfPlace;
@@ -624,12 +625,15 @@ class PharmacyController extends Controller
             'items.*.stock_batch_id' => ['required', 'integer', 'distinct', 'exists:stock_batches,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'items.*.discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            // The day the medicines were given, when a bill that was missed is being entered later.
+            'sold_on' => EarlierDay::rule(),
         ], [
             'items.required' => 'Add at least one medicine to the bill.',
             'items.*.stock_batch_id.distinct' => 'The same batch is on the bill twice; combine the quantities.',
-        ]);
+        ] + EarlierDay::messages('sold_on'));
+        $at = EarlierDay::at($data['sold_on'] ?? null);
 
-        $sale = DB::transaction(function () use ($data, $request) {
+        $sale = DB::transaction(function () use ($data, $request, $at) {
             // The case is held while this is saved, so it cannot be closed or its bill approved half-way through.
             $admission = isset($data['admission_id']) ? Admission::whereKey($data['admission_id'])->lockForUpdate()->first() : null;
             if ($admission) {
@@ -641,6 +645,9 @@ class PharmacyController extends Controller
                 }
                 if ($admission->bill_approved_at) {
                     throw ValidationException::withMessages(['admission_id' => "The bill of {$admission->ipd_no} has been approved, so nothing more can go on it. Withdraw the approval there, or take the money at the counter."]);
+                }
+                if ($at && $at->toDateString() < $admission->admitted_at->toDateString()) {
+                    throw ValidationException::withMessages(['sold_on' => "This patient was admitted on {$admission->admitted_at->format('j M Y')}, so nothing of an earlier day can go on {$admission->ipd_no}."]);
                 }
             }
 
@@ -656,7 +663,8 @@ class PharmacyController extends Controller
                 $batch = $batches[$item['stock_batch_id']];
                 $name = $batch->medicine->name;
 
-                if ($batch->expiry->endOfDay()->isPast()) {
+                // What matters is whether it was in date on the day it was given.
+                if ($batch->expiry->endOfDay()->lt($at ?? now())) {
                     throw ValidationException::withMessages(["items.{$index}.stock_batch_id" => "{$name} batch {$batch->batch_no} has expired."]);
                 }
                 if ($item['quantity'] > $batch->units_in_stock) {
@@ -694,7 +702,7 @@ class PharmacyController extends Controller
                 'customer_name' => $data['customer_name'],
                 'customer_phone' => $data['customer_phone'] ?? null,
                 'referred_doctor' => $data['referred_doctor'] ?? null,
-                'sold_at' => now(),
+                'sold_at' => $at ?? now(),
                 'subtotal' => round($subtotal, 2),
                 'discount' => $discount,
                 'tax' => round($subtotal > 0 ? $tax * ($net / $subtotal) : 0, 2),
@@ -709,10 +717,11 @@ class PharmacyController extends Controller
             // The ledger lines written as each batch went down now say which bill they were for.
             StockMovement::whereKey($moved)->update(['reference' => $sale->bill_no]);
             if ($data['paid'] > 0) {
-                $sale->payments()->create([
+                // Money taken with a bill of an earlier day was taken on that day.
+                EarlierDay::date($sale->payments()->make([
                     'type' => 'payment', 'amount' => $data['paid'], 'mode' => $data['payment_mode'],
                     'reference' => $data['reference'] ?? null, 'received_by' => $request->user()->id,
-                ]);
+                ]), $at)->save();
             }
             if ($admission) {
                 PharmacyOnIpd::put($admission, $sale->fresh(), $request->user()->id);
@@ -720,6 +729,7 @@ class PharmacyController extends Controller
 
             return $sale;
         });
+        EarlierDay::log($at, $sale->patient_id, $sale, 'Pharmacy bill '.$sale->fresh()->bill_no);
 
         return response()->json($sale->fresh()->load(['items', 'patient:id,uhid,title,name', 'seller:id,name']), 201);
     }

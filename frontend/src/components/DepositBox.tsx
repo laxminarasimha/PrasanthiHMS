@@ -1,7 +1,9 @@
 import { useState, type FormEvent } from 'react'
 import { api, fieldErrors } from '../api'
-import { PAYMENT_MODES, modeLabel, rupees } from '../format'
+import { PAYMENT_MODES, modeLabel, rupees, today } from '../format'
 import type { PatientDeposit } from '../types'
+import { EarlierDate } from './EarlierDate'
+import { earlier } from '../earlierDay'
 
 type Props = {
   patientId: number
@@ -20,13 +22,15 @@ export function DepositBox({ patientId, balance, history, onChange }: Props) {
   const [amount, setAmount] = useState('')
   const [mode, setMode] = useState('cash')
   const [error, setError] = useState('')
+  const [paidOn, setPaidOn] = useState(today)
 
   const save = async (e: FormEvent) => {
     e.preventDefault()
     e.stopPropagation()
     try {
-      const res = await api.post<{ deposit_balance: number; deposits: PatientDeposit[] }>(`/patients/${patientId}/deposits`, { type, amount, mode })
+      const res = await api.post<{ deposit_balance: number; deposits: PatientDeposit[] }>(`/patients/${patientId}/deposits`, { type, amount, mode, paid_on: type === 'deposit' ? earlier(paidOn) : null })
       onChange(res.data.deposit_balance, res.data.deposits)
+      setPaidOn(today())
       setType(null)
       setAmount('')
       setError('')
@@ -63,6 +67,7 @@ export function DepositBox({ patientId, balance, history, onChange }: Props) {
           <button className="btn primary" disabled={!amount || Number(amount) <= 0}>
             {type === 'refund' ? 'Refund' : 'Take deposit'}
           </button>
+          {type === 'deposit' && <EarlierDate what="money" value={paidOn} onChange={setPaidOn} />}
         </form>
       )}
       {error && <p className="form-error">{error}</p>}

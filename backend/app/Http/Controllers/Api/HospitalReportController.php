@@ -60,6 +60,7 @@ class HospitalReportController extends Controller
         'lab-outside' => 'Lab: tests sent to outside labs',
         'lab-referrals' => 'Referrals: lab orders by referring doctor',
         'patient-referrals' => 'Referrals: new patients by referring doctor',
+        'earlier-day' => 'Bills and money entered for an earlier day',
         'activity' => 'Activity log: who opened and changed records',
     ];
 
@@ -503,6 +504,24 @@ class HospitalReportController extends Controller
             self::col('test', 'Test'), self::col('parameter', 'Parameter'), self::col('results', 'Results', 'number'),
             self::col('normal', 'Normal', 'number'), self::col('high', 'High', 'number'), self::col('low', 'Low', 'number'),
         ], $rows];
+    }
+
+    /**
+     * Every bill, payment and deposit that was typed in on a later day than the one it is counted on, by the day
+     * of typing: who entered it, for which day, and for whom. Inpatient charges are dated on their own line of the
+     * IPD bill and are not listed here.
+     */
+    private function earlierDay(Carbon $from, Carbon $to): array
+    {
+        $rows = AuditLog::where('action', 'billing.earlier_day')->whereBetween('created_at', [$from, $to])->latest('id')->limit(5000)->get();
+        $patients = Patient::whereIn('id', $rows->pluck('patient_id')->filter()->unique())->get(['id', 'uhid', 'name'])->keyBy('id');
+
+        return [[
+            self::col('when', 'Entered at'), self::col('who', 'Entered by'), self::col('patient', 'Patient'), self::col('details', 'What was entered'),
+        ], $rows->map(fn ($r) => [
+            'when' => $r->created_at->format('Y-m-d H:i'), 'who' => $r->user_name, 'details' => $r->summary,
+            'patient' => isset($patients[$r->patient_id]) ? $patients[$r->patient_id]->uhid.' '.$patients[$r->patient_id]->name : null,
+        ])];
     }
 
     /** Who opened or changed which record. */

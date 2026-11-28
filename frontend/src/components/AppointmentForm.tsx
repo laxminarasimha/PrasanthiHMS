@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { useAuth } from '../auth'
-import { PAYMENT_MODES, longDate, rupees } from '../format'
+import { PAYMENT_MODES, longDate, rupees, today } from '../format'
 import type { Appointment, Doctor, Patient, Service } from '../types'
 import { SelectField, TextField } from './Field'
 import { useBillingPreferences } from './useBillingPreferences'
@@ -107,6 +107,8 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
   const net = service ? Math.max(0, Number(price || 0) * Number(quantity || 1) - Number(discount || 0)) : 0
   const netWithTax = Math.round(net * (1 + (service?.gst_percent ?? 0) / 100) * 100) / 100
   const billing = Boolean(service) && !skipBilling && !free
+  // A visit entered for a day already gone was missed then: the server dates its bill and its money on that day.
+  const missed = Boolean(day) && day < today()
 
   const chooseService = (value: string) => {
     setServiceId(value)
@@ -244,12 +246,20 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
                 {service.gst_percent > 0 && <span className="muted">Tax {service.gst_percent}% · </span>}
                 Net price <strong>{rupees(netWithTax)}</strong>
               </p>
-              {payLater && <p className="muted small">The bill is made now and paid after the consultation. Enter an amount only if the patient pays now.</p>}
+              {payLater && !missed && <p className="muted small">The bill is made now and paid after the consultation. Enter an amount only if the patient pays now.</p>}
+              {missed && (
+                <div className="earlier-day on">
+                  <p>
+                    <strong>This visit is of {longDate(day)}, so its bill will be dated that day, not today.</strong> Enter an amount below only if the money was taken that day. Money
+                    taken today is collected from the bill after saving. If that day’s accounts are closed, an admin has to reopen the day first.
+                  </p>
+                </div>
+              )}
               <div className="grid">
-                <TextField label="Paid now (₹)" type="number" min={0} step="0.01" placeholder="0" value={paid} onChange={setPaid} error={errors.paid} />
+                <TextField label={missed ? `Paid on ${longDate(day)} (₹)` : 'Paid now (₹)'} type="number" min={0} step="0.01" placeholder="0" value={paid} onChange={setPaid} error={errors.paid} />
                 <SelectField label="Payment mode" value={mode} onChange={setMode} options={PAYMENT_MODES} error={errors.payment_mode} />
               </div>
-              {!payLater && (
+              {!payLater && !missed && (
                 <button type="button" className="link add-medicine" onClick={() => setPaid(String(netWithTax))}>
                   Paid in full ({rupees(netWithTax)})
                 </button>

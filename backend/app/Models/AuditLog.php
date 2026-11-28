@@ -54,6 +54,7 @@ class AuditLog extends Model
         'patients.exported' => 'Took the patient list away as a file',
         'bill.item_removed' => 'Removed a line from a bill',
         'bill.payment' => 'Recorded money on a bill',
+        'billing.earlier_day' => 'Entered for an earlier day',
         'bill.payment_mode' => 'Changed how a bill was paid',
         'ipd.payment_mode' => 'Changed how an IPD payment was taken',
         'ipd.reopened' => 'Reopened a closed IPD case',

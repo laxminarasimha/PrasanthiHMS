@@ -28,7 +28,8 @@ class PharmacyOnIpd
         $charge = $admission->charges()->create([
             'description' => "Pharmacy bill {$sale->bill_no}",
             'category' => 'Pharmacy',
-            'charged_on' => today(),
+            // The day the medicines were given: today, unless the bill was entered later for an earlier day.
+            'charged_on' => $sale->sold_at?->toDateString() ?? today(),
             'quantity' => 1,
             'unit_price' => $due,
             'amount' => $due,

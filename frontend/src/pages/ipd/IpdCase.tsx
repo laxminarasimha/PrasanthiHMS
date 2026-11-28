@@ -423,7 +423,10 @@ export function IpdCase() {
               value=""
               onChange={(e) => {
                 const template = templates.find((t) => String(t.id) === e.target.value)
-                if (template && window.confirm(`Add the ${template.items.length} service(s) in "${template.name}" to this bill?`)) run(api.post(`${url}/templates/${template.id}`), `"${template.name}" added to the bill.`)
+                // Dated like a single charge: by the charge date beside it, which is today unless an earlier day is chosen.
+                const on = charge.charged_on && charge.charged_on < today() ? charge.charged_on : null
+                if (template && window.confirm(`Add the ${template.items.length} service(s) in "${template.name}" to this bill${on ? `, dated ${longDate(on)}` : ''}?`))
+                  run(api.post(`${url}/templates/${template.id}`, { charged_on: on }), `"${template.name}" added to the bill.`)
               }}
               aria-label="Add a bill template"
             >

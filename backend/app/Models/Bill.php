@@ -18,7 +18,7 @@ class Bill extends Model
      */
     protected function casts(): array
     {
-        return ['subtotal' => 'float', 'tax' => 'float', 'discount' => 'float', 'total' => 'float', 'paid' => 'float', 'cancelled_at' => 'datetime:Y-m-d H:i'];
+        return ['subtotal' => 'float', 'tax' => 'float', 'discount' => 'float', 'total' => 'float', 'paid' => 'float', 'cancelled_at' => 'datetime:Y-m-d H:i', 'entered_at' => 'datetime'];
     }
 
     protected static function booted(): void

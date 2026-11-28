@@ -11,10 +11,12 @@ import { useAuth } from '../../auth'
 import { DateRange } from '../../components/DateRange'
 import { MedicinePick, type SellableBatch } from '../../components/MedicinePick'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
-import { PAYMENT_MODES, clock, longDate, modeLabel, placeLabel, rupees } from '../../format'
+import { PAYMENT_MODES, clock, longDate, modeLabel, placeLabel, rupees, today } from '../../format'
 import type { Payment, PharmacySale, SellableMedicine } from '../../types'
 import { PatientLink } from '../../components/PatientLink'
 import { PharmacyDay } from '../../components/PharmacyDay'
+import { EarlierDate } from '../../components/EarlierDate'
+import { earlier } from '../../earlierDay'
 
 type Action = 'view' | 'collect' | 'return' | 'delete' | 'edit' | 'mode'
 /** A medicine being added to a bill that is already saved. */
@@ -42,6 +44,7 @@ export function PharmacyBills() {
   const [action, setAction] = useState<Action>('view')
   const [amount, setAmount] = useState('')
   const [mode, setMode] = useState('cash')
+  const [paidOn, setPaidOn] = useState(today)
   const [reason, setReason] = useState('')
   const [quantities, setQuantities] = useState<Record<number, string>>({})
   const [edit, setEdit] = useState<Edit | null>(null)
@@ -116,7 +119,7 @@ export function PharmacyBills() {
     e.preventDefault()
     if (!open) return
     const url = `/pharmacy/sales/${open.id}`
-    if (action === 'collect') run(api.post(`${url}/payments`, { amount, mode }), 'Payment recorded.')
+    if (action === 'collect') run(api.post(`${url}/payments`, { amount, mode, paid_on: earlier(paidOn) }), 'Payment recorded.').then(() => setPaidOn(today()))
     if (action === 'return') {
       const items = Object.entries(quantities).filter(([, q]) => Number(q) > 0).map(([id, q]) => ({ id: Number(id), quantity: Number(q) }))
       run(api.post(`${url}/returns`, { refund_mode: mode, items }), 'Medicines taken back and stock updated.')
@@ -498,6 +501,7 @@ export function PharmacyBills() {
                     Collect
                   </button>
                 </div>
+                <EarlierDate what="money" value={paidOn} onChange={setPaidOn} min={open.sold_at.slice(0, 10)} />
               </div>
             )}
             {action === 'return' && (

@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, fieldErrors } from '../api'
-import { PAYMENT_MODES, STAGE_CLASS, STAGE_LABEL, clock, longDate, modeLabel, rupees, settlement } from '../format'
+import { PAYMENT_MODES, STAGE_CLASS, STAGE_LABEL, clock, longDate, modeLabel, rupees, settlement, today } from '../format'
 import { STEP_CLASS, STEP_LABEL, stepOf } from '../pages/labSteps'
 import type { LabOrder, LabSettings } from '../types'
 import { SelectField, TextField } from './Field'
 import { PatientLink } from './PatientLink'
 import { useBillingPreferences } from './useBillingPreferences'
+import { EarlierDate } from './EarlierDate'
+import { earlier } from '../earlierDay'
 import { testLabel } from '../labName'
 
 type Props = {
@@ -40,6 +42,7 @@ export function LabDay({ orders, settings, canRun, onClose, onChange, onOpenResu
   const [chosenMode, setMode] = useState<string | null>(null)
   const mode = chosenMode ?? prefs.default_payment_mode
   const [reference, setReference] = useState('')
+  const [paidOn, setPaidOn] = useState(today)
   const box = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -87,11 +90,12 @@ export function LabDay({ orders, settings, canRun, onClose, onChange, onOpenResu
   const pay = (e: FormEvent) => {
     e.preventDefault()
     void run(
-      () => api.post('/lab/collect', { patient_id: patient.id, bill_ids: owing.map((o) => o.bill!.id), amount, mode, reference: reference || null }),
+      () => api.post('/lab/collect', { patient_id: patient.id, bill_ids: owing.map((o) => o.bill!.id), amount, mode, reference: reference || null, paid_on: earlier(paidOn) }),
       `${rupees(Number(amount))} received by ${modeLabel(mode)}${owing.length > 1 ? `, shared over ${owing.length} bills` : ''}.`,
     ).then(() => {
       setTyped(null)
       setReference('')
+      setPaidOn(today())
     })
   }
 
@@ -223,6 +227,7 @@ export function LabDay({ orders, settings, canRun, onClose, onChange, onOpenResu
               <SelectField label="Mode" required value={mode} onChange={setMode} options={PAYMENT_MODES} />
               <TextField label="Reference" value={reference} onChange={setReference} placeholder="optional" />
             </div>
+            <EarlierDate what="money" value={paidOn} onChange={setPaidOn} />
             <div className="panel-foot">
               <span className="muted small grow">A part payment is put against the bills in the order shown. Each bill keeps its own receipt.</span>
               <button className="btn primary" disabled={busy || !(Number(amount) > 0)}>

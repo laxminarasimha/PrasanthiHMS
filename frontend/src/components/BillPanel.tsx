@@ -3,12 +3,14 @@ import { DiscountWhy } from './DiscountWhy'
 import { noWhy, whyFields } from './discountFields'
 import { useAuth } from '../auth'
 import { api, fieldErrors } from '../api'
-import { PAYMENT_MODES, modeLabel, rupees, stampDate } from '../format'
+import { PAYMENT_MODES, modeLabel, rupees, stampDate, today } from '../format'
 import type { Bill, Payment, Service } from '../types'
 import { DepositBox } from './DepositBox'
 import { SelectField, TextField } from './Field'
 import { useBillingPreferences } from './useBillingPreferences'
 import { PatientLink } from './PatientLink'
+import { EarlierDate } from './EarlierDate'
+import { dayOf, earlier } from '../earlierDay'
 
 type Props = {
   billId: number
@@ -36,6 +38,7 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
   const [chosenMode, setMode] = useState<string | null>(null)
   const mode = chosenMode ?? prefs.default_payment_mode
   const [reference, setReference] = useState('')
+  const [paidOn, setPaidOn] = useState(today)
   // The payment whose mode is being corrected, with what is typed for it.
   const [fixing, setFixing] = useState<Payment | null>(null)
   const [fix, setFix] = useState({ mode: 'cash', reference: '', reason: '' })
@@ -100,7 +103,10 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
 
   const pay = (e: FormEvent) => {
     e.preventDefault()
-    run(api.post(`/bills/${billId}/payments`, { type: payType, amount, mode, reference: reference || null })).then(() => setReference(''))
+    run(api.post(`/bills/${billId}/payments`, { type: payType, amount, mode, reference: reference || null, paid_on: payType === 'payment' ? earlier(paidOn) : null })).then(() => {
+      setReference('')
+      setPaidOn(today())
+    })
   }
 
   const fixMode = async (e: FormEvent) => {
@@ -189,6 +195,11 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
             · {bill.patient.uhid} · {KIND[bill.kind]}
             {bill.lab_order ? ` · ${bill.lab_order.order_no}` : ''}
           </span>
+          {bill.entered_at && (
+            <small className="muted block">
+              Dated {stampDate(bill.created_at)} · entered on {stampDate(bill.entered_at)}
+            </small>
+          )}
         </div>
         <div className="row">
           <a className="btn ghost" href={`/bills/${bill.id}/print`} target="_blank" rel="noreferrer">
@@ -329,6 +340,7 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
           <SelectField label="Mode" required value={mode} onChange={setMode} options={PAYMENT_MODES} />
           <TextField label="Reference" placeholder="optional" value={reference} onChange={setReference} />
         </div>
+        {payType === 'payment' && <EarlierDate what="money" value={paidOn} onChange={setPaidOn} min={dayOf(bill.created_at)} />}
         <div className="panel-foot between">
           <button
             type="button"
@@ -359,6 +371,7 @@ export function BillPanel({ billId, services, onClose, onChange, onAnotherBill }
                   <small className="muted">
                     {' '}
                     {new Date(p.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' })}
+                    {p.entered_at ? ` (entered on ${stampDate(p.entered_at)})` : ''}
                     {p.receiver ? ` by ${p.receiver.name}` : ''}
                   </small>
                 </span>

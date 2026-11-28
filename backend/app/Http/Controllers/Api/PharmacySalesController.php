@@ -14,6 +14,7 @@ use App\Models\PharmacySale;
 use App\Models\PharmacySaleItem;
 use App\Models\PharmacySaleReturn;
 use App\Models\StockBatch;
+use App\Support\EarlierDay;
 use App\Support\MoneyFigures;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -173,7 +174,10 @@ class PharmacySalesController extends Controller
             'amount' => ['required', 'numeric', 'gt:0'],
             'mode' => ['required', Rule::in(Payment::MODES)],
             'reference' => ['nullable', 'string', 'max:255'],
-        ]);
+            // The day the money actually changed hands, when it is entered later.
+            'paid_on' => EarlierDay::rule(),
+        ], EarlierDay::messages('paid_on'));
+        $at = EarlierDay::at($data['paid_on'] ?? null);
 
         $sales = PharmacySale::whereIn('id', $data['sale_ids'])->lockForUpdate()->get()->keyBy('id');
         $first = $sales->first();
@@ -195,8 +199,10 @@ class PharmacySalesController extends Controller
             if ($part <= 0) {
                 continue;
             }
-            $sale->payments()->create(['type' => 'payment', 'amount' => $part, 'mode' => $data['mode'], 'reference' => $data['reference'] ?? null, 'received_by' => $request->user()->id]);
+            EarlierDay::notBefore($at, $sale->sold_at);
+            EarlierDay::date($sale->payments()->make(['type' => 'payment', 'amount' => $part, 'mode' => $data['mode'], 'reference' => $data['reference'] ?? null, 'received_by' => $request->user()->id]), $at)->save();
             $sale->recalculatePaid();
+            EarlierDay::log($at, $sale->patient_id, $sale, "Pharmacy bill {$sale->bill_no}: ₹{$part} received");
             $left = round($left - $part, 2);
         }
 
@@ -214,14 +220,20 @@ class PharmacySalesController extends Controller
             'amount' => ['required', 'numeric', 'gt:0'],
             'mode' => ['required', Rule::in(Payment::MODES)],
             'reference' => ['nullable', 'string', 'max:255'],
-        ]);
+            // The day the money actually changed hands, when it is entered later.
+            'paid_on' => EarlierDay::rule(),
+        ], EarlierDay::messages('paid_on'));
+        $at = EarlierDay::at($data['paid_on'] ?? null);
+        EarlierDay::notBefore($at, $sale->sold_at);
+        unset($data['paid_on']);
 
         if ($data['amount'] > $sale->due) {
             throw ValidationException::withMessages(['amount' => "Only ₹{$sale->due} is due on this bill."]);
         }
 
-        $sale->payments()->create($data + ['type' => 'payment', 'received_by' => $request->user()->id]);
+        EarlierDay::date($sale->payments()->make($data + ['type' => 'payment', 'received_by' => $request->user()->id]), $at)->save();
         $sale->recalculatePaid();
+        EarlierDay::log($at, $sale->patient_id, $sale, "Pharmacy bill {$sale->bill_no}: ₹".(float) $data['amount'].' received');
 
         return response()->json($sale->fresh()->load(self::SALE_WITH), 201);
     }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useAuth } from '../auth'
 import { api, fieldErrors } from '../api'
-import { PAYMENT_MODES, rupees } from '../format'
+import { PAYMENT_MODES, rupees, today } from '../format'
 import type { LabCatalogueTest, LabPackage, Service } from '../types'
 import { matchAdvised, namesOf } from './LabOrderForm'
 import { ReferredBy } from './ReferredBy'
@@ -9,6 +9,8 @@ import { DiscountWhy } from './DiscountWhy'
 import { noWhy, whyFields } from './discountFields'
 import { useBillingPreferences } from './useBillingPreferences'
 import { usePartLoading } from '../loading'
+import { EarlierDate } from './EarlierDate'
+import { earlier } from '../earlierDay'
 
 type Props = {
   patient: { id: number; name: string; uhid: string }
@@ -18,6 +20,8 @@ type Props = {
   doctor?: string
   /** Tests the doctor advised, as typed on the visit pad: those the lab offers are put in the list ready. */
   advised?: string
+  /** The day whose list this was opened from. On the list of an earlier day, what is added belongs to that day unless the desk says today. */
+  date?: string
   services: Service[]
   tests: LabCatalogueTest[]
   packages: LabPackage[]
@@ -43,7 +47,7 @@ const KIND = { appointment: 'Services', other: 'Services', lab: 'Lab' } as const
  * packages alike; everything chosen is saved together; then all that is due is collected at once.
  * Behind it the services become one bill and the lab tests a lab order with its own bill, as before.
  */
-export function ChargePanel({ patient, appointmentId, doctor, advised, services, tests, packages, onClose, onChange, onOpenBill }: Props) {
+export function ChargePanel({ patient, appointmentId, doctor, advised, date, services, tests, packages, onClose, onChange, onOpenBill }: Props) {
   const { user } = useAuth()
   const prefs = useBillingPreferences()
   const box = useRef<HTMLInputElement>(null)
@@ -61,6 +65,10 @@ export function ChargePanel({ patient, appointmentId, doctor, advised, services,
   const [chosenMode, setMode] = useState<string | null>(null)
   const mode = chosenMode ?? prefs.default_payment_mode
   const [reference, setReference] = useState('')
+  // The day the new charges belong to, and the day the money was taken. Money is today's unless a bill has just
+  // been entered here for an earlier day: an old due that is paid now is money of today.
+  const [day, setDay] = useState(() => (date && date < today() ? date : today()))
+  const [paidOn, setPaidOn] = useState(today)
 
   const testLine = (t: LabCatalogueTest): Line => ({ key: `test-${t.id}`, type: 'test', id: t.id, name: t.name, price: String(t.price), quantity: '1', discount: '' })
   // What the doctor advised is in the list from the start, for the desk to confirm.
@@ -69,10 +77,10 @@ export function ChargePanel({ patient, appointmentId, doctor, advised, services,
 
   // Anything already unpaid for this visit is shown, so it can be collected with the new charges.
   useEffect(() => {
-    api.get<{ due: Due[] }>('/front-desk/due', { params: { patient_id: patient.id, appointment_id: appointmentId } }).then((res) => takeDue(res.data.due))
+    api.get<{ due: Due[] }>('/front-desk/due', { params: { patient_id: patient.id, appointment_id: appointmentId, date: earlier(day) ?? undefined } }).then((res) => takeDue(res.data.due))
     box.current?.focus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patient.id, appointmentId])
+  }, [patient.id, appointmentId, day])
 
   const takeDue = (list: Due[]) => {
     setDue(list)
@@ -153,8 +161,11 @@ export function ChargePanel({ patient, appointmentId, doctor, advised, services,
         test_counts: Object.fromEntries(lines.filter((l) => l.type === 'test' && times(l) > 1).map((l) => [l.id, times(l)])),
         package_ids: lines.filter((l) => l.type === 'package').map((l) => l.id),
         referred_by: hasLab ? referredBy.trim() || null : null,
+        billed_on: earlier(day),
         ...(discounted ? whyFields(why) : {}),
       })
+      // A bill that was missed on an earlier day: its money was most likely taken that day too.
+      setPaidOn(day)
       setSaved(res.data.made.length > 1 ? 'Saved: a services bill and a lab order were made.' : hasLab ? 'Saved: the lab order was made.' : 'Saved: the bill was made.')
       setLines([])
       setWhy(noWhy)
@@ -172,7 +183,7 @@ export function ChargePanel({ patient, appointmentId, doctor, advised, services,
     setBusy(true)
     setError('')
     try {
-      const res = await api.post<{ due: Due[] }>('/front-desk/collect', { patient_id: patient.id, appointment_id: appointmentId ?? null, bill_ids: due.map((b) => b.id), amount, mode, reference: reference.trim() || null })
+      const res = await api.post<{ due: Due[] }>('/front-desk/collect', { patient_id: patient.id, appointment_id: appointmentId ?? null, bill_ids: due.map((b) => b.id), amount, mode, reference: reference.trim() || null, paid_on: earlier(paidOn), date: earlier(day) })
       setSaved(res.data.due.length ? `Collected ${rupees(Number(amount))}.` : `Collected ${rupees(Number(amount))}. Nothing more is due.`)
       setReference('')
       takeDue(res.data.due)
@@ -328,6 +339,8 @@ export function ChargePanel({ patient, appointmentId, doctor, advised, services,
 
       {discounted && <DiscountWhy id="charge-why" value={why} onChange={setWhy} />}
 
+      {(lines.length > 0 || earlier(day)) && <EarlierDate what="bill" value={day} onChange={setDay} />}
+
       {lines.length > 0 && (
         <div className="panel-foot between">
           <span>
@@ -389,6 +402,7 @@ export function ChargePanel({ patient, appointmentId, doctor, advised, services,
                 <input placeholder="optional" value={reference} onChange={(e) => setReference(e.target.value)} />
               </label>
             </div>
+            <EarlierDate what="money" value={paidOn} onChange={setPaidOn} />
             <div className="panel-foot between">
               <small className="muted">{lines.length > 0 ? 'Save the new items first to collect for them too.' : due.length > 1 ? 'One payment, shared across these bills.' : ''}</small>
               <button className="btn primary" disabled={busy || !amount || Number(amount) <= 0}>

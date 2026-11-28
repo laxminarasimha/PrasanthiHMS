@@ -21,6 +21,7 @@ use App\Models\PharmacySale;
 use App\Models\Setting;
 use App\Models\Patient;
 use App\Support\BedCharges;
+use App\Support\EarlierDay;
 use App\Support\PharmacyOnIpd;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -524,9 +525,11 @@ class IpdController extends Controller
             // Reports count money on the day it was received, so a back-dated entry carries that day.
             // The date is set before saving, so a day whose accounts are closed refuses it like any other entry.
             $payment->created_at = Carbon::parse($paidOn)->setTimeFrom(now());
+            $payment->entered_at = now();
         }
         $payment->save();
         $admission->recalculate();
+        EarlierDay::log(EarlierDay::at($paidOn), $admission->patient_id, $admission, "{$admission->ipd_no}: ₹".(float) $data['amount'].' '.($data['type'] === 'refund' ? 'refunded' : 'received'));
 
         return response()->json($this->present($admission), 201);
     }
@@ -778,21 +781,22 @@ class IpdController extends Controller
         return response()->json($this->present($admission));
     }
 
-    /** Adds every service in a bill template as a charge dated today, at the current price list rates. */
+    /** Adds every service in a bill template as a charge, dated today unless an earlier day is given, at the current price list rates. */
     public function applyTemplate(Request $request, Admission $admission, IpdBillTemplate $template): JsonResponse
     {
+        $day = $request->validate(['charged_on' => ['nullable', 'date', 'before_or_equal:today']])['charged_on'] ?? today()->toDateString();
         $this->refuseIfBillApproved($admission);
         $services = IpdService::whereIn('id', array_column($template->items, 'ipd_service_id'))->where('is_active', true)->get()->keyBy('id');
         if ($services->isEmpty()) {
             throw ValidationException::withMessages(['template' => 'None of the services in this template are on the price list any more.']);
         }
 
-        DB::transaction(function () use ($template, $services, $admission, $request) {
+        DB::transaction(function () use ($template, $services, $admission, $request, $day) {
             foreach ($template->items as $item) {
                 if ($service = $services->get($item['ipd_service_id'])) {
                     $quantity = (float) ($item['quantity'] ?? 1);
                     $admission->charges()->create([
-                        'ipd_service_id' => $service->id, 'description' => $service->name, 'category' => $service->category, 'charged_on' => today(),
+                        'ipd_service_id' => $service->id, 'description' => $service->name, 'category' => $service->category, 'charged_on' => $day,
                         'quantity' => $quantity, 'unit_price' => $service->price, 'amount' => round($quantity * $service->price, 2), 'created_by' => $request->user()->id,
                     ]);
                 }
