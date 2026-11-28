@@ -997,6 +997,7 @@ td.advice { white-space: normal; min-width: 120px; }
 .advice-chip.rx { color: var(--brand); background: var(--brand-soft); border-color: var(--brand-line); }
 .advice-chip.tests { color: var(--info); background: var(--info-soft); border-color: var(--info-line); }
 .advice-chip.next { color: var(--warn); background: var(--accent-soft); border-color: var(--accent-line); }
+.advice-chip.admit { color: var(--danger); background: var(--danger-soft); border-color: var(--danger-line); }
 .advice-chip.refer { color: var(--muted); background: var(--bg); border-color: var(--border); cursor: default; }
 .btn .count { display: inline-block; min-width: 1.5em; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 0.8rem; text-align: center; }
 .menu > button:disabled { color: var(--muted); cursor: default; }
@@ -1761,6 +1762,16 @@ table.compact td.lab-last { white-space: nowrap; font-variant-numeric: tabular-n
 /* IPD bed board */
 .view-switch { margin-left: auto; }
 .ipd-stats { margin-bottom: 16px; }
+/* Admission a doctor advised at an OPD visit: the first thing on the IPD page until it is acted on. */
+.ipd-advised { margin: 0 0 16px; padding: 10px 12px; border: 1px solid var(--danger-line); border-left: 4px solid var(--danger); border-radius: 8px; background: var(--danger-soft); }
+.ipd-advised h3 { margin: 0 0 6px; font-size: 1rem; }
+.ipd-advised h3 small { font-weight: 500; }
+.ipd-advised ul { list-style: none; margin: 0; padding: 0; }
+.ipd-advised li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--danger-line); }
+.ipd-advised li:first-child { border-top: 0; }
+.ipd-advised .grow { flex: 1 1 240px; min-width: 0; }
+.admit-advice { margin-top: 4px; display: grid; gap: 8px; }
+.admit-advice .check { margin-top: 10px; }
 @media (min-width: 701px) { .ipd-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .ipd-stats .tile strong small { font-size: 0.85rem; font-weight: 500; }
 .bed-board section + section { margin-top: 18px; }

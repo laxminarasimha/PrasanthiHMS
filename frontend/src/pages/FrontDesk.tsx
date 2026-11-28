@@ -363,6 +363,11 @@ export function FrontDesk() {
                           Refer
                         </span>
                       )}
+                      {a.consultation?.admit_advised_at && (
+                        <Link className="advice-chip admit" to="/ipd" title={`The doctor advised admission${a.consultation.admit_reason ? `: ${a.consultation.admit_reason}` : ''}. Open IPD to admit.`}>
+                          Admit
+                        </Link>
+                      )}
                     </td>
                     <td className="num menu-cell">
                       <button className="btn ghost small-btn menu-button" onClick={(e) => toggleMenu(a.id, e.currentTarget)} aria-haspopup="menu" aria-expanded={menu === a.id}>

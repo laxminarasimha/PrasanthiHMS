@@ -47,7 +47,7 @@ const SIGNS = [
 
 const TEXT_KEYS = [
   'quick_notes', 'complaints', 'history', 'past_medication', 'general_exam_notes', 'findings', 'diagnosis',
-  'assessment_plan', 'tests_advised', 'advice', 'refer_to', 'follow_up_on',
+  'assessment_plan', 'tests_advised', 'advice', 'refer_to', 'follow_up_on', 'admit_reason',
 ]
 
 type Exam = Record<string, 'present' | 'absent' | ''>
@@ -63,6 +63,8 @@ function toForm(c: Consultation | null, allergies: string | null = null): Form {
     const value = c?.[key as keyof Consultation]
     form[key] = value === null || value === undefined ? '' : String(value)
   }
+  // A tick, kept with the rest of the pad so that changing it counts as an unsaved change.
+  form.advise_admission = c?.admit_advised_at ? '1' : ''
   return form
 }
 
@@ -259,6 +261,8 @@ export function VisitPad() {
     setErrors({})
     setNotice('')
     const payload: Record<string, unknown> = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v === '' ? null : v]))
+    payload.advise_admission = form.advise_admission === '1'
+    if (!payload.advise_admission) payload.admit_reason = null
     payload.general_exam = Object.fromEntries(SIGNS.map((sign) => [sign.key, exam[sign.key] || null]))
     payload.medicines = filledMedicines(medicines)
     payload.diagnosis_codes = codes.map((c) => ({ code: c.code }))
@@ -346,7 +350,7 @@ export function VisitPad() {
     quick_notes: has(form.quick_notes), vitals: VITALS.some((v) => has(form[v.key])), complaints: has(form.complaints), history: has(form.history), past_medication: has(form.past_medication),
     general_exam: has(form.general_exam_notes) || SIGNS.some((sign) => has(exam[sign.key])), systemic_exam: has(form.findings), diagnosis: has(form.diagnosis) || codes.length > 0,
     assessment_plan: has(form.assessment_plan), tests: has(form.tests_advised), results: investigations.some((row) => row.name.trim()), prescription: medicines.some((m) => m.medicine.trim()),
-    advice: has(form.advice), follow_up: has(form.follow_up_on) || has(form.refer_to),
+    advice: has(form.advice), follow_up: has(form.follow_up_on) || has(form.refer_to) || has(form.advise_admission),
   }
   const padOrder = library?.pad_section_order ?? PAD_ORDER
   const jump = padOrder.filter((key) => PAD_LABELS[key] && (!library?.pad_hidden_sections.includes(key) || written[key]))
@@ -603,6 +607,20 @@ export function VisitPad() {
           <div className="grid gap-top">
             {!hidden('refer_to', 'refer_to') && <TextField label="Refer to" placeholder="Doctor or hospital, and why" list="refer-to-doctors" value={form.refer_to} onChange={set('refer_to')} error={errors.refer_to} />}
             <TextField label="Next visit date" type="date" value={form.follow_up_on} onChange={set('follow_up_on')} error={errors.follow_up_on} />
+          </div>
+          <div className="admit-advice">
+            <label className="check two-line">
+              <input type="checkbox" checked={form.advise_admission === '1'} onChange={(e) => set('advise_admission')(e.target.checked ? '1' : '')} />
+              <span>
+                Advise admission
+                <small className="muted block">
+                  {visit.consultation?.admit_advised_at && form.advise_admission === '1'
+                    ? `IPD was told on ${longDate(visit.consultation.admit_advised_at)}. They see it until the patient is admitted.`
+                    : 'IPD is told when this is saved, and the admit form opens with your name and the reason filled in.'}
+                </small>
+              </span>
+            </label>
+            {form.advise_admission === '1' && <TextField label="Reason for admission" placeholder="For example: for appendicectomy" value={form.admit_reason} onChange={set('admit_reason')} error={errors.admit_reason} />}
           </div>
           </>
     ),

@@ -154,7 +154,7 @@ export type Appointment = {
   doctor: { id: number; name: string }
   service: { id: number; name: string } | null
   /** What the doctor decided, once the visit pad has been saved. */
-  consultation?: { id: number; completed_at: string | null; tests_advised: string | null; follow_up_on: string | null; refer_to: string | null; medicines_count: number } | null
+  consultation?: { id: number; completed_at: string | null; tests_advised: string | null; follow_up_on: string | null; refer_to: string | null; admit_advised_at?: string | null; admit_reason?: string | null; medicines_count: number } | null
   bills: { id: number; bill_no: string; kind: BillKind; total: number; paid: number; due: number; moved_to_ipd: number | null; lab_order: { id: number; order_no: string } | null }[]
 }
 
@@ -266,6 +266,9 @@ export type Consultation = {
   diagnosis_codes?: { code: string; name: string }[] | null
   assessment_plan: string | null
   refer_to: string | null
+  /** When the doctor advised admission at this visit, and why. IPD is shown it until the patient is admitted. */
+  admit_advised_at?: string | null
+  admit_reason?: string | null
   tests_advised: string | null
   advice: string | null
   follow_up_on: string | null
@@ -758,6 +761,9 @@ export type Admission = {
   admitted_at: string
   discharged_at: string | null
   reason: string | null
+  /** The OPD visit at which a doctor advised this admission. */
+  consultation_id?: number | null
+  advised?: { appointment_id: number; on: string | null; doctor: string | null } | null
   attendant_name: string | null
   attendant_phone: string | null
   discharge_summary: string | null
@@ -960,4 +966,15 @@ export type ConsultRow = {
   completed_at: string
   patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'age_label' | 'title' | 'mobile'>
   doctor: { id: number; name: string }
+}
+
+/** Admission advised by a doctor on the visit pad, waiting for IPD to act on it. */
+export type AdmitAdvice = {
+  /** The visit note it was written on. */
+  id: number
+  appointment_id: number
+  advised_at: string
+  reason: string | null
+  patient: Patient
+  doctor: { id: number; name: string } | null
 }

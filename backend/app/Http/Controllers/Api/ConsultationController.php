@@ -29,7 +29,7 @@ class ConsultationController extends Controller
     private const NOTE_LABELS = [
         'complaints' => 'Complaints', 'history' => 'History', 'past_medication' => 'Past medication', 'general_exam' => 'General examination',
         'general_exam_notes' => 'Examination notes', 'findings' => 'Findings', 'diagnosis' => 'Diagnosis', 'diagnosis_codes' => 'Diagnosis codes', 'assessment_plan' => 'Plan',
-        'tests_advised' => 'Tests advised', 'investigations' => 'Test results', 'advice' => 'Advice', 'follow_up_on' => 'Next visit', 'refer_to' => 'Referral',
+        'tests_advised' => 'Tests advised', 'investigations' => 'Test results', 'advice' => 'Advice', 'follow_up_on' => 'Next visit', 'refer_to' => 'Referral', 'admit_advised_at' => 'Admission advised', 'admit_reason' => 'Reason for admission',
         'quick_notes' => 'Quick notes', 'weight_kg' => 'Weight', 'height_cm' => 'Height', 'bp_systolic' => 'BP', 'bp_diastolic' => 'BP ',
         'pulse' => 'Pulse', 'temperature_f' => 'Temperature', 'spo2' => 'SpO2', 'resp_rate' => 'Respiratory rate',
     ];
@@ -113,6 +113,9 @@ class ConsultationController extends Controller
             'general_exam_notes' => ['nullable', 'string', 'max:5000'],
             'assessment_plan' => ['nullable', 'string', 'max:5000'],
             'refer_to' => ['nullable', 'string', 'max:500'],
+            // The doctor wants this patient admitted: IPD is shown it until they are.
+            'advise_admission' => ['sometimes', 'boolean'],
+            'admit_reason' => ['nullable', 'string', 'max:500'],
             'complaints' => ['nullable', 'string', 'max:5000'],
             'findings' => ['nullable', 'string', 'max:5000'],
             'diagnosis' => ['nullable', 'string', 'max:5000'],
@@ -149,6 +152,7 @@ class ConsultationController extends Controller
 
         $complete = (bool) ($data['complete'] ?? false);
         $awaiting = array_key_exists('awaiting_reports', $data) ? (bool) $data['awaiting_reports'] : null;
+        $advise = array_key_exists('advise_admission', $data) ? (bool) $data['advise_admission'] : null;
         $medicines = $data['medicines'] ?? null;
         $allergies = array_key_exists('allergies', $data) ? ['allergies' => $data['allergies']] : null;
         // Keep only the signs that were actually marked.
@@ -163,9 +167,9 @@ class ConsultationController extends Controller
         if (array_key_exists('investigations', $data)) {
             $data['investigations'] = collect($data['investigations'] ?? [])->map(fn ($row) => ['name' => $row['name'], 'result' => $row['result'] ?? null, 'date' => $row['date'] ?? null])->values()->all() ?: null;
         }
-        unset($data['complete'], $data['awaiting_reports'], $data['medicines'], $data['allergies']);
+        unset($data['complete'], $data['awaiting_reports'], $data['medicines'], $data['allergies'], $data['advise_admission']);
 
-        DB::transaction(function () use ($appointment, $data, $medicines, $complete, $awaiting, $allergies) {
+        DB::transaction(function () use ($appointment, $data, $medicines, $complete, $awaiting, $allergies, $advise) {
             if ($allergies) {
                 $appointment->patient()->update($allergies);
             }
@@ -181,6 +185,17 @@ class ConsultationController extends Controller
             ]);
             if ($complete && ! $consultation->completed_at) {
                 $consultation->completed_at = now();
+            }
+            // The time of the advice is when it was first ticked; unticking takes it back altogether.
+            if ($advise === true && ! $consultation->admit_advised_at) {
+                $consultation->admit_advised_at = now();
+                $consultation->admit_closed_at = null;
+            } elseif ($advise === false) {
+                $consultation->admit_advised_at = null;
+                $consultation->admit_closed_at = null;
+            }
+            if (! $consultation->admit_advised_at) {
+                $consultation->admit_reason = null;
             }
             $consultation->save();
 

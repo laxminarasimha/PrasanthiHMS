@@ -259,6 +259,8 @@ class ToDoList
         $gone = Admission::where('discharged_at', '>=', today()->subDays(self::DAYS))->with($with)->latest('discharged_at')->get();
 
         $items = [
+            self::item('advised', 'Advised admission, not admitted yet', 'A doctor advised admission at an OPD visit in the last '.AdmitAdvice::DAYS.' days. Admit the patient, or mark that they are not coming.', '/ipd',
+                AdmitAdvice::waiting()->map(fn ($c) => ['text' => self::who($c->patient), 'detail' => trim(($c->doctor?->name ?? 'Doctor').' · '.$c->admit_advised_at->format('j M').($c->admit_reason ? ' · '.$c->admit_reason : '')), 'to' => '/ipd']), true),
             self::item('ready_home', 'Bill approved, patient still admitted', 'Ready to go home once the money is settled and the case is closed.', '/ipd',
                 $admitted->filter(fn (Admission $a) => $a->bill_approved_at !== null)->map(fn (Admission $a) => $stay($a, self::rupees(max(0, $a->due)).' due'))),
             self::item('gone_unpaid', 'Discharged with a balance unpaid', 'From the last '.self::DAYS.' days. Collect the balance, or give a discount on the IPD bill.', '/ipd',

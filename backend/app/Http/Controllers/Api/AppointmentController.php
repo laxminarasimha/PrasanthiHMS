@@ -39,7 +39,7 @@ class AppointmentController extends Controller
     {
         return [
             'bills' => fn ($bills) => $bills->select('id', 'appointment_id', 'bill_no', 'kind', 'total', 'paid')->whereNull('cancelled_at')->withIpdTransfers(),
-            'consultation' => fn ($c) => $c->select('id', 'appointment_id', 'completed_at', 'tests_advised', 'follow_up_on', 'refer_to')->withCount('medicines'),
+            'consultation' => fn ($c) => $c->select('id', 'appointment_id', 'completed_at', 'tests_advised', 'follow_up_on', 'refer_to', 'admit_advised_at', 'admit_reason')->withCount('medicines'),
         ];
     }
 

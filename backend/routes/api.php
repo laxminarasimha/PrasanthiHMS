@@ -493,6 +493,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
         Route::get('/round-times', 'roundTimes');
         Route::get('/bed-charging', 'bedCharging');
         Route::get('/admissions', 'admissions');
+        Route::get('/advised', 'advised');
         Route::get('/admissions/{admission}', 'show');
         Route::get('/admissions/{admission}/outstanding', 'outstanding');
         Route::get('/admissions/{admission}/investigations', 'investigations');
@@ -513,6 +514,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
         Route::middleware('ability:canWorkIpd')->group(function () {
             Route::post('/admissions/{admission}/templates/{template}', 'applyTemplate');
             Route::post('/admissions', 'admit');
+            Route::put('/advised/{consultation}/not-coming', 'adviceNotComing');
             Route::put('/admissions/{admission}', 'update');
             Route::post('/admissions/{admission}/charges', 'addCharge');
             Route::put('/admissions/{admission}/charges/{charge}', 'updateCharge');

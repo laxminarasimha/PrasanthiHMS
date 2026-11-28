@@ -206,4 +206,62 @@ class ConsultationTest extends TestCase
             ->assertOk()->assertJsonCount(1)->assertJsonPath('0.diagnosis', 'Gastritis');
         $this->getJson('/api/medicines/suggest?q=panto')->assertOk()->assertExactJson(['Pantoprazole 40']);
     }
+
+    public function test_admission_advised_on_the_pad_reaches_ipd_until_the_patient_is_admitted(): void
+    {
+        $patient = $this->appointment->patient_id;
+        $visit = $this->putJson($this->url(), ['diagnosis' => 'Acute appendicitis', 'advise_admission' => true, 'admit_reason' => 'For appendicectomy'])->assertOk()
+            ->assertJsonPath('consultation.admit_reason', 'For appendicectomy')->json('consultation');
+        $this->assertNotNull($visit['admit_advised_at']);
+        // Saved again with the tick still on, the time of the advice does not move.
+        $this->travel(2)->hours();
+        $this->putJson($this->url(), ['advise_admission' => true, 'admit_reason' => 'For appendicectomy'])->assertJsonPath('consultation.admit_advised_at', $visit['admit_advised_at']);
+
+        // The doctor sees their own advice; another doctor does not; IPD staff see it and have it on To do.
+        $this->getJson('/api/ipd/advised')->assertOk()->assertJsonCount(1)->assertJsonPath('0.patient.id', $patient)->assertJsonPath('0.reason', 'For appendicectomy')->assertJsonPath('0.doctor.id', $this->doctor->id);
+        Sanctum::actingAs(User::factory()->create(['role' => 'doctor']));
+        $this->getJson('/api/ipd/advised')->assertOk()->assertJsonCount(0);
+        Sanctum::actingAs(User::factory()->create(['role' => 'nurse']));
+        $this->getJson('/api/ipd/advised')->assertOk()->assertJsonCount(1);
+        $ipd = collect($this->getJson('/api/todo')->assertOk()->json('waiting'))->firstWhere('key', 'ipd');
+        $this->assertSame(['advised'], array_column($ipd['items'], 'key'));
+        $this->assertTrue($ipd['items'][0]['urgent']);
+
+        // Advice for one patient cannot be used to admit another.
+        $admit = ['doctor_id' => $this->doctor->id, 'admitted_at' => now()->format('Y-m-d H:i')];
+        $this->postJson('/api/ipd/admissions', $admit + ['patient_id' => Patient::factory()->create()->id, 'consultation_id' => $visit['id']])->assertStatus(422)->assertJsonValidationErrors('patient_id');
+
+        // Admitted through the plain form: the admission still remembers the visit, and the advice is no longer waiting.
+        $case = $this->postJson('/api/ipd/admissions', $admit + ['patient_id' => $patient])->assertCreated()
+            ->assertJsonPath('consultation_id', $visit['id'])->assertJsonPath('advised.appointment_id', $this->appointment->id)->assertJsonPath('advised.doctor', $this->doctor->name)->json();
+        $this->getJson('/api/ipd/advised')->assertJsonCount(0);
+        $this->assertNull(collect($this->getJson('/api/todo')->json('waiting'))->firstWhere('key', 'ipd'));
+        $this->assertSame($visit['id'], \App\Models\Admission::find($case['id'])->consultation_id);
+    }
+
+    public function test_advice_is_taken_back_by_unticking_or_closed_when_the_patient_is_not_coming(): void
+    {
+        $this->putJson($this->url(), ['advise_admission' => true, 'admit_reason' => 'Observation'])->assertOk();
+        $this->putJson($this->url(), ['advise_admission' => false, 'admit_reason' => 'Observation'])->assertOk()
+            ->assertJsonPath('consultation.admit_advised_at', null)->assertJsonPath('consultation.admit_reason', null);
+        $this->getJson('/api/ipd/advised')->assertJsonCount(0);
+
+        // A pad that says nothing about admission (the phone app) leaves the advice as it is.
+        $id = $this->putJson($this->url(), ['advise_admission' => true, 'admit_reason' => 'Observation'])->json('consultation.id');
+        $this->putJson($this->url(), ['advice' => 'Plenty of fluids'])->assertOk()->assertJsonPath('consultation.admit_reason', 'Observation');
+        $this->getJson('/api/ipd/advised')->assertJsonCount(1);
+
+        // Only IPD staff close it; the doctor's note stays on the visit.
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk', 'permissions' => ['canWorkIpd' => false]]));
+        $this->putJson("/api/ipd/advised/{$id}/not-coming")->assertForbidden();
+        Sanctum::actingAs(User::factory()->create(['role' => 'nurse']));
+        $this->putJson("/api/ipd/advised/{$id}/not-coming")->assertNoContent();
+        $this->getJson('/api/ipd/advised')->assertJsonCount(0);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'ipd.advice_closed']);
+        $this->assertSame('Observation', \App\Models\Consultation::find($id)->admit_reason);
+
+        // Advice older than two weeks is no longer chased.
+        \App\Models\Consultation::whereKey($id)->update(['admit_closed_at' => null, 'admit_advised_at' => now()->subDays(20)]);
+        $this->getJson('/api/ipd/advised')->assertJsonCount(0);
+    }
 }

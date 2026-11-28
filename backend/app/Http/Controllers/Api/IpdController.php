@@ -12,6 +12,7 @@ use App\Models\AdmissionPayment;
 use App\Models\AuditLog;
 use App\Models\Bed;
 use App\Models\Bill;
+use App\Models\Consultation;
 use App\Models\IpdBillTemplate;
 use App\Models\IpdService;
 use App\Models\LabOrder;
@@ -20,6 +21,7 @@ use App\Models\Payment;
 use App\Models\PharmacySale;
 use App\Models\Setting;
 use App\Models\Patient;
+use App\Support\AdmitAdvice;
 use App\Support\BedCharges;
 use App\Support\EarlierDay;
 use App\Support\PharmacyOnIpd;
@@ -223,10 +225,19 @@ class IpdController extends Controller
             'patient_id' => ['required', 'exists:patients,id'],
             'admitted_at' => ['required', 'date', 'before_or_equal:now'],
             'is_day_care' => ['sometimes', 'boolean'],
+            'consultation_id' => ['nullable', 'integer', 'exists:consultations,id'],
         ]);
 
         if (Admission::where('patient_id', $data['patient_id'])->where('status', 'admitted')->exists()) {
             throw ValidationException::withMessages(['patient_id' => 'This patient is already admitted.']);
+        }
+        // The visit this admission was advised at. Admitted through the plain form, the waiting advice is found by itself.
+        if (! empty($data['consultation_id'])) {
+            if ((int) Consultation::whereKey($data['consultation_id'])->value('patient_id') !== (int) $data['patient_id']) {
+                throw ValidationException::withMessages(['patient_id' => 'That advice was for a different patient.']);
+            }
+        } else {
+            $data['consultation_id'] = AdmitAdvice::for((int) $data['patient_id'])?->id;
         }
 
         $admission = DB::transaction(function () use ($data, $request) {
@@ -239,6 +250,33 @@ class IpdController extends Controller
         });
 
         return response()->json($this->present($admission), 201);
+    }
+
+    /** Admission advised by a doctor on the visit pad and not acted on yet. A doctor is shown their own. */
+    public function advised(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        return response()->json(AdmitAdvice::waiting($user->role === Role::Doctor ? $user->id : null)->map(fn (Consultation $c) => [
+            'id' => $c->id,
+            'appointment_id' => $c->appointment_id,
+            'advised_at' => $c->admit_advised_at->format('Y-m-d H:i'),
+            'reason' => $c->admit_reason,
+            'patient' => $c->patient,
+            'doctor' => $c->doctor,
+        ]));
+    }
+
+    /** The patient is not coming in after all: the advice stops being chased. What the doctor wrote stays on the visit. */
+    public function adviceNotComing(Request $request, Consultation $consultation): JsonResponse
+    {
+        abort_unless($consultation->admit_advised_at, 422, 'Admission was not advised at this visit.');
+        if (! $consultation->admit_closed_at) {
+            $consultation->forceFill(['admit_closed_at' => now()])->save();
+            AuditLog::record('ipd.advice_closed', $consultation->patient_id, $consultation, 'Admission was advised; marked as not coming');
+        }
+
+        return response()->json(null, 204);
     }
 
     public function show(Admission $admission): JsonResponse
@@ -837,6 +875,9 @@ class IpdController extends Controller
                 $charge->setAttribute('medicines', $medicines[$charge->id]);
             }
         }
+        // The OPD visit at which a doctor advised this admission, when there was one.
+        $visit = $admission->consultation_id ? Consultation::with('doctor:id,name')->find($admission->consultation_id) : null;
+        $admission->setAttribute('advised', $visit ? ['appointment_id' => $visit->appointment_id, 'on' => ($visit->admit_advised_at ?? $visit->created_at)?->format('Y-m-d'), 'doctor' => $visit->doctor?->name] : null);
         // Lines taken off the bill, kept so there is a record of what was removed and by whom.
         $admission->setRelation('deleted_charges', AdmissionCharge::onlyTrashed()->where('admission_id', $admission->id)->with('deleter:id,name')->orderByDesc('deleted_at')->get());
 

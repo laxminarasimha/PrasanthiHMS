@@ -197,6 +197,21 @@ export function IpdCase() {
               <dd>{admission.reason}</dd>
             </div>
           )}
+          {admission.advised && (
+            <div>
+              <dt>Advised at</dt>
+              <dd>
+                {user?.can_consult ? (
+                  <Link to={`/visits/${admission.advised.appointment_id}`} title="Open the OPD visit where admission was advised">
+                    OPD visit{admission.advised.on ? ` of ${longDate(admission.advised.on)}` : ''}
+                  </Link>
+                ) : (
+                  <>OPD visit{admission.advised.on ? ` of ${longDate(admission.advised.on)}` : ''}</>
+                )}
+                {admission.advised.doctor && <small className="muted"> · {admission.advised.doctor}</small>}
+              </dd>
+            </div>
+          )}
           {admission.payer && (
             <div>
               <dt>Bill to</dt>

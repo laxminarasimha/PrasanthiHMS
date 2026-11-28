@@ -7,7 +7,8 @@ import { useAuth } from '../../auth'
 import { SelectField, TextField } from '../../components/Field'
 import { PatientPicker } from '../../components/PatientPicker'
 import { ADMISSION_STATUS, clock, longDate, nowLocal, rupees } from '../../format'
-import type { AdminEntry, Admission, Bed, Doctor, Patient } from '../../types'
+import { PatientLink } from '../../components/PatientLink'
+import type { AdminEntry, Admission, AdmitAdvice, Bed, Doctor, Patient } from '../../types'
 
 const FILTERS = ['admitted', 'discharged', 'lama', 'dama', 'absconded', 'died', 'all']
 
@@ -44,6 +45,9 @@ export function Ipd() {
   const [payerId, setPayerId] = useState('')
   const [form, setForm] = useState({ doctor_id: '', bed_id: '', admitted_at: nowLocal(), reason: '', attendant_name: '', attendant_phone: '' })
   const [dayCare, setDayCare] = useState(false)
+  // Admission a doctor advised at an OPD visit, and the one being acted on in the admit form.
+  const [advised, setAdvised] = useState<AdmitAdvice[]>([])
+  const [advice, setAdvice] = useState<AdmitAdvice | null>(null)
   const [errors, setErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
 
@@ -53,6 +57,7 @@ export function Ipd() {
   const load = useCallback(() => {
     api.get<Admission[]>('/ipd/admissions', { params: { status, q: query.trim() || undefined } }).then((res) => setCases(res.data))
     api.get<Bed[]>('/ipd/beds').then((res) => setBeds(res.data))
+    api.get<AdmitAdvice[]>('/ipd/advised').then((res) => setAdvised(res.data)).catch(() => setAdvised([]))
   }, [status, query])
 
   // At once when the screen opens; after a short pause when a search or filter changes.
@@ -96,12 +101,20 @@ export function Ipd() {
     navigate(location.pathname, { replace: true, state: null })
   }, [asked, loadChoices, navigate, location.pathname])
 
-  const startAdmitting = (bedId = '') => {
+  /** Opens the admit form: empty, for a free bed, or filled from a doctor's advice. */
+  const startAdmitting = (bedId = '', from: AdmitAdvice | null = null) => {
     loadChoices()
-    setPatient(null)
+    setPatient(from?.patient ?? null)
+    setAdvice(from)
     setErrors({})
-    setForm((f) => ({ ...f, admitted_at: nowLocal(), bed_id: bedId, reason: '', attendant_name: '', attendant_phone: '' }))
+    setForm((f) => ({ ...f, admitted_at: nowLocal(), bed_id: bedId, reason: from?.reason ?? '', attendant_name: '', attendant_phone: '', ...(from?.doctor ? { doctor_id: String(from.doctor.id) } : {}) }))
     setAdmitting(true)
+  }
+
+  const notComing = async (a: AdmitAdvice) => {
+    if (!window.confirm(`${a.patient.name} is not coming in for admission? This takes them off the list. The doctor's note stays on the visit.`)) return
+    await api.put(`/ipd/advised/${a.id}/not-coming`)
+    load()
   }
 
   const set = (key: keyof typeof form) => (value: string) => setForm((f) => ({ ...f, [key]: value }))
@@ -124,6 +137,8 @@ export function Ipd() {
         payer_id: payerId || null,
         admitted_at: form.admitted_at.replace('T', ' '),
         is_day_care: dayCare,
+        // Only while the form is still for the patient the advice was about.
+        consultation_id: advice && advice.patient.id === patient.id ? advice.id : null,
       })
       navigate(`/ipd/${res.data.id}`)
     } catch (err) {
@@ -184,6 +199,46 @@ export function Ipd() {
             </div>
           )}
         </div>
+
+        {status === 'admitted' && query.trim() === '' && advised.length > 0 && (
+          <div className="ipd-advised">
+            <h3>
+              Advised admission <small className="muted">by a doctor at an OPD visit, not admitted yet</small>
+            </h3>
+            <ul>
+              {advised.map((a) => (
+                <li key={a.id}>
+                  <div className="grow">
+                    <strong>
+                      <PatientLink id={a.patient.id}>{a.patient.name}</PatientLink>
+                    </strong>{' '}
+                    <small className="muted">
+                      {a.patient.uhid} · {a.patient.age_label} / {a.patient.gender.charAt(0).toUpperCase()}
+                      {a.patient.mobile ? ` · ${a.patient.mobile}` : ''}
+                    </small>
+                    <small className="block">
+                      {a.reason || 'No reason written'}
+                      <span className="muted">
+                        {' '}
+                        · {a.doctor?.name ?? 'Doctor'} · {longDate(a.advised_at)} {clock(a.advised_at)}
+                      </span>
+                    </small>
+                  </div>
+                  {user?.can_ipd && (
+                    <>
+                      <button className="btn primary small-btn" onClick={() => startAdmitting('', a)}>
+                        Admit
+                      </button>
+                      <button className="btn ghost small-btn" onClick={() => notComing(a)}>
+                        Not coming
+                      </button>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {status === 'admitted' && query.trim() === '' && (
           <div className="tiles small ipd-stats">
@@ -339,6 +394,11 @@ export function Ipd() {
       {admitting && (
         <Popup title={'Admit patient'} onClose={() => setAdmitting(false)} onSubmit={admit}>
           <PatientPicker patient={patient} onChange={setPatient} error={errors.patient_id} recent />
+          {advice && patient?.id === advice.patient.id && (
+            <p className="muted gap-top">
+              Advised by {advice.doctor?.name ?? 'the doctor'} at the OPD visit of {longDate(advice.advised_at)}. The case will remember that visit.
+            </p>
+          )}
           <div className="grid gap-top">
             <SelectField label="Doctor" required value={form.doctor_id} onChange={set('doctor_id')} options={doctors.map((d) => ({ value: String(d.id), label: d.name }))} placeholder="Select doctor" error={errors.doctor_id} />
             <SelectField

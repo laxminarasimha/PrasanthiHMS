@@ -170,6 +170,7 @@ export function PrescriptionPrint() {
       {shows('tests') && c.tests_advised && <section><h3>Tests advised</h3><p>{c.tests_advised}</p></section>}
       {shows('advice') && c.advice && <section><h3>Advice</h3><p className="report-text">{c.advice.split('\n').map(tr).join('\n')}</p></section>}
       {shows('refer') && c.refer_to && <section><h3>Referred to</h3><p>{c.refer_to}</p></section>}
+      {c.admit_advised_at && <section><h3>Admission advised</h3><p>{c.admit_reason || 'Please come to the IPD desk for admission.'}</p></section>}
       {shows('next_visit') && c.follow_up_on && <section><h3>Next visit</h3><p>{longDate(c.follow_up_on)}</p></section>}
       {(c.amendments?.length ?? 0) > 0 && (
         <section>

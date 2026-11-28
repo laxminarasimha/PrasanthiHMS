@@ -79,6 +79,7 @@ function VisitNotes({ v }: { v: Consultation }) {
     ['Tests advised', v.tests_advised],
     ['Advice', v.advice],
     ['Referred to', v.refer_to],
+    ['Admission advised', v.admit_advised_at ? v.admit_reason || 'Yes' : null],
     ['Notes', v.quick_notes],
   ]
   return (
