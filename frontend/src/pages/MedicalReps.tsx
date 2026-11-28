@@ -6,6 +6,8 @@ import { FrontDeskTabs } from '../components/FrontDeskTabs'
 import { PharmacyTabs } from '../components/PharmacyTabs'
 import { RepCatalogue } from '../components/RepCatalogue'
 import { RepSamples, type SampleStart } from '../components/RepSamples'
+import { RepDrugRows } from '../components/RepDrugRows'
+import { emptyDrug, filledDrugs, type CatalogueBrand, type RepDrug } from '../repDrugs'
 import { useChoiceInAddress } from '../rangeInAddress'
 import { OutsideHours } from '../components/AppointmentForm'
 import { SelectField, TextField } from '../components/Field'
@@ -39,7 +41,10 @@ type Visit = {
   rep?: Rep
   doctor?: { id: number; name: string } | null
   logger?: { id: number; name: string } | null
+  /** The drugs spoken about, one to a line as on a prescription. */
+  drugs?: VisitDrug[]
 }
+type VisitDrug = { id: number; name: string; composition: string | null; uses: string | null; dose: string | null; frequency: string | null; timing: string | null; duration: string | null; note: string | null; mrp: number | null; rate: number | null; scheme: string | null; keep: boolean }
 type Hours = Record<string, { from?: string; to?: string; most?: number }>
 type Day = { date: string; visits: Visit[]; hours: Hours; can_log: boolean }
 
@@ -225,12 +230,13 @@ export function MedicalReps() {
                           {v.next_on && <small className="muted block">{v.status === 'come_back' ? 'Come on' : 'Next'} {longDate(v.next_on)}</small>}
                         </td>
                         <td className="wrap">
+                          {(v.drugs ?? []).length > 0 && <strong className="block">{v.drugs!.map((d) => d.name).join(', ')}</strong>}
                           {v.discussed}
                           {v.offers && <small className="muted block">Offer: {v.offers}</small>}
                         </td>
                         <td className="num">
                           <button className="btn ghost small-btn" onClick={() => setPanel({ kind: 'close', visit: v })}>
-                            {v.status === 'waiting' ? 'Met / not met' : 'Change'}
+                            {v.status === 'waiting' ? 'Drugs · met / not met' : 'Change'}
                           </button>
                           {v.status === 'met' && v.rep?.company && (
                             <button
@@ -321,7 +327,7 @@ export function MedicalReps() {
         </section>
 
         {panel?.kind === 'log' && <LogVisit doctors={doctors} hours={day?.hours ?? {}} onClose={() => setPanel(null)} onLogged={(v) => done(`${v.rep?.name} is on ${v.doctor?.name}’s waiting list.`)} />}
-        {panel?.kind === 'close' && <CloseVisit key={panel.visit.id} visit={panel.visit} onClose={() => setPanel(null)} onSaved={() => done('Saved.')} />}
+        {panel?.kind === 'close' && <CloseVisit key={panel.visit.id} visit={panel.visit} canKeep={(isDoctor && panel.visit.doctor?.id === user?.id) || user?.role === 'admin'} onClose={() => setPanel(null)} onSaved={() => done('Saved.')} />}
         {panel?.kind === 'rep' && <RepPanel key={panel.rep?.id ?? 'new'} rep={panel.rep} canChange={canLog} showVisits={seesVisits} onClose={() => setPanel(null)} onSaved={() => done('Saved.')} />}
       </div>
     </>
@@ -449,8 +455,24 @@ function LogVisit({ doctors, hours, onClose, onLogged }: { doctors: Doctor[]; ho
 }
 
 /** After the meeting: whether the doctor met them, what was spoken about, and when they come next. */
-function CloseVisit({ visit, onClose, onSaved }: { visit: Visit; onClose: () => void; onSaved: () => void }) {
-  const [status, setStatus] = useState<string>(visit.status === 'waiting' ? 'met' : visit.status)
+function CloseVisit({ visit, canKeep, onClose, onSaved }: { visit: Visit; canKeep: boolean; onClose: () => void; onSaved: () => void }) {
+  // The desk may write the drugs down while the representative is still waiting; the doctor closes the visit.
+  const [status, setStatus] = useState<string>(visit.status === 'waiting' && canKeep ? 'met' : visit.status)
+  const [drugs, setDrugs] = useState<RepDrug[]>(() =>
+    (visit.drugs ?? []).length > 0
+      ? visit.drugs!.map((d) => ({ name: d.name, composition: d.composition ?? '', uses: d.uses ?? '', dose: d.dose ?? '', frequency: d.frequency ?? '', timing: d.timing ?? '', duration: d.duration ?? '', note: d.note ?? '', mrp: d.mrp === null ? '' : String(d.mrp), rate: d.rate === null ? '' : String(d.rate), scheme: d.scheme ?? '', keep: d.keep }))
+      : [emptyDrug()],
+  )
+  const [catalogue, setCatalogue] = useState<CatalogueBrand[]>([])
+  const companyId = visit.rep?.company?.id
+  useEffect(() => {
+    if (!companyId) return
+    let live = true
+    api.get<{ products: CatalogueBrand[] }>('/reps/products', { params: { company_id: companyId } }).then((res) => live && setCatalogue(res.data.products)).catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [companyId])
   const [discussed, setDiscussed] = useState(visit.discussed ?? '')
   const [offers, setOffers] = useState(visit.offers ?? '')
   const [nextOn, setNextOn] = useState(visit.next_on ?? '')
@@ -462,7 +484,7 @@ function CloseVisit({ visit, onClose, onSaved }: { visit: Visit; onClose: () => 
     setSaving(true)
     setErrors({})
     try {
-      await api.put(`/reps/visits/${visit.id}`, { status, purpose: visit.purpose, discussed: discussed || null, offers: offers || null, next_on: nextOn || null })
+      await api.put(`/reps/visits/${visit.id}`, { status, purpose: visit.purpose, discussed: discussed || null, offers: offers || null, next_on: nextOn || null, drugs: filledDrugs(drugs) })
       onSaved()
     } catch (err) {
       setErrors(fieldErrors(err))
@@ -472,7 +494,7 @@ function CloseVisit({ visit, onClose, onSaved }: { visit: Visit; onClose: () => 
   }
 
   return (
-    <form className="card panel" onSubmit={submit} noValidate>
+    <form className="card panel wide" onSubmit={submit} noValidate>
       <div className="panel-head">
         <div>
           <h2>{visit.rep?.name}</h2>
@@ -487,13 +509,17 @@ function CloseVisit({ visit, onClose, onSaved }: { visit: Visit; onClose: () => 
       </div>
 
       <SelectField label="What happened" required value={status} onChange={setStatus} options={STATUS_CHOICES} error={errors.status} />
+      <h3>Their drugs</h3>
+      <p className="muted small">One drug to a block, as on a prescription. A brand new to {visit.rep?.company?.name ?? 'the company'}’s catalogue is added to it, with its price and offer.</p>
+      <RepDrugRows rows={drugs} onChange={setDrugs} catalogue={catalogue} canKeep={canKeep} />
+      {Object.entries(errors).some(([key]) => key.startsWith('drugs')) && <p className="form-error">{Object.entries(errors).find(([key]) => key.startsWith('drugs'))?.[1]}</p>}
       <label className="field gap-top">
-        <span className="field-label">Products spoken about</span>
-        <textarea rows={3} value={discussed} onChange={(e) => setDiscussed(e.target.value)} placeholder="Brand names, what is new about them…" />
+        <span className="field-label">Anything else spoken about</span>
+        <textarea rows={2} value={discussed} onChange={(e) => setDiscussed(e.target.value)} placeholder="Notes that are not about one drug" />
       </label>
       <label className="field gap-top">
-        <span className="field-label">Offers and schemes</span>
-        <textarea rows={2} value={offers} onChange={(e) => setOffers(e.target.value)} placeholder="Rate offered, 10 + 1, and the like" />
+        <span className="field-label">Other offers and schemes</span>
+        <textarea rows={2} value={offers} onChange={(e) => setOffers(e.target.value)} placeholder="An offer on the whole order, a camp, and the like" />
       </label>
       <div className="gap-top">
         <TextField label={status === 'come_back' ? 'Come back on' : 'Next visit on (optional)'} required={status === 'come_back'} type="date" value={nextOn} onChange={setNextOn} min={visit.arrived_at.slice(0, 10)} error={errors.next_on} />
@@ -590,6 +616,11 @@ function RepPanel({ rep, startName, canChange, showVisits, onClose, onSaved }: {
 
       {rep && showVisits && (
         <>
+          <p className="gap-top">
+            <a className="btn ghost small-btn" href={`/reps/reference/print?rep=${rep.id}`} target="_blank" rel="noreferrer">
+              Print the drugs they spoke about
+            </a>
+          </p>
           <h3>Visits</h3>
           {visits === null && <p className="loading">Loading…</p>}
           {visits?.length === 0 && <p className="muted">No visit on record yet.</p>}
@@ -598,6 +629,13 @@ function RepPanel({ rep, startName, canChange, showVisits, onClose, onSaved }: {
               <li key={v.id}>
                 <span>
                   {longDate(v.arrived_at)} · {v.doctor?.name}
+                  {(v.drugs ?? []).map((d) => (
+                    <small className="block" key={d.id}>
+                      <strong>{d.name}</strong>
+                      {d.composition ? ` · ${d.composition}` : ''}
+                      {[d.dose, d.frequency, d.timing, d.duration].filter(Boolean).length > 0 ? ` · ${[d.dose, d.frequency, d.timing, d.duration].filter(Boolean).join(', ')}` : ''}
+                    </small>
+                  ))}
                   {v.discussed && <small className="block">{v.discussed}</small>}
                   {v.offers && <small className="muted block">Offer: {v.offers}</small>}
                   {v.next_on && <small className="muted block">Next: {longDate(v.next_on)}</small>}
@@ -695,6 +733,9 @@ function Companies({ companies, canChange, onChange }: { companies: Company[] | 
                 </li>
               ))}
             </ul>
+            <a className="link" href={`/reps/reference/print?company=${c.id}`} target="_blank" rel="noreferrer">
+              Print its drugs as a reference sheet
+            </a>
             {canChange && (
               <label className="btn ghost small-btn rep-attach">
                 {busy === c.id ? 'Saving…' : '+ Attach a catalogue or price list'}
