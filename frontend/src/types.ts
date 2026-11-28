@@ -611,6 +611,9 @@ export type PharmacySale = {
   patient_id?: number | null
   patient?: { id: number; uhid: string; name: string } | null
   seller?: { id: number; name: string } | null
+  /** The visit whose prescription the bill was made from at the counter, if it was: only its day and doctor. */
+  consultation_id?: number | null
+  consultation?: { id: number; completed_at: string; doctor?: { id: number; name: string } | null } | null
 }
 
 export type Bed = {
@@ -818,8 +821,15 @@ export type PrescriptionForPharmacy = {
   doctor: string | null
   /** A line for the pharmacist about this card. */
   note?: string
-  /** `new`: a ward order that nothing has been billed for since it was written. */
-  medicines: { medicine: string; directions: string; match: SellableMedicine | null; new?: boolean }[]
+  /** A visit only: the pharmacy bill made from this card, else the first one made for the patient since; null for neither. */
+  bill?: { id: number; bill_no: string } | null
+  /** True when `bill` was made from this card ("Filled"), false when it is a bill for the patient made since. */
+  filled?: boolean
+  /**
+   * `new`: a ward order that nothing has been billed for since it was written.
+   * `quantity`: the tablets or capsules the line comes to, when it is written plainly enough to count, with `worked_out` saying how.
+   */
+  medicines: { medicine: string; directions: string; match: SellableMedicine | null; new?: boolean; quantity?: number | null; worked_out?: string | null }[]
 }
 
 export type OutstandingBill = { type: 'bill' | 'pharmacy'; id: number; label: string; category: string; date: string; due: number }
@@ -848,7 +858,10 @@ export type PrescriptionOrder = {
   patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'age_label' | 'title' | 'mobile'>
   doctor: string | null
   medicines: { id: number; medicine: string; dose: string | null; frequency: string | null; duration: string | null }[]
+  /** The bill made from this prescription at the counter, else the first one made for the patient since. */
   bill: { id: number; bill_no: string } | null
+  /** True when `bill` was made from this prescription ("Filled"), false when it is a bill for the patient made since. */
+  filled?: boolean
 }
 
 export type InventoryMedicine = {

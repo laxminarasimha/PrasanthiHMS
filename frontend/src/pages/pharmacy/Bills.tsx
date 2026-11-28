@@ -18,6 +18,7 @@ import { PharmacyDay } from '../../components/PharmacyDay'
 import { EarlierDate } from '../../components/EarlierDate'
 import { earlier } from '../../earlierDay'
 import { MedicineLink } from '../../components/MedicineLink'
+import { DoctorLink } from '../../components/DoctorLink'
 
 type Action = 'view' | 'collect' | 'return' | 'delete' | 'edit' | 'mode'
 /** A medicine being added to a bill that is already saved. */
@@ -106,7 +107,9 @@ export function PharmacyBills() {
   // Sends one change to a bill, then shows the updated bill or why it was refused.
   const run = async (request: Promise<{ data: PharmacySale }>, done: string) => {
     try {
-      setOpen((await request).data)
+      const changed = (await request).data
+      // The prescription a bill was made from never changes; an answer that leaves it out keeps the one shown.
+      setOpen((shown) => (shown && shown.id === changed.id && changed.consultation === undefined ? { ...changed, consultation: shown.consultation } : changed))
       setNotice(done)
       setError('')
       setAction('view')
@@ -322,6 +325,17 @@ export function PharmacyBills() {
                   · {longDate(open.sold_at)} {clock(open.sold_at)}
                   {open.referred_doctor ? ` · ${open.referred_doctor}` : ''}
                 </span>
+                {open.consultation && (
+                  <small className="muted block">
+                    Made from the prescription of {longDate(open.consultation.completed_at)}
+                    {open.consultation.doctor && (
+                      <>
+                        {' · '}
+                        <DoctorLink id={open.consultation.doctor.id}>{open.consultation.doctor.name}</DoctorLink>
+                      </>
+                    )}
+                  </small>
+                )}
               </div>
               <div className="row">
                 {canEdit && action === 'view' && editable(open) && (
