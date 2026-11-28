@@ -7,6 +7,7 @@ import { BrandMark } from '../components/Brand'
 import { TextField } from '../components/Field'
 import { GoogleButton } from '../components/GoogleButton'
 import { useBrand } from '../brand'
+import { storageBlocked } from '../storageGuard'
 
 export function Login() {
   const { user, signIn, signInWithGoogle } = useAuth()
@@ -54,6 +55,12 @@ export function Login() {
           Prasanthi <span>HMS</span>
         </div>
         <p className="muted">Multi Speciality Centre. Sign in with your staff account.</p>
+        {storageBlocked && (
+          <p className="notice small">
+            This browser is set to stop websites saving anything on the phone, so you will be asked to sign in each time you open the app. To change it in Chrome: Settings, then Site
+            settings, then Cookies and site data (or On-device site data): allow it for this site.
+          </p>
+        )}
         <TextField label="Mobile number or email" type="text" inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={login} onChange={setLogin} autoComplete="username" required />
         <TextField
           label="Password or PIN"

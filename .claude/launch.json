@@ -23,6 +23,15 @@
       "port": 5173
     },
     {
+      "name": "frontend-built",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd frontend && npx vite preview --port 4173 --strictPort"
+      ],
+      "port": 4173
+    },
+    {
       "name": "mobile",
       "runtimeExecutable": "bash",
       "runtimeArgs": [
