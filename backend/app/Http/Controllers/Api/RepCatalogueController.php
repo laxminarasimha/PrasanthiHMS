@@ -8,6 +8,7 @@ use App\Models\RepCompany;
 use App\Models\RepProduct;
 use App\Models\User;
 use App\Support\Composition;
+use App\Support\PharmacyDesk;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -28,10 +29,16 @@ class RepCatalogueController extends Controller
     /** The most lines taken from one sheet. */
     public const MAX_LINES = 2000;
 
-    /** The brands in the catalogues, found by brand, by a drug inside, or by company, each with what the pharmacy keeps of the same thing. */
+    /**
+     * The brands in the catalogues, found by brand, by a drug inside, or by company, each with what the pharmacy keeps
+     * of the same thing, and the pharmacy's own medicine of the same name with the stockist the company's brands come
+     * through. What is on order, whom the pharmacy usually buys a medicine from, and whether a brand may be ordered
+     * from here are the pharmacy's own business: only those who may open the pharmacy's screens are told them.
+     */
     public function index(Request $request): JsonResponse
     {
-        $this->reader($request);
+        $user = $this->reader($request);
+        $pharmacy = $user->mayInPharmacy($request);
         $data = $request->validate(['q' => ['nullable', 'string', 'max:100'], 'company_id' => ['nullable', 'integer']]);
         $term = trim((string) ($data['q'] ?? ''));
 
@@ -39,20 +46,22 @@ class RepCatalogueController extends Controller
             ->when($data['company_id'] ?? null, fn (Builder $q, $id) => $q->where('rep_company_id', $id))
             ->when($term !== '', fn (Builder $q) => $q->where(fn (Builder $w) => $w->where('name', 'like', "%{$term}%")->orWhere('composition', 'like', "%{$term}%")
                 ->orWhereHas('company', fn (Builder $c) => $c->where('name', 'like', "%{$term}%"))))
-            ->with('company:id,name')->orderBy('name')->limit(500)->get();
+            ->with(['company:id,name,stockist_id', 'company.stockist:id,name', 'medicine:id,name,units_per_pack,is_active'.($pharmacy ? ',preferred_stockist_id' : '')])
+            ->orderBy('name')->limit(500)->get();
 
         $ours = self::pharmacyHas($products->pluck('composition'));
         $others = self::offered($products->pluck('composition'));
+        $onOrder = $pharmacy ? PharmacyDesk::onOrder($products->pluck('medicine_id')->filter()->unique()->values()->all()) : collect();
 
         return response()->json([
-            'can_change' => $this->mayChange($request->user()),
+            'can_change' => $this->mayChange($user),
             'companies' => RepCompany::orderBy('name')->withCount('products')->get(['id', 'name']),
             'products' => $products->map(fn (RepProduct $p) => $p->toArray() + [
                 // The pharmacy's own medicines that contain the same thing, and the same thing from other companies.
                 'in_pharmacy' => $ours->get(self::same($p->composition), collect())->values(),
                 'also_from' => $others->get(self::same($p->composition), collect())->where('id', '!=', $p->id)->where('company', '!=', $p->company?->name)->values(),
-            ]),
-        ]);
+            ] + ($pharmacy ? ['on_order' => $p->medicine_id ? (int) ($onOrder[$p->medicine_id] ?? 0) : 0] : [])),
+        ] + ($pharmacy ? ['can_order' => $user->allows('canRunPharmacy')] : []));
     }
 
     public function store(Request $request): JsonResponse

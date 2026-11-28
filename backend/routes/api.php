@@ -148,6 +148,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
         Route::put('/people/{rep}', 'updateRep');
         Route::get('/companies', 'companies');
         Route::put('/companies/{company}', 'updateCompany');
+        Route::put('/companies/{company}/stockist', 'setStockist');
         Route::post('/companies/{company}/files', 'storeFile');
         Route::get('/files/{file}/download', 'downloadFile');
         Route::delete('/files/{file}', 'removeFile');

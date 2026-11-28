@@ -9,6 +9,7 @@ use App\Models\StockBatch;
 use App\Models\Stockist;
 use App\Models\StockReturn;
 use App\Models\User;
+use App\Support\PharmacyDesk;
 use App\Support\ShelfPlace;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -252,5 +253,118 @@ class PharmacyManagerTest extends TestCase
         $invoice('INV-11', [$line($a, 2), $line($b, 5)])->assertCreated();
         $this->getJson("/api/pharmacy/purchase-orders/{$order['id']}")->assertJsonPath('status', 'received')->assertJsonPath('match.complete', true);
         $invoice('INV-12', [$line($b, 1)])->assertStatus(422)->assertJsonValidationErrors('purchase_order_id');
+    }
+
+    public function test_an_open_order_says_what_is_still_to_come_for_the_next_invoice(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $supplier = Stockist::create(['name' => 'Sample Distributors']);
+        $other = Stockist::create(['name' => 'Other Agencies']);
+        $a = $this->medicine('Sampleatorva 10', ['hsn_code' => '3004']);
+        ShelfPlace::set($a, 'A', '2');
+        $b = $this->medicine('Samplepara 500', ['gst_percent' => 5]);
+        $c = $this->medicine('Samplecet 10');
+        $bought = fn (Stockist $s, string $no, int $daysAgo) => PurchaseInvoice::create(['stockist_id' => $s->id, 'invoice_no' => $no, 'invoice_date' => today()->subDays($daysAgo), 'subtotal' => 0, 'tax' => 0, 'total' => 0, 'paid' => 0]);
+
+        // A was last bought from someone else, but this stockist's own last rate comes first. B only ever came in another pack size.
+        $this->batch($a, 10, ['purchase_invoice_id' => $bought($other, 'OT-1', 5)->id, 'pack_price' => 19, 'pack_mrp' => 29]);
+        $this->batch($a, 10, ['purchase_invoice_id' => $bought($supplier, 'SD-1', 40)->id, 'pack_price' => 21, 'pack_mrp' => 31]);
+        $this->batch($b, 15, ['purchase_invoice_id' => $bought($supplier, 'SD-2', 30)->id, 'units_per_pack' => 15, 'pack_price' => 40]);
+        $this->batch($c, 10, ['purchase_invoice_id' => $bought($other, 'OT-2', 10)->id, 'pack_price' => 50, 'pack_mrp' => 75]);
+
+        $order = $this->postJson('/api/pharmacy/purchase-orders', ['stockist_id' => $supplier->id, 'order_date' => today()->toDateString(), 'items' => [
+            ['medicine_id' => $a->id, 'units_per_pack' => 10, 'packs' => 10], ['medicine_id' => $b->id, 'units_per_pack' => 10, 'packs' => 5], ['medicine_id' => $c->id, 'units_per_pack' => 10, 'packs' => 4],
+        ]])->assertCreated()->json();
+        $line = fn (Medicine $m, int $packs, array $over = []) => $over + ['medicine_id' => $m->id, 'batch_no' => 'N'.$m->id.$packs, 'expiry' => now()->addYear()->format('Y-m'), 'units_per_pack' => 10, 'packs' => $packs, 'pack_price' => 20, 'pack_mrp' => 30, 'gst_percent' => 12];
+        $invoice = fn (string $no, array $items) => $this->postJson('/api/pharmacy/purchases', ['stockist_id' => $supplier->id, 'invoice_no' => $no, 'invoice_date' => today()->toDateString(), 'purchase_order_id' => $order['id'], 'items' => $items]);
+
+        // Nothing has come yet: all of it is to come, in the order's own pack size.
+        $left = collect($this->getJson("/api/pharmacy/purchase-orders/{$order['id']}")->assertOk()->json('still_to_come'))->keyBy('medicine_id');
+        $this->assertSame([$a->id, $b->id, $c->id], $left->keys()->all());
+        $this->assertSame([10, 10, 0, 'A', '2', '3004'], [$left[$a->id]['packs'], $left[$a->id]['units_per_pack'], $left[$a->id]['received'], $left[$a->id]['rack_no'], $left[$a->id]['box_no'], $left[$a->id]['hsn_code']]);
+        $this->assertEquals([12, 5], [$left[$a->id]['gst_percent'], $left[$b->id]['gst_percent']]);
+        $this->assertEquals([21, 31], [$left[$a->id]['last_rate'], $left[$a->id]['last_mrp']]);
+        $this->assertSame([today()->subDays(40)->toDateString(), true], [$left[$a->id]['last_on'], $left[$a->id]['last_from_this_stockist']]);
+        $this->assertSame([null, null, false], [$left[$b->id]['last_rate'], $left[$b->id]['last_on'], $left[$b->id]['last_from_this_stockist']]);
+        $this->assertEquals([50, 75], [$left[$c->id]['last_rate'], $left[$c->id]['last_mrp']]);
+        $this->assertFalse($left[$c->id]['last_from_this_stockist']);
+
+        // 8 paid and 2 free of A come, and all of C: the free packs do not count towards the order, so 2 of A are still to come.
+        $saved = $invoice('INV-1', [$line($a, 8, ['free_packs' => 2]), $line($c, 4)])->assertCreated()->json('order');
+        $this->assertSame([$order['order_no'], 'open', 7, 2], [$saved['order_no'], $saved['status'], $saved['packs_to_come'], $saved['medicines_to_come']]);
+        // B is no longer in use, under a new name: it is still to come, by the name it has now.
+        $b->update(['is_active' => false, 'name' => 'Samplepara 500 (old)']);
+        $shown = $this->getJson("/api/pharmacy/purchase-orders/{$order['id']}")->assertOk()->json();
+        $this->assertSame(2, collect($shown['match']['lines'])->firstWhere('medicine_id', $a->id)['to_come']);
+        $this->assertSame(0, collect($shown['match']['lines'])->firstWhere('medicine_id', $c->id)['to_come']);
+        $left = collect($shown['still_to_come'])->keyBy('medicine_id');
+        $this->assertSame([$a->id, $b->id], $left->keys()->all());
+        $this->assertSame([2, 10, 8, true], [$left[$a->id]['packs'], $left[$a->id]['ordered'], $left[$a->id]['received'], $left[$a->id]['is_active']]);
+        $this->assertSame(['Samplepara 500 (old)', false, 5], [$left[$b->id]['medicine_name'], $left[$b->id]['is_active'], $left[$b->id]['packs']]);
+        // The last rate is now this delivery's own.
+        $this->assertEquals(20, $left[$a->id]['last_rate']);
+        $this->assertSame(today()->toDateString(), $left[$a->id]['last_on']);
+
+        // Reading it is for the pharmacy: the look-only manager may, the front desk may not.
+        Sanctum::actingAs(User::factory()->create(['role' => 'manager']));
+        $this->getJson("/api/pharmacy/purchase-orders/{$order['id']}")->assertOk()->assertJsonCount(2, 'still_to_come');
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->getJson("/api/pharmacy/purchase-orders/{$order['id']}")->assertForbidden();
+
+        // The rest comes: the order is complete and nothing more is offered for it.
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $done = $invoice('INV-2', [$line($a, 2), $line($b, 5)])->assertCreated()->json('order');
+        $this->assertSame(['received', 0, 0], [$done['status'], $done['packs_to_come'], $done['medicines_to_come']]);
+        $this->getJson("/api/pharmacy/purchase-orders/{$order['id']}")->assertOk()->assertJsonPath('status', 'received')->assertJsonPath('still_to_come', []);
+        // An invoice with no order says nothing about one.
+        $this->postJson('/api/pharmacy/purchases', ['stockist_id' => $supplier->id, 'invoice_no' => 'INV-3', 'invoice_date' => today()->toDateString(), 'items' => [$line($b, 1)]])
+            ->assertCreated()->assertJsonPath('order', null);
+    }
+
+    public function test_a_line_left_without_the_bills_figures_says_which_line(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $supplier = Stockist::create(['name' => 'Sample Distributors']);
+        $a = $this->medicine('Sampleatorva 10');
+        $typed = ['medicine_id' => $a->id, 'batch_no' => 'B1', 'expiry' => now()->addYear()->format('Y-m'), 'units_per_pack' => 10, 'packs' => 2, 'pack_price' => 20, 'pack_mrp' => 30, 'gst_percent' => 12];
+        $untouched = ['medicine_id' => $a->id, 'units_per_pack' => 10, 'packs' => 5, 'gst_percent' => 12];
+
+        $errors = $this->postJson('/api/pharmacy/purchases', ['stockist_id' => $supplier->id, 'invoice_no' => 'INV-1', 'invoice_date' => today()->toDateString(), 'items' => [$typed, $untouched]])
+            ->assertStatus(422)->json('errors');
+        $this->assertSame('Line 2: type the batch number from the stockist’s bill, or remove the line if it did not come.', $errors['items.1.batch_no'][0]);
+        $this->assertStringStartsWith('Line 2: type the MRP', $errors['items.1.pack_mrp'][0]);
+        $this->assertArrayNotHasKey('items.0.batch_no', $errors);
+        $this->assertSame(0, StockBatch::count());
+    }
+
+    public function test_what_is_on_order_counts_only_what_has_not_come_yet(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $supplier = Stockist::create(['name' => 'Sample Distributors', 'lead_days' => 2]);
+        // Kept at 500 at least, with 20 on the shelf: low, and so on the reorder list with what is on order.
+        $m = $this->medicine('Sampleatorva 10', ['reorder_level' => 500]);
+        $this->batch($m, 20);
+        $other = $this->medicine('Samplepara 500');
+
+        // A draft of 3 packs counts in full.
+        $this->postJson('/api/pharmacy/manager/orders', ['lines' => [['medicine_id' => $m->id, 'stockist_id' => $supplier->id, 'packs' => 3]]])->assertCreated();
+        // An open order of 10 packs that has had 4 paid and 2 free: 6 are still to come.
+        $open = $this->postJson('/api/pharmacy/purchase-orders', ['stockist_id' => $supplier->id, 'order_date' => today()->toDateString(), 'items' => [
+            ['medicine_id' => $m->id, 'units_per_pack' => 10, 'packs' => 10], ['medicine_id' => $other->id, 'units_per_pack' => 10, 'packs' => 2],
+        ]])->assertCreated()->json();
+        $this->postJson('/api/pharmacy/purchases', ['stockist_id' => $supplier->id, 'invoice_no' => 'INV-1', 'invoice_date' => today()->toDateString(), 'purchase_order_id' => $open['id'], 'items' => [
+            ['medicine_id' => $m->id, 'batch_no' => 'N1', 'expiry' => now()->addYear()->format('Y-m'), 'units_per_pack' => 10, 'packs' => 4, 'free_packs' => 2, 'pack_price' => 20, 'pack_mrp' => 30, 'gst_percent' => 12],
+        ]])->assertCreated()->assertJsonPath('order.status', 'open');
+        // Orders that are finished or dropped are not on order at all.
+        $gone = PurchaseOrder::create(['stockist_id' => $supplier->id, 'order_date' => today(), 'status' => 'cancelled']);
+        $gone->items()->create(['medicine_id' => $m->id, 'medicine_name' => $m->name, 'units_per_pack' => 10, 'packs' => 50]);
+        $came = PurchaseOrder::create(['stockist_id' => $supplier->id, 'order_date' => today(), 'status' => 'received']);
+        $came->items()->create(['medicine_id' => $m->id, 'medicine_name' => $m->name, 'units_per_pack' => 10, 'packs' => 70]);
+
+        $this->assertSame([$m->id => 90, $other->id => 20], PharmacyDesk::onOrder()->all());
+        $this->assertSame([$m->id => 90], PharmacyDesk::onOrder([$m->id])->all());
+        $this->assertSame([], PharmacyDesk::onOrder([])->all());
+        $row = collect($this->getJson('/api/pharmacy/manager')->assertOk()->json('reorder'))->firstWhere('medicine_id', $m->id);
+        $this->assertSame(['low', 80, 90], [$row['class'], $row['usable'], $row['on_order']]);
     }
 }

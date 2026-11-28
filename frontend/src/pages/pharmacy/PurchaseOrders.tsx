@@ -1,7 +1,7 @@
 import { MedicineChoose } from '../../components/MedicineChoose'
 import { NewMedicine } from '../../components/NewMedicine'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
 import { useAuth } from '../../auth'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
@@ -332,7 +332,7 @@ export function PharmacyPurchaseOrders() {
               {viewError && <p className="form-error">{viewError}</p>}
               {canEdit && viewing.status === 'draft' && (
                 <>
-                  <p className="muted small no-print">This order was suggested from stock levels and sales. Correct the packs if needed (0 drops a line), then approve it. Nothing has been ordered yet.</p>
+                  <p className="muted small no-print">This is a draft: nothing has been ordered yet. Correct the packs if needed (0 drops a line), then approve it.</p>
                   <div className="panel-foot row no-print">
                     <button className="btn ghost" onClick={() => setStatus('cancelled')}>
                       Drop this order
@@ -348,12 +348,20 @@ export function PharmacyPurchaseOrders() {
                   <button className="btn ghost" onClick={() => setStatus('cancelled')}>
                     Cancel order
                   </button>
-                  <button className="btn primary" onClick={() => setStatus('received')}>
+                  <button className="btn ghost" onClick={() => setStatus('received')}>
                     Mark received
                   </button>
+                  <Link className="btn primary" to={`/pharmacy/purchases?order=${viewing.id}`}>
+                    Enter the stockist’s invoice
+                  </Link>
                 </div>
               )}
-              {viewing.status === 'open' && <p className="muted small no-print">Stock comes in through the stockist's invoice: under Invoices, choose this order in "Against purchase order". The order closes by itself once every line has come in full; mark it received here only to close it short.</p>}
+              {viewing.status === 'open' &&
+                (canEdit ? (
+                  <p className="muted small no-print">Stock comes in through the stockist’s invoice: “Enter the stockist’s invoice” opens a new one with what is still to come on this order filled in. The order closes by itself once every line has come in full; mark it received here only to close it short.</p>
+                ) : (
+                  <p className="muted small no-print">Stock comes in through the stockist's invoice: under Invoices, choose this order in "Against purchase order". The order closes by itself once every line has come in full; mark it received here only to close it short.</p>
+                ))}
             </aside>
           )}
         </div>
