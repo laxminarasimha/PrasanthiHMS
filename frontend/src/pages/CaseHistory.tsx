@@ -5,6 +5,7 @@ import { useAuth } from '../auth'
 import { HealthSummary } from '../components/HealthSummary'
 import { ADMISSION_STATUS, clock, fullName, longDate } from '../format'
 import type { Consultation, Patient } from '../types'
+import { DoctorLink } from '../components/DoctorLink'
 
 type LabEvent = { id: number; order_no: string; status: string; tests: { name: string; reported: boolean; results: { parameter: string; value: string; unit: string | null; flag: string | null }[] }[] }
 type AdmissionEvent = {
@@ -278,7 +279,7 @@ export function CaseHistory() {
                       <div className="head">
                         <span className="pill status-ongoing">Visit</span>
                         <strong>{e.visit.diagnosis?.split('\n')[0] || 'No diagnosis noted'}</strong>
-                        <span className="muted">{e.visit.doctor?.name}</span>
+                        <span className="muted"><DoctorLink id={e.visit.doctor?.id}>{e.visit.doctor?.name}</DoctorLink></span>
                         {!e.visit.completed_at && <span className="pill status-arrived">Not finished</span>}
                         <a className="link push" href={`/visits/${e.appointment_id}/print`} target="_blank" rel="noreferrer">
                           Prescription
@@ -293,7 +294,7 @@ export function CaseHistory() {
                         <span className="pill off">Admission</span>
                         <strong>{e.admission.summary?.diagnosis?.split('\n')[0] || e.admission.reason || 'Admitted'}</strong>
                         <span className="muted">
-                          {e.admission.doctor?.name} · {ADMISSION_STATUS[e.admission.status] ?? e.admission.status}
+                          <DoctorLink id={e.admission.doctor?.id}>{e.admission.doctor?.name}</DoctorLink> · {ADMISSION_STATUS[e.admission.status] ?? e.admission.status}
                           {e.admission.discharged_at ? ` on ${longDate(e.admission.discharged_at)}` : ''}
                         </span>
                         <Link className="link push" to={`/ipd/${e.admission.id}`}>

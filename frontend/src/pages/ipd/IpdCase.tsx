@@ -18,6 +18,7 @@ import { IpdInvestigations } from './IpdInvestigations'
 import { IpdNotes } from './IpdNotes'
 import { IpdSummary } from './IpdSummary'
 import { PatientLink } from '../../components/PatientLink'
+import { DoctorLink } from '../../components/DoctorLink'
 
 const CLOSE_OPTIONS = ['discharged', 'lama', 'dama', 'absconded', 'died'].map((s) => ({
   value: s,
@@ -179,7 +180,9 @@ export function IpdCase() {
           </div>
           <div>
             <dt>Doctor</dt>
-            <dd>{admission.doctor.name}</dd>
+            <dd>
+              <DoctorLink id={admission.doctor.id}>{admission.doctor.name}</DoctorLink>
+            </dd>
           </div>
           <div>
             <dt>Stay</dt>

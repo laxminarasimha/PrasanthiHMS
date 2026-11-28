@@ -5,6 +5,7 @@ import { useAuth } from '../../auth'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { downloadCsv, expiryLabel, longDate, rupees, today } from '../../format'
 import { COUNT_STATUS, COUNT_STATUS_CLASS, stamp, type CountBrief, type CountFull } from './auditTypes'
+import { MedicineLink } from '../../components/MedicineLink'
 
 type Tab = 'overview' | 'counts' | 'missing' | 'history'
 
@@ -540,7 +541,9 @@ function MissingTab({ go }: { go: (tab: Tab, extra?: Record<string, string>) => 
                 {data.by_medicine.map((m) => (
                   <tr key={m.medicine_id} className="static">
                     <td>
-                      <strong>{m.medicine}</strong>
+                      <strong>
+                        <MedicineLink id={m.medicine_id}>{m.medicine}</MedicineLink>
+                      </strong>
                     </td>
                     <td className="num">{m.units}</td>
                     <td className={`num ${m.unexplained ? 'due' : ''}`}>{m.unexplained || '—'}</td>
@@ -582,7 +585,9 @@ function MissingTab({ go }: { go: (tab: Tab, extra?: Record<string, string>) => 
                 {data.rows.map((r) => (
                   <tr key={r.id} className="static">
                     <td>{stamp(r.on)}</td>
-                    <td>{r.medicine}</td>
+                    <td>
+                      <MedicineLink id={r.medicine_id}>{r.medicine}</MedicineLink>
+                    </td>
                     <td className="num">{r.before}</td>
                     <td className="num">{r.after}</td>
                     <td className={`num ${r.units < 0 ? 'due' : 'settled'}`}>{r.units > 0 ? `+${r.units}` : r.units}</td>

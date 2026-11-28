@@ -8,6 +8,7 @@ import { STATUS_LABELS, clock, longDate, today } from '../format'
 import type { Doctor, Patient, QueueEntry } from '../types'
 import { PatientLink } from '../components/PatientLink'
 import { ARRIVED } from '../push'
+import { DoctorLink } from '../components/DoctorLink'
 
 /** Minutes since the patient arrived, shown only while they are still waiting. */
 function waiting(entry: QueueEntry, now: number) {
@@ -148,7 +149,7 @@ export function DoctorQueue() {
                     <PatientLink id={q.patient.id}>{q.patient.uhid}</PatientLink> · {q.patient.age_label} / {q.patient.gender.charAt(0).toUpperCase()}
                   </small>
                 </td>
-                {!isDoctor && <td className="wrap">{q.doctor.name}</td>}
+                {!isDoctor && <td className="wrap"><DoctorLink id={q.doctor.id}>{q.doctor.name}</DoctorLink></td>}
                 <td className="wrap">{q.service?.name ?? '—'}</td>
                 <td>{q.last_visit ? longDate(q.last_visit) : 'First visit'}</td>
                 <td className="num">{q.visits}</td>

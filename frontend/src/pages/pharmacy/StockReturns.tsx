@@ -4,6 +4,7 @@ import { useAuth } from '../../auth'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { expiryLabel, longDate, rupees, today } from '../../format'
 import type { StockBatch, StockReturn, Stockist } from '../../types'
+import { StockistLink } from '../../components/RecordLinks'
 
 /** Stock sent back to a stockist: expired, damaged or excess. */
 export function PharmacyStockReturns() {
@@ -155,7 +156,9 @@ export function PharmacyStockReturns() {
                       <td className="mono">
                         <strong>{r.return_no}</strong>
                       </td>
-                      <td className="fit-wrap">{r.stockist.name}</td>
+                      <td className="fit-wrap">
+                        <StockistLink id={r.stockist.id}>{r.stockist.name}</StockistLink>
+                      </td>
                       <td>{longDate(r.returned_on)}</td>
                       <td className="num">{r.items.length}</td>
                       <td className="num">{rupees(r.total)}</td>

@@ -12,6 +12,7 @@ import { PatientPicker } from '../components/PatientPicker'
 import { STATUS_LABELS, clock, longDate, rupees, settlement, stampTime, today } from '../format'
 import type { Appointment, AppointmentStatus, Doctor, FollowUp, LabCatalogueTest, LabPackage, Patient, Service, WalkInBill, NotReturned } from '../types'
 import { PatientLink } from '../components/PatientLink'
+import { DoctorLink } from '../components/DoctorLink'
 
 type DayList = { data: Appointment[]; counts: Partial<Record<AppointmentStatus, number>> }
 type Department = 'all' | 'appointment' | 'lab' | 'other'
@@ -331,7 +332,7 @@ export function FrontDesk() {
                       {a.status === 'ongoing' && a.awaiting_reports && <small className="muted block">Waiting for lab reports</small>}
                     </td>
                     <td className="doctor">
-                      {a.doctor.name}
+                      <DoctorLink id={a.doctor.id}>{a.doctor.name}</DoctorLink>
                       {a.service?.name && <small className="muted block">{a.service.name}</small>}
                     </td>
                     <td className="advice">
@@ -541,7 +542,7 @@ export function FrontDesk() {
                     <PatientLink id={f.patient.id}>{f.patient.name}</PatientLink>
                   </strong>
                   <small className="muted block">
-                    {f.patient.uhid} · {f.patient.mobile} · {f.doctor.name}
+                    {f.patient.uhid} · {f.patient.mobile} · <DoctorLink id={f.doctor.id}>{f.doctor.name}</DoctorLink>
                   </small>
                   <small className="muted block">{f.source === 'discharge' ? `Went home from the ward ${longDate(f.completed_at)}` : `Seen ${longDate(f.completed_at)}`}</small>
                 </span>
@@ -568,7 +569,7 @@ export function FrontDesk() {
                   </strong>
                   <small className="muted block">
                     {n.patient.uhid} · {n.patient.mobile}
-                    {n.doctor ? ` · ${n.doctor.name}` : ''}
+                    {n.doctor ? <> · <DoctorLink id={n.doctor.id}>{n.doctor.name}</DoctorLink></> : ''}
                   </small>
                   <small className="muted block">
                     Was due {longDate(n.follow_up_on)} · {n.days_late} {n.days_late === 1 ? 'day' : 'days'} late

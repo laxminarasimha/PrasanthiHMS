@@ -14,6 +14,7 @@ import type { Patient, PharmacyInpatient, PharmacySale, PrescriptionForPharmacy,
 import { PharmacyDay } from '../../components/PharmacyDay'
 import { EarlierDate } from '../../components/EarlierDate'
 import { earlier } from '../../earlierDay'
+import { IpdLink } from '../../components/RecordLinks'
 
 type Line = {
   batchId: number
@@ -352,7 +353,7 @@ export function PharmacyBilling() {
                 <span>
                   Put this bill on the IPD bill
                   <small className="muted block">
-                    {admitted.patient.name} is admitted: {admitted.ipd_no}
+                    {admitted.patient.name} is admitted: <IpdLink id={admitted.admission_id}>{admitted.ipd_no}</IpdLink>
                     {admitted.bed ? ` · ${admitted.bed}` : ''}
                     {admitted.doctor ? ` · ${admitted.doctor}` : ''}.{' '}
                     {admitted.bill_approved

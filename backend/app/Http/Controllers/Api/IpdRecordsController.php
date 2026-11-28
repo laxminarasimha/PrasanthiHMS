@@ -12,6 +12,7 @@ use App\Models\DischargeSummary;
 use App\Models\IpdBillTemplate;
 use App\Support\MoneyFigures;
 use App\Support\StaySummary;
+use App\Support\ReportLinks;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -205,7 +206,7 @@ class IpdRecordsController extends Controller
 
         return response()->json([
             'type' => $type, 'title' => self::REPORTS[$type], 'from' => $from->toDateString(), 'to' => $to->toDateString(),
-            'columns' => $columns, 'rows' => $rows, 'totals' => $totals, 'reports' => self::REPORTS,
+            'columns' => $columns, 'rows' => ReportLinks::add(collect($rows)), 'totals' => $totals, 'reports' => self::REPORTS,
         ] + ($type === 'payments' ? ['received' => MoneyFigures::received('ipd', $from, $to)] : []));
     }
 

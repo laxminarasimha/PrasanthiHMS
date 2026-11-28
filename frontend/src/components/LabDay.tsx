@@ -9,6 +9,7 @@ import { useBillingPreferences } from './useBillingPreferences'
 import { EarlierDate } from './EarlierDate'
 import { earlier } from '../earlierDay'
 import { testLabel } from '../labName'
+import { IpdLink } from './RecordLinks'
 
 type Props = {
   /** The patient's lab orders of one day, as the work list has them. The list refreshes them after every change. */
@@ -175,7 +176,7 @@ export function LabDay({ orders, settings, canRun, onClose, onChange, onOpenResu
                   </small>
                   {o.inpatient && (
                     <small className="block">
-                      Inpatient {o.inpatient.ipd_no}
+                      Inpatient <IpdLink id={o.inpatient.admission_id}>{o.inpatient.ipd_no}</IpdLink>
                       {o.inpatient.bed ? ` · ${o.inpatient.bed}` : ''} · bill on the IPD bill
                     </small>
                   )}

@@ -10,6 +10,8 @@ import { AttachmentsPanel } from '../components/FrontDeskPanels'
 import { ADMISSION_STATUS, STATUS_LABELS, clock, fullName, longDate, nowLocal, rupees, settlement, stampDate } from '../format'
 import type { PatientOverview } from '../types'
 import { testLabel } from '../labName'
+import { DoctorLink } from '../components/DoctorLink'
+import { IpdLink, LabOrderLink } from '../components/RecordLinks'
 
 const KIND = { appointment: 'Appointment', lab: 'Lab', other: 'Other services' } as const
 /** How many rows of each list show before "Show all". */
@@ -129,7 +131,7 @@ export function PatientDashboard() {
         )}
         {admitted && (
           <p className="notice">
-            Admitted now · {admitted.ipd_no}
+            Admitted now · <IpdLink id={admitted.id}>{admitted.ipd_no}</IpdLink>
             {admitted.bed ? ` · ${admitted.bed.ward} bed ${admitted.bed.bed_no}` : ''} · since {longDate(admitted.admitted_at)} ·{' '}
             <Link className="link" to={`/ipd/${admitted.id}`}>
               Open the case
@@ -204,7 +206,7 @@ export function PatientDashboard() {
                 {longDate(v.scheduled_at)} <small className="muted">{clock(v.scheduled_at)}</small>
               </td>
               <td>
-                {v.doctor.name}
+                <DoctorLink id={v.doctor.id}>{v.doctor.name}</DoctorLink>
                 <small className="muted block">{v.consultation?.diagnosis?.split('\n')[0] || v.service?.name || ''}</small>
               </td>
               <td>
@@ -224,7 +226,9 @@ export function PatientDashboard() {
         <History title="Lab orders" rows={data.lab_orders} empty="No lab orders yet.">
           {(o) => (
             <tr key={o.id} className="static">
-              <td className="mono">{o.order_no}</td>
+              <td className="mono">
+                <LabOrderLink id={o.id}>{o.order_no}</LabOrderLink>
+              </td>
               <td>
                 {longDate(o.ordered_at)}
                 <small className="muted block">{o.items.map(testLabel).join(', ')}</small>
@@ -309,7 +313,7 @@ export function PatientDashboard() {
                 {longDate(a.admitted_at)}
                 {a.discharged_at ? ` to ${longDate(a.discharged_at)}` : ''}
                 <small className="muted block">
-                  {a.doctor.name}
+                  <DoctorLink id={a.doctor.id}>{a.doctor.name}</DoctorLink>
                   {a.bed ? ` · ${a.bed.ward} bed ${a.bed.bed_no}` : ''}
                 </small>
               </td>

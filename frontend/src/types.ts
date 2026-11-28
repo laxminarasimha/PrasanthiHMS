@@ -566,6 +566,7 @@ export type SellableMedicine = {
 export type PharmacySaleItem = {
   id: number
   stock_batch_id?: number
+  medicine_id?: number | null
   medicine_name: string
   batch_no: string
   expiry: string
@@ -884,7 +885,8 @@ export type PharmacyReport = {
   from: string
   to: string
   columns: ReportColumn[]
-  rows: Record<string, string | number | null>[]
+  /** `_links`, by column: what that cell opens (the record's kind and id), where the row names one. */
+  rows: (Record<string, string | number | null> & { _links?: Record<string, ReportLink> })[]
   totals: Record<string, number>
   reports: Record<string, string>
   /** On reports about bills and payments: the money that counter received in the period, by how it was paid. */
@@ -934,11 +936,11 @@ export type PatientOverview = {
   outstanding: number
   deposit_balance: number
   deposits: PatientDeposit[]
-  visits: { id: number; scheduled_at: string; status: AppointmentStatus; doctor: { name: string }; service: { name: string } | null; consultation: { id: number; diagnosis: string | null; completed_at: string | null } | null }[]
+  visits: { id: number; scheduled_at: string; status: AppointmentStatus; doctor: { id: number; name: string }; service: { name: string } | null; consultation: { id: number; diagnosis: string | null; completed_at: string | null } | null }[]
   bills: { id: number; bill_no: string; kind: BillKind; total: number; paid: number; due: number; moved_to_ipd: number | null; created_at: string; cancelled_at?: string | null; lab_order: { order_no: string } | null }[]
   lab_orders: { id: number; order_no: string; status: string; ordered_at: string; items: { id: number; test_name: string; repeat_no?: number | null }[] }[]
   pharmacy_bills: { id: number; bill_no: string; sold_at: string; total: number; due: number; ipd_transfer: number }[]
-  admissions: { id: number; ipd_no: string; status: string; admitted_at: string; discharged_at: string | null; due: number; doctor: { name: string }; bed: { ward: string; bed_no: string } | null }[]
+  admissions: { id: number; ipd_no: string; status: string; admitted_at: string; discharged_at: string | null; due: number; doctor: { id: number; name: string }; bed: { ward: string; bed_no: string } | null }[]
   attachments: Attachment[]
 }
 
@@ -989,3 +991,6 @@ export type AdmitAdvice = {
   patient: Patient
   doctor: { id: number; name: string } | null
 }
+
+/** What a report cell opens. */
+export type ReportLink = { kind: 'bill' | 'pharmacy_bill' | 'lab_order' | 'ipd' | 'patient' | 'doctor'; id: number }

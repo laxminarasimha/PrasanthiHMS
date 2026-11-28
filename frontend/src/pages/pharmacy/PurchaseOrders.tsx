@@ -6,6 +6,7 @@ import { useAuth } from '../../auth'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { longDate, today } from '../../format'
 import type { InventoryMedicine, Medicine, PurchaseOrder, Stockist } from '../../types'
+import { StockistLink } from '../../components/RecordLinks'
 
 type Line = { medicine_id: string; units_per_pack: string; packs: string }
 const emptyLine = (): Line => ({ medicine_id: '', units_per_pack: '', packs: '' })
@@ -199,7 +200,9 @@ export function PharmacyPurchaseOrders() {
                       <td className="mono">
                         <strong>{o.order_no}</strong>
                       </td>
-                      <td className="fit-wrap">{o.stockist.name}</td>
+                      <td className="fit-wrap">
+                        <StockistLink id={o.stockist.id}>{o.stockist.name}</StockistLink>
+                      </td>
                       <td>{longDate(o.order_date)}</td>
                       <td className="num">{o.items_count}</td>
                       <td>
@@ -222,7 +225,7 @@ export function PharmacyPurchaseOrders() {
                 <div>
                   <h2>Purchase order {viewing.order_no}</h2>
                   <span className="muted">
-                    To {viewing.stockist.name} · {longDate(viewing.order_date)} · <span className={`pill ${STATUS_CLASS[viewing.status]}`}>{STATUS[viewing.status]}</span>
+                    To <StockistLink id={viewing.stockist.id}>{viewing.stockist.name}</StockistLink> · {longDate(viewing.order_date)} · <span className={`pill ${STATUS_CLASS[viewing.status]}`}>{STATUS[viewing.status]}</span>
                   </span>
                 </div>
                 <div className="row no-print">

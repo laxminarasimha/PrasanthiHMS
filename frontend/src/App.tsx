@@ -87,6 +87,7 @@ const PharmacyDashboard = page(() => import('./pages/pharmacy/Dashboard'), 'Phar
 const PharmacyInventory = page(() => import('./pages/pharmacy/Inventory'), 'PharmacyInventory')
 const PharmacyManager = page(() => import('./pages/pharmacy/Manager'), 'PharmacyManager')
 const PharmacyMedicines = page(() => import('./pages/pharmacy/Medicines'), 'PharmacyMedicines')
+const MedicinePage = page(() => import('./pages/pharmacy/MedicinePage'), 'MedicinePage')
 const PharmacyNationalList = page(() => import('./pages/pharmacy/NationalList'), 'PharmacyNationalList')
 const PharmacyShelves = page(() => import('./pages/pharmacy/Shelves'), 'PharmacyShelves')
 const PharmacyOpeningStock = page(() => import('./pages/pharmacy/OpeningStock'), 'PharmacyOpeningStock')
@@ -225,6 +226,7 @@ export default function App() {
             <Route path="/pharmacy/stockists" element={<Only when="can_view_pharmacy"><PharmacyStockists /></Only>} />
             <Route path="/pharmacy/stockists/:id" element={<Only when="can_view_pharmacy"><PharmacyStockist /></Only>} />
             <Route path="/pharmacy/medicines" element={<Only when="can_view_pharmacy"><PharmacyMedicines /></Only>} />
+            <Route path="/pharmacy/medicines/:id" element={<Only when="can_view_pharmacy"><MedicinePage /></Only>} />
             <Route path="/pharmacy/national-list" element={<Only when="can_view_pharmacy"><PharmacyNationalList /></Only>} />
             <Route path="/pharmacy/shelves" element={<Only when="can_view_pharmacy"><PharmacyShelves /></Only>} />
             <Route path="/ipd" element={<Only when="can_ipd"><Ipd /></Only>} />

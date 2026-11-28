@@ -5,6 +5,7 @@ import { api, fieldErrors } from '../../api'
 import { useAuth } from '../../auth'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { longDate, rupees } from '../../format'
+import { MedicineLink } from '../../components/MedicineLink'
 
 type Reorder = {
   medicine_id: number
@@ -213,7 +214,7 @@ export function PharmacyManager() {
                                 <input type="checkbox" checked={pick.on} onChange={(e) => setPick(r.medicine_id, { on: e.target.checked })} aria-label={`Order ${r.name}`} />
                               </td>
                               <td>
-                                {r.name}
+                                <MedicineLink id={r.medicine_id}>{r.name}</MedicineLink>
                                 <small className="block muted">Pack of {r.units_per_pack}</small>
                               </td>
                               <td>
@@ -478,7 +479,9 @@ export function PharmacyManager() {
                       <tbody>
                         {data.slow.map((m) => (
                           <tr key={m.medicine_id} className="static">
-                            <td>{m.medicine}</td>
+                            <td>
+                              <MedicineLink id={m.medicine_id}>{m.medicine}</MedicineLink>
+                            </td>
                             <td className="num">{n(m.units)}</td>
                             <td className="num">{rupees(m.value)}</td>
                             <td>{longDate(m.next_expiry).slice(3)}</td>

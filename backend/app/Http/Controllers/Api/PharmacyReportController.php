@@ -12,6 +12,7 @@ use App\Models\PurchaseInvoice;
 use App\Models\StockAdjustment;
 use App\Models\StockBatch;
 use App\Support\MoneyFigures;
+use App\Support\ReportLinks;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -65,7 +66,7 @@ class PharmacyReportController extends Controller
 
         return response()->json([
             'type' => $type, 'title' => self::REPORTS[$type], 'from' => $from->toDateString(), 'to' => $to->toDateString(),
-            'columns' => $columns, 'rows' => $rows, 'totals' => $totals, 'reports' => self::REPORTS,
+            'columns' => $columns, 'rows' => ReportLinks::add(collect($rows)), 'totals' => $totals, 'reports' => self::REPORTS,
         ] + (in_array($type, ['billing', 'monthly-billing'], true) ? ['received' => MoneyFigures::received('pharmacy', $from, $to)] : []));
     }
 

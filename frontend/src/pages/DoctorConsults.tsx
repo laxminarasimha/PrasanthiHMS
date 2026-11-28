@@ -8,6 +8,7 @@ import { DoctorTabs } from '../components/DoctorTabs'
 import { clock, longDate } from '../format'
 import { useRangeInAddress } from '../rangeInAddress'
 import type { ConsultRow } from '../types'
+import { DoctorLink } from '../components/DoctorLink'
 
 /** Every completed consultation in a date range. */
 export function DoctorConsults() {
@@ -66,7 +67,7 @@ export function DoctorConsults() {
                       {c.patient.uhid} · {c.patient.age_label} / {c.patient.gender.charAt(0).toUpperCase()} · {c.patient.mobile}
                     </small>
                   </td>
-                  {!isDoctor && <td className="wrap">{c.doctor.name}</td>}
+                  {!isDoctor && <td className="wrap"><DoctorLink id={c.doctor.id}>{c.doctor.name}</DoctorLink></td>}
                   <td className="wrap">{c.diagnosis?.split('\n').join(', ') || <span className="muted">—</span>}</td>
                   <td>{c.follow_up_on ? longDate(c.follow_up_on) : '—'}</td>
                   <td className="num">

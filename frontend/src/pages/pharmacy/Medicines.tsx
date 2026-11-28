@@ -30,7 +30,8 @@ export function PharmacyMedicines() {
   const [stockists, setStockists] = useState<Stockist[]>([])
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([])
   const [manufacturerName, setManufacturerName] = useState('')
-  const [query, setQuery] = useState('')
+  // From a medicine's own page, "Edit" brings its name in the address and opens it here.
+  const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '')
   const [filter, setFilter] = useState({ category: '', ved: '', sde: '', fsn: '' })
   const [editing, setEditing] = useState<Editing>(null)
   const [medicine, setMedicine] = useState(blankMedicine)
@@ -45,6 +46,16 @@ export function PharmacyMedicines() {
   const load = useCallback(() => {
     api.get<Medicine[]>('/pharmacy/medicines', { params: { all: 1, q: query.trim() || undefined, category: filter.category || undefined, ved: filter.ved || undefined, sde: filter.sde || undefined, fsn: filter.fsn || undefined } }).then((res) => setMedicines(res.data))
   }, [query, filter])
+
+  const editAsked = params.get('edit')
+  useEffect(() => {
+    const asked = editAsked ? medicines.find((m) => String(m.id) === editAsked) : undefined
+    if (!asked) return
+    openMedicine(asked)
+    setParams({}, { replace: true })
+    // Opened once, when the list holding it arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editAsked, medicines])
 
   // At once when the screen opens; after a short pause when a search or filter changes.
   useLoadOnChange(load)
@@ -177,6 +188,9 @@ export function PharmacyMedicines() {
                       <td className="fit-wrap">
                         <strong>{m.name}</strong> {m.is_scheduled && <span className="pill status-ongoing">Scheduled</span>}
                         {m.composition && <small className="muted block">{m.composition}</small>}
+                        <Link className="link small block" to={`/pharmacy/medicines/${m.id}`} onClick={(e) => e.stopPropagation()}>
+                          Stock, suppliers and sales
+                        </Link>
                         <Link className="link small block" to={`/pharmacy/national-list?medicine=${m.id}`} onClick={(e) => e.stopPropagation()}>
                           {m.ref_brand_code || m.ref_generic_code ? 'On the national drug list' : 'Link to the national drug list'}
                         </Link>
