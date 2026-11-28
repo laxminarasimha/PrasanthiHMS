@@ -11,6 +11,7 @@ use App\Models\Expense;
 use App\Models\Setting;
 use App\Models\User;
 use App\Support\ConsultantFees;
+use App\Support\DoctorMoney;
 use App\Workforce\Support\ExpenseBook;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -42,6 +43,7 @@ class ConsultantController extends Controller
         return [
             'id' => $v->id, 'doctor' => ['id' => $v->doctor_id, 'name' => $v->doctor?->name], 'visited_on' => $v->visited_on->format('Y-m-d'), 'kind' => $v->kind, 'note' => $v->note,
             'patient' => $v->relationLoaded('patient') && $v->patient ? ['id' => $v->patient->id, 'name' => $v->patient->name, 'uhid' => $v->patient->uhid] : null, 'admission_id' => $v->admission_id,
+            'ipd_no' => $v->relationLoaded('admission') ? $v->admission?->ipd_no : null,
             // An entry made by mistake is taken back by whoever made it, on the day; after that by someone who sees the fees.
             'can_cancel' => $this->seesMoney($request) || ((int) $v->created_by === (int) $user->id && $v->created_at?->isToday()),
         ] + ($this->seesMoney($request) ? ['fee' => $v->fee] : []);
@@ -105,19 +107,38 @@ class ConsultantController extends Controller
     public function statement(Request $request, User $doctor): JsonResponse
     {
         $month = $this->monthOf($request);
-        $from = Carbon::parse($month.'-01')->startOfMonth();
+        [$from, $to] = ConsultantFees::span($month);
         $row = ConsultantFees::month($month)->firstWhere('doctor_id', $doctor->id)
             ?? ['doctor_id' => $doctor->id, 'doctor' => $doctor->name, 'department' => $doctor->department, 'shares' => [], 'share' => 0.0, 'visits' => 0, 'first_visits' => 0, 'visit_fees' => 0.0, 'earned' => 0.0, 'paid' => 0.0, 'due' => 0.0];
         $names = User::query()->pluck('name', 'id');
 
         return response()->json($row + [
             'month' => $month, 'month_name' => $from->format('F Y'), 'phone' => $doctor->phone,
-            'visit_list' => ConsultantVisit::standing()->where('doctor_id', $doctor->id)->whereBetween('visited_on', [$from->toDateString(), $from->copy()->endOfMonth()->toDateString()])
-                ->with(['doctor:id,name', 'patient:id,name,uhid'])->orderBy('visited_on')->orderBy('id')->get()->map(fn (ConsultantVisit $v) => $this->visit($v, $request)),
+            'visit_list' => ConsultantVisit::standing()->where('doctor_id', $doctor->id)->whereBetween('visited_on', [$from->toDateString(), $to->toDateString()])
+                ->with(['doctor:id,name', 'patient:id,name,uhid', 'admission:id,ipd_no'])->orderBy('visited_on')->orderBy('id')->get()->map(fn (ConsultantVisit $v) => $this->visit($v, $request)),
             'payments' => ConsultantPayment::query()->where(['doctor_id' => $doctor->id, 'for_month' => $month])->orderBy('paid_on')->orderBy('id')->get()->map(fn (ConsultantPayment $p) => [
                 'id' => $p->id, 'paid_on' => $p->paid_on->format('Y-m-d'), 'amount' => $p->amount, 'mode' => $p->mode, 'reference' => $p->reference, 'note' => $p->note,
                 'by' => $names[$p->created_by] ?? null, 'cancelled' => $p->cancelled_at !== null, 'cancel_reason' => $p->cancel_reason,
             ]),
+        ]);
+    }
+
+    /**
+     * The payments behind one counter's "collected" in a consultant's month: one line for each entry, a refund as its
+     * own minus line, money from a deposit on the day it was used. The total and the money by how it was paid are
+     * added up from these lines, so they come to the figure on the statement.
+     */
+    public function collected(Request $request, User $doctor): JsonResponse
+    {
+        $month = $this->monthOf($request);
+        $counter = $request->validate(['counter' => ['required', Rule::in(array_keys(DoctorMoney::COUNTERS))]], ['counter.required' => 'Say which counter: front desk, lab or IPD.'])['counter'];
+        [$from, $to] = ConsultantFees::span($month);
+        $lines = DoctorMoney::collectedLines($doctor->id, $counter, $from, $to);
+
+        return response()->json([
+            'doctor_id' => $doctor->id, 'month' => $month, 'month_name' => $from->format('F Y'), 'counter' => $counter, 'label' => DoctorMoney::COUNTERS[$counter],
+            'lines' => $lines->values(), 'collected' => round((float) $lines->sum('amount'), 2),
+            'by_mode' => collect(DoctorMoney::money())->mapWithKeys(fn (string $mode) => [$mode => round((float) $lines->where('mode', $mode)->sum('amount'), 2)]),
         ]);
     }
 

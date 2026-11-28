@@ -2221,6 +2221,28 @@ tr.cancelled td { color: var(--muted); }
 
 /* A doctor's own consultation fee, on their settings. */
 .doctor-fee { margin-bottom: 16px; }
+/* A consultant's month: the payments behind a Collected figure, opened under the table of their own cases. */
+.collected-list { padding: 12px 14px; border: 1px solid var(--brand-line); border-radius: 12px; background: var(--surface-2); }
+.collected-list h4 { margin: 0 0 8px; font-size: 0.95rem; }
+.collected-list td.minus { color: var(--danger); }
+.collected-list td .pill { margin-top: 4px; }
+.collected-list .collected-total { margin: 8px 0 0; text-align: right; }
+.collected-list .money-by-mode h3 { font-size: 0.9rem; }
+.collected-list > p.muted { margin: 6px 0 0; }
+@media screen and (max-width: 640px) {
+  .collected-list { padding: 10px; }
+  .collected-table thead { display: none; }
+  .collected-table, .collected-table tbody { display: block; width: 100%; }
+  .collected-table tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) fit-content(45%); grid-template-areas: "who amount" "bill how" "when when"; gap: 2px 12px; padding: 10px 2px; border-bottom: 1px solid var(--border); }
+  .collected-table tbody td { display: block; min-width: 0; padding: 0; border: 0; text-align: left; white-space: normal; }
+  .collected-table tbody td:nth-child(1) { grid-area: when; }
+  .collected-table tbody td:nth-child(2) { grid-area: bill; }
+  .collected-table tbody td:nth-child(3) { grid-area: who; }
+  .collected-table tbody td:nth-child(4) { grid-area: how; text-align: right; }
+  .collected-table tbody td:nth-child(5) { grid-area: amount; text-align: right; }
+  .collected-table tbody tr.empty { display: block; }
+  .collected-table tbody tr.empty td { text-align: center; padding: 18px 0; }
+}
 /* A doctor's card: the day at a glance, then their inpatients and hours. */
 .doctor-card h3 { margin: 14px 0 4px; font-size: 0.95rem; }
 .doctor-card .tiles { margin: 8px 0 4px; }
