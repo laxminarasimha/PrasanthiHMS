@@ -6,6 +6,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
 import { canLeave } from '../../unsaved'
 import { useAuth } from '../../auth'
+import { mayDateBack } from '../../earlierDay'
 import { SelectField, TextField } from '../../components/Field'
 import { Popup } from '../../components/Popup'
 import { ADMISSION_STATUS, PAYMENT_MODES, clock, longDate, modeLabel, nowLocal, rupees, today } from '../../format'
@@ -662,7 +663,9 @@ export function IpdCase() {
             ))}
           </select>
           <input placeholder="Reference (optional)" value={pay.reference} onChange={(e) => setPay((p) => ({ ...p, reference: e.target.value }))} aria-label="Reference" />
-          <input type="date" value={pay.paid_on} max={today()} min={admission.admitted_at.slice(0, 10)} onChange={(e) => setPay((p) => ({ ...p, paid_on: e.target.value || today() }))} aria-label="Date received" title="Date the money was received" />
+          {mayDateBack(user) && (
+            <input type="date" value={pay.paid_on} max={today()} min={admission.admitted_at.slice(0, 10)} onChange={(e) => setPay((p) => ({ ...p, paid_on: e.target.value || today() }))} aria-label="Date received" title="Date the money was received" />
+          )}
           <input placeholder="Remarks (optional)" value={pay.remarks} onChange={(e) => setPay((p) => ({ ...p, remarks: e.target.value }))} aria-label="Payment remarks" />
           <button className="btn primary" disabled={busy || !pay.amount || Number(pay.amount) <= 0}>
             {busy ? 'Saving…' : 'Record'}

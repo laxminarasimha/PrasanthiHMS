@@ -114,6 +114,15 @@ enum Role: string
         return in_array($this, [self::Admin, self::Doctor], true);
     }
 
+    /**
+     * Roles allowed to enter a bill or money for an earlier day, which changes what that day's lists and reports say.
+     * Only an admin to start with: the owner gives it to the few people he wants to have it.
+     */
+    public function canEnterEarlierDays(): bool
+    {
+        return $this === self::Admin;
+    }
+
     /** Roles allowed to charge a different price from the price list while billing. */
     public function canChangePrice(): bool
     {

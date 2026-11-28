@@ -10,7 +10,7 @@ import { noWhy, whyFields } from './discountFields'
 import { useBillingPreferences } from './useBillingPreferences'
 import { usePartLoading } from '../loading'
 import { EarlierDate } from './EarlierDate'
-import { earlier } from '../earlierDay'
+import { earlier, mayDateBack } from '../earlierDay'
 
 type Props = {
   patient: { id: number; name: string; uhid: string }
@@ -67,7 +67,7 @@ export function ChargePanel({ patient, appointmentId, doctor, advised, date, ser
   const [reference, setReference] = useState('')
   // The day the new charges belong to, and the day the money was taken. Money is today's unless a bill has just
   // been entered here for an earlier day: an old due that is paid now is money of today.
-  const [day, setDay] = useState(() => (date && date < today() ? date : today()))
+  const [day, setDay] = useState(() => (date && date < today() && mayDateBack(user) ? date : today()))
   const [paidOn, setPaidOn] = useState(today)
 
   const testLine = (t: LabCatalogueTest): Line => ({ key: `test-${t.id}`, type: 'test', id: t.id, name: t.name, price: String(t.price), quantity: '1', discount: '' })

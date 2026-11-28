@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\AuditLog;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
@@ -17,6 +18,17 @@ use Illuminate\Validation\ValidationException;
  */
 class EarlierDay
 {
+    /** The permission to date anything back. Without it, everything a person enters is today's. */
+    public const ABILITY = 'canEnterEarlierDays';
+
+    /** Whether the person signed in may enter a bill or money for an earlier day. */
+    public static function allowed(): bool
+    {
+        $user = request()->user();
+
+        return $user instanceof User && $user->allows(self::ABILITY);
+    }
+
     /** How far back an entry may be dated. Far enough for any bill found missing, near enough to catch a wrong year. */
     public const DAYS_BACK = 365;
 
@@ -41,16 +53,23 @@ class EarlierDay
         ];
     }
 
-    /** The moment an entry belongs to when that is a day before today; nothing when it is today. */
+    /**
+     * The moment an entry belongs to when that is a day before today; nothing when it is today.
+     * Asking for an earlier day without being allowed to is refused here, so no screen can get round it.
+     */
     public static function at(?string $day): ?Carbon
     {
         if (! filled($day)) {
             return null;
         }
         $on = Carbon::parse($day)->startOfDay();
+        if ($on->isSameDay(today())) {
+            return null;
+        }
+        abort_unless(self::allowed(), 403, 'You are not allowed to enter a bill or money for an earlier day. Leave the date on today, or ask someone who is allowed to enter it.');
 
         // The time of day is the time of typing, so several entries for one day keep the order they were made in.
-        return $on->isSameDay(today()) ? null : $on->setTimeFrom(now());
+        return $on->setTimeFrom(now());
     }
 
     /**

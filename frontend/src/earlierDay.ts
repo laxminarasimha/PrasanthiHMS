@@ -1,4 +1,8 @@
 import { today } from './format'
+import type { User } from './types'
+
+/** Whether this person may enter a bill or money for an earlier day. Without it, everything they enter is today's. */
+export const mayDateBack = (user: User | null | undefined) => Boolean(user?.abilities?.canEnterEarlierDays)
 
 /** The day, here, of a moment the server sent. */
 export const dayOf = (iso: string) => {

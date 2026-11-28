@@ -165,6 +165,8 @@ class IpdRecordsTest extends TestCase
 
     public function test_payments_can_be_back_dated_with_remarks_and_a_mistaken_one_deleted(): void
     {
+        // Dating money back is for those given it; this nurse has been.
+        $this->nurse->update(['permissions' => ['canEnterEarlierDays' => true]]);
         $case = "/api/ipd/admissions/{$this->case}";
         $yesterday = now()->subDay()->toDateString();
         $this->postJson("{$case}/payments", ['type' => 'advance', 'amount' => 5000, 'mode' => 'cash', 'paid_on' => now()->subDays(10)->toDateString()])->assertStatus(422)->assertJsonValidationErrors('paid_on');

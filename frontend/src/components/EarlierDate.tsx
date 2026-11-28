@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useAuth } from '../auth'
+import { mayDateBack } from '../earlierDay'
 import { longDate, today } from '../format'
 
 type Props = {
@@ -27,11 +29,15 @@ const furthest = () => {
  * The day a bill or a payment belongs to. It is today unless the person says otherwise: entering something that
  * was missed on an earlier day is a step taken on purpose, and once taken the earlier day stays in plain sight
  * until it is saved, because the day's lists, the reports and the cash expected at that day's closing all change.
+ * Only those given the permission see it at all: for everyone else an entry is always today's.
  */
 export function EarlierDate({ value, onChange, what, min }: Props) {
+  const { user } = useAuth()
   const [open, setOpen] = useState(false)
   const words = WORDS[what]
   const back = value !== today()
+
+  if (!mayDateBack(user)) return null
 
   if (!open && !back) {
     return (
