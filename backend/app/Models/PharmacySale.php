@@ -10,10 +10,16 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'branch_id', 'patient_id', 'customer_name', 'customer_phone', 'referred_doctor', 'sold_at', 'subtotal', 'discount',
     'tax', 'round_off', 'total', 'returned', 'paid', 'ipd_transfer', 'payment_mode', 'reference', 'created_by',
-    'voided_at', 'voided_by', 'void_reason',
+    'voided_at', 'voided_by', 'void_reason', 'consultation_id',
 ])]
 class PharmacySale extends Model
 {
+    /**
+     * What a bill is opened with on the screen: its medicines, the patient, who made it, its money, and the visit whose
+     * prescription it was made from (only the day and the doctor; nothing clinical).
+     */
+    public const ON_SCREEN = ['items', 'patient:id,uhid,title,name', 'seller:id,name', 'payments.receiver:id,name', 'returns', 'consultation:id,doctor_id,completed_at', 'consultation.doctor:id,name'];
+
     protected $appends = ['due'];
 
     /**
@@ -64,6 +70,12 @@ class PharmacySale extends Model
     public function patient(): BelongsTo
     {
         return $this->belongsTo(Patient::class);
+    }
+
+    /** The visit whose prescription the bill was made from at the counter, if it was. */
+    public function consultation(): BelongsTo
+    {
+        return $this->belongsTo(Consultation::class);
     }
 
     public function seller(): BelongsTo

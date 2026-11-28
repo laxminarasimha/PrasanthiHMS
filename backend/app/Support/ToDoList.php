@@ -297,10 +297,14 @@ class ToDoList
             // the pharmacy. Such a person cannot pay a supplier, so the suppliers' bills are not theirs.
             return $audits && $user->allows('canViewPharmacy') ? [self::stockCounts()] : [];
         }
-        // Today's prescriptions with medicines, for which no pharmacy bill has been made since.
-        $written = Consultation::whereDate('completed_at', today())->whereHas('medicines')->with(['patient:id,uhid,title,name', 'doctor:id,name'])->latest('completed_at')->get();
-        $billed = PharmacySale::whereIn('patient_id', $written->pluck('patient_id'))->whereDate('sold_at', '>=', today())->whereNull('voided_at')->get(['patient_id', 'sold_at'])->groupBy('patient_id');
-        $waiting = $written->filter(fn (Consultation $c) => ! $billed->get($c->patient_id)?->first(fn ($sale) => $sale->sold_at >= $c->completed_at));
+        // A doctor is shown only their own patients' prescriptions and ward orders. The money and stock lines stay as they
+        // are, and so do the pharmacy's own screens.
+        $doctorOnly = $user->role === Role::Doctor ? $user->id : null;
+        // Today's prescriptions with medicines that no pharmacy bill has filled, and none has been made for the patient since.
+        $written = Consultation::whereDate('completed_at', today())->whereHas('medicines')->when($doctorOnly, fn ($q) => $q->where('doctor_id', $doctorOnly))
+            ->with(['patient:id,uhid,title,name', 'doctor:id,name'])->latest('completed_at')->get();
+        $billed = PrescriptionFill::bills($written);
+        $waiting = $written->reject(fn (Consultation $c) => isset($billed[$c->id]));
 
         $dues = PharmacySale::where('sold_at', '>=', today()->subDays(self::DAYS))->whereNull('voided_at')->with('patient:id,uhid,title,name')->latest('sold_at')->get()
             ->filter(fn (PharmacySale $s) => $s->due > 0);
@@ -311,13 +315,14 @@ class ToDoList
 
         // Medicines ordered on the ward that nothing has been sent for yet, one line for each patient.
         $ward = WardMedicines::waiting();
-        $cases = Admission::whereIn('id', $ward->keys())->with(['patient:id,uhid,title,name', 'bed:id,ward,bed_no'])->get()->keyBy('id');
+        $cases = Admission::whereIn('id', $ward->keys())->when($doctorOnly, fn ($q) => $q->where('doctor_id', $doctorOnly))->with(['patient:id,uhid,title,name', 'bed:id,ward,bed_no'])->get()->keyBy('id');
+        $ward = $ward->filter(fn ($orders, $id) => $cases->has($id));
         // Orders placed with a stockist that have not come by the day expected. Suggested orders not yet approved are not late.
         $notCome = PharmacyDesk::unmatched()['orders']->where('status', 'open')->sortByDesc('days_late');
 
         $items = [
             self::item('ward_orders', 'Ward medicine orders to send', 'Ordered by a doctor for a patient in the ward; no pharmacy bill has been made for the patient since.', '/pharmacy',
-                $ward->filter(fn ($orders, $id) => $cases->has($id))->map(fn ($orders, $id) => [
+                $ward->map(fn ($orders, $id) => [
                     'text' => $cases[$id]->ipd_no.' · '.self::who($cases[$id]->patient).($cases[$id]->bed ? ' · '.$cases[$id]->bed->ward.' '.$cases[$id]->bed->bed_no : ''),
                     'detail' => $orders->pluck('title')->take(4)->implode(', ').($orders->count() > 4 ? ' and '.($orders->count() - 4).' more' : ''),
                     'to' => '/pharmacy?patient='.$cases[$id]->patient_id,

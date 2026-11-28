@@ -14,7 +14,8 @@ import type { Patient, PharmacyInpatient, PharmacySale, PrescriptionForPharmacy,
 import { PharmacyDay } from '../../components/PharmacyDay'
 import { EarlierDate } from '../../components/EarlierDate'
 import { earlier } from '../../earlierDay'
-import { IpdLink } from '../../components/RecordLinks'
+import { BillLink, IpdLink } from '../../components/RecordLinks'
+import { fillFromBatches, shortOf, visitOf, type CardTag } from './rxFill'
 
 type Line = {
   batchId: number
@@ -27,9 +28,18 @@ type Line = {
   discount: string
   /** Where to fetch it from: its rack and box, if it has been given a place. */
   place: string
+  /** The prescription card it was added from, if it was. A visit's card is what the saved bill remembers. */
+  from?: CardTag
+  /** How the prescription's quantity was worked out, and, when the stock was less, by how much. */
+  worked?: string
+  short?: string
 }
+type CardMedicine = PrescriptionForPharmacy['medicines'][number]
 
 const lineAmount = (l: Line) => Math.round(Number(l.quantity || 0) * l.unitPrice * (1 - Number(l.discount || 0) / 100) * 100) / 100
+/** A line that stays on the bill when the patient is changed no longer counts as from the other patient's prescription. */
+const untag = (l: Line): Line => ({ ...l, from: undefined, worked: undefined, short: undefined })
+const inStock = (m: CardMedicine) => (m.match?.sellable_batches ?? []).reduce((sum, b) => sum + b.units_in_stock, 0)
 
 export function PharmacyBilling() {
   const { user } = useAuth()
@@ -83,6 +93,7 @@ export function PharmacyBilling() {
     setOnIpd(true)
     setPrescriptions([])
     setDoctor('')
+    setLines((rows) => rows.map((l) => (l.from && l.from.patientId !== next?.id ? untag(l) : l)))
     if (next) {
       api.get<PrescriptionForPharmacy[]>('/pharmacy/prescriptions', { params: { patient_id: next.id } }).then((res) => {
         setPrescriptions(res.data)
@@ -127,6 +138,7 @@ export function PharmacyBilling() {
       setDoctor('')
       setDone(null)
       setPatient(res.data)
+      setLines((rows) => rows.map((l) => (l.from && l.from.patientId !== res.data.id ? untag(l) : l)))
       // Straight on to the medicines: the next thing typed is the first medicine's name.
       setTimeout(() => searchBox.current?.focus(), 0)
       api.get<PrescriptionForPharmacy[]>('/pharmacy/prescriptions', { params: { patient_id: res.data.id } }).then((rx) => {
@@ -148,22 +160,62 @@ export function PharmacyBilling() {
   // Until the cashier types an amount, assume the customer pays in full.
   const paidValue = paidTouched ? paid : String(total)
 
-  const add = (m: SellableMedicine, batch: SellableMedicine['sellable_batches'][number]) => {
-    setDone(null)
-    setError('')
-    setLines((rows) =>
-      rows.some((r) => r.batchId === batch.id)
-        ? rows
-        : [...rows, { batchId: batch.id, medicine: m.name, batchNo: batch.batch_no, expiry: batch.expiry, unitPrice: batch.unit_mrp, available: batch.units_in_stock, quantity: '1', discount: '', place: placeLabel(batch.rack_no, batch.box_no) }],
-    )
-    // Straight to the quantity of that line: at once if it is on the bill already, otherwise as soon as it appears.
-    const there = quantityBoxes.current[batch.id]
-    if (there && lines.some((r) => r.batchId === batch.id)) {
+  const lineOf = (m: SellableMedicine, batch: SellableMedicine['sellable_batches'][number], more: Partial<Line> = {}): Line => ({
+    batchId: batch.id, medicine: m.name, batchNo: batch.batch_no, expiry: batch.expiry, unitPrice: batch.unit_mrp, available: batch.units_in_stock, quantity: '1', discount: '', place: placeLabel(batch.rack_no, batch.box_no), ...more,
+  })
+  // Straight to the quantity of that line: at once if it is on the bill already, otherwise as soon as it appears.
+  const jumpToLine = (batchId: number, already: boolean) => {
+    const there = quantityBoxes.current[batchId]
+    if (there && already) {
       there.focus()
       there.select()
     } else {
-      jumpTo.current = batch.id
+      jumpTo.current = batchId
     }
+  }
+
+  const add = (m: SellableMedicine, batch: SellableMedicine['sellable_batches'][number], more: Partial<Line> = {}) => {
+    setDone(null)
+    setError('')
+    setLines((rows) => (rows.some((r) => r.batchId === batch.id) ? rows : [...rows, lineOf(m, batch, more)]))
+    jumpToLine(batch.id, lines.some((r) => r.batchId === batch.id))
+  }
+
+  // A medicine added from a prescription card. When the card has worked out how many, they are taken from the batch
+  // that expires first, then the next, never more than is in stock. Otherwise it starts at 1, as when picked by name.
+  const addFromCard = (rx: PrescriptionForPharmacy, m: CardMedicine) => {
+    const match = m.match
+    if (!match || !patient || match.sellable_batches.length === 0) return
+    const from: CardTag = { kind: rx.kind ?? 'visit', id: rx.id, at: rx.completed_at, patientId: patient.id }
+    if (!m.quantity) {
+      add(match, match.sellable_batches[0], { from })
+      return
+    }
+    const prescribed = m.quantity
+    const taken = fillFromBatches(match.sellable_batches, prescribed)
+    if (taken.length === 0) return
+    const have = taken.reduce((sum, t) => sum + t.quantity, 0)
+    const isThis = (r: Line) => match.sellable_batches.some((b) => b.id === r.batchId)
+    setDone(null)
+    setError('')
+    // A medicine already on the bill is not added again: its quantity there is the one to change.
+    setLines((rows) =>
+      rows.some(isThis)
+        ? rows
+        : [
+            ...rows,
+            ...taken.map((t, i) =>
+              lineOf(match, t.batch, {
+                quantity: String(t.quantity),
+                from,
+                worked: i === 0 ? (m.worked_out ?? undefined) : `rest of the ${prescribed} prescribed`,
+                short: i === 0 && have < prescribed ? shortOf(prescribed, have) : undefined,
+              }),
+            ),
+          ],
+    )
+    const already = lines.find(isThis)
+    jumpToLine(already ? already.batchId : taken[0].batch.id, Boolean(already))
   }
 
   /** Enter in a quantity or discount box goes back to the search box for the next medicine, instead of saving. */
@@ -228,6 +280,8 @@ export function PharmacyBilling() {
         // An inpatient's medicines go on the IPD bill: nothing is taken at the counter.
         paid: toIpd ? 0 : paidValue || 0,
         ...(toIpd ? { admission_id: admitted!.admission_id } : {}),
+        // The visit whose prescription card the medicines came from, so that prescription shows as filled by this bill.
+        consultation_id: walkIn || !patient ? null : visitOf(lines.map((l) => l.from), patient.id),
         payment_mode: mode,
         reference: reference || null,
         sold_on: earlier(soldOn),
@@ -376,9 +430,17 @@ export function PharmacyBilling() {
                     <strong className="grow">
                       {rx.kind === 'ward' ? 'Ward orders' : rx.kind === 'discharge' ? `Discharge medicines · ${longDate(rx.completed_at)}` : `Prescription · ${longDate(rx.completed_at)}`}
                       {rx.doctor ? ` · ${rx.doctor}` : ''}
+                      {rx.bill && (
+                        <span className="pill ok">
+                          {rx.filled ? 'Filled' : 'Billed since'} ·{' '}
+                          <BillLink id={rx.bill.id} pharmacy>
+                            {rx.bill.bill_no}
+                          </BillLink>
+                        </span>
+                      )}
                       {rx.note && <small className="muted block">{rx.note}</small>}
                     </strong>
-                    <button type="button" className="btn ghost" disabled={available.length === 0} onClick={() => available.forEach((m) => add(m.match!, m.match!.sellable_batches[0]))}>
+                    <button type="button" className="btn ghost" disabled={available.length === 0} onClick={() => available.forEach((m) => addFromCard(rx, m))}>
                       Add all in stock ({available.length})
                     </button>
                   </div>
@@ -392,10 +454,16 @@ export function PharmacyBilling() {
                           {m.match?.sellable_batches[0] && placeLabel(m.match.sellable_batches[0].rack_no, m.match.sellable_batches[0].box_no) && (
                             <small className="shelf-place"> {placeLabel(m.match.sellable_batches[0].rack_no, m.match.sellable_batches[0].box_no)}</small>
                           )}
+                          {m.worked_out && m.quantity ? (
+                            <small className="muted block">
+                              {m.worked_out}
+                              {inStock(m) < m.quantity && <span className="due"> · {shortOf(m.quantity, inStock(m))}</span>}
+                            </small>
+                          ) : null}
                         </span>
                         {m.match?.sellable_batches.length ? (
-                          <button type="button" className="link" onClick={() => add(m.match!, m.match!.sellable_batches[0])}>
-                            Add
+                          <button type="button" className="link" onClick={() => addFromCard(rx, m)}>
+                            {m.quantity ? `Add ${Math.min(m.quantity, inStock(m))}` : 'Add'}
                           </button>
                         ) : (
                           <small className="due">Not in stock under this name</small>
@@ -430,6 +498,8 @@ export function PharmacyBilling() {
                     <td>
                       <strong>{l.medicine}</strong>
                       {l.place && <small className="shelf-place block">{l.place}</small>}
+                      {l.worked && <small className="muted block">{l.worked}</small>}
+                      {l.short && <small className="due block">{l.short}</small>}
                     </td>
                     <td>{l.batchNo}</td>
                     <td>

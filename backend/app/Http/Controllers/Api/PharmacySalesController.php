@@ -16,8 +16,10 @@ use App\Models\PharmacySaleReturn;
 use App\Models\StockBatch;
 use App\Support\EarlierDay;
 use App\Support\MoneyFigures;
+use App\Support\PrescriptionFill;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -26,8 +28,6 @@ use Illuminate\Validation\ValidationException;
 /** What happens to a pharmacy bill after it is made, plus the dashboard and the prescription queue. */
 class PharmacySalesController extends Controller
 {
-    private const SALE_WITH = ['items', 'patient:id,uhid,title,name', 'seller:id,name', 'payments.receiver:id,name', 'returns'];
-
     public function dashboard(Request $request): JsonResponse
     {
         $range = $request->validate(['from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from']]);
@@ -68,7 +68,6 @@ class PharmacySalesController extends Controller
         ]);
     }
 
-    /** The day's prescriptions, each marked with whether a pharmacy bill has been made for the patient since. */
     /** Money the pharmacy counter received in a period, by how it was paid; shown above the list of bills. */
     public function money(Request $request): JsonResponse
     {
@@ -81,6 +80,10 @@ class PharmacySalesController extends Controller
         return response()->json(['from' => $from->toDateString(), 'to' => $to->toDateString(), 'received' => MoneyFigures::received('pharmacy', $from, $to)]);
     }
 
+    /**
+     * The day's prescriptions, each with the pharmacy bill made from it at the counter ("filled"), or else the first
+     * bill made for the patient since ("billed since"), or none. The rule is PrescriptionFill's, shared with To do.
+     */
     public function orders(Request $request): JsonResponse
     {
         $day = Carbon::parse($request->validate(['date' => ['nullable', 'date']])['date'] ?? today());
@@ -89,10 +92,7 @@ class PharmacySalesController extends Controller
             ->whereHas('medicines')
             ->with(['patient:id,uhid,title,name,gender,date_of_birth,mobile', 'doctor:id,name', 'medicines:id,consultation_id,medicine,dose,frequency,duration'])
             ->latest('completed_at')->get();
-
-        $billed = PharmacySale::whereIn('patient_id', $consultations->pluck('patient_id'))
-            ->whereDate('sold_at', '>=', $day)->whereNull('voided_at')
-            ->get(['id', 'patient_id', 'bill_no', 'sold_at'])->groupBy('patient_id');
+        $bills = PrescriptionFill::bills($consultations);
 
         return response()->json($consultations->map(fn (Consultation $c) => [
             'id' => $c->id,
@@ -100,7 +100,10 @@ class PharmacySalesController extends Controller
             'patient' => $c->patient,
             'doctor' => $c->doctor?->name,
             'medicines' => $c->medicines,
-            'bill' => $billed->get($c->patient_id)?->first(fn ($sale) => $sale->sold_at >= $c->completed_at)?->only(['id', 'bill_no']),
+            // As it always was, {id, bill_no} or null, which the staff phone app reads.
+            'bill' => isset($bills[$c->id]) ? Arr::only($bills[$c->id], ['id', 'bill_no']) : null,
+            // True when that bill was made from this prescription; false when it is only a bill for the patient made since.
+            'filled' => $bills[$c->id]['filled'] ?? false,
         ]));
     }
 
@@ -235,7 +238,7 @@ class PharmacySalesController extends Controller
         $sale->recalculatePaid();
         EarlierDay::log($at, $sale->patient_id, $sale, "Pharmacy bill {$sale->bill_no}: ₹".(float) $data['amount'].' received');
 
-        return response()->json($sale->fresh()->load(self::SALE_WITH), 201);
+        return response()->json($sale->fresh()->load(PharmacySale::ON_SCREEN), 201);
     }
 
     /**
@@ -300,7 +303,7 @@ class PharmacySalesController extends Controller
             $sale->returns()->create(['amount' => $value, 'refunded' => $refund, 'refund_mode' => $refund > 0 ? $data['refund_mode'] : null, 'lines' => $lines, 'created_by' => $request->user()->id]);
         });
 
-        return response()->json($sale->fresh()->load(self::SALE_WITH), 201);
+        return response()->json($sale->fresh()->load(PharmacySale::ON_SCREEN), 201);
     }
 
     /** Cancels a bill made by mistake: everything goes back into stock and the money is refunded. The bill is kept, marked as deleted. */
@@ -340,7 +343,7 @@ class PharmacySalesController extends Controller
             $sale->update(['voided_at' => now(), 'voided_by' => $request->user()->id, 'void_reason' => $data['reason']]);
         });
 
-        return response()->json($sale->fresh()->load(self::SALE_WITH));
+        return response()->json($sale->fresh()->load(PharmacySale::ON_SCREEN));
     }
 
     /**

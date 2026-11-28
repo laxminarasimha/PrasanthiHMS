@@ -22,6 +22,8 @@ use App\Support\Composition;
 use App\Support\EarlierDay;
 use App\Support\OrderMatch;
 use App\Support\PharmacyOnIpd;
+use App\Support\PrescriptionFill;
+use App\Support\RxQuantity;
 use App\Support\ShelfPlace;
 use App\Support\WardMedicines;
 use Illuminate\Http\JsonResponse;
@@ -561,6 +563,9 @@ class PharmacyController extends Controller
     /**
      * A patient's recent prescriptions, each medicine paired with the pharmacy item of the
      * same name and its sellable batches, so the bill can be started from the prescription.
+     * Where a line says plainly how many tablets or capsules it comes to, that is offered as
+     * the quantity, with the working (see RxQuantity). A visit's card says which pharmacy bill
+     * has filled it, or has been made for the patient since.
      */
     public function prescriptions(Request $request): JsonResponse
     {
@@ -587,12 +592,20 @@ class PharmacyController extends Controller
         $names = $consultations->flatMap->medicines->pluck('medicine')->concat($ward->pluck('title'))->concat($home->pluck('medicine'))->map(fn ($name) => mb_strtolower(trim($name)))->unique();
         $stocked = Medicine::where('is_active', true)
             ->whereIn(DB::raw('LOWER(name)'), $names)
-            ->with(['sellableBatches' => fn ($q) => $q->select('id', 'medicine_id', 'batch_no', 'expiry', 'unit_mrp', 'gst_percent', 'units_in_stock', 'rack_no', 'box_no')])
-            ->get(['id', 'name', 'type'])
-            ->keyBy(fn (Medicine $m) => mb_strtolower($m->name));
+            ->with(['sellableBatches' => fn ($q) => $q->select('id', 'medicine_id', 'batch_no', 'expiry', 'unit_mrp', 'gst_percent', 'units_in_stock', 'units_per_pack', 'rack_no', 'box_no')])
+            ->get(['id', 'name', 'type']);
+        // How many medicines in use go by each name: a quantity is worked out only for a name that is one medicine's alone.
+        $named = $stocked->countBy(fn (Medicine $m) => mb_strtolower(trim($m->name)));
+        $stocked = $stocked->keyBy(fn (Medicine $m) => mb_strtolower($m->name));
 
         // A name the pharmacy does not stock under exactly is shown as not in stock: nothing is guessed.
         $match = fn (?string $name) => $stocked->get(mb_strtolower(trim((string) $name)));
+        // The tablets or capsules a line comes to, with the working, when it is written plainly enough to count.
+        $quantity = function (?string $name, ?string $dose, ?string $frequency, ?string $duration) use ($named, $match): array {
+            $only = ($named[mb_strtolower(trim((string) $name))] ?? 0) === 1 ? $match($name) : null;
+
+            return RxQuantity::forStock($only, $dose, $frequency, $duration) ?? ['quantity' => null, 'worked_out' => null];
+        };
         $cards = collect();
         if ($ward->isNotEmpty()) {
             $cards->push([
@@ -603,6 +616,9 @@ class PharmacyController extends Controller
                     'directions' => collect([$o->dose, $o->route, $o->frequency, $o->instructions])->filter()->implode(' · '),
                     'match' => $match($o->title),
                     'new' => WardMedicines::isNew($o, $lastBill),
+                    // A ward order runs until it is stopped, with no number of days, so nothing is counted for it: the ward says what it needs.
+                    'quantity' => null,
+                    'worked_out' => null,
                 ])->values(),
             ]);
         }
@@ -614,20 +630,26 @@ class PharmacyController extends Controller
                     'medicine' => $m['medicine'],
                     'directions' => collect([$m['dose'] ?? null, $m['frequency'] ?? null, $m['timing'] ?? null, $m['duration'] ?? null])->filter()->implode(' · '),
                     'match' => $match($m['medicine']),
-                ]),
+                ] + $quantity($m['medicine'], $m['dose'] ?? null, $m['frequency'] ?? null, $m['duration'] ?? null)),
             ]);
         }
+
+        // Which bill has filled each visit's prescription, or else has been made for the patient since.
+        $bills = PrescriptionFill::bills($consultations);
 
         return response()->json($cards->concat($consultations->map(fn (Consultation $c) => [
             'id' => $c->id,
             'kind' => 'visit',
             'completed_at' => $c->completed_at->format('Y-m-d H:i'),
             'doctor' => $c->doctor?->name,
+            'bill' => isset($bills[$c->id]) ? Arr::only($bills[$c->id], ['id', 'bill_no']) : null,
+            // True when that bill was made from this card; false when it is only a bill for the patient made since.
+            'filled' => $bills[$c->id]['filled'] ?? false,
             'medicines' => $c->medicines->map(fn ($item) => [
                 'medicine' => $item->medicine,
                 'directions' => collect([$item->dose, $item->frequency, $item->timing, $item->duration])->filter()->implode(' · '),
                 'match' => $match($item->medicine),
-            ]),
+            ] + $quantity($item->medicine, $item->dose, $item->frequency, $item->duration)),
         ]))->values());
     }
 
@@ -658,7 +680,7 @@ class PharmacyController extends Controller
 
     public function showSale(PharmacySale $sale): JsonResponse
     {
-        return response()->json($sale->load(['items', 'patient:id,uhid,title,name', 'seller:id,name', 'payments.receiver:id,name', 'returns']));
+        return response()->json($sale->load(PharmacySale::ON_SCREEN));
     }
 
     /** Sells from specific batches, reducing their stock, and records the bill. */
@@ -677,6 +699,8 @@ class PharmacyController extends Controller
             'reference' => ['nullable', 'string', 'max:255'],
             // An inpatient's medicines: what is not paid at the counter goes on this IPD case's bill in the same step.
             'admission_id' => ['nullable', 'integer', 'exists:admissions,id'],
+            // A bill started from a visit's prescription card remembers that visit, so the prescription shows as filled.
+            'consultation_id' => ['nullable', 'integer', 'exists:consultations,id'],
             'items' => ['required', 'array', 'min:1', 'max:100'],
             'items.*.stock_batch_id' => ['required', 'integer', 'distinct', 'exists:stock_batches,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
@@ -704,6 +728,20 @@ class PharmacyController extends Controller
                 }
                 if ($at && $at->toDateString() < $admission->admitted_at->toDateString()) {
                     throw ValidationException::withMessages(['sold_on' => "This patient was admitted on {$admission->admitted_at->format('j M Y')}, so nothing of an earlier day can go on {$admission->ipd_no}."]);
+                }
+            }
+
+            // The prescription the bill is made from: this patient's, from a finished visit, and not of a later day than the bill.
+            $visit = isset($data['consultation_id']) ? Consultation::find($data['consultation_id']) : null;
+            if ($visit) {
+                if ((int) $visit->patient_id !== (int) ($data['patient_id'] ?? 0)) {
+                    throw ValidationException::withMessages(['consultation_id' => 'That prescription is for another patient.']);
+                }
+                if (! $visit->completed_at) {
+                    throw ValidationException::withMessages(['consultation_id' => 'That visit is not finished yet, so there is no prescription to bill from.']);
+                }
+                if (($at ?? now())->toDateString() < $visit->completed_at->toDateString()) {
+                    throw ValidationException::withMessages(['sold_on' => "The prescription is of {$visit->completed_at->format('j M Y')}, so a bill made from it cannot be dated earlier."]);
                 }
             }
 
@@ -755,6 +793,7 @@ class PharmacyController extends Controller
             $sale = PharmacySale::create([
                 'branch_id' => $request->user()->branch_id,
                 'patient_id' => $data['patient_id'] ?? null,
+                'consultation_id' => $visit?->id,
                 'customer_name' => $data['customer_name'],
                 'customer_phone' => $data['customer_phone'] ?? null,
                 'referred_doctor' => $data['referred_doctor'] ?? null,
@@ -787,7 +826,7 @@ class PharmacyController extends Controller
         });
         EarlierDay::log($at, $sale->patient_id, $sale, 'Pharmacy bill '.$sale->fresh()->bill_no);
 
-        return response()->json($sale->fresh()->load(['items', 'patient:id,uhid,title,name', 'seller:id,name']), 201);
+        return response()->json($sale->fresh()->load(PharmacySale::ON_SCREEN), 201);
     }
 
     /**
