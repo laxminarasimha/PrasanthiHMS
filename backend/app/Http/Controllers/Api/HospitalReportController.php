@@ -118,7 +118,7 @@ class HospitalReportController extends Controller
         $rows = Bill::whereBetween('created_at', [$from, $to])->whereNull('cancelled_at')->with(['patient:id,title,name,uhid', 'appointment.doctor:id,name'])->orderBy('created_at')->get()
             ->map(fn (Bill $b) => [
                 'bill_no' => $b->bill_no, 'date' => $b->created_at->format('Y-m-d H:i'), 'patient' => $b->patient?->name, 'uhid' => $b->patient?->uhid,
-                'doctor' => $b->appointment?->doctor?->name, 'kind' => self::KIND[$b->kind] ?? $b->kind,
+                'doctor' => $b->appointment?->doctor?->name, 'doctor_id' => $b->appointment?->doctor_id, 'kind' => self::KIND[$b->kind] ?? $b->kind,
                 'amount' => $b->subtotal, 'discount' => $b->discount, 'total' => $b->total, 'paid' => $b->paid, 'due' => $b->due,
                 'discount_reason' => $b->discount_reason, 'discount_allowed_by' => $b->discount_allowed_by,
             ]);
@@ -229,7 +229,7 @@ class HospitalReportController extends Controller
     {
         return $appointments->map(fn (Appointment $a) => [
             'date' => Carbon::parse($a->getRawOriginal('scheduled_at'))->format('Y-m-d H:i'), 'token' => $a->token_no, 'patient' => $a->patient?->name,
-            'uhid' => $a->patient?->uhid, 'mobile' => $a->patient?->mobile, 'doctor' => $a->doctor?->name, 'service' => $a->service?->name, 'status' => ucfirst($a->status),
+            'uhid' => $a->patient?->uhid, 'mobile' => $a->patient?->mobile, 'doctor' => $a->doctor?->name, 'doctor_id' => $a->doctor_id, 'service' => $a->service?->name, 'status' => ucfirst($a->status),
         ]);
     }
 

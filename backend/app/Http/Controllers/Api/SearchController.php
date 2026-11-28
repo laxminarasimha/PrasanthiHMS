@@ -43,23 +43,23 @@ class SearchController extends Controller
 
             if ($prefix === 'B' && $user->allows('canWorkFrontDesk')) {
                 $found = $found->concat(Bill::where('bill_no', $code('B'))->with('patient:id,title,name')->get()->map(fn (Bill $b) => [
-                    'kind' => 'bill', 'label' => "Bill {$b->bill_no}", 'detail' => trim(($b->patient?->name ?? 'Walk-in').' · ₹'.(float) $b->total.($b->cancelled_at ? ' · cancelled' : '')), 'to' => "/front-desk/bills?open={$b->id}",
+                    'kind' => 'bill', 'label' => $b->bill_no, 'detail' => trim(($b->patient?->name ?? 'Walk-in').' · ₹'.(float) $b->total.($b->cancelled_at ? ' · cancelled' : '')), 'to' => "/front-desk/bills?open={$b->id}",
                 ]));
             }
             if ($prefix === 'P' && $user->mayInPharmacy($request)) {
                 $found = $found->concat(PharmacySale::where('bill_no', $code('P'))->get()->map(fn (PharmacySale $s) => [
-                    'kind' => 'pharmacy_bill', 'label' => "Pharmacy bill {$s->bill_no}", 'detail' => trim(($s->customer_name ?? 'Walk-in').' · ₹'.(float) $s->total.($s->voided_at ? ' · cancelled' : '')), 'to' => "/pharmacy/bills?open={$s->id}",
+                    'kind' => 'pharmacy_bill', 'label' => $s->bill_no, 'detail' => trim(($s->customer_name ?? 'Walk-in').' · ₹'.(float) $s->total.($s->voided_at ? ' · cancelled' : '')), 'to' => "/pharmacy/bills?open={$s->id}",
                 ]));
             }
             if ($prefix === 'L' && ($user->allows('canRunLab') || $user->seesClinical())) {
                 $found = $found->concat(LabOrder::where('order_no', $code('L'))->with('patient:id,title,name')->get()->map(fn (LabOrder $o) => [
-                    'kind' => 'lab_order', 'label' => "Lab order {$o->order_no}", 'detail' => ($o->patient?->name ?? 'A patient').' · '.$o->ordered_at->format('j M Y'),
+                    'kind' => 'lab_order', 'label' => $o->order_no, 'detail' => ($o->patient?->name ?? 'A patient').' · '.$o->ordered_at->format('j M Y'),
                     'to' => $user->allows('canRunLab') ? "/lab?open={$o->id}" : "/lab/orders/{$o->id}/print", 'new_tab' => ! $user->allows('canRunLab'),
                 ]));
             }
             if ($prefix === $ipd && $user->allows('canWorkIpd')) {
                 $found = $found->concat(Admission::where('ipd_no', $code($ipd))->with('patient:id,title,name')->get()->map(fn (Admission $a) => [
-                    'kind' => 'ipd', 'label' => "IPD {$a->ipd_no}", 'detail' => ($a->patient?->name ?? 'A patient').' · admitted '.$a->admitted_at->format('j M Y'), 'to' => "/ipd/{$a->id}",
+                    'kind' => 'ipd', 'label' => $a->ipd_no, 'detail' => ($a->patient?->name ?? 'A patient').' · admitted '.$a->admitted_at->format('j M Y'), 'to' => "/ipd/{$a->id}",
                 ]));
             }
 
@@ -69,10 +69,13 @@ class SearchController extends Controller
         if (! preg_match('/\p{L}/u', $term)) {
             return response()->json([]);
         }
-        $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $term).'%';
+        $safe = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $term);
+        $like = '%'.$safe.'%';
+        // Names that begin with what was typed come first.
+        $starts = $safe.'%';
 
         if ($user->mayInPharmacy($request)) {
-            $found = $found->concat(Medicine::where('name', 'like', $like)->orderByDesc('is_active')->orderBy('name')->withSum('batches as on_shelf', 'units_in_stock')->limit(self::EACH)->get(['id', 'name', 'composition', 'is_active'])
+            $found = $found->concat(Medicine::where('name', 'like', $like)->orderByDesc('is_active')->orderByRaw('case when name like ? then 0 else 1 end', [$starts])->orderBy('name')->withSum('batches as on_shelf', 'units_in_stock')->limit(self::EACH)->get(['id', 'name', 'composition', 'is_active'])
                 ->map(fn (Medicine $m) => ['kind' => 'medicine', 'label' => $m->name, 'detail' => trim(($m->composition ? $m->composition.' · ' : '').(int) $m->on_shelf.' on the shelf'), 'to' => "/pharmacy/medicines/{$m->id}"]));
         }
         if (DoctorCardController::opens($user)) {
