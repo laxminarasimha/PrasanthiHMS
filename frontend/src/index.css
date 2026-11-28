@@ -650,6 +650,7 @@ h2.gap-top { margin-top: 20px; }
 .rx-card.ward { border-left-color: var(--info); }
 .rx-card.discharge { border-left-color: var(--accent); }
 .rx-card .pill { margin-left: 6px; }
+.rx-card strong small { font-weight: 400; margin-top: 2px; }
 .rx-card ul { list-style: none; margin: 8px 0 0; padding: 0; }
 .rx-card li { display: flex; gap: 12px; align-items: center; padding: 5px 0; border-top: 1px solid var(--border); }
 
