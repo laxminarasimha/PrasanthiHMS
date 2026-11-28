@@ -230,7 +230,17 @@ class ToDoList
         $soon = $expiry['expiring']->where('days_left', '<=', 30);
         $batch = fn (array $b) => ['text' => $b['medicine'].' · batch '.$b['batch_no'], 'detail' => $b['units'].' on the shelf · '.Carbon::parse($b['expiry'])->format('M Y'), 'to' => '/pharmacy/manager'];
 
+        // Medicines ordered on the ward that nothing has been sent for yet, one line for each patient.
+        $ward = WardMedicines::waiting();
+        $cases = Admission::whereIn('id', $ward->keys())->with(['patient:id,uhid,title,name', 'bed:id,ward,bed_no'])->get()->keyBy('id');
+
         $items = [
+            self::item('ward_orders', 'Ward medicine orders to send', 'Ordered by a doctor for a patient in the ward; no pharmacy bill has been made for the patient since.', '/pharmacy',
+                $ward->filter(fn ($orders, $id) => $cases->has($id))->map(fn ($orders, $id) => [
+                    'text' => $cases[$id]->ipd_no.' · '.self::who($cases[$id]->patient).($cases[$id]->bed ? ' · '.$cases[$id]->bed->ward.' '.$cases[$id]->bed->bed_no : ''),
+                    'detail' => $orders->pluck('title')->take(4)->implode(', ').($orders->count() > 4 ? ' and '.($orders->count() - 4).' more' : ''),
+                    'to' => '/pharmacy?patient='.$cases[$id]->patient_id,
+                ])->values(), true, $ward->flatten(1)->count()),
             self::item('prescriptions', 'Prescriptions not billed yet', 'Written by a doctor today; no pharmacy bill has been made for the patient since.', '/pharmacy/orders',
                 $waiting->map(fn (Consultation $c) => ['text' => self::who($c->patient), 'detail' => ($c->doctor?->name ?? 'Doctor').' · '.$c->completed_at->format('g:i A'), 'to' => '/pharmacy/orders']), true),
             self::item('pharmacy_dues', 'Pharmacy bills with money due', 'From the last '.self::DAYS.' days. Collect on the bill, or take the medicines back.', '/pharmacy/bills',

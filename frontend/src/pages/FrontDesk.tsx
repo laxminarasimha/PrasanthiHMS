@@ -535,7 +535,7 @@ export function FrontDesk() {
           <p className="muted small">Patients a doctor asked to come back on this day. Change the date at the top to see another day.</p>
           <ul className="history">
             {followUps.map((f) => (
-              <li key={f.id}>
+              <li key={`${f.source ?? 'visit'}-${f.id}`}>
                 <span>
                   <strong>
                     <PatientLink id={f.patient.id}>{f.patient.name}</PatientLink>
@@ -543,7 +543,7 @@ export function FrontDesk() {
                   <small className="muted block">
                     {f.patient.uhid} · {f.patient.mobile} · {f.doctor.name}
                   </small>
-                  <small className="muted block">Seen {longDate(f.completed_at)}</small>
+                  <small className="muted block">{f.source === 'discharge' ? `Went home from the ward ${longDate(f.completed_at)}` : `Seen ${longDate(f.completed_at)}`}</small>
                 </span>
                 {f.booked ? (
                   <span className="pill ok">Booked</span>
@@ -561,7 +561,7 @@ export function FrontDesk() {
           <p className="muted small">Patients whose advised date passed in the last 60 days and who have not been seen since. Ring them and book a new date.</p>
           <ul className="history">
             {notReturned.map((n) => (
-              <li key={n.id}>
+              <li key={`${n.source ?? 'visit'}-${n.id}`}>
                 <span>
                   <strong>
                     <PatientLink id={n.patient.id}>{n.patient.name}</PatientLink>
@@ -571,7 +571,9 @@ export function FrontDesk() {
                     {n.doctor ? ` · ${n.doctor.name}` : ''}
                   </small>
                   <small className="muted block">
-                    Was due {longDate(n.follow_up_on)} · {n.days_late} {n.days_late === 1 ? 'day' : 'days'} late{n.diagnosis ? ` · ${n.diagnosis}` : ''}
+                    Was due {longDate(n.follow_up_on)} · {n.days_late} {n.days_late === 1 ? 'day' : 'days'} late
+                    {n.source === 'discharge' ? ' · after discharge' : ''}
+                    {n.diagnosis ? ` · ${n.diagnosis}` : ''}
                   </small>
                 </span>
                 {n.booked_for ? (

@@ -159,10 +159,12 @@ export type Appointment = {
 }
 
 /** Someone advised to come back whose date has passed without a visit. */
-export type NotReturned = { id: number; patient: Appointment['patient']; doctor: { id: number; name: string } | null; follow_up_on: string; days_late: number; seen_on: string; diagnosis: string | null; booked_for: string | null }
+export type NotReturned = { id: number; /** Advised at an OPD visit, or on going home from a bed. */ source?: 'visit' | 'discharge'; patient: Appointment['patient']; doctor: { id: number; name: string } | null; follow_up_on: string; days_late: number; seen_on: string; diagnosis: string | null; booked_for: string | null }
 
 export type FollowUp = {
   id: number
+  /** Advised at an OPD visit, or on going home from a bed (then `completed_at` is when they went home). */
+  source?: 'visit' | 'discharge'
   follow_up_on: string
   completed_at: string
   diagnosis: string | null
@@ -745,7 +747,7 @@ export type AdmissionCharge = {
 }
 
 /** A patient admitted now, as the pharmacy counter lists them to send a bill to the IPD bill. */
-export type PharmacyInpatient = { admission_id: number; ipd_no: string; patient: Patient; bed: string | null; doctor: string | null; bill_approved: boolean }
+export type PharmacyInpatient = { admission_id: number; ipd_no: string; patient: Patient; bed: string | null; doctor: string | null; bill_approved: boolean; /** Medicines ordered on the ward that nothing has been sent for yet. */ orders_waiting?: number }
 
 /** One bed a patient occupied during a stay. `to_at` is null while they are still in it. */
 export type BedStay = { id: number; ward: string; bed_no: string; from_at: string; to_at: string | null; mover?: { id: number; name: string } | null }
@@ -795,9 +797,14 @@ export type Admission = {
 
 export type PrescriptionForPharmacy = {
   id: number
+  /** A doctor's OPD prescription, the medicines running on the ward for an inpatient, or those written to take home. */
+  kind?: 'visit' | 'ward' | 'discharge'
   completed_at: string
   doctor: string | null
-  medicines: { medicine: string; directions: string; match: SellableMedicine | null }[]
+  /** A line for the pharmacist about this card. */
+  note?: string
+  /** `new`: a ward order that nothing has been billed for since it was written. */
+  medicines: { medicine: string; directions: string; match: SellableMedicine | null; new?: boolean }[]
 }
 
 export type OutstandingBill = { type: 'bill' | 'pharmacy'; id: number; label: string; category: string; date: string; due: number }
