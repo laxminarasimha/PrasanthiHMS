@@ -11,6 +11,7 @@ import { EditAppointmentPanel } from '../components/FrontDeskPanels'
 import { STATUS_LABELS, clock, today } from '../format'
 import type { Appointment, CalendarSettings, Doctor, DoctorBlock, Service } from '../types'
 import { DoctorLink } from '../components/DoctorLink'
+import { FromApp } from '../components/FromApp'
 
 type View = 'day' | 'week'
 type Column = { key: string; title: string; sub?: string; date: string; doctorId: string; today: boolean }
@@ -398,7 +399,7 @@ export function Calendar() {
                             <button
                               key={a.id}
                               className={`cal-chip ${a.status}`}
-                              title={`${clock(a.scheduled_at)} · ${a.patient.name} · ${STATUS_LABELS[a.status]}${toPad && a.status !== 'cancelled' ? ' · open the visit pad' : ''}`}
+                              title={`${clock(a.scheduled_at)} · ${a.patient.name} · ${STATUS_LABELS[a.status]}${a.booked_via === 'app' ? ' · booked from the patient app' : ''}${toPad && a.status !== 'cancelled' ? ' · open the visit pad' : ''}`}
                               onClick={(e) => {
                                 e.stopPropagation()
                                 setNotice('')
@@ -407,7 +408,8 @@ export function Calendar() {
                                 setPanel({ kind: 'edit', appointment: a })
                               }}
                             >
-                              <b>{a.token_no ?? '–'}</b> {a.patient.name}
+                              {/* The mark comes before the name, so a long name is what gets cut short. */}
+                              <b>{a.token_no ?? '–'}</b> <FromApp via={a.booked_via} /> {a.patient.name}
                               {view === 'week' && !doctorId && <small>{a.doctor.name}</small>}
                             </button>
                           ))}
@@ -424,7 +426,10 @@ export function Calendar() {
         <p className="muted small legend">
           <span className="cal-chip booked">Booked</span> <span className="cal-chip arrived">Arrived</span> <span className="cal-chip ongoing">Ongoing</span> <span className="cal-chip reviewed">Reviewed</span>{' '}
           <span className="cal-chip cancelled">Cancelled</span> <span className="cal-key away">Doctor away</span> <span className="cal-key off-hours">Outside doctor's hours</span>
-          {settings && settings.slot_limit > 0 && <span className="cal-key full">Slot full</span>}
+          {settings && settings.slot_limit > 0 && <span className="cal-key full">Slot full</span>}{' '}
+          <span className="app-key">
+            <FromApp via="app" /> Booked from the patient app
+          </span>
         </p>
       </section>
 

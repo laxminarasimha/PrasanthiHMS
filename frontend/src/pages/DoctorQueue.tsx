@@ -9,6 +9,7 @@ import type { Doctor, Patient, QueueEntry } from '../types'
 import { PatientLink } from '../components/PatientLink'
 import { useNotice } from '../notices'
 import { DoctorLink } from '../components/DoctorLink'
+import { FromApp } from '../components/FromApp'
 
 /** Minutes since the patient arrived, shown only while they are still waiting. */
 function waiting(entry: QueueEntry, now: number) {
@@ -137,6 +138,7 @@ export function DoctorQueue() {
                   {clock(q.scheduled_at)}
                   {q.token_no && <small className="muted block">Token {q.token_no}</small>}
                   {q.is_follow_up && <small className="muted block">Follow-up</small>}
+                  <FromApp via={q.booked_via} block />
                 </td>
                 <td className="fit-wrap">
                   {/* The name opens the pad too, so a phone needs no sideways scrolling to reach the button. */}

@@ -120,9 +120,11 @@ Route::prefix('reader')->middleware('throttle:240,1,reader')->controller(RecordR
 });
 
 Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money'])->group(function () {
-    Route::middleware('ability:canRunPharmacy')->controller(SubscriptionController::class)->group(function () {
+    // Monthly medicine lists: anyone who may look at the pharmacy reads them (the controller checks); marking a pack
+    // as made is for those who run the pharmacy.
+    Route::controller(SubscriptionController::class)->group(function () {
         Route::get('/pharmacy/subscriptions', 'index');
-        Route::post('/pharmacy/subscriptions/{subscription}/prepared', 'prepared');
+        Route::post('/pharmacy/subscriptions/{subscription}/prepared', 'prepared')->middleware('ability:canRunPharmacy');
     });
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/logout', [AuthController::class, 'logout']);

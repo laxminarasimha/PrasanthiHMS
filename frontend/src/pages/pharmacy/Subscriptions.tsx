@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
+import { useAuth } from '../../auth'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { fullName, longDate, today } from '../../format'
 
@@ -22,6 +23,9 @@ const SHOW = { due: 'Due this week', active: 'All active', paused: 'Paused' } as
 
 /** Monthly medicine lists patients keep in the mobile app: what to make up, for whom, and when. */
 export function PharmacySubscriptions() {
+  const { user } = useAuth()
+  // Anyone who may look at the pharmacy reads the lists; marking a pack as made is for those who run it.
+  const canMark = Boolean(user?.can_run_pharmacy)
   const [show, setShow] = useState<keyof typeof SHOW>('due')
   const [data, setData] = useState<Listing | null>(null)
   const [message, setMessage] = useState({ text: '', bad: false })
@@ -103,7 +107,7 @@ export function PharmacySubscriptions() {
                     {s.preparer && <small className="muted block">{s.preparer.name}</small>}
                   </td>
                   <td className="num">
-                    {s.status === 'active' && show === 'due' && (
+                    {s.status === 'active' && show === 'due' && canMark && (
                       <button className="btn primary" onClick={() => prepared(s)}>
                         Pack made
                       </button>

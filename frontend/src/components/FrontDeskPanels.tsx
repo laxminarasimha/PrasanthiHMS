@@ -9,6 +9,7 @@ import type { Appointment, AppointmentStatus, Attachment, DaySummary, Doctor, Se
 import { SelectField, TextField } from './Field'
 import { OutsideHours } from './AppointmentForm'
 import { usePartLoading } from '../loading'
+import { FromApp } from './FromApp'
 
 const Head = ({ title, sub, onClose }: { title: string; sub?: string; onClose: () => void }) => (
   <div className="panel-head">
@@ -202,7 +203,11 @@ export function EditAppointmentPanel({ appointment, doctors, services, onClose, 
   return (
     <Popup
       title="Edit appointment"
-      sub={`${appointment.patient.name} · token ${appointment.token_no ?? '—'}`}
+      sub={
+        <>
+          {appointment.patient.name} · token {appointment.token_no ?? '—'} <FromApp via={appointment.booked_via} />
+        </>
+      }
       onClose={onClose}
       onSubmit={save}
       foot={
@@ -254,6 +259,10 @@ export function EditAppointmentPanel({ appointment, doctors, services, onClose, 
         <SelectField label="Status" value={status} onChange={setStatus} options={(Object.keys(STATUS_LABELS) as AppointmentStatus[]).map((s) => ({ value: s, label: STATUS_LABELS[s] }))} />
         <TextField label="Notes" value={notes} onChange={setNotes} />
       </div>
+      {/* The app shows the patient this note on their visit, so whatever is typed here they read. */}
+      {appointment.booked_via === 'app' && (
+        <p className="muted small">{appointment.notes ? 'The patient typed this note in the app, and sees what is written here.' : 'The patient sees this note in the app.'}</p>
+      )}
       <p className="muted small">Changing the service here does not change a bill already made; edit the bill for that.</p>
       {errors._ && <p className="form-error">{errors._}</p>}
     </Popup>
