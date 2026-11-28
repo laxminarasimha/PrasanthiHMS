@@ -1,19 +1,27 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { SelectField, TextField } from '../components/Field'
+import { MoneyByMode } from '../components/MoneyByMode'
+import { PatientLink } from '../components/PatientLink'
 import { Popup } from '../components/Popup'
-import { longDate, modeLabel, today } from '../format'
+import { BillLink, IpdLink, LabOrderLink } from '../components/RecordLinks'
+import { clock, longDate, modeLabel, today } from '../format'
+import { usePartLoading } from '../loading'
 import { useChoiceInAddress } from '../rangeInAddress'
 import { inr } from './pay'
 import { addMonths, monthName, thisMonth } from './shared'
 import { WorkforceTabs } from './WorkforceTabs'
 
+/** The three counters at which a doctor's own cases earn them a share. */
+export type CounterKey = 'front_desk' | 'lab' | 'ipd'
+const COUNTERS: readonly ('' | CounterKey)[] = ['', 'front_desk', 'lab', 'ipd']
+
 export type ConsultantRow = {
   doctor_id: number
   doctor: string
   department: string | null
-  shares: { counter: string; collected: number; percent: number | null; share: number }[]
+  shares: { key: CounterKey; counter: string; collected: number; percent: number | null; share: number }[]
   share: number
   visits: number
   first_visits: number
@@ -28,9 +36,38 @@ export type Statement = ConsultantRow & {
   month: string
   month_name: string
   phone: string | null
-  visit_list: { id: number; visited_on: string; kind: 'first' | 'later'; fee?: number; note: string | null; patient: { id: number; name: string; uhid: string } | null }[]
+  visit_list: {
+    id: number
+    visited_on: string
+    kind: 'first' | 'later'
+    fee?: number
+    note: string | null
+    patient: { id: number; name: string; uhid: string } | null
+    admission_id: number
+    /** The IPD case's number, so the visit can open the case. */
+    ipd_no?: string | null
+  }[]
   payments: { id: number; paid_on: string; amount: number; mode: string; reference: string | null; note: string | null; by: string | null; cancelled: boolean; cancel_reason: string | null }[]
 }
+/** One payment or refund behind a Collected figure, dated the day the money came in. */
+type CollectedLine = {
+  id: number
+  on: string
+  /** The day it was typed in, when that was later than the day the money came in. */
+  entered_on: string | null
+  type: 'payment' | 'refund' | 'advance'
+  mode: string
+  reference: string | null
+  /** A refund is a minus amount. */
+  amount: number
+  bill: { id: number; bill_no: string; on: string | null; kind: string; cancelled: boolean } | null
+  order: { id: number; order_no: string } | null
+  admission: { id: number; ipd_no: string } | null
+  patient: { id: number; name: string; uhid: string | null } | null
+  /** A lab bill cancelled later: its lab order went with it, so its money is counted at the front desk. */
+  cancelled_lab_bill: boolean
+}
+type Collected = { doctor_id: number; month: string; month_name: string; counter: CounterKey; label: string; lines: CollectedLine[]; collected: number; by_mode: Record<string, number> }
 
 const MODES = [
   { value: 'cash', label: 'Cash' },
@@ -50,8 +87,25 @@ export function Consultants() {
   const [data, setData] = useState<Month | null>(null)
   const [failed, setFailed] = useState('')
   const [notice, setNotice] = useState('')
-  const [open, setOpen] = useState<number | null>(null)
   const [rating, setRating] = useState(false)
+  // The doctor whose month is open, and the list of payments open in it, are kept in the address. A bill or a
+  // patient opened from that list and then Back comes back to the same doctor and the same list.
+  const [params, setParams] = useSearchParams()
+  const open = Number(params.get('doctor')) || null
+  const openDoctor = useCallback(
+    (id: number | null) =>
+      setParams(
+        (old) => {
+          const next = new URLSearchParams(old)
+          next.delete('counter')
+          if (id) next.set('doctor', String(id))
+          else next.delete('doctor')
+          return next
+        },
+        { replace: true },
+      ),
+    [setParams],
+  )
 
   const load = useCallback(() => {
     api
@@ -121,7 +175,7 @@ export function Consultants() {
                 </thead>
                 <tbody>
                   {shown.rows.map((r) => (
-                    <tr key={r.doctor_id} onClick={() => setOpen(r.doctor_id)} title="Open this doctor's month">
+                    <tr key={r.doctor_id} onClick={() => openDoctor(r.doctor_id)} title="Open this doctor's month">
                       <td className="fit-wrap">
                         <strong>{r.doctor}</strong>
                         {r.department && <small className="muted block">{r.department}</small>}
@@ -157,7 +211,7 @@ export function Consultants() {
           key={`${open}-${month}`}
           doctorId={open}
           month={month}
-          onClose={() => setOpen(null)}
+          onClose={() => openDoctor(null)}
           onChanged={(message) => {
             setNotice(message)
             load()
@@ -182,6 +236,8 @@ export function Consultants() {
 /** One doctor's month: where each rupee earned comes from, each payment made, and writing down a new payment. */
 function DoctorMonth({ doctorId, month, onClose, onChanged }: { doctorId: number; month: string; onClose: () => void; onChanged: (message: string) => void }) {
   const [s, setS] = useState<Statement | null>(null)
+  // The counter whose payments are open under the table. They open here, not in a second window over this one.
+  const [counter, setCounter] = useChoiceInAddress<'' | CounterKey>('counter', '', COUNTERS)
   const [form, setForm] = useState({ paid_on: today(), amount: '', mode: 'bank_transfer', reference: '', note: '' })
   const [errors, setErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
@@ -221,6 +277,7 @@ function DoctorMonth({ doctorId, month, onClose, onChanged }: { doctorId: number
       setErrors({ _: Object.values(fieldErrors(err))[0] ?? 'That did not save. Try again.' })
     }
   }
+  const openShare = s?.shares.find((c) => c.key === counter)
 
   return (
     <Popup
@@ -255,7 +312,13 @@ function DoctorMonth({ doctorId, month, onClose, onChanged }: { doctorId: number
             </div>
           </div>
 
-          <StatementBody s={s} onCancel={(id, amount) => void cancel(id, amount)} />
+          <StatementBody
+            s={s}
+            onCancel={(id, amount) => void cancel(id, amount)}
+            opened={counter}
+            onOpen={(key) => setCounter(counter === key ? '' : key)}
+            behind={openShare && <CollectedList doctorId={doctorId} month={month} counter={openShare.key} label={openShare.counter} />}
+          />
 
           <h3>Write down a payment for {s.month_name}</h3>
           <form onSubmit={pay} noValidate>
@@ -282,8 +345,22 @@ function DoctorMonth({ doctorId, month, onClose, onChanged }: { doctorId: number
   )
 }
 
+type BodyProps = {
+  s: Statement
+  onCancel?: (id: number, amount: number) => void
+  /**
+   * Given on the screen only: each Collected figure then opens the payments behind it, and the visits' patients and
+   * IPD cases open their pages. The paper statement passes none of these and keeps plain figures and names.
+   */
+  onOpen?: (key: CounterKey) => void
+  /** The counter whose payments are open. */
+  opened?: CounterKey | ''
+  /** The open list, shown under the counters' table. */
+  behind?: ReactNode
+}
+
 /** The three lists a statement is made of, on the screen and on paper alike. */
-export function StatementBody({ s, onCancel }: { s: Statement; onCancel?: (id: number, amount: number) => void }) {
+export function StatementBody({ s, onCancel, onOpen, opened, behind }: BodyProps) {
   return (
     <>
       <h3>Their own cases: a share of what was collected</h3>
@@ -299,9 +376,18 @@ export function StatementBody({ s, onCancel }: { s: Statement; onCancel?: (id: n
           </thead>
           <tbody>
             {s.shares.map((c) => (
-              <tr key={c.counter} className="static">
+              <tr key={c.counter} className={onOpen && opened === c.key ? 'static selected' : 'static'}>
                 <td>{c.counter}</td>
-                <td className="num">{inr(c.collected)}</td>
+                <td className="num">
+                  {/* Open even at nothing: a payment and its refund can come to nothing between them. */}
+                  {onOpen ? (
+                    <button type="button" className="link" aria-expanded={opened === c.key} title={opened === c.key ? 'Hide the payments' : 'Show each payment behind this figure'} onClick={() => onOpen(c.key)}>
+                      {inr(c.collected)}
+                    </button>
+                  ) : (
+                    inr(c.collected)
+                  )}
+                </td>
                 <td className="num">{percent(c.percent)}</td>
                 <td className="num">{inr(c.share)}</td>
               </tr>
@@ -314,6 +400,7 @@ export function StatementBody({ s, onCancel }: { s: Statement; onCancel?: (id: n
           </tbody>
         </table>
       </div>
+      {behind}
 
       <h3>Visits to other doctors' inpatients</h3>
       <div className="table-wrap">
@@ -331,8 +418,18 @@ export function StatementBody({ s, onCancel }: { s: Statement; onCancel?: (id: n
               <tr key={v.id} className="static">
                 <td>{longDate(v.visited_on)}</td>
                 <td className="wrap">
-                  {v.patient?.name ?? '—'}
-                  {v.patient && <small className="muted block">{v.patient.uhid}</small>}
+                  {onOpen && v.patient ? <PatientLink id={v.patient.id}>{v.patient.name}</PatientLink> : (v.patient?.name ?? '—')}
+                  {v.patient && (
+                    <small className="muted block">
+                      {v.patient.uhid}
+                      {onOpen && v.ipd_no && (
+                        <>
+                          {' · '}
+                          <IpdLink id={v.admission_id}>{v.ipd_no}</IpdLink>
+                        </>
+                      )}
+                    </small>
+                  )}
                 </td>
                 <td>{v.kind === 'first' ? 'First visit' : 'Later visit'}</td>
                 <td className="num">{inr(v.fee)}</td>
@@ -391,6 +488,115 @@ export function StatementBody({ s, onCancel }: { s: Statement; onCancel?: (id: n
         </table>
       </div>
     </>
+  )
+}
+
+const LINE_TYPE: Record<CollectedLine['type'], string> = { payment: 'Payment', refund: 'Refund', advance: 'Advance' }
+
+/**
+ * The payments behind one counter's Collected figure in a doctor's month, one line for each, on the day the money
+ * came in. They add up to the figure that was clicked. Shown on the screen only, under the counters' table.
+ */
+function CollectedList({ doctorId, month, counter, label }: { doctorId: number; month: string; counter: CounterKey; label: string }) {
+  const ask = `${doctorId}|${month}|${counter}`
+  // The answer is kept with what was asked, so the list of another counter is never shown under this one.
+  const [answer, setAnswer] = useState<{ ask: string; list: Collected | null } | null>(null)
+  // Until the list has come, "nothing was collected" is not known to be true.
+  const loading = usePartLoading(counter)
+
+  useEffect(() => {
+    let current = true
+    api
+      .get<Collected>(`/consultants/${doctorId}/collected`, { params: { month, counter } })
+      .then((res) => {
+        if (current) setAnswer({ ask, list: res.data })
+      })
+      .catch(() => {
+        if (current) setAnswer({ ask, list: null })
+      })
+    return () => {
+      current = false
+    }
+  }, [ask, doctorId, month, counter])
+
+  const here = answer?.ask === ask ? answer : null
+  const shown = here?.list ?? null
+  const lines = shown?.lines ?? []
+
+  return (
+    <div className={loading || !here ? 'collected-list first-load' : 'collected-list'}>
+      <h4>{label}: each payment behind the figure</h4>
+      {here && !shown ? (
+        <p className="form-error">Could not load these payments. Check the connection and try again.</p>
+      ) : (
+        <>
+          <div className="table-wrap tall">
+            <table className="collected-table">
+              <thead>
+                <tr>
+                  <th>Received</th>
+                  <th>{counter === 'ipd' ? 'IPD no.' : 'Bill'}</th>
+                  <th>Patient</th>
+                  <th>How</th>
+                  <th className="num">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((l) => (
+                  <tr key={l.id} className="static">
+                    <td>
+                      {longDate(l.on)}
+                      <small className="muted block">{l.entered_on ? `Entered on ${longDate(l.entered_on)}` : clock(l.on)}</small>
+                    </td>
+                    <td className="fit-wrap">
+                      {l.admission ? <IpdLink id={l.admission.id}>{l.admission.ipd_no}</IpdLink> : l.bill && <BillLink id={l.bill.id}>{l.bill.bill_no}</BillLink>}
+                      {l.order && (
+                        <small className="muted block">
+                          Order <LabOrderLink id={l.order.id}>{l.order.order_no}</LabOrderLink>
+                        </small>
+                      )}
+                      {l.bill?.on && l.bill.on !== l.on.slice(0, 10) && <small className="muted block">Bill of {longDate(l.bill.on)}</small>}
+                      {l.cancelled_lab_bill && <span className="pill off">Cancelled lab bill</span>}
+                    </td>
+                    <td className="fit-wrap">
+                      {l.patient ? (
+                        <>
+                          <PatientLink id={l.patient.id} bills>
+                            {l.patient.name}
+                          </PatientLink>
+                          {l.patient.uhid && <small className="muted block">{l.patient.uhid}</small>}
+                        </>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td className="fit-wrap">
+                      {LINE_TYPE[l.type]} · {modeLabel(l.mode)}
+                      {l.reference && <small className="muted block">{l.reference}</small>}
+                    </td>
+                    <td className={l.amount < 0 ? 'num minus' : 'num'}>{inr(l.amount)}</td>
+                  </tr>
+                ))}
+                {lines.length === 0 && (
+                  <tr className="empty">
+                    <td colSpan={5}>{shown ? 'Nothing was collected here in this month.' : 'Loading…'}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {shown && (
+            <>
+              <p className="collected-total">
+                {lines.length} {lines.length === 1 ? 'entry' : 'entries'}, coming to <strong>{inr(shown.collected)}</strong>
+              </p>
+              <MoneyByMode amounts={shown.by_mode} title="The same money, by how it was paid" />
+            </>
+          )}
+        </>
+      )}
+      <p className="muted small">Bills moved onto an inpatient bill are counted with the IPD case.</p>
+    </div>
   )
 }
 

@@ -625,6 +625,8 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
             Route::get('/', 'month');
             Route::put('/rates', 'saveRates');
             Route::get('/{doctor}', 'statement')->whereNumber('doctor');
+            // The payments behind one counter's figure on the statement.
+            Route::get('/{doctor}/collected', 'collected')->whereNumber('doctor');
             Route::post('/{doctor}/payments', 'pay')->whereNumber('doctor');
             Route::post('/payments/{payment}/cancel', 'cancelPayment')->whereNumber('payment');
         });
