@@ -165,6 +165,7 @@ class OpeningStockImport
     public static function save(array $checked): int
     {
         return DB::transaction(function () use ($checked) {
+            // New medicines made from this sheet, by name: a medicine with several batches on the sheet is made once.
             $made = [];
             foreach ($checked as $row) {
                 $medicineId = $row['medicine_id'] ?? ($made[self::key($row['medicine'])] ??= Medicine::create([
@@ -173,14 +174,14 @@ class OpeningStockImport
                 ])->id);
 
                 // Quantity is in single units; MRP and cost are per pack, as printed on the strip and the bill.
-                $made = StockBatch::create([
+                $batch = StockBatch::create([
                     'medicine_id' => $medicineId, 'batch_no' => $row['batch_no'], 'expiry' => $row['expiry'],
                     'units_per_pack' => $row['units_per_pack'], 'packs' => (int) ceil($row['quantity'] / $row['units_per_pack']),
                     'pack_price' => $row['cost_price'], 'pack_mrp' => $row['mrp'], 'unit_mrp' => round($row['mrp'] / $row['units_per_pack'], 2),
                     'gst_percent' => $row['gst_percent'], 'units_received' => $row['quantity'], 'units_in_stock' => $row['quantity'],
                     'rack_no' => $row['rack_no'], 'box_no' => $row['box_no'], 'hsn_code' => $row['hsn_code'],
                 ]);
-                StockMovement::record($made, $made->units_in_stock, 'opening', 'Opening stock sheet');
+                StockMovement::record($batch, $batch->units_in_stock, 'opening', 'Opening stock sheet');
             }
 
             return count($checked);

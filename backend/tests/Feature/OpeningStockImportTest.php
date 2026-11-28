@@ -90,4 +90,25 @@ class OpeningStockImportTest extends TestCase
         $this->postJson('/api/pharmacy/opening-stock/import', ['rows' => $rows, 'commit' => true, 'confirm' => $confirm])->assertStatus(422);
         $this->assertSame(2, StockBatch::count());
     }
+
+    public function test_a_new_medicine_with_several_batches_on_the_sheet_is_made_once(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $rows = [
+            $this->row(['medicine' => 'Sample Newcillin 500', 'batch_no' => 'N1']),
+            $this->row(['medicine' => 'Sample Newcillin 500', 'batch_no' => 'N2']),
+            $this->row(['medicine' => 'Another Newmed 10', 'batch_no' => 'A1']),
+            $this->row(['medicine' => 'sample newcillin 500 ', 'batch_no' => 'N3']),
+        ];
+        $totals = $this->postJson('/api/pharmacy/opening-stock/import', ['rows' => $rows, 'add_missing' => true])->assertOk()
+            ->assertJsonPath('totals.with_errors', 0)->assertJsonPath('totals.new_medicines', 2)->json('totals');
+        $this->postJson('/api/pharmacy/opening-stock/import', ['rows' => $rows, 'add_missing' => true, 'commit' => true,
+            'confirm' => ['lines' => $totals['lines'], 'units' => $totals['units'], 'at_cost' => $totals['at_cost']]])->assertCreated()->assertJsonPath('added', 4);
+
+        // One medicine for the three batches typed under the same name, however its letters were spaced or cased.
+        $this->assertSame(1, Medicine::whereRaw('lower(name) = ?', ['sample newcillin 500'])->count());
+        $this->assertSame(2, Medicine::count());
+        $newcillin = Medicine::where('name', 'Sample Newcillin 500')->firstOrFail();
+        $this->assertSame(['N1', 'N2', 'N3'], StockBatch::where('medicine_id', $newcillin->id)->orderBy('batch_no')->pluck('batch_no')->all());
+    }
 }
