@@ -6,6 +6,8 @@ use App\Enums\Role;
 use App\Models\Admission;
 use App\Models\Appointment;
 use App\Models\Bill;
+use App\Models\ConsultantPayment;
+use App\Models\ConsultantVisit;
 use App\Models\Consultation;
 use App\Models\DayClose;
 use App\Models\DoctorBlock;
@@ -22,10 +24,14 @@ use App\Workforce\Models\Attendance;
 use App\Workforce\Models\AttendanceCorrection;
 use App\Workforce\Models\Employee;
 use App\Workforce\Models\LeaveRequest;
+use App\Workforce\Models\PayrollRun;
+use App\Workforce\Models\Payslip;
 use App\Workforce\Support\Access;
+use App\Workforce\Support\Period;
 use App\Workforce\Support\Settings;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * The work the system itself knows is waiting for one person, by what that person is allowed to do: patients
@@ -42,6 +48,15 @@ class ToDoList
 
     /** How far back unfinished work is looked for. Older than this it is a report, not something to do today. */
     private const DAYS = 14;
+
+    /**
+     * Days a test may be out at another lab before its result counts as late. Nothing in the hospital's setup says
+     * how long an outside lab takes, so this is a plain rule of thumb.
+     */
+    private const OUTSIDE_LATE_DAYS = 2;
+
+    /** How many finished months back consultants' fees still due are looked for. */
+    private const CONSULTANT_MONTHS = 3;
 
     /**
      * @return list<array{key: string, label: string, items: list<array<string, mixed>>}>
@@ -108,7 +123,7 @@ class ToDoList
                 $today->where('status', 'reviewed')->concat($earlier->where('status', 'reviewed'))->filter(fn (Appointment $a) => ! $a->consultation?->completed_at)
                     ->map(fn (Appointment $a) => $row($a, $a->scheduled_at->format('j M, g:i A')))),
             self::item('to_come', 'Booked for today, not here yet', 'Still to come today.', '/doctor',
-                $today->where('status', 'booked')->map(fn (Appointment $a) => $row($a, 'Booked for '.$a->scheduled_at->format('g:i A'), '/doctor'))),
+                $today->where('status', 'booked')->map(fn (Appointment $a) => $row($a, 'Booked for '.$a->scheduled_at->format('g:i A').($a->booked_via === 'app' ? ' · from the patient app' : ''), '/doctor'))),
         ];
 
         // Medical representatives who have come to meet this doctor today and are still waiting.
@@ -160,12 +175,35 @@ class ToDoList
             self::item('follow_ups', 'Asked to come back, not come', 'Patients a doctor asked to return in the last '.self::DAYS.' days who have not been seen since.', '/front-desk',
                 $late->map(fn (array $r) => ['text' => self::who($r['patient'] ?? null), 'detail' => 'Was due '.Carbon::parse($r['follow_up_on'])->format('j M').(($r['doctor'] ?? null) ? ' · '.$r['doctor']->name : ''), 'to' => isset($r['patient']) ? '/patients/'.$r['patient']->id : null])),
         ];
+        // The two lines below name a doctor's patients, so a doctor is shown only their own.
+        $doctorOnly = $user->role === Role::Doctor ? $user->id : null;
+
+        // Tests a doctor advised at a visit finished today that the lab has not been asked for, of those our own lab
+        // does, under the lab's names. The rest were advised to be done outside, and are in the tests-not-done report.
+        $tests = TestsNotDone::ourLab(TestsNotDone::between(today()->startOfDay(), today()->endOfDay(), $doctorOnly));
+        $items[] = self::item('tests_not_ordered', 'Tests advised today, no lab order', 'A doctor advised these tests at today’s visit and the lab has not been asked for them. Make the lab order from the Tests button on the day list. Tests our lab does not do are left out.', '/front-desk',
+            $tests->map(fn (array $r) => [
+                'text' => ($r['visit']->appointment?->token_no ? "Token {$r['visit']->appointment->token_no} · " : '').self::who($r['visit']->patient),
+                'detail' => ($r['visit']->doctor?->name ?? 'Doctor').' · '.$r['missing']->take(4)->implode(', ').($r['missing']->count() > 4 ? ' and '.($r['missing']->count() - 4).' more' : ''),
+                'to' => '/front-desk',
+            ]));
         // Patients booked for a doctor on a day that doctor is now away: someone has to ring them and move the visit.
         $blocks = DoctorBlock::whereDate('to_date', '>=', today())->with('doctor:id,name')->get();
         $stranded = $blocks->flatMap(fn (DoctorBlock $b) => $b->booked()->where('status', 'booked')->filter(fn (Appointment $a) => $a->scheduled_at->gte(today()))
             ->map(fn (Appointment $a) => ['id' => $a->id, 'text' => self::who($a->patient), 'detail' => ($b->doctor?->name ?? 'The doctor').' is away · booked for '.$a->scheduled_at->format('j M, g:i A'), 'to' => '/front-desk/calendar']))
             ->unique('id')->map(fn (array $row) => array_diff_key($row, ['id' => 1]))->values();
         $items[] = self::item('doctor_away', 'Booked on a day the doctor is away', 'Ring the patient and move the visit to another day or doctor.', '/front-desk/calendar', $stranded, true);
+
+        // Visits patients booked on their own phone, still to come today or tomorrow. One whose time has gone is under
+        // "Booked and not arrived". Never the note the patient typed, nor their number: the patient's page has that.
+        $fromApp = Appointment::where('booked_via', 'app')->where('status', 'booked')->where('scheduled_at', '>=', now())->where('scheduled_at', '<', today()->addDays(2))
+            ->when($doctorOnly, fn ($q) => $q->where('doctor_id', $doctorOnly))->with(['patient:id,uhid,title,name', 'doctor:id,name'])->orderBy('scheduled_at')->get();
+        $items[] = self::item('app_bookings', 'Booked from the patient app', 'Patients booked these on their own phone. Ring them if anything needs checking, and see who they are when they come.', '/front-desk/calendar',
+            $fromApp->map(fn (Appointment $a) => [
+                'text' => self::who($a->patient),
+                'detail' => ($a->doctor?->name ?? 'No doctor').' · '.($a->scheduled_at->isToday() ? 'Today ' : 'Tomorrow ').$a->scheduled_at->format('g:i A').($a->token_no ? " · Token {$a->token_no}" : ''),
+                'to' => '/patients/'.$a->patient_id,
+            ]));
 
         // Representatives asked to come back today who have not been logged yet: the desk knows whom to expect.
         $due = RepVisit::where('status', 'come_back')->whereDate('next_on', today())->with(['rep:id,rep_company_id,name', 'rep.company:id,name', 'doctor:id,name'])->get()
@@ -190,7 +228,7 @@ class ToDoList
             return [];
         }
         $orders = LabOrder::where('ordered_at', '>=', today()->subDays(self::DAYS))->where('status', '!=', 'cancelled')
-            ->with('patient:id,uhid,title,name')->get(['id', 'order_no', 'patient_id', 'ordered_at'])->keyBy('id');
+            ->with('patient:id,uhid,title,name')->get(['id', 'order_no', 'patient_id', 'ordered_at', 'admission_id', 'appointment_id'])->keyBy('id');
         $items = LabOrderItem::whereIn('lab_order_id', $orders->keys())->whereNull('approved_at')->orderBy('id')->get();
         // One line per order, naming its tests at that stage.
         $byOrder = fn (Collection $rows) => $rows->groupBy('lab_order_id')->map(fn (Collection $same, $orderId) => [
@@ -198,13 +236,25 @@ class ToDoList
             'detail' => $same->pluck('test_name')->take(4)->implode(', ').($same->count() > 4 ? ' and '.($same->count() - 4).' more' : '').' · '.$orders[$orderId]->ordered_at->format('j M, g:i A'),
             'to' => '/lab',
         ])->values();
+        // A sample sent to an outside lab is waited for there, not entered here: it is on its own line, and counted once.
+        $sentOut = fn (LabOrderItem $i) => filled($i->outside_lab) && $i->sent_at && ! $i->reported_at;
         $toCollect = $items->filter(fn (LabOrderItem $i) => ! $i->collected_at && ! $i->reported_at);
-        $toReport = $items->filter(fn (LabOrderItem $i) => $i->collected_at && ! $i->reported_at);
+        $toReport = $items->filter(fn (LabOrderItem $i) => $i->collected_at && ! $i->reported_at && ! $sentOut($i));
         $toApprove = $items->filter(fn (LabOrderItem $i) => $i->reported_at);
+        $away = self::ownPatientsOnly($user, $items->filter($sentOut), $orders);
 
         $out = [
             self::item('samples', 'Samples to collect', 'Ordered, and the sample is not marked as collected.', '/lab', $byOrder($toCollect), true, $toCollect->count()),
             self::item('results', 'Results to enter', 'The sample is collected; the result is not entered yet.', '/lab', $byOrder($toReport), false, $toReport->count()),
+            // Never what the outside lab charges: only which lab, which test and since when.
+            self::item('outside', 'Sent to an outside lab, result not back', 'The sample has gone to another lab. Ring them for the result if it is late, then enter it here.', '/lab',
+                $away->groupBy('lab_order_id')->map(fn (Collection $same, $orderId) => [
+                    'text' => $orders[$orderId]->order_no.' · '.self::who($orders[$orderId]->patient),
+                    'detail' => $same->map(fn (LabOrderItem $i) => $i->label().' at '.$i->outside_lab)->take(3)->implode(', ').($same->count() > 3 ? ' and '.($same->count() - 3).' more' : '')
+                        .' · sent '.$same->sortBy('sent_at')->first()->sent_at->format('j M, g:i A'),
+                    'to' => '/lab?open='.$orderId,
+                ])->values(),
+                $away->contains(fn (LabOrderItem $i) => $i->sent_at->lt(now()->subDays(self::OUTSIDE_LATE_DAYS))), $away->count()),
         ];
         if ($user->allows('canApproveLab')) {
             $out[] = self::item('approve', 'Results to approve', 'Entered, and waiting for approval before the report goes out.', '/lab', $byOrder($toApprove), false, $toApprove->count());
@@ -213,10 +263,37 @@ class ToDoList
         return $out;
     }
 
+    /**
+     * For a doctor, only the tests of their own patients: whose the order is goes by the IPD case it was made from,
+     * else the visit it was made at. An order made at the lab counter is nobody's here. Anyone else gets them all.
+     *
+     * @param  Collection<int, LabOrderItem>  $tests
+     * @param  Collection<int, LabOrder>  $orders  by id
+     * @return Collection<int, LabOrderItem>
+     */
+    private static function ownPatientsOnly(User $user, Collection $tests, Collection $orders): Collection
+    {
+        if ($user->role !== Role::Doctor || $tests->isEmpty()) {
+            return $tests;
+        }
+        $theirs = $orders->only($tests->pluck('lab_order_id')->unique()->all());
+        $admittedUnder = Admission::whereIn('id', $theirs->pluck('admission_id')->filter())->pluck('doctor_id', 'id');
+        $seenBy = Appointment::whereIn('id', $theirs->pluck('appointment_id')->filter())->pluck('doctor_id', 'id');
+
+        return $tests->filter(function (LabOrderItem $i) use ($orders, $admittedUnder, $seenBy, $user) {
+            $order = $orders[$i->lab_order_id];
+            $doctor = ($order->admission_id ? ($admittedUnder[$order->admission_id] ?? null) : null) ?? ($order->appointment_id ? ($seenBy[$order->appointment_id] ?? null) : null);
+
+            return (int) $doctor === (int) $user->id;
+        });
+    }
+
     private static function pharmacy(User $user): array
     {
+        // Stock counts are approved by those trusted with the audit, who may be allowed only to look at the rest of the pharmacy.
+        $audit = $user->allows('canAuditPharmacy') && ($user->allows('canRunPharmacy') || $user->allows('canViewPharmacy')) ? self::pharmacyAudit() : [];
         if (! $user->allows('canRunPharmacy')) {
-            return [];
+            return $audit;
         }
         // Today's prescriptions with medicines, for which no pharmacy bill has been made since.
         $written = Consultation::whereDate('completed_at', today())->whereHas('medicines')->with(['patient:id,uhid,title,name', 'doctor:id,name'])->latest('completed_at')->get();
@@ -233,6 +310,8 @@ class ToDoList
         // Medicines ordered on the ward that nothing has been sent for yet, one line for each patient.
         $ward = WardMedicines::waiting();
         $cases = Admission::whereIn('id', $ward->keys())->with(['patient:id,uhid,title,name', 'bed:id,ward,bed_no'])->get()->keyBy('id');
+        // Orders placed with a stockist that have not come by the day expected. Suggested orders not yet approved are not late.
+        $notCome = PharmacyDesk::unmatched()['orders']->where('status', 'open')->sortByDesc('days_late');
 
         $items = [
             self::item('ward_orders', 'Ward medicine orders to send', 'Ordered by a doctor for a patient in the ward; no pharmacy bill has been made for the patient since.', '/pharmacy',
@@ -249,19 +328,31 @@ class ToDoList
                 $order->whereIn('class', ['out', 'urgent'])->map(fn (array $m) => ['text' => $m['name'], 'detail' => $m['class'] === 'out' ? 'None left' : $m['usable'].' left'.($m['days_cover'] !== null ? ', about '.$m['days_cover'].' days' : ''), 'to' => '/pharmacy/manager']), true),
             self::item('reorder', 'Medicines to order', 'Below the level kept for them.', '/pharmacy/manager',
                 $order->where('class', 'low')->map(fn (array $m) => ['text' => $m['name'], 'detail' => $m['usable'].' left · order '.$m['suggest_packs'].' pack(s)', 'to' => '/pharmacy/manager'])),
+            self::item('orders_late', 'Supplier orders not arrived', 'Ordered from a stockist and not received by the day expected. Ring the supplier, or cancel the order if it is not coming.', '/pharmacy/purchase-orders',
+                $notCome->map(fn (array $o) => [
+                    'text' => $o['order_no'].' · '.($o['stockist'] ?? 'Stockist'),
+                    'detail' => 'Expected '.Carbon::parse($o['expected_on'])->format('j M').' · '.$o['days_late'].($o['days_late'] === 1 ? ' day' : ' days').' late · '.$o['items'].($o['items'] === 1 ? ' medicine' : ' medicines'),
+                    'to' => '/pharmacy/purchase-orders?open='.$o['id'],
+                ])),
             self::item('expired', 'Expired stock still on the shelf', 'Take it off the shelf and return it or write it off.', '/pharmacy/manager', $expiry['expired']->map($batch), true),
             self::item('expiring', 'Expiring within 30 days', 'Sell first, or send back to the supplier while it can still be returned.', '/pharmacy/manager', $soon->map($batch)),
         ];
-        if ($user->allows('canAuditPharmacy')) {
-            $counts = StockCount::where('status', 'submitted')->orderBy('submitted_at')->get(['id', 'title', 'submitted_at']);
-            $items[] = self::item('stock_counts', 'Stock counts waiting for approval', 'Counted and handed in; the differences have to be looked at and approved.', '/pharmacy/audit',
-                $counts->map(fn (StockCount $c) => ['text' => $c->title, 'detail' => 'Handed in '.Carbon::parse($c->submitted_at)->format('j M'), 'to' => '/pharmacy/audit']));
-            $overdue = PharmacyDesk::payables()['invoices']->where('days_overdue', '>', 0);
-            $items[] = self::item('supplier_bills', 'Supplier bills past their date', 'Invoices from medicine suppliers that should have been paid by now.', '/pharmacy/purchases',
-                $overdue->sortByDesc('days_overdue')->map(fn (array $i) => ['text' => $i['stockist'].' · '.$i['invoice_no'], 'detail' => self::rupees((float) $i['owed']).' · '.$i['days_overdue'].' days late', 'to' => '/pharmacy/purchases']));
-        }
 
-        return $items;
+        return [...$items, ...$audit];
+    }
+
+    /** For those who approve the pharmacy's stock counts: counts handed in, and medicine suppliers' bills past their date. */
+    private static function pharmacyAudit(): array
+    {
+        $counts = StockCount::where('status', 'submitted')->orderBy('submitted_at')->get(['id', 'title', 'submitted_at']);
+        $overdue = PharmacyDesk::payables()['invoices']->where('days_overdue', '>', 0);
+
+        return [
+            self::item('stock_counts', 'Stock counts waiting for approval', 'Counted and handed in; the differences have to be looked at and approved.', '/pharmacy/audit',
+                $counts->map(fn (StockCount $c) => ['text' => $c->title, 'detail' => 'Handed in '.Carbon::parse($c->submitted_at)->format('j M'), 'to' => "/pharmacy/audit/counts/{$c->id}"])),
+            self::item('supplier_bills', 'Supplier bills past their date', 'Invoices from medicine suppliers that should have been paid by now.', '/pharmacy/purchases',
+                $overdue->sortByDesc('days_overdue')->map(fn (array $i) => ['text' => $i['stockist'].' · '.$i['invoice_no'], 'detail' => self::rupees((float) $i['owed']).' · '.$i['days_overdue'].' days late', 'to' => '/pharmacy/purchases'])),
+        ];
     }
 
     private static function ipd(User $user): array
@@ -324,6 +415,12 @@ class ToDoList
             $items[] = self::item('expenses_approve', 'Expenses to approve', 'Handed in, and waiting for a yes or a no.', '/expenses', $expenses->where('status', 'submitted')->map($line));
             $items[] = self::item('expenses_pay', 'Approved expenses to pay', 'Approved, and the money has not been paid out yet.', '/expenses', $expenses->where('status', 'approved')->map($line));
         }
+        if ($user->allows('canPayConsultants')) {
+            $items[] = self::consultants();
+        }
+        if ($user->allows('wf:payroll:view')) {
+            $items = [...$items, ...self::payroll($user)];
+        }
 
         // The person's own attendance, where the hospital has people mark themselves in.
         if ($user->allows('wf:self:view') && (Settings::get('attendance')['self_check_in'] ?? false)) {
@@ -335,6 +432,62 @@ class ToDoList
 
         if ($user->role === Role::Admin && ($alert = DatabaseBackup::alert())) {
             $items[] = self::item('backup', 'Backups need attention', $alert, '/admin?tab=backups', [], true, 1);
+        }
+
+        return $items;
+    }
+
+    /**
+     * Consultants whose fees for one of the last few finished months are not all paid: one line for each doctor and
+     * month. The month still running is left out, as it is still being earned. Names and months only; what is owed is
+     * on the Consultants page. Working a month out takes many sums, so the answer is kept for up to an hour, and is
+     * worked out afresh as soon as a payment or a ward visit is written down, changed or taken back.
+     */
+    private static function consultants(): array
+    {
+        $latest = fn (string $model) => $model::query()->toBase()->selectRaw('max(id) as id, max(updated_at) as at')->first();
+        [$paid, $visit] = [$latest(ConsultantPayment::class), $latest(ConsultantVisit::class)];
+        $key = 'todo.consultants.'.today()->toDateString().".{$paid?->id}.{$visit?->id}.".md5($paid?->at.'|'.$visit?->at);
+
+        $rows = Cache::remember($key, now()->addHour(), fn () => collect(range(self::CONSULTANT_MONTHS, 1))->flatMap(function (int $back) {
+            // From the first of the month, so the 31st never slips a month.
+            $month = today()->startOfMonth()->subMonths($back);
+
+            return ConsultantFees::month($month->format('Y-m'))->filter(fn (array $r) => $r['due'] >= 0.01)->map(fn (array $r) => [
+                'text' => $r['doctor'],
+                'detail' => $month->format('F Y').' · '.($r['paid'] > 0 ? 'part paid' : 'nothing paid yet').($r['visits'] > 0 ? ' · '.$r['visits'].($r['visits'] === 1 ? ' ward visit' : ' ward visits') : ''),
+                'to' => '/workforce/consultants?month='.$month->format('Y-m'),
+            ]);
+        })->values()->all());
+
+        return self::item('consultants', 'Consultants to pay', 'Their share of their own cases and their ward visit fees for a finished month, not all paid yet. The amounts are on the Consultants page.',
+            $rows[0]['to'] ?? '/workforce/consultants', $rows);
+    }
+
+    /**
+     * Payroll runs waiting at the step this person takes them through, and finalised payrolls whose salaries are not
+     * yet written down as paid. Counts and names only: what anyone is paid stays on the payroll page.
+     */
+    private static function payroll(User $user): array
+    {
+        // Each step, the permission it needs, and how it is put.
+        $steps = array_filter(['draft' => ['wf:payroll:edit', 'to check'], 'reviewed' => ['wf:payroll:approve', 'to approve'], 'approved' => ['wf:payroll:finalise', 'to finalise']], fn (array $step) => $user->allows($step[0]));
+        $runs = $steps === [] ? collect() : PayrollRun::query()->select(['id', 'period', 'label', 'status', 'created_by', 'reviewed_by'])->withCount('payslips')
+            ->whereIn('status', array_keys($steps))->orderBy('period')->orderBy('id')->get()
+            // As the payroll page has it: approved by someone other than whoever prepared or reviewed it, unless an admin.
+            ->reject(fn (PayrollRun $r) => $r->status === 'reviewed' && $user->role !== Role::Admin && in_array((int) $user->id, [(int) $r->created_by, (int) $r->reviewed_by], true));
+        $name = fn (PayrollRun $r) => Period::name($r->period).' payroll'.($r->label ? ' · '.$r->label : '');
+        $items = [self::item('payroll', 'Payroll waiting for you', 'At the step you take it through: a draft to check, a reviewed one to approve, an approved one to finalise.', '/workforce/payroll',
+            $runs->map(fn (PayrollRun $r) => ['text' => $name($r), 'detail' => $r->payslips_count.' staff · '.$steps[$r->status][1], 'to' => '/workforce/payroll?run='.$r->id]))];
+
+        if ($user->allows('wf:payroll:approve')) {
+            // A payslip held back on purpose is not waiting to be paid; only those still marked unpaid are.
+            $unpaid = Payslip::query()->where('payment_status', 'unpaid')->whereNotNull('live_period')->whereHas('run', fn ($q) => $q->whereIn('status', ['finalised', 'paid']))
+                ->selectRaw('run_id, count(*) as slips')->groupBy('run_id')->pluck('slips', 'run_id');
+            $items[] = self::item('salaries_unpaid', 'Salaries not marked paid', 'The payroll is finalised. Write each payslip down as paid once the money has gone.', '/workforce/payroll',
+                PayrollRun::query()->whereIn('id', $unpaid->keys())->orderBy('period')->orderBy('id')->get(['id', 'period', 'label'])->map(fn (PayrollRun $r) => [
+                    'text' => $name($r), 'detail' => $unpaid[$r->id].((int) $unpaid[$r->id] === 1 ? ' payslip' : ' payslips').' not marked paid', 'to' => '/workforce/payroll?run='.$r->id,
+                ]), false, (int) $unpaid->sum());
         }
 
         return $items;
