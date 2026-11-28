@@ -8,6 +8,7 @@ export function DoctorTabs() {
         Queue
       </NavLink>
       <NavLink to="/doctor/consults">Consults</NavLink>
+      <NavLink to="/doctor/results">Results</NavLink>
       <NavLink to="/patients">Patients</NavLink>
       <NavLink to="/doctor/library">My library</NavLink>
       <NavLink to="/reps">Medical reps</NavLink>

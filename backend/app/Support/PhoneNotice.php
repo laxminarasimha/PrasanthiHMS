@@ -3,6 +3,8 @@
 namespace App\Support;
 
 use App\Models\Appointment;
+use App\Models\LabOrder;
+use App\Models\LabResult;
 use App\Models\PushSubscription;
 use App\Models\User;
 use Illuminate\Support\Carbon;
@@ -74,6 +76,29 @@ final class PhoneNotice
             'url' => '/doctor',
             'tag' => 'appointment-'.$appointment->id,
             'kind' => 'appointment',
+        ]);
+    }
+
+    /**
+     * A doctor is told when the results they asked for are ready to read: the patient, the tests, and how many
+     * values are outside their normal range. No values travel in the notice itself.
+     */
+    public static function resultsReady(LabOrder $order, int $doctorId): void
+    {
+        $items = $order->items()->whereNotNull('reported_at')->get(['id', 'test_name']);
+        $tests = $items->pluck('test_name')->unique()->values();
+        $abnormal = LabResult::whereIn('lab_order_item_id', $items->pluck('id'))->whereIn('flag', ['high', 'low'])->count();
+        $words = [$order->patient?->name ?? 'A patient', $tests->take(3)->implode(', ').($tests->count() > 3 ? ' and '.($tests->count() - 3).' more' : '')];
+        if ($abnormal > 0) {
+            $words[] = $abnormal.' outside the normal range';
+        }
+
+        self::later($doctorId, [
+            'title' => 'Lab results ready',
+            'body' => implode(' · ', $words),
+            'url' => '/doctor/results',
+            'tag' => 'lab-'.$order->id,
+            'kind' => 'lab',
         ]);
     }
 

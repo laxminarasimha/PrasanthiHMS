@@ -46,6 +46,7 @@ function page<M extends Record<K, ComponentType>, K extends string>(load: () => 
 const BillPrint = page(() => import('./pages/BillPrint'), 'BillPrint')
 const DayBillsPrint = page(() => import('./pages/DayBillsPrint'), 'DayBillsPrint')
 const DoctorConsults = page(() => import('./pages/DoctorConsults'), 'DoctorConsults')
+const DoctorResults = page(() => import('./pages/DoctorResults'), 'DoctorResults')
 const DoctorLibrary = page(() => import('./pages/DoctorLibrary'), 'DoctorLibrary')
 const DoctorQueue = page(() => import('./pages/DoctorQueue'), 'DoctorQueue')
 const Calendar = page(() => import('./pages/Calendar'), 'Calendar')
@@ -198,6 +199,7 @@ export default function App() {
             <Route path="/front-desk/calendar" element={<Only when="can_front_desk"><Calendar /></Only>} />
             <Route path="/doctor" element={<Only when="can_consult"><DoctorQueue /></Only>} />
             <Route path="/doctor/consults" element={<Only when="can_consult"><DoctorConsults /></Only>} />
+            <Route path="/doctor/results" element={<Only when="can_consult"><DoctorResults /></Only>} />
             <Route path="/doctor/library" element={<Only when="can_consult"><DoctorLibrary /></Only>} />
             <Route path="/visits/:id" element={<Only when="can_consult"><VisitPad /></Only>} />
             <Route path="/lab" element={<Lab />} />

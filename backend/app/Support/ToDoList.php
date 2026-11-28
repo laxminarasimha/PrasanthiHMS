@@ -113,6 +113,12 @@ class ToDoList
 
         // Medical representatives who have come to meet this doctor today and are still waiting.
         $reps = RepVisit::where('doctor_id', $user->id)->where('status', 'waiting')->whereDate('arrived_at', today())->with(['rep:id,rep_company_id,name', 'rep.company:id,name'])->orderBy('arrived_at')->get();
+        $ready = LabOrder::unseenBy($user->id)->where('ready_at', '>=', today()->subDays(self::DAYS))->with(['patient:id,uhid,title,name', 'items:id,lab_order_id,test_name,reported_at', 'items.results:id,lab_order_item_id,flag'])->latest('ready_at')->get();
+        $outside = fn (LabOrder $o) => $o->items->flatMap->results->whereIn('flag', ['high', 'low'])->count();
+        $items[] = self::item('results_ready', 'Lab results ready to see', 'The tests you asked for are back. Open the report; it leaves this list once you have looked.', '/doctor/results',
+            $ready->map(fn (LabOrder $o) => ['text' => self::who($o->patient), 'to' => '/doctor/results',
+                'detail' => $o->items->whereNotNull('reported_at')->pluck('test_name')->unique()->take(4)->implode(', ').($outside($o) ? ' · '.$outside($o).' outside the normal range' : '').' · '.$o->ready_at->format('j M, g:i A')]),
+            $ready->contains(fn (LabOrder $o) => $outside($o) > 0));
         $items[] = self::item('reps', 'Medical representatives waiting', 'They are logged at the desk; see them when you are free, or ask them to come another day.', '/reps',
             $reps->map(fn (RepVisit $v) => ['text' => $v->rep->name.' · '.$v->rep->company->name, 'detail' => 'Came at '.$v->arrived_at->format('g:i A'), 'to' => '/reps']));
 

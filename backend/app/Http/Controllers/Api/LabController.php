@@ -591,6 +591,8 @@ class LabController extends Controller
             }
         }
         $item->save();
+        // A test now done outside no longer holds back the results that are finished here.
+        $order->markReady($request->user()->id);
 
         return response()->json($this->present($order));
     }
@@ -652,8 +654,21 @@ class LabController extends Controller
             $item->save();
             $order->refreshStatus();
         });
+        $order->markReady($request->user()->id);
 
         return response()->json($this->present($order));
+    }
+
+    /** The doctor has looked at the results that were ready for them. */
+    public function seen(Request $request, LabOrder $order): JsonResponse
+    {
+        abort_unless($order->ready_at && (int) $order->ready_for === $request->user()->id, 403, 'These results were not sent to you.');
+        if (! $order->seen_at) {
+            $order->forceFill(['seen_at' => now()])->saveQuietly();
+            AuditLog::record('lab.results_seen', $order->patient_id, $order, "{$order->order_no} · results seen by the doctor");
+        }
+
+        return response()->json(null, 204);
     }
 
     /** A second person signs off a reported result, or withdraws that sign-off. */
@@ -669,6 +684,7 @@ class LabController extends Controller
 
         $item->update(['approved_at' => $approved ? now() : null, 'approved_by' => $approved ? $request->user()->id : null]);
         AuditLog::record($approved ? 'lab.approved' : 'lab.unapproved', $order->patient_id, $order, "{$order->order_no} · ".$this->withVersion($item));
+        $order->markReady($request->user()->id);
 
         return response()->json($this->present($order));
     }
@@ -698,6 +714,7 @@ class LabController extends Controller
         $approved = (clone $waiting)->get(['test_name', 'repeat_no', 'template_version'])->map(fn (LabOrderItem $i) => $this->withVersion($i))->implode(', ');
         $waiting->update(['approved_at' => now(), 'approved_by' => $request->user()->id]);
         AuditLog::record('lab.approved', $order->patient_id, $order, "{$order->order_no} · {$approved}");
+        $order->markReady($request->user()->id);
 
         return response()->json($this->present($order));
     }
