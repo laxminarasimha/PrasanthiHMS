@@ -1,7 +1,7 @@
 import { MedicineChoose } from '../../components/MedicineChoose'
 import { NewMedicine } from '../../components/NewMedicine'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
 import { useAuth } from '../../auth'
 import { PharmacyTabs } from '../../components/PharmacyTabs'
@@ -13,6 +13,22 @@ type Line = { medicine_id: string; units_per_pack: string; packs: string }
 const emptyLine = (): Line => ({ medicine_id: '', units_per_pack: '', packs: '' })
 const STATUS = { draft: 'Draft, to be approved', open: 'Ordered', received: 'Received', cancelled: 'Cancelled' } as const
 const STATUS_CLASS = { draft: 'warn', open: 'status-arrived', received: 'ok', cancelled: 'off' } as const
+
+type MatchLine = NonNullable<PurchaseOrder['match']>['lines'][number]
+/**
+ * A line of the order against what came, as the server matched it: in units, as a stockist may send another pack
+ * size. Told in the order's packs while every pack that came is of the order's size, else in units.
+ */
+function orderStanding(l: MatchLine) {
+  const perPack = Math.max(1, l.units_per_pack ?? 1)
+  const ordered = l.ordered_units ?? l.ordered * perPack
+  const received = l.received_units ?? l.received * perPack
+  const mixed = received !== l.received * perPack
+  const gap = Math.abs(ordered - received)
+  const n = mixed ? gap : gap / perPack
+  const what = mixed ? `${n} ${n === 1 ? 'unit' : 'units'}` : String(n)
+  return { mixed, ordered, received, said: l.state === 'short' ? `${what} short` : `${what} more than ordered` }
+}
 
 /** Orders placed with stockists. An order is a request only; stock arrives through a purchase invoice. */
 export function PharmacyPurchaseOrders() {
@@ -293,25 +309,32 @@ export function PharmacyPurchaseOrders() {
                       </tr>
                     </thead>
                     <tbody>
-                      {viewing.match.lines.map((l) => (
-                        <tr key={l.medicine_id} className="static">
-                          <td>{l.medicine_name}</td>
-                          <td className="num">{l.ordered}</td>
-                          <td className="num">{l.received}</td>
-                          <td className="num">{l.free || '—'}</td>
-                          <td>
-                            {l.state === 'full' ? (
-                              <span className="pill ok">In full</span>
-                            ) : l.state === 'none' ? (
-                              <span className="pill off">Not received</span>
-                            ) : l.state === 'short' ? (
-                              <span className="pill warn">{l.ordered - l.received} short</span>
-                            ) : (
-                              <span className="pill warn">{l.received - l.ordered} more than ordered</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                      {viewing.match.lines.map((l) => {
+                        const s = orderStanding(l)
+                        return (
+                          <tr key={l.medicine_id} className="static">
+                            <td>{l.medicine_name}</td>
+                            <td className="num">
+                              {l.ordered}
+                              {s.mixed && <small className="muted block">{s.ordered} units</small>}
+                            </td>
+                            <td className="num">
+                              {l.received}
+                              {s.mixed && <small className="muted block">{s.received} units, in another pack size</small>}
+                            </td>
+                            <td className="num">{l.free || '—'}</td>
+                            <td>
+                              {l.state === 'full' ? (
+                                <span className="pill ok">In full</span>
+                              ) : l.state === 'none' ? (
+                                <span className="pill off">Not received</span>
+                              ) : (
+                                <span className="pill warn">{s.said}</span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
                       {viewing.match.extras.map((x) => (
                         <tr key={x.medicine_name} className="static">
                           <td>{x.medicine_name}</td>
@@ -332,7 +355,7 @@ export function PharmacyPurchaseOrders() {
               {viewError && <p className="form-error">{viewError}</p>}
               {canEdit && viewing.status === 'draft' && (
                 <>
-                  <p className="muted small no-print">This order was suggested from stock levels and sales. Correct the packs if needed (0 drops a line), then approve it. Nothing has been ordered yet.</p>
+                  <p className="muted small no-print">This is a draft: nothing has been ordered yet. Correct the packs if needed (0 drops a line), then approve it.</p>
                   <div className="panel-foot row no-print">
                     <button className="btn ghost" onClick={() => setStatus('cancelled')}>
                       Drop this order
@@ -348,12 +371,20 @@ export function PharmacyPurchaseOrders() {
                   <button className="btn ghost" onClick={() => setStatus('cancelled')}>
                     Cancel order
                   </button>
-                  <button className="btn primary" onClick={() => setStatus('received')}>
+                  <button className="btn ghost" onClick={() => setStatus('received')}>
                     Mark received
                   </button>
+                  <Link className="btn primary" to={`/pharmacy/purchases?order=${viewing.id}`}>
+                    Enter the stockist’s invoice
+                  </Link>
                 </div>
               )}
-              {viewing.status === 'open' && <p className="muted small no-print">Stock comes in through the stockist's invoice: under Invoices, choose this order in "Against purchase order". The order closes by itself once every line has come in full; mark it received here only to close it short.</p>}
+              {viewing.status === 'open' &&
+                (canEdit ? (
+                  <p className="muted small no-print">Stock comes in through the stockist’s invoice: “Enter the stockist’s invoice” opens a new one with what is still to come on this order filled in. The order closes by itself once every line has come in full; mark it received here only to close it short.</p>
+                ) : (
+                  <p className="muted small no-print">Stock comes in through the stockist's invoice: under Invoices, choose this order in "Against purchase order". The order closes by itself once every line has come in full; mark it received here only to close it short.</p>
+                ))}
             </aside>
           )}
         </div>

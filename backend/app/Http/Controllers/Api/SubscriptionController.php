@@ -11,8 +11,10 @@ use Illuminate\Validation\ValidationException;
 /** The pharmacy's side of monthly medicine lists that patients keep in the mobile app. */
 class SubscriptionController extends Controller
 {
+    /** The lists to make up, for those who run the pharmacy or may look at it. */
     public function index(Request $request): JsonResponse
     {
+        abort_unless($request->user()->mayInPharmacy($request), 403, 'You are not allowed to see the pharmacy’s monthly medicine lists.');
         $filter = $request->validate(['show' => ['nullable', 'in:due,active,paused,all']])['show'] ?? 'due';
 
         $query = MedicineSubscription::with(['patient:id,uhid,title,name,mobile,gender,date_of_birth', 'preparer:id,name'])

@@ -73,6 +73,19 @@ final class ConsultantFees
     }
 
     /**
+     * The first and the last moment of a month ("2026-11"). The month's figures and the lists behind them use the
+     * same two, so a list always covers exactly the money its figure counts.
+     *
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    public static function span(string $month): array
+    {
+        $from = Carbon::parse($month.'-01')->startOfMonth();
+
+        return [$from, $from->copy()->endOfMonth()];
+    }
+
+    /**
      * A month for every doctor with anything in it: their share of what was collected on their own cases, their
      * visit fees, what was paid to them for the month, and what is still due.
      *
@@ -80,8 +93,7 @@ final class ConsultantFees
      */
     public static function month(string $month): Collection
     {
-        $from = Carbon::parse($month.'-01')->startOfMonth();
-        $to = $from->copy()->endOfMonth();
+        [$from, $to] = self::span($month);
         $collected = DoctorMoney::between($from, $to)->where('doctor_id', '>', 0)->keyBy('doctor_id');
         $visits = ConsultantVisit::standing()->whereBetween('visited_on', [$from->toDateString(), $to->toDateString()])->get()->groupBy('doctor_id');
         $paid = ConsultantPayment::standing()->where('for_month', $month)->get()->groupBy('doctor_id');
@@ -93,7 +105,8 @@ final class ConsultantFees
             foreach (DoctorMoney::COUNTERS as $key => $label) {
                 $percent = $doctor->{"share_{$key}"};
                 $amount = (float) ($row["{$key}_collected"] ?? 0);
-                $shares[] = ['counter' => $label, 'collected' => round($amount, 2), 'percent' => $percent === null ? null : (float) $percent, 'share' => round($amount * (float) $percent / 100, 2)];
+                // The key is how the screen asks for the payments behind this figure.
+                $shares[] = ['key' => $key, 'counter' => $label, 'collected' => round($amount, 2), 'percent' => $percent === null ? null : (float) $percent, 'share' => round($amount * (float) $percent / 100, 2)];
             }
             $mine = $visits->get($doctor->id) ?? collect();
             $share = round(array_sum(array_column($shares, 'share')), 2);

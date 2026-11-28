@@ -5,6 +5,7 @@ import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { clock, today } from '../../format'
 import type { PrescriptionOrder } from '../../types'
 import { PatientLink } from '../../components/PatientLink'
+import { BillLink } from '../../components/RecordLinks'
 
 /** The day's prescriptions from the doctors, so the pharmacy can see who is coming and who has been served. */
 export function PharmacyOrders() {
@@ -64,7 +65,19 @@ export function PharmacyOrders() {
                       </div>
                     ))}
                   </td>
-                  <td>{o.bill ? <span className="pill ok">Billed {o.bill.bill_no}</span> : <span className="pill status-arrived">Waiting</span>}</td>
+                  <td>
+                    {o.bill ? (
+                      // Filled: the bill was made from this prescription. Billed since: a bill for the patient made after it.
+                      <span className="pill ok">
+                        {o.filled ? 'Filled' : 'Billed since'} ·{' '}
+                        <BillLink id={o.bill.id} pharmacy>
+                          {o.bill.bill_no}
+                        </BillLink>
+                      </span>
+                    ) : (
+                      <span className="pill status-arrived">Waiting</span>
+                    )}
+                  </td>
                   <td className="num">
                     {o.bill ? (
                       <a className="btn ghost" href={`/pharmacy/bills/${o.bill.id}/print`} target="_blank" rel="noreferrer">

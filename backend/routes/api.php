@@ -120,9 +120,11 @@ Route::prefix('reader')->middleware('throttle:240,1,reader')->controller(RecordR
 });
 
 Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money'])->group(function () {
-    Route::middleware('ability:canRunPharmacy')->controller(SubscriptionController::class)->group(function () {
+    // Monthly medicine lists: anyone who may look at the pharmacy reads them (the controller checks); marking a pack
+    // as made is for those who run the pharmacy.
+    Route::controller(SubscriptionController::class)->group(function () {
         Route::get('/pharmacy/subscriptions', 'index');
-        Route::post('/pharmacy/subscriptions/{subscription}/prepared', 'prepared');
+        Route::post('/pharmacy/subscriptions/{subscription}/prepared', 'prepared')->middleware('ability:canRunPharmacy');
     });
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/logout', [AuthController::class, 'logout']);
@@ -148,6 +150,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
         Route::put('/people/{rep}', 'updateRep');
         Route::get('/companies', 'companies');
         Route::put('/companies/{company}', 'updateCompany');
+        Route::put('/companies/{company}/stockist', 'setStockist');
         Route::post('/companies/{company}/files', 'storeFile');
         Route::get('/files/{file}/download', 'downloadFile');
         Route::delete('/files/{file}', 'removeFile');
@@ -625,6 +628,8 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
             Route::get('/', 'month');
             Route::put('/rates', 'saveRates');
             Route::get('/{doctor}', 'statement')->whereNumber('doctor');
+            // The payments behind one counter's figure on the statement.
+            Route::get('/{doctor}/collected', 'collected')->whereNumber('doctor');
             Route::post('/{doctor}/payments', 'pay')->whereNumber('doctor');
             Route::post('/payments/{payment}/cancel', 'cancelPayment')->whereNumber('payment');
         });

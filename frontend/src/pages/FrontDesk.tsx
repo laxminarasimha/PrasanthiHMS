@@ -13,6 +13,7 @@ import { STATUS_LABELS, clock, longDate, rupees, settlement, stampTime, today } 
 import type { Appointment, AppointmentStatus, Doctor, FollowUp, LabCatalogueTest, LabPackage, Patient, Service, WalkInBill, NotReturned } from '../types'
 import { PatientLink } from '../components/PatientLink'
 import { DoctorLink } from '../components/DoctorLink'
+import { FromApp } from '../components/FromApp'
 
 type DayList = { data: Appointment[]; counts: Partial<Record<AppointmentStatus, number>> }
 type Department = 'all' | 'appointment' | 'lab' | 'other'
@@ -313,6 +314,7 @@ export function FrontDesk() {
                     <td className="mono">
                       {clock(a.scheduled_at)}
                       {a.token_no && <small className="muted block">Token {a.token_no}</small>}
+                      <FromApp via={a.booked_via} block />
                       {isToday && a.status === 'arrived' && waited(a.arrived_at) && <small className="waiting block">Waiting {waited(a.arrived_at)}</small>}
                     </td>
                     <td className="status-cell">

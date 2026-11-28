@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\Role;
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\MedicalRep;
 use App\Models\MedicineDefault;
 use App\Models\RepCompany;
@@ -331,9 +332,26 @@ class MedicalRepController extends Controller
         $this->reader($request);
 
         return response()->json(
-            RepCompany::withCount('reps')->with(['reps:id,rep_company_id,name,mobile,division,is_active', 'files.uploader:id,name'])
+            RepCompany::withCount('reps')->with(['reps:id,rep_company_id,name,mobile,division,is_active', 'files.uploader:id,name', 'stockist:id,name'])
                 ->withMax('visits as last_visit_at', 'arrived_at')->orderBy('name')->get()
         );
+    }
+
+    /**
+     * Which stockist supplies a company's brands, so a brand ordered from its catalogue goes to them. One for each
+     * company, chosen by those who run the pharmacy; the desk's own changes to the company never touch it.
+     */
+    public function setStockist(Request $request, RepCompany $company): JsonResponse
+    {
+        abort_unless($request->user()->mayInPharmacy($request), 403, 'Those who run the pharmacy choose which stockist supplies a company’s brands.');
+        $data = $request->validate(['stockist_id' => ['present', 'nullable', 'integer', Rule::exists('stockists', 'id')]], ['stockist_id.exists' => 'Choose a stockist from the list.']);
+
+        $before = $company->stockist()->value('name');
+        $company->update(['stockist_id' => $data['stockist_id']]);
+        $after = $company->stockist()->value('name');
+        AuditLog::record('change', null, $company, "{$company->name} · supplied through ".($before ?? 'no stockist').' → '.($after ?? 'no stockist'));
+
+        return response()->json($company->load('stockist:id,name'));
     }
 
     public function updateCompany(Request $request, RepCompany $company): JsonResponse

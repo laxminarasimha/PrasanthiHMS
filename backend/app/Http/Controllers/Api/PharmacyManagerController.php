@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Medicine;
 use App\Models\PurchaseOrder;
+use App\Models\RepProduct;
 use App\Models\StockCount;
 use App\Models\Stockist;
 use App\Support\PharmacyDesk;
@@ -14,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 /** The pharmacy manager's daily screen: what to order, what expires, what is owed, and what does not match. */
 class PharmacyManagerController extends Controller
@@ -85,27 +87,59 @@ class PharmacyManagerController extends Controller
     /**
      * Turns the chosen suggestions into purchase orders, one for each supplier. They are made as
      * drafts: nothing is ordered until someone approves the order.
+     *
+     * A line may name a brand from a company's catalogue instead of a medicine. It is ordered as the pharmacy's own
+     * medicine of that name, from the supplier chosen on the line or else the stockist set for the company. The
+     * pharmacy's medicines are only read here, never made or changed.
      */
     public function makeOrders(Request $request): JsonResponse
     {
         $this->guard($request);
         $data = $request->validate([
             'lines' => ['required', 'array', 'min:1', 'max:500'],
-            'lines.*.medicine_id' => ['required', 'integer', 'distinct', 'exists:medicines,id'],
-            'lines.*.stockist_id' => ['required', 'integer', 'exists:stockists,id'],
+            'lines.*.medicine_id' => ['required_without:lines.*.rep_product_id', 'nullable', 'integer', 'distinct', 'exists:medicines,id'],
+            'lines.*.rep_product_id' => ['nullable', 'integer', 'exists:rep_products,id', 'prohibits:lines.*.medicine_id'],
+            'lines.*.stockist_id' => ['required_without:lines.*.rep_product_id', 'nullable', 'integer', 'exists:stockists,id'],
             'lines.*.packs' => ['required', 'integer', 'min:1', 'max:100000'],
-            // Where the order was put together, for the note on the order: the reorder list or the options list.
-            'from' => ['sometimes', Rule::in(['reorder', 'options'])],
-        ], ['lines.required' => 'Tick at least one medicine.', 'lines.*.stockist_id.required' => 'Choose a supplier for every ticked medicine.']);
+            // Where the order was put together, for the note on the order: the reorder list, the options list or the catalogues.
+            'from' => ['sometimes', Rule::in(['reorder', 'options', 'catalogue'])],
+        ], [
+            'lines.required' => 'Tick at least one medicine.',
+            'lines.*.medicine_id.required_without' => 'Every line needs its medicine, or a brand from a catalogue.',
+            'lines.*.stockist_id.required_without' => 'Choose a supplier for every ticked medicine.',
+            'lines.*.rep_product_id.prohibits' => 'A line orders either a medicine or a brand from a catalogue, not both.',
+            // A brand taken out of the catalogue, perhaps on another screen, after it was chosen.
+            'lines.*.rep_product_id.exists' => 'That brand is no longer in the catalogue.',
+            'lines.*.stockist_id.exists' => 'That supplier is not in the list of stockists. Choose another.',
+        ]);
+        $from = $data['from'] ?? 'reorder';
+        $wanted = $this->resolveLines($data['lines']);
 
-        $medicines = Medicine::whereIn('id', array_column($data['lines'], 'medicine_id'))->get(['id', 'name', 'units_per_pack'])->keyBy('id');
-        $stockists = Stockist::whereIn('id', array_column($data['lines'], 'stockist_id'))->get(['id', 'name', 'lead_days'])->keyBy('id');
+        $medicines = Medicine::whereIn('id', array_column($wanted, 'medicine_id'))->get(['id', 'name', 'units_per_pack'])->keyBy('id');
+        $stockists = Stockist::whereIn('id', array_column($wanted, 'stockist_id'))->get(['id', 'name', 'lead_days'])->keyBy('id');
+        $seen = [];
+        foreach ($wanted as $index => $line) {
+            // An order has one line for each medicine, as its invoices are matched against it.
+            if (isset($seen[$line['medicine_id']])) {
+                throw ValidationException::withMessages(["lines.{$index}.".($line['brand'] ? 'rep_product_id' : 'medicine_id') => "{$medicines[$line['medicine_id']]->name} is chosen twice. Order it once."]);
+            }
+            $seen[$line['medicine_id']] = true;
+            if (! $stockists->has($line['stockist_id'])) {
+                throw ValidationException::withMessages(["lines.{$index}.stockist_id" => 'Choose a supplier for '.($line['brand'] ?? $medicines[$line['medicine_id']]->name).'.']);
+            }
+        }
 
-        $orders = DB::transaction(fn () => collect($data['lines'])->groupBy('stockist_id')->map(function ($lines, $stockistId) use ($medicines, $stockists, $request, $data) {
+        $orders = DB::transaction(fn () => collect($wanted)->groupBy('stockist_id')->map(function ($lines, $stockistId) use ($medicines, $stockists, $request, $from) {
+            $companies = $lines->pluck('company')->filter()->unique()->implode(', ');
             $order = PurchaseOrder::create([
                 'stockist_id' => $stockistId, 'order_date' => today()->toDateString(), 'status' => 'draft',
                 'expected_on' => today()->addDays((int) $stockists[$stockistId]->lead_days)->toDateString(),
-                'remarks' => ($data['from'] ?? 'reorder') === 'options' ? 'Chosen from the options list' : 'Suggested from stock levels and recent sales', 'created_by' => $request->user()->id,
+                'remarks' => mb_substr(match ($from) {
+                    'options' => 'Chosen from the options list',
+                    'catalogue' => $companies !== '' ? "Chosen from the catalogue of {$companies}" : 'Chosen from the companies’ catalogues',
+                    default => 'Suggested from stock levels and recent sales',
+                }, 0, 500),
+                'created_by' => $request->user()->id,
             ]);
             foreach ($lines as $line) {
                 $medicine = $medicines[$line['medicine_id']];
@@ -115,9 +149,50 @@ class PharmacyManagerController extends Controller
             return ['id' => $order->id, 'order_no' => $order->fresh()->order_no, 'stockist' => $stockists[$stockistId]->name, 'items' => count($lines)];
         })->values());
 
-        AuditLog::record('change', null, null, 'Made draft purchase orders from the reorder list · '.$orders->map(fn ($o) => "{$o['order_no']} to {$o['stockist']} ({$o['items']} ".($o['items'] === 1 ? 'medicine' : 'medicines').')')->implode(', '));
+        $source = ['options' => 'the options list', 'catalogue' => 'the companies’ catalogues'][$from] ?? 'the reorder list';
+        AuditLog::record('change', null, null, "Made draft purchase orders from {$source} · ".$orders->map(fn ($o) => "{$o['order_no']} to {$o['stockist']} ({$o['items']} ".($o['items'] === 1 ? 'medicine' : 'medicines').')')->implode(', '));
 
         return response()->json(['orders' => $orders], 201);
+    }
+
+    /**
+     * Each line as a medicine and a supplier. A line naming a catalogue brand takes the pharmacy's medicine it is
+     * linked to by name, and the supplier chosen on the line or else its company's stockist. A brand the pharmacy
+     * does not keep under that name, one whose medicine is not in use, or one with no supplier, is refused, saying why.
+     *
+     * @param  array<int|string, array<string, mixed>>  $lines
+     * @return array<int|string, array{medicine_id: int, stockist_id: int, packs: int, brand: ?string, company: ?string}>
+     */
+    private function resolveLines(array $lines): array
+    {
+        $brands = RepProduct::with(['company:id,name,stockist_id', 'medicine:id,name,is_active'])
+            ->whereIn('id', array_filter(array_column($lines, 'rep_product_id')))->get()->keyBy('id');
+        // Validated lines come back in the order their fields were checked; taken in the order they were sent, a message names the right line.
+        ksort($lines);
+
+        $wanted = [];
+        foreach ($lines as $index => $line) {
+            $brand = empty($line['rep_product_id']) ? null : $brands->get($line['rep_product_id']);
+            if (! empty($line['rep_product_id']) && ! $brand) {
+                throw ValidationException::withMessages(["lines.{$index}.rep_product_id" => 'That brand is no longer in the catalogue.']);
+            }
+            if ($brand && ! $brand->medicine) {
+                throw ValidationException::withMessages(["lines.{$index}.rep_product_id" => "{$brand->name} is not in the pharmacy’s medicines under this name, so it cannot be ordered here."]);
+            }
+            if ($brand && ! $brand->medicine->is_active) {
+                throw ValidationException::withMessages(["lines.{$index}.rep_product_id" => "{$brand->medicine->name} is marked as not in use in the pharmacy, so it cannot be ordered."]);
+            }
+            $stockistId = $line['stockist_id'] ?? $brand?->company?->stockist_id;
+            if (! $stockistId) {
+                throw ValidationException::withMessages(["lines.{$index}.stockist_id" => 'Choose a supplier for '.($brand ? "{$brand->name}: ".($brand->company?->name ?? 'its company').' has no stockist set.' : 'every ticked medicine.')]);
+            }
+            $wanted[$index] = [
+                'medicine_id' => (int) ($brand ? $brand->medicine_id : $line['medicine_id']), 'stockist_id' => (int) $stockistId, 'packs' => (int) $line['packs'],
+                'brand' => $brand?->name, 'company' => $brand?->company?->name,
+            ];
+        }
+
+        return $wanted;
     }
 
     public function statement(Request $request, Stockist $stockist): JsonResponse

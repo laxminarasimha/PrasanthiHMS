@@ -535,6 +535,12 @@ input.result.low { border-color: var(--info); color: var(--info); font-weight: 7
 .tabs.flush { margin-bottom: 0; }
 .check.flush { margin-top: 0; white-space: nowrap; }
 .medicine-search { position: relative; }
+/* Purchasing: an invoice line filled in from its order, a brand ordered from a company's catalogue, and the stockist on a company's card. */
+.purchase-line.from-order { border-color: var(--brand-line); }
+.from-order-note { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 8px; }
+.catalogue-order select { max-width: 200px; }
+.company-stockist { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 4px 0; font-size: 0.88rem; }
+.company-stockist select { flex: 1 1 160px; min-width: 0; max-width: 100%; }
 /* A whole-bill discount typed in rupees or as a percentage. */
 .bill-discount { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
 .bill-discount .tabs.mini { padding: 2px; }
@@ -658,6 +664,8 @@ h2.gap-top { margin-top: 20px; }
 .rx-card strong small { font-weight: 400; margin-top: 2px; }
 .rx-card ul { list-style: none; margin: 8px 0 0; padding: 0; }
 .rx-card li { display: flex; gap: 12px; align-items: center; padding: 5px 0; border-top: 1px solid var(--border); }
+/* A row whose medicine is on the bill some other way: go to its line, or add its count on purpose. */
+.rx-row-acts { display: flex; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
 
 /* Visit pad sections matched to the reference layout */
 .allergy input { border-color: var(--border); }
@@ -1008,6 +1016,12 @@ td.advice { white-space: normal; min-width: 120px; }
 .advice-chip.next { color: var(--warn); background: var(--accent-soft); border-color: var(--accent-line); }
 .advice-chip.admit { color: var(--danger); background: var(--danger-soft); border-color: var(--danger-line); }
 .advice-chip.refer { color: var(--muted); background: var(--bg); border-color: var(--border); cursor: default; }
+/* A visit the patient booked on the patient app: a small mark, not a button. */
+.app-tag { display: inline-block; padding: 0 6px; border: 1px solid var(--brand-line); border-radius: 5px; background: var(--brand-soft); color: var(--brand); font-size: 0.72rem; font-weight: 700; line-height: 1.5; white-space: nowrap; cursor: default; }
+.app-tag.block { display: block; width: max-content; margin-top: 2px; }
+.tile .app-tag { color: var(--brand); font-size: 0.72rem; }
+.cal-chip .app-tag { padding: 0 4px; margin-right: 2px; font-size: 0.68rem; line-height: 1.35; }
+.legend .app-key { display: inline-block; font-size: 0.84rem; margin: 8px 4px 0 0; }
 .btn .count { display: inline-block; min-width: 1.5em; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 0.8rem; text-align: center; }
 .menu > button:disabled { color: var(--muted); cursor: default; }
 .menu > button:disabled:hover { background: none; }
@@ -1618,6 +1632,8 @@ small.soon { color: var(--warn); font-weight: 600; }
 .option-order input { width: 84px; }
 .option-row { grid-template-columns: minmax(220px, 1.2fr) 190px minmax(0, 2fr); }
 .order-bar { position: sticky; bottom: 12px; z-index: 5; margin-top: 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px; background: var(--surface); border: 1px solid var(--brand-line); border-radius: 12px; box-shadow: 0 10px 28px var(--shadow); }
+/* The brands chosen scroll inside the bar, so a long order never covers the list it is chosen from. */
+.order-bar .plain-list { max-height: 30vh; overflow-y: auto; }
 @media (max-width: 900px) { .option-row { grid-template-columns: 1fr; } }
 
 /* ---- The prescription as a numbered list, in the order the doctor wants it read ---- */
@@ -2221,6 +2237,28 @@ tr.cancelled td { color: var(--muted); }
 
 /* A doctor's own consultation fee, on their settings. */
 .doctor-fee { margin-bottom: 16px; }
+/* A consultant's month: the payments behind a Collected figure, opened under the table of their own cases. */
+.collected-list { padding: 12px 14px; border: 1px solid var(--brand-line); border-radius: 12px; background: var(--surface-2); }
+.collected-list h4 { margin: 0 0 8px; font-size: 0.95rem; }
+.collected-list td.minus { color: var(--danger); }
+.collected-list td .pill { margin-top: 4px; }
+.collected-list .collected-total { margin: 8px 0 0; text-align: right; }
+.collected-list .money-by-mode h3 { font-size: 0.9rem; }
+.collected-list > p.muted { margin: 6px 0 0; }
+@media screen and (max-width: 640px) {
+  .collected-list { padding: 10px; }
+  .collected-table thead { display: none; }
+  .collected-table, .collected-table tbody { display: block; width: 100%; }
+  .collected-table tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) fit-content(45%); grid-template-areas: "who amount" "bill how" "when when"; gap: 2px 12px; padding: 10px 2px; border-bottom: 1px solid var(--border); }
+  .collected-table tbody td { display: block; min-width: 0; padding: 0; border: 0; text-align: left; white-space: normal; }
+  .collected-table tbody td:nth-child(1) { grid-area: when; }
+  .collected-table tbody td:nth-child(2) { grid-area: bill; }
+  .collected-table tbody td:nth-child(3) { grid-area: who; }
+  .collected-table tbody td:nth-child(4) { grid-area: how; text-align: right; }
+  .collected-table tbody td:nth-child(5) { grid-area: amount; text-align: right; }
+  .collected-table tbody tr.empty { display: block; }
+  .collected-table tbody tr.empty td { text-align: center; padding: 18px 0; }
+}
 /* A doctor's card: the day at a glance, then their inpatients and hours. */
 .doctor-card h3 { margin: 14px 0 4px; font-size: 0.95rem; }
 .doctor-card .tiles { margin: 8px 0 4px; }

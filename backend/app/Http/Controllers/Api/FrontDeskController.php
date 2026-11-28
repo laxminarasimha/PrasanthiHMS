@@ -17,6 +17,7 @@ use App\Models\PharmacySale;
 use App\Support\EarlierDay;
 use App\Support\FollowUps;
 use App\Support\MoneyFigures;
+use App\Support\PatientPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -175,7 +176,6 @@ class FrontDeskController extends Controller
         return response()->json($consultation->only(['id', 'weight_kg', 'height_cm', 'bp_systolic', 'bp_diastolic', 'pulse', 'temperature_f', 'spo2', 'resp_rate']));
     }
 
-    /** Everything the hospital holds on one patient, newest first. */
     /** Takes a deposit from a patient, or hands some of it back. */
     public function storeDeposit(Request $request, Patient $patient): JsonResponse
     {
@@ -206,24 +206,31 @@ class FrontDeskController extends Controller
         ], 201);
     }
 
-    public function overview(Patient $patient): JsonResponse
+    /**
+     * Everything the hospital holds on one patient, newest first. Discharge summaries, the medicines prescribed and
+     * the monthly medicine lists are added only for those whose work needs them (see PatientPage).
+     */
+    public function overview(Request $request, Patient $patient): JsonResponse
     {
         AuditLog::record('patient.opened', $patient->id, $patient);
         $bills = Bill::where('patient_id', $patient->id)->with('labOrder:id,bill_id,order_no')->withIpdTransfers()->latest()->limit(50)->get();
+        // Fetched once: the lists below are built from these, so nothing is asked for twice.
+        $visits = Appointment::where('patient_id', $patient->id)->with(['doctor:id,name', 'service:id,name', 'consultation:id,appointment_id,diagnosis,completed_at'])
+            ->latest('scheduled_at')->limit(50)->get();
+        $admissions = Admission::where('patient_id', $patient->id)->with(['doctor:id,name', 'bed:id,ward,bed_no'])->latest('admitted_at')->limit(20)->get();
 
         return response()->json([
             'patient' => $patient,
-            'visits' => Appointment::where('patient_id', $patient->id)->with(['doctor:id,name', 'service:id,name', 'consultation:id,appointment_id,diagnosis,completed_at'])
-                ->latest('scheduled_at')->limit(50)->get(),
+            'visits' => $visits,
             'bills' => $bills,
             'lab_orders' => LabOrder::where('patient_id', $patient->id)->with('items:id,lab_order_id,test_name,repeat_no,reported_at')->latest('ordered_at')->limit(30)->get(),
             'pharmacy_bills' => PharmacySale::where('patient_id', $patient->id)->whereNull('voided_at')->latest('sold_at')->limit(30)->get(),
-            'admissions' => Admission::where('patient_id', $patient->id)->with(['doctor:id,name', 'bed:id,ward,bed_no'])->latest('admitted_at')->limit(20)->get(),
+            'admissions' => $admissions,
             'attachments' => Attachment::where('patient_id', $patient->id)->whereNull('past_record_id')->with('uploader:id,name')->latest('document_date')->get(),
             'outstanding' => round($bills->sum('due'), 2),
             'deposit_balance' => PatientDeposit::balance($patient->id),
             'deposits' => PatientDeposit::where('patient_id', $patient->id)->with('receiver:id,name')->latest('id')->limit(50)->get(),
-        ]);
+        ] + PatientPage::sections($request->user(), $request, $patient->id, $visits, $admissions));
     }
 
     // ---- Attachments (reports and papers the patient brings) ----

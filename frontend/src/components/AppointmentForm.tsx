@@ -212,6 +212,7 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
         {errors.outside_hours && <OutsideHours message={errors.outside_hours} checked={anyway} onChange={setAnyway} />}
         <div className="span-2">
           <TextField label="Notes (optional)" value={notes} onChange={setNotes} error={errors.notes} />
+          <p className="muted small">This note shows in the patient app, to the patient and to any family member who has added them there.</p>
         </div>
       </div>
 

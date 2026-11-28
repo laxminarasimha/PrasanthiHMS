@@ -305,9 +305,12 @@ class PharmacyStockController extends Controller
         return response()->json(PurchaseOrder::with('stockist:id,name')->withCount('items')->latest('order_date')->latest('id')->limit(200)->get());
     }
 
-    public function showPurchaseOrder(PurchaseOrder $order): JsonResponse
+    /** One order, what has come against it, and what is still to come: with the rates last paid, so it is the pharmacy's to see. */
+    public function showPurchaseOrder(Request $request, PurchaseOrder $order): JsonResponse
     {
-        return response()->json($order->load(['stockist', 'items'])->toArray() + ['match' => OrderMatch::forOrder($order)]);
+        abort_unless($request->user()->mayInPharmacy($request), 403, 'You are not allowed to see the pharmacy’s orders.');
+
+        return response()->json($order->load(['stockist', 'items'])->toArray() + ['match' => OrderMatch::forOrder($order), 'still_to_come' => OrderMatch::stillToCome($order)]);
     }
 
     public function storePurchaseOrder(Request $request): JsonResponse

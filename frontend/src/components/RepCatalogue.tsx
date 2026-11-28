@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { parseCsv, rupees } from '../format'
 import { SelectField, TextField } from './Field'
+import { MedicineLink } from './MedicineLink'
 
 type Company = { id: number; name: string; products_count?: number }
 type Product = {
@@ -17,13 +19,20 @@ type Product = {
   notes: string | null
   uses?: string | null
   medicine_id: number | null
-  company?: { id: number; name: string }
+  /** The company, with the stockist its brands come through. */
+  company?: { id: number; name: string; stockist_id?: number | null; stockist?: { id: number; name: string } | null }
+  /** The pharmacy's own medicine of the same name: what an order of this brand is for. Whom it is usually bought from is told only to the pharmacy. */
+  medicine?: { id: number; name: string; units_per_pack: number; is_active: boolean; preferred_stockist_id?: number | null } | null
+  /** Units of that medicine on order and not in yet. Told only to the pharmacy. */
+  on_order?: number
   /** The pharmacy's own medicines that contain the same thing. */
   in_pharmacy: { name: string; on_shelf: number }[]
   /** The same thing in other companies' catalogues. */
   also_from: { id: number; name: string; company: string | null; mrp: number | null; rate: number | null; scheme: string | null }[]
 }
-type Answer = { can_change: boolean; companies: Company[]; products: Product[] }
+/** `can_order` is sent only to the pharmacy: true for those who run it, who may order a brand from here. */
+type Answer = { can_change: boolean; can_order?: boolean; companies: Company[]; products: Product[] }
+type Made = { id: number; order_no: string; stockist: string; items: number }
 type SheetRow = { line: number; name: string; composition: string | null; mrp: number | null; rate: number | null; scheme: string | null; errors: string[]; already: boolean; missing_composition: boolean }
 type SheetAnswer = { rows: SheetRow[]; totals: { lines: number; good: number; wrong: number; new: number; updated: number; without_composition: number }; saved: number }
 
@@ -39,6 +48,9 @@ const HEADINGS: Record<string, string[]> = {
   scheme: ['scheme', 'offer', 'free', 'bonus'],
 }
 const money = (amount: number | null) => (amount === null ? '' : rupees(amount))
+/** The supplier a brand is first ordered from: its company's stockist, else the medicine's usual one, else none, to be chosen. */
+const firstSupplier = (p: Product) => String(p.company?.stockist_id ?? p.medicine?.preferred_stockist_id ?? '')
+const stop = (e: { stopPropagation: () => void }) => e.stopPropagation()
 
 /**
  * The catalogues of the companies whose representatives call: each brand, what it contains and what is on offer,
@@ -55,6 +67,18 @@ export function RepCatalogue() {
   const [notice, setNotice] = useState('')
   const [saving, setSaving] = useState(false)
   const [sheet, setSheet] = useState<{ companyId: string; rows: Record<string, string>[]; answer: SheetAnswer | null; error: string } | null>(null)
+  // What has been chosen to order: for each brand, its name and the pharmacy's pack, how many packs and from whom. Only
+  // for those who run the pharmacy. It outlasts a search, so one order can be put together over several searches.
+  const [basket, setBasket] = useState<Record<number, { name: string; perPack: number; packs: string; stockist: string }>>({})
+  const [stockists, setStockists] = useState<{ id: number; name: string }[]>([])
+  const [made, setMade] = useState<Made[] | null>(null)
+  const [ordering, setOrdering] = useState(false)
+  // Why the draft orders were not made: beside the brand it is about, or else for the whole basket.
+  const [refused, setRefused] = useState<{ brands: Record<number, string>; all: string }>({ brands: {}, all: '' })
+  const canOrder = Boolean(data?.can_order)
+  useEffect(() => {
+    if (canOrder) api.get<{ id: number; name: string }[]>('/pharmacy/stockists').then((res) => setStockists(res.data)).catch(() => undefined)
+  }, [canOrder])
 
   const load = useCallback(
     () => api.get<Answer>('/reps/products', { params: { q: query || undefined, company_id: companyId || undefined } }).then((res) => setData(res.data)).catch(() => setNotice('The catalogue could not be loaded.')),
@@ -94,9 +118,12 @@ export function RepCatalogue() {
       setSaving(false)
     }
   }
+  const putBack = (id: number) => setBasket((now) => Object.fromEntries(Object.entries(now).filter(([key]) => Number(key) !== id)))
   const remove = async (p: Product) => {
     if (!window.confirm(`Take ${p.name} out of ${p.company?.name ?? 'the'} catalogue?`)) return
     await api.delete(`/reps/products/${p.id}`)
+    // A brand out of the catalogue cannot be ordered from it either.
+    putBack(p.id)
     setDraft(null)
     setEditing(null)
     void load()
@@ -132,6 +159,34 @@ export function RepCatalogue() {
     }
   }
 
+  // Each brand chosen becomes a line on a draft order, one draft for each supplier. Nothing is ordered until it is approved.
+  const chosen = Object.entries(basket)
+  const ready = chosen.length > 0 && chosen.every(([, line]) => Number(line.packs) >= 1 && line.stockist)
+  const order = async () => {
+    setOrdering(true)
+    setRefused({ brands: {}, all: '' })
+    const sent = chosen.map(([id]) => Number(id))
+    try {
+      const res = await api.post<{ orders: Made[] }>('/pharmacy/manager/orders', { from: 'catalogue', lines: chosen.map(([id, line]) => ({ rep_product_id: Number(id), stockist_id: Number(line.stockist), packs: Number(line.packs) })) })
+      setMade(res.data.orders)
+      setBasket({})
+      void load()
+    } catch (err) {
+      // The server names the line it refused ("lines.2.…"): that is the brand sent third.
+      const brands: Record<number, string> = {}
+      let all = ''
+      Object.entries(fieldErrors(err)).forEach(([key, message]) => {
+        const line = /^lines\.(\d+)\./.exec(key)
+        const id = line ? sent[Number(line[1])] : undefined
+        if (id === undefined) all = all || message
+        else if (!brands[id]) brands[id] = message
+      })
+      setRefused({ brands, all: all || (Object.keys(brands).length ? '' : 'The draft orders were not made.') })
+    } finally {
+      setOrdering(false)
+    }
+  }
+
   if (!data) return <p className="loading">Loading…</p>
   const companies = data.companies.map((c) => ({ value: String(c.id), label: c.name }))
 
@@ -161,6 +216,18 @@ export function RepCatalogue() {
         )}
       </div>
       {notice && <p className="notice">{notice}</p>}
+      {made && (
+        <p className="notice">
+          {made.length === 1 ? 'A draft order was made: ' : `${made.length} draft orders were made, one for each supplier: `}
+          {made.map((o, i) => (
+            <span key={o.id}>
+              {i > 0 ? '; ' : ''}
+              <Link to={`/pharmacy/purchase-orders?open=${o.id}`}>{o.order_no}</Link> to {o.stockist} ({o.items} {o.items === 1 ? 'medicine' : 'medicines'})
+            </span>
+          ))}
+          . Nothing is ordered until it is approved on Purchase orders.
+        </p>
+      )}
       {data.companies.length === 0 && <p className="muted">No company is on the list yet. A company is added with its first representative, under “Representatives”.</p>}
 
       {draft && (
@@ -291,6 +358,52 @@ export function RepCatalogue() {
                     ))
                   )}
                   {p.in_pharmacy.length > 3 && <small className="muted block">and {p.in_pharmacy.length - 3} more</small>}
+                  {/* For the pharmacy: the medicine of the same name that an order of this brand is for, and ordering it. */}
+                  {p.on_order !== undefined &&
+                    (!p.medicine ? (
+                      <small className="muted block">Not in the pharmacy’s medicines under this name, so it cannot be ordered here.</small>
+                    ) : (
+                      <>
+                        <small className="block">
+                          Ours: <MedicineLink id={p.medicine.id}>{p.medicine.name}</MedicineLink>
+                          {p.on_order > 0 && <span className="muted"> · {p.on_order} units already on order</span>}
+                        </small>
+                        {!p.medicine.is_active ? (
+                          <small className="muted block">Marked not in use in the pharmacy, so it cannot be ordered.</small>
+                        ) : !canOrder ? null : basket[p.id] ? (
+                          <span className="option-order catalogue-order" onClick={stop}>
+                            <input type="number" min={1} value={basket[p.id].packs} onChange={(e) => setBasket({ ...basket, [p.id]: { ...basket[p.id], packs: e.target.value } })} aria-label={`Packs of ${p.name} to order`} />
+                            <small className="muted">packs of {p.medicine.units_per_pack} from</small>
+                            <select value={basket[p.id].stockist} onChange={(e) => setBasket({ ...basket, [p.id]: { ...basket[p.id], stockist: e.target.value } })} aria-label={`Supplier for ${p.name}`}>
+                              <option value="">Choose a supplier</option>
+                              {stockists.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  {s.name}
+                                  {s.id === p.company?.stockist_id ? ` (supplies ${p.company.name})` : s.id === p.medicine?.preferred_stockist_id ? ' (usual for this medicine)' : ''}
+                                </option>
+                              ))}
+                            </select>
+                            {!basket[p.id].stockist && !p.company?.stockist_id && <small className="due">{p.company?.name ?? 'This company'} has no stockist set: choose a supplier.</small>}
+                            <button type="button" className="link danger" onClick={() => putBack(p.id)}>
+                              Not this one
+                            </button>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="link small block"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setMade(null)
+                              setRefused({ brands: {}, all: '' })
+                              setBasket({ ...basket, [p.id]: { name: p.name, perPack: p.medicine?.units_per_pack ?? 1, packs: '1', stockist: firstSupplier(p) } })
+                            }}
+                          >
+                            + Order
+                          </button>
+                        )}
+                      </>
+                    ))}
                 </td>
                 <td className="wrap">
                   {p.also_from.slice(0, 3).map((o) => (
@@ -310,6 +423,48 @@ export function RepCatalogue() {
           </tbody>
         </table>
       </div>
+      {chosen.length > 0 && (
+        <div className="order-bar">
+          <div>
+            <b>{chosen.length}</b> {chosen.length === 1 ? 'brand' : 'brands'} chosen to order
+            {!ready && <small className="due"> · give each one its packs and a supplier</small>}
+            {/* Each by name, as a search may have hidden its row, with what is still wanted of it and why it was refused. */}
+            <ul className="plain-list small">
+              {chosen.map(([id, line]) => {
+                const supplier = stockists.find((s) => String(s.id) === line.stockist)?.name
+                return (
+                  <li key={id}>
+                    <b>{line.name}</b>{' '}
+                    {!(Number(line.packs) >= 1) ? (
+                      <span className="due">· give it its packs</span>
+                    ) : !line.stockist ? (
+                      <span className="due">· choose a supplier</span>
+                    ) : (
+                      <span className="muted">
+                        · {line.packs} {Number(line.packs) === 1 ? 'pack' : 'packs'} of {line.perPack}
+                        {supplier ? ` from ${supplier}` : ''}
+                      </span>
+                    )}{' '}
+                    <button type="button" className="link danger" title={`Take ${line.name} off this order`} onClick={() => putBack(Number(id))}>
+                      Not this one
+                    </button>
+                    {refused.brands[Number(id)] && <small className="due block">{refused.brands[Number(id)]}</small>}
+                  </li>
+                )
+              })}
+            </ul>
+            {refused.all && <small className="due block">{refused.all}</small>}
+          </div>
+          <span className="foot-buttons">
+            <button type="button" className="link" onClick={() => setBasket({})}>
+              Clear
+            </button>
+            <button type="button" className="btn primary" disabled={!ready || ordering} onClick={() => void order()}>
+              {ordering ? 'Making…' : 'Make draft orders'}
+            </button>
+          </span>
+        </div>
+      )}
       {editing !== null && data.can_change && (
         <p className="gap-top">
           <button type="button" className="link danger" onClick={() => { const p = data.products.find((x) => x.id === editing); if (p) void remove(p) }}>

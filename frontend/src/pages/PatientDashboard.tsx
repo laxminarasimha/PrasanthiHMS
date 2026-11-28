@@ -12,6 +12,8 @@ import type { PatientOverview } from '../types'
 import { testLabel } from '../labName'
 import { DoctorLink } from '../components/DoctorLink'
 import { IpdLink, LabOrderLink } from '../components/RecordLinks'
+import { MedicineLink } from '../components/MedicineLink'
+import { FromApp } from '../components/FromApp'
 
 const KIND = { appointment: 'Appointment', lab: 'Lab', other: 'Other services' } as const
 /** How many rows of each list show before "Show all". */
@@ -180,7 +182,15 @@ export function PatientDashboard() {
           <div className="tile">
             <span>Next appointment</span>
             <strong>{coming ? longDate(coming.scheduled_at) : 'None booked'}</strong>
-            <small className="muted">{coming ? `${clock(coming.scheduled_at)} · ${coming.doctor.name}` : ' '}</small>
+            <small className="muted">
+              {coming ? (
+                <>
+                  {clock(coming.scheduled_at)} · {coming.doctor.name} <FromApp via={coming.booked_via} />
+                </>
+              ) : (
+                ' '
+              )}
+            </small>
           </div>
           <div className="tile">
             <span>Lab orders</span>
@@ -203,7 +213,7 @@ export function PatientDashboard() {
           {(v) => (
             <tr key={v.id} className="static">
               <td>
-                {longDate(v.scheduled_at)} <small className="muted">{clock(v.scheduled_at)}</small>
+                {longDate(v.scheduled_at)} <small className="muted">{clock(v.scheduled_at)}</small> <FromApp via={v.booked_via} />
               </td>
               <td>
                 <DoctorLink id={v.doctor.id}>{v.doctor.name}</DoctorLink>
@@ -246,6 +256,88 @@ export function PatientDashboard() {
             </tr>
           )}
         </History>
+
+        {/* Each of the next parts comes only to those whose work needs it; without it, the part is not drawn. */}
+        {data.medicines_prescribed && (
+          <History title="Medicines prescribed" anchor="medicines" rows={data.medicines_prescribed} empty="No medicines prescribed yet.">
+            {(rx) => (
+              <tr key={rx.key} className="static">
+                <td>
+                  {longDate(rx.date)}
+                  <small className="muted block">
+                    {rx.kind === 'visit' ? (
+                      'At a visit'
+                    ) : (
+                      <>
+                        On discharge · <IpdLink id={rx.admission_id}>{rx.ipd_no}</IpdLink>
+                      </>
+                    )}
+                  </small>
+                </td>
+                <td>
+                  {rx.doctor && <DoctorLink id={rx.doctor.id}>{rx.doctor.name}</DoctorLink>}
+                  <ol className="rx-list">
+                    {rx.medicines.map((m, i) => (
+                      <li key={i}>
+                        <MedicineLink id={m.medicine_id}>{m.medicine}</MedicineLink>
+                        {m.directions && <small className="muted"> · {m.directions}</small>}
+                      </li>
+                    ))}
+                  </ol>
+                </td>
+                <td className="num">
+                  {rx.kind === 'visit' ? (
+                    <a className="link" href={`/visits/${rx.appointment_id}/print`} target="_blank" rel="noreferrer">
+                      Prescription
+                    </a>
+                  ) : (
+                    // The summary's print is offered only to those who may see the summaries themselves.
+                    data.discharge_summaries && (
+                      <a className="link" href={`/ipd/${rx.admission_id}/summary/print`} target="_blank" rel="noreferrer">
+                        Summary
+                      </a>
+                    )
+                  )}
+                </td>
+              </tr>
+            )}
+          </History>
+        )}
+
+        {data.monthly_medicines && (
+          <History title="Monthly medicines" anchor="monthly-medicines" rows={data.monthly_medicines} empty="No monthly medicine lists in the patient app.">
+            {(s) => (
+              <tr key={s.id} className="static">
+                <td>
+                  {longDate(s.next_due_on)}
+                  <small className="muted block">Every month on day {s.day_of_month}</small>
+                  {s.due_soon && <small className="soon block">Due this week</small>}
+                </td>
+                <td>
+                  {s.title} {s.status === 'paused' && <span className="pill off">Paused</span>}
+                  {s.notes && <small className="muted block">{s.notes}</small>}
+                  <ol className="rx-list">
+                    {s.items.map((item, i) => (
+                      <li key={i}>
+                        <MedicineLink id={item.medicine_id}>{item.name}</MedicineLink>
+                        {item.quantity !== null && (
+                          <>
+                            {' '}
+                            × <strong>{item.quantity}</strong>
+                          </>
+                        )}
+                        {!item.medicine_id && <small className="muted"> (typed by the patient, not from our list)</small>}
+                      </li>
+                    ))}
+                  </ol>
+                </td>
+                <td>
+                  <small className="muted block">{s.last_prepared_on ? `Last made up ${longDate(s.last_prepared_on)}` : 'Not made up yet'}</small>
+                </td>
+              </tr>
+            )}
+          </History>
+        )}
 
         <History title="Bills" anchor="bills" rows={data.bills} empty="No bills yet.">
           {(b) => (
@@ -324,6 +416,38 @@ export function PatientDashboard() {
             </tr>
           )}
         </History>
+
+        {data.discharge_summaries && (
+          <History title="Discharge summaries" anchor="discharge-summaries" rows={data.discharge_summaries} empty="No approved discharge summaries.">
+            {(d) => (
+              <tr key={d.admission_id} className="static">
+                <td className="mono">
+                  <IpdLink id={d.admission_id}>{d.ipd_no}</IpdLink>
+                </td>
+                <td>
+                  {longDate(d.admitted_at)}
+                  {d.discharged_at ? ` to ${longDate(d.discharged_at)}` : ''}
+                  {d.doctor && (
+                    <small className="muted block">
+                      <DoctorLink id={d.doctor.id}>{d.doctor.name}</DoctorLink>
+                    </small>
+                  )}
+                  {/* Only those who may read clinical notes are sent the diagnosis. */}
+                  {d.diagnosis && <small className="muted block">{d.diagnosis}</small>}
+                </td>
+                <td>
+                  <small className="muted block">Approved {longDate(d.approved_at)}</small>
+                  {d.follow_up_on && <small className="muted block">Review on {longDate(d.follow_up_on)}</small>}
+                </td>
+                <td className="num">
+                  <a className="link" href={`/ipd/${d.admission_id}/summary/print`} target="_blank" rel="noreferrer">
+                    Print
+                  </a>
+                </td>
+              </tr>
+            )}
+          </History>
+        )}
       </div>
 
       <section className="card">

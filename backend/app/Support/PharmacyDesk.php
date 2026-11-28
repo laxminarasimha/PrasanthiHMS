@@ -56,9 +56,7 @@ class PharmacyDesk
             ->whereNull('s.voided_at')->where('s.sold_at', '>=', $today->copy()->subDays(self::SALES_DAYS))
             ->selectRaw('i.medicine_id, sum(i.quantity - i.returned_quantity) as units')->groupBy('i.medicine_id')->pluck('units', 'medicine_id');
 
-        $onOrder = DB::table('purchase_order_items as i')->join('purchase_orders as o', 'o.id', '=', 'i.purchase_order_id')
-            ->whereIn('o.status', ['draft', 'open'])
-            ->selectRaw('i.medicine_id, sum(i.packs * i.units_per_pack) as units')->groupBy('i.medicine_id')->pluck('units', 'medicine_id');
+        $onOrder = self::onOrder();
 
         // Whom each medicine was last bought from, and at what price, for medicines with no supplier chosen.
         $last = DB::table('stock_batches as b')->join('purchase_invoices as p', 'p.id', '=', 'b.purchase_invoice_id')
@@ -112,6 +110,35 @@ class PharmacyDesk
             })->filter()
             ->sortBy([fn ($a, $b) => array_search($a['class'], ['out', 'urgent', 'low']) <=> array_search($b['class'], ['out', 'urgent', 'low']), ['name', 'asc']])
             ->values();
+    }
+
+    /**
+     * Units of each medicine on order and not in yet: a draft in full, and an open order less the paid units that
+     * have already come against it, as the order is matched with its invoices (see OrderMatch::forOrder). Units, not
+     * packs, as the stockist may send another pack size. Free packs come on top of an order and do not count towards
+     * it. Without taking off what has come, half an order would be counted twice: once on the shelf and once still
+     * on order.
+     *
+     * @param  list<int>|null  $medicineIds  only these medicines; every medicine when left out
+     * @return Collection<int, int> units, keyed by medicine
+     */
+    public static function onOrder(?array $medicineIds = null): Collection
+    {
+        $lines = DB::table('purchase_order_items as i')->join('purchase_orders as o', 'o.id', '=', 'i.purchase_order_id')
+            ->whereIn('o.status', ['draft', 'open'])
+            ->when($medicineIds !== null, fn ($q) => $q->whereIn('i.medicine_id', $medicineIds))
+            ->get(['i.purchase_order_id', 'i.medicine_id', 'i.units_per_pack', 'i.packs', 'o.status']);
+        $open = $lines->where('status', 'open')->pluck('purchase_order_id')->unique()->values();
+        $received = $open->isEmpty() ? collect() : DB::table('stock_batches as b')->join('purchase_invoices as p', 'p.id', '=', 'b.purchase_invoice_id')
+            ->whereIn('p.purchase_order_id', $open->all())
+            ->selectRaw('p.purchase_order_id, b.medicine_id, sum(b.packs * b.units_per_pack) as units')->groupBy('p.purchase_order_id', 'b.medicine_id')->get()
+            ->mapWithKeys(fn ($r) => [$r->purchase_order_id.':'.$r->medicine_id => (int) $r->units]);
+
+        return $lines->groupBy('medicine_id')->map(fn (Collection $rows) => (int) $rows->sum(function ($line) use ($received) {
+            $come = $line->status === 'open' ? (int) ($received[$line->purchase_order_id.':'.$line->medicine_id] ?? 0) : 0;
+
+            return max(0, (int) $line->packs * (int) $line->units_per_pack - $come);
+        }));
     }
 
     /** Medicines that have had stock at some time, keyed by medicine. */

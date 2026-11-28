@@ -1,6 +1,6 @@
 import { MedicineChoose } from '../../components/MedicineChoose'
 import { NewMedicine } from '../../components/NewMedicine'
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api, fieldErrors } from '../../api'
 import { canLeave, UnsavedGuard } from '../../unsaved'
@@ -28,11 +28,137 @@ type Line = {
   hsn_code: string
   discount_amount: string
   tax_on_free: boolean
+  /** Set on a line filled in from a purchase order: what the order says of it, and what it was last bought at. */
+  from_order?: FromOrder
+}
+/** What is typed on a line. */
+type Typed = Omit<Line, 'id' | 'from_order'>
+type StillToCome = NonNullable<PurchaseOrder['still_to_come']>[number]
+type FromOrder = {
+  order_no: string
+  name: string
+  /** Packs of it still to come on the order when it was chosen, in the order's own pack size, rounded up. */
+  to_come: number
+  /** Exactly what was left of it on the order when it was chosen, in units. */
+  units_to_come: number
+  /** The order's pack size. */
+  units_per_pack: number
+  not_in_use: boolean
+  last_rate: number | null
+  last_mrp: number | null
+  last_on: string | null
+  /** The last rate is this stockist's own. */
+  last_here: boolean
+  /** The line as it was filled in. Null on a line that had already been typed when the order was chosen. */
+  filled: Typed | null
 }
 
 const emptyLine = (): Line => ({
   medicine_id: '', batch_no: '', expiry: '', units_per_pack: '', packs: '', free_packs: '', pack_price: '', pack_mrp: '', discount_percent: '', gst_percent: '', rack_no: '', box_no: '', hsn_code: '', discount_amount: '', tax_on_free: false,
 })
+
+/** The most medicines one invoice takes. */
+const MOST_LINES = 200
+const NOT_OPEN: Record<PurchaseOrder['status'], string> = { draft: 'not approved yet', open: 'open', received: 'already received', cancelled: 'cancelled' }
+
+const sameAs = (l: Line, other: Typed) => (Object.keys(other) as (keyof Typed)[]).every((key) => l[key] === other[key])
+/** A line filled in from an order that nobody has typed into since. Only such a line ever comes off by itself. */
+const untouched = (l: Line) => {
+  const filled = l.from_order?.filled
+  return filled ? sameAs(l, filled) : false
+}
+/** When the order or the stockist changes: the lines filled in from the order and never typed into come off; the rest stay as ordinary lines. */
+const letGo = (rows: Line[]) => {
+  const kept = rows.filter((l) => !untouched(l)).map((l) => (l.from_order ? { ...l, from_order: undefined } : l))
+  return kept.length ? kept : [emptyLine()]
+}
+const offSentence = (off: string[]) => (off.length ? `Taken off, as nothing had been typed into ${off.length === 1 ? 'it' : 'them'}: ${off.join(', ')}.` : '')
+
+/**
+ * The lines once an order is chosen: one for each medicine still to come on it, with the order's pack size and the
+ * packs still to come, after the lines already there. A medicine already on the invoice is not added again; the first
+ * line of it only gets the order's note. Batch, expiry, rate and MRP are left to be typed from the stockist's bill.
+ */
+function fillFromOrder(rows: Line[], order: PurchaseOrder) {
+  const blank = emptyLine()
+  const toCome = order.still_to_come ?? []
+  const note = (s: StillToCome, filled: Typed | null): FromOrder => ({
+    order_no: order.order_no, name: s.medicine_name, to_come: s.packs, units_to_come: s.units_to_come ?? s.packs * s.units_per_pack, units_per_pack: s.units_per_pack, not_in_use: !s.is_active,
+    last_rate: s.last_rate, last_mrp: s.last_mrp, last_on: s.last_on, last_here: s.last_from_this_stockist, filled,
+  })
+  const already: string[] = []
+  const noted = new Set<string>()
+  // A line with nothing typed on it makes way; every other line stays as it was typed. A medicine typed on two lines,
+  // two batches of it, is told about once: how all its lines stand against the order shows on the first (againstOrder).
+  const kept = rows
+    .filter((l) => l.id !== undefined || l.from_order !== undefined || !sameAs(l, blank))
+    .map((l) => {
+      const s = l.from_order || noted.has(l.medicine_id) ? undefined : toCome.find((x) => String(x.medicine_id) === l.medicine_id)
+      if (!s) return l
+      noted.add(l.medicine_id)
+      already.push(s.medicine_name)
+      return { ...l, from_order: note(s, null) }
+    })
+  const onInvoice = new Set(kept.map((l) => l.medicine_id))
+  const wanted = toCome.filter((s) => !onInvoice.has(String(s.medicine_id)))
+  const fresh = wanted.slice(0, Math.max(0, MOST_LINES - kept.length)).map((s): Line => {
+    const filled: Typed = {
+      ...blank, medicine_id: String(s.medicine_id), units_per_pack: String(s.units_per_pack), packs: String(s.packs),
+      gst_percent: s.gst_percent === null ? '' : String(s.gst_percent), hsn_code: s.hsn_code ?? '', rack_no: s.rack_no ?? '', box_no: s.box_no ?? '',
+    }
+    return { ...filled, from_order: note(s, filled) }
+  })
+  const lines = [...kept, ...fresh]
+  return { lines: lines.length ? lines : [emptyLine()], added: fresh.length, already, left: wanted.length - fresh.length }
+}
+
+/** What the form says once an order has been chosen. */
+function filledSentence(order: PurchaseOrder, result: ReturnType<typeof fillFromOrder>, off: string[]) {
+  const said = [offSentence(off)]
+  if (order.status !== 'open') said.push(`Order ${order.order_no} is ${NOT_OPEN[order.status]}, so nothing was filled in.`)
+  else if (!(order.still_to_come ?? []).length) said.push(`Nothing is still to come on order ${order.order_no}.`)
+  if (result.added)
+    said.push(
+      `${result.added === 1 ? 'The medicine' : `The ${result.added} medicines`} still to come on ${order.order_no} ${result.added === 1 ? 'is' : 'are'} filled in with the packs still to come. Type the batch, expiry, rate and MRP from the stockist’s bill, change the packs if fewer came, and remove any that did not come.`,
+    )
+  if (result.already.length) said.push(`Already on this invoice, and left as typed: ${result.already.join(', ')}.`)
+  if (result.left > 0) said.push(`An invoice takes at most ${MOST_LINES} medicines, so ${result.left} more ${result.left === 1 ? 'stays' : 'stay'} on the order for the next invoice.`)
+  return said.filter(Boolean).join(' ')
+}
+
+/**
+ * How the packs typed for a medicine stand against what is still to come of it on the order, over every line of that
+ * medicine: two batches of it are two lines. Worked out in units, as the order is matched with its invoices, since a
+ * stockist may send another pack size; told in the order's packs, or in units once another pack size is typed. Free
+ * packs come on top of an order and do not count. Said once, on the first line of the medicine filled in from the order.
+ */
+function againstOrder(rows: Line[], index: number, removed: number[]) {
+  const from = rows[index].from_order
+  const medicine = rows[index].medicine_id
+  if (!from || rows.findIndex((r) => r.from_order !== undefined && r.medicine_id === medicine) !== index) return null
+  const typed = rows.filter((r) => r.medicine_id === medicine && !(r.id !== undefined && removed.includes(r.id)) && r.packs.trim() !== '' && !Number.isNaN(Number(r.packs)))
+  if (!typed.length) return null
+  const perPack = Math.max(1, from.units_per_pack)
+  const sizeOf = (r: Line) => Number(r.units_per_pack) || perPack
+  const left = from.units_to_come - typed.reduce((sum, r) => sum + Number(r.packs) * sizeOf(r), 0)
+  if (left === 0) return null
+  // Told in packs only while it comes to whole packs of the order's size.
+  const inPacks = typed.every((r) => sizeOf(r) === perPack) && left % perPack === 0
+  const n = Math.abs(left) / (inPacks ? perPack : 1)
+  const what = inPacks ? String(n) : `${n} ${n === 1 ? 'unit' : 'units'}`
+  return left > 0 ? `${what} ${n === 1 ? 'stays' : 'stay'} on order` : `${what} more than ordered`
+}
+
+/**
+ * When the line holding the order's note on a medicine comes off, or is changed to another medicine, the next line of
+ * that medicine takes the note, so its other batch still shows how it stands against the order. The note goes as on a
+ * line that was typed, so that line never comes off by itself.
+ */
+function passNote(rows: Line[], from: FromOrder | undefined, medicine: string) {
+  if (!from || rows.some((r) => r.from_order !== undefined && r.medicine_id === medicine)) return rows
+  const next = rows.findIndex((r) => r.medicine_id === medicine)
+  return next === -1 ? rows : rows.map((r, j) => (j === next ? { ...r, from_order: { ...from, filled: null } } : r))
+}
 
 /** What the stockist charges for the line before tax: paid packs, less the discount in % and in rupees. */
 const lineNet = (l: Line) => Math.max(0, Number(l.packs || 0) * Number(l.pack_price || 0) * (1 - Number(l.discount_percent || 0) / 100) - Number(l.discount_amount || 0))
@@ -53,10 +179,14 @@ export function PharmacyPurchases() {
   const canEdit = Boolean(user?.can_run_pharmacy)
   const [invoices, setInvoices] = useState<PurchaseInvoice[]>([])
   const [viewing, setViewing] = useState<PurchaseInvoice | null>(null)
-  // Arriving from a stockist's page: with one of their invoices to open, or to add a new one for them.
+  // Arriving from a stockist's page: with one of their invoices to open, or to add a new one for them. Or from an
+  // open purchase order, to enter the invoice for it: the order brings its own stockist, so any other is not trusted.
   const [params, setParams] = useSearchParams()
-  const [arrived] = useState(() => ({ invoice: params.get('invoice'), add: canEdit ? params.get('add') : null }))
-  const [adding, setAdding] = useState(Boolean(arrived.add))
+  const [arrived] = useState(() => {
+    const order = canEdit ? params.get('order') : null
+    return { invoice: params.get('invoice'), add: canEdit && !order ? params.get('add') : null, order }
+  })
+  const [adding, setAdding] = useState(Boolean(arrived.add || arrived.order))
   const [editing, setEditing] = useState<PurchaseInvoice | null>(null)
   const [reason, setReason] = useState('')
   /** On an invoice being corrected: the saved lines that are to come off it. */
@@ -71,12 +201,35 @@ export function PharmacyPurchases() {
   const [remarks, setRemarks] = useState('')
   const [extras, setExtras] = useState({ other_charges: '', cash_discount: '', round_off: '' })
   const [lines, setLines] = useState<Line[]>([emptyLine()])
+  // What choosing an order filled in or took off, said above the lines.
+  const [fillNote, setFillNote] = useState('')
+  // An order opened from its own page, which may be older than the open orders listed for the form.
+  const [pinned, setPinned] = useState<PurchaseOrder | null>(null)
+  // The chosen order's medicines, which the list may not hold: one no longer in use, or the list not in yet.
+  const [orderMedicines, setOrderMedicines] = useState<Medicine[]>([])
+  const choices = useMemo(() => [...medicines, ...orderMedicines.filter((m) => !medicines.some((x) => x.id === m.id))], [medicines, orderMedicines])
+  const openOrders = useMemo(() => (pinned && !orders.some((o) => o.id === pinned.id) ? [pinned, ...orders] : orders), [orders, pinned])
+  // The order chosen last: the reply about an order chosen before it is not used.
+  const asked = useRef('')
+  const linesNow = useRef(lines)
+  useEffect(() => {
+    linesNow.current = lines
+  }, [lines])
   // The line a new medicine is being added for, from its medicine list.
   const [newFor, setNewFor] = useState<number | null>(null)
   const [newName, setNewName] = useState('')
   const adopt = (m: Medicine, index: number) => {
     setMedicines((list) => [...list.filter((x) => x.id !== m.id), { ...m, units_in_stock: 0 }].sort((a, b) => a.name.localeCompare(b.name)))
-    setLines((rows) => rows.map((row, i) => (i === index ? { ...row, medicine_id: String(m.id), units_per_pack: String(m.units_per_pack), gst_percent: String(m.gst_percent), hsn_code: m.hsn_code ?? '', rack_no: m.rack_no ?? row.rack_no, box_no: m.box_no ?? row.box_no } : row)))
+    // A new medicine on a line filled in from an order is no longer what the order said, as when another is chosen (setLine).
+    setLines((rows) => {
+      const before = rows[index]
+      const changed = rows.map((row, i) =>
+        i === index
+          ? { ...row, medicine_id: String(m.id), units_per_pack: String(m.units_per_pack), gst_percent: String(m.gst_percent), hsn_code: m.hsn_code ?? '', rack_no: m.rack_no ?? row.rack_no, box_no: m.box_no ?? row.box_no, from_order: String(m.id) === row.medicine_id ? row.from_order : undefined }
+          : row,
+      )
+      return before && String(m.id) !== before.medicine_id ? passNote(changed, before.from_order, before.medicine_id) : changed
+    })
     setNewFor(null)
   }
   const [errors, setErrors] = useState<string[]>([])
@@ -94,10 +247,78 @@ export function PharmacyPurchases() {
   useEffect(load, [load])
   useEffect(() => {
     if (arrived.invoice) api.get<PurchaseInvoice>(`/pharmacy/purchases/${arrived.invoice}`).then((res) => setViewing(res.data)).catch(() => undefined)
-    if (arrived.add) api.get<Medicine[]>('/pharmacy/medicines', { params: { list: 1 } }).then((res) => setMedicines(res.data))
+    if (arrived.add || arrived.order) api.get<Medicine[]>('/pharmacy/medicines', { params: { list: 1 } }).then((res) => setMedicines(res.data))
     // The address goes back to the plain page, so a refresh does not open the same thing again.
-    if (arrived.invoice || arrived.add) setParams({}, { replace: true })
+    if (arrived.invoice || arrived.add || arrived.order) setParams({}, { replace: true })
   }, [arrived, setParams])
+
+  /**
+   * Fills the form from an order: a line for each medicine still to come on it. An order that is no longer open fills
+   * nothing and is let go, as the invoice could not be saved against it.
+   */
+  const fill = (order: PurchaseOrder, off: string[]) => {
+    if (order.status === 'open') {
+      const toCome = order.still_to_come ?? []
+      setOrderMedicines((list) => [
+        ...list.filter((m) => !toCome.some((s) => s.medicine_id === m.id)),
+        ...toCome.map((s) => ({ id: s.medicine_id, name: s.medicine_name, units_per_pack: s.units_per_pack, gst_percent: s.gst_percent ?? 0, hsn_code: s.hsn_code, rack_no: s.rack_no, box_no: s.box_no, is_active: s.is_active }) as Medicine),
+      ])
+      setLines((rows) => fillFromOrder(rows, order).lines)
+    } else {
+      asked.current = ''
+      setOrderId('')
+      setOrders((list) => list.filter((o) => o.id !== order.id))
+    }
+    setFillNote(filledSentence(order, order.status === 'open' ? fillFromOrder(linesNow.current, order) : { lines: [], added: 0, already: [], left: 0 }, off))
+  }
+
+  /** Choosing an order fills in what is still to come on it, once the lines filled in from the one chosen before, and never typed into, have come off. */
+  const chooseOrder = (next: string) => {
+    asked.current = next
+    setOrderId(next)
+    const off = lines.filter(untouched).map((l) => l.from_order?.name ?? '')
+    setLines(letGo)
+    if (!next) {
+      setFillNote(offSentence(off))
+      return
+    }
+    setFillNote([offSentence(off), 'Filling in what is still to come on the order…'].filter(Boolean).join(' '))
+    api.get<PurchaseOrder>(`/pharmacy/purchase-orders/${next}`).then(
+      (res) => {
+        if (asked.current === next) fill(res.data, off)
+      },
+      () => {
+        if (asked.current === next) setFillNote('What is still to come on this order could not be loaded. Choose it again, or type the lines in.')
+      },
+    )
+  }
+
+  // Arriving from an open order (?order=ID): its stockist and the order are chosen, and what is still to come filled in.
+  const arrival = useRef(false)
+  useEffect(() => {
+    if (!arrived.order || arrival.current) return
+    arrival.current = true
+    const id = arrived.order
+    asked.current = id
+    api.get<PurchaseOrder>(`/pharmacy/purchase-orders/${id}`).then(
+      (res) => {
+        // Something else was chosen meanwhile.
+        if (asked.current !== id) return
+        const order = res.data
+        if (order.status === 'open') {
+          setStockists((list) => (list.some((s) => s.id === order.stockist.id) ? list : [order.stockist as Stockist, ...list]))
+          setStockistId(String(order.stockist.id))
+          setPinned(order)
+          setOrderId(String(order.id))
+        }
+        fill(order, [])
+      },
+      () => {
+        if (asked.current === id) setFillNote('That order could not be opened. Choose the stockist and the order here.')
+      },
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrived])
 
   // The lists the form chooses from are fetched as the page opens, so they are there by the time "Add invoice" is
   // pressed, and fetched again each time the form opens in case a stockist or medicine was added meanwhile.
@@ -120,10 +341,19 @@ export function PharmacyPurchases() {
     void loadLists()
   }
 
+  /** A new form, or one being corrected, has nothing to do with an order asked about before it. */
+  const forgetOrder = () => {
+    asked.current = ''
+    setOrderId('')
+    setPinned(null)
+    setOrderMedicines([])
+    setFillNote('')
+  }
+
   const startAdding = () => {
     refreshLists()
     api.get<Medicine[]>('/pharmacy/medicines', { params: { list: 1 } }).then((res) => setMedicines(res.data))
-    setOrderId('')
+    forgetOrder()
     setViewing(null)
     setEditing(null)
     setStockistId('')
@@ -148,6 +378,7 @@ export function PharmacyPurchases() {
     setMedicines(onInvoice)
     api.get<Medicine[]>('/pharmacy/medicines', { params: { list: 1 } }).then((res) => setMedicines([...res.data, ...onInvoice.filter((m) => !res.data.some((all) => all.id === m.id))]))
     setRemoved([])
+    forgetOrder()
     setEditing(invoice)
     setStockistId(String(invoice.stockist.id))
     setInvoiceNo(invoice.invoice_no)
@@ -170,13 +401,16 @@ export function PharmacyPurchases() {
   }
 
   const setLine = (index: number, key: keyof Line, value: string | boolean) =>
-    setLines((rows) =>
-      rows.map((row, i) => {
+    setLines((rows) => {
+      const before = rows[index]
+      const changed = rows.map((row, i) => {
         if (i !== index) return row
         const next = { ...row, [key]: value }
         // Choosing a medicine fills in its usual pack size and GST.
         if (key === 'medicine_id') {
-          const medicine = medicines.find((m) => String(m.id) === value)
+          // Another medicine on a line filled in from an order is no longer what the order said.
+          if (value !== row.medicine_id) next.from_order = undefined
+          const medicine = choices.find((m) => String(m.id) === value)
           if (medicine) {
             next.units_per_pack = String(medicine.units_per_pack)
             next.gst_percent = String(medicine.gst_percent)
@@ -195,8 +429,9 @@ export function PharmacyPurchases() {
           }
         }
         return next
-      }),
-    )
+      })
+      return key === 'medicine_id' && before && value !== before.medicine_id ? passNote(changed, before.from_order, before.medicine_id) : changed
+    })
 
   const filled = lines.filter((l) => (l.medicine_id || l.batch_no || l.packs) && !(l.id && removed.includes(l.id)))
   const added = editing ? filled.filter((l) => !l.id) : []
@@ -219,19 +454,30 @@ export function PharmacyPurchases() {
         cash_discount: extras.cash_discount || 0,
         round_off: extras.round_off || 0,
       }
-      const tidy = (l: Line) => ({ ...l, free_packs: l.free_packs || 0, discount_percent: l.discount_percent || 0, discount_amount: l.discount_amount || 0, rack_no: l.rack_no || null, box_no: l.box_no || null, hsn_code: l.hsn_code || null })
+      // What the order said of a line is for the screen only; the bill's figures are what is sent.
+      const tidy = (l: Line) => ({ ...l, from_order: undefined, free_packs: l.free_packs || 0, discount_percent: l.discount_percent || 0, discount_amount: l.discount_amount || 0, rack_no: l.rack_no || null, box_no: l.box_no || null, hsn_code: l.hsn_code || null })
       // On a saved invoice the lines go three ways: the ones corrected, the ones added, and the ones taken off.
       const res = editing
         ? await api.put<PurchaseInvoice>(`/pharmacy/purchases/${editing.id}`, { ...body, reason, items: filled.filter((l) => l.id).map(tidy), add: added.map(tidy), remove: removed })
         : await api.post<PurchaseInvoice>('/pharmacy/purchases', { ...body, items: filled.map(tidy) })
       const did = [added.length ? `${added.length} added` : '', removed.length ? `${removed.length} taken off` : ''].filter(Boolean).join(', ')
-      setNotice(editing ? `Invoice ${res.data.invoice_no} changed${did ? ` (${did})` : ''} and stock corrected. The change is recorded in the Invoice modified report.` : `Invoice ${res.data.invoice_no} saved. ${res.data.batches?.length ?? 0} batch(es) added to stock.`)
+      // Whether the order this invoice answers is now complete, or how much of it is still to come.
+      const order = editing ? null : res.data.order
+      const packs = order?.packs_to_come ?? 0
+      const ofMedicines = order?.medicines_to_come ?? 0
+      const orderSays = !order?.status
+        ? ''
+        : order.status === 'open'
+          ? ` Order ${order.order_no} stays open: ${packs} ${packs === 1 ? 'pack' : 'packs'} of ${ofMedicines} ${ofMedicines === 1 ? 'medicine' : 'medicines'} still to come.`
+          : ` Order ${order.order_no} is now complete.`
+      setNotice(editing ? `Invoice ${res.data.invoice_no} changed${did ? ` (${did})` : ''} and stock corrected. The change is recorded in the Invoice modified report.` : `Invoice ${res.data.invoice_no} saved. ${res.data.batches?.length ?? 0} batch(es) added to stock.${orderSays}`)
       setEditing(null)
       setAdding(false)
       setInvoiceNo('')
       setRemarks('')
       setLines([emptyLine()])
       setRemoved([])
+      forgetOrder()
       load()
     } catch (err) {
       setErrors([...new Set(Object.values(fieldErrors(err)))])
@@ -265,10 +511,12 @@ export function PharmacyPurchases() {
               label="Stockist"
               required
               value={stockistId}
-              // An order belongs to one stockist: choosing another drops the order that was picked, instead of sending it along unseen.
+              // An order belongs to one stockist: choosing another drops the order that was picked, instead of sending it along
+              // unseen, and the lines filled in from it that nobody typed into come off.
               onChange={(next) => {
                 setStockistId(next)
-                setOrderId('')
+                if (editing) setOrderId('')
+                else chooseOrder('')
               }}
               options={stockists.map((s) => ({ value: String(s.id), label: s.name }))}
               placeholder={lists === 'loading' && stockists.length === 0 ? 'Loading the stockists…' : 'Select stockist'}
@@ -278,14 +526,15 @@ export function PharmacyPurchases() {
             {!editing && (
               <SelectField
                 label="Against purchase order"
-                value={orders.some((o) => String(o.id) === orderId && String(o.stockist.id) === stockistId) ? orderId : ''}
-                onChange={setOrderId}
-                options={orders.filter((o) => String(o.stockist.id) === stockistId).map((o) => ({ value: String(o.id), label: `${o.order_no} · ${longDate(o.order_date)}` }))}
-                placeholder={!stockistId ? 'Choose the stockist first' : orders.some((o) => String(o.stockist.id) === stockistId) ? 'No order' : 'No open order with this stockist'}
+                value={openOrders.some((o) => String(o.id) === orderId && String(o.stockist.id) === stockistId) ? orderId : ''}
+                onChange={chooseOrder}
+                options={openOrders.filter((o) => String(o.stockist.id) === stockistId).map((o) => ({ value: String(o.id), label: `${o.order_no} · ${longDate(o.order_date)}` }))}
+                placeholder={!stockistId ? 'Choose the stockist first' : openOrders.some((o) => String(o.stockist.id) === stockistId) ? 'No order' : 'No open order with this stockist'}
               />
             )}
             <TextField label="Remarks" value={remarks} onChange={setRemarks} />
           </div>
+          {!editing && fillNote && <p className="notice">{fillNote}</p>}
           {stockists.length === 0 && lists === 'loading' && <p className="muted small">Loading the stockists…</p>}
           {stockists.length === 0 && lists === 'failed' && (
             <p className="form-error">
@@ -307,12 +556,18 @@ export function PharmacyPurchases() {
           <p className="muted small">For a scheme, type it the way the stockist says it: <b>10+2</b> in the Qty box means ten paid packs and two free. Stock goes up by all twelve; you pay for ten.</p>
           {lines.map((l, i) => {
             const c = costing(l)
-            const num = (key: keyof Line, label: string, more: { step?: string; min?: number; max?: number; disabled?: boolean } = {}) => (
+            // A hint is greyed in the empty box, and never becomes the figure: that is typed from the bill.
+            const num = (key: keyof Typed, label: string, more: { step?: string; min?: number; max?: number; disabled?: boolean; hint?: string } = {}) => (
               <label>
                 {label}
-                <input type="number" min={more.min ?? 0} max={more.max} step={more.step} disabled={more.disabled} value={String(l[key] ?? '')} onChange={(e) => setLine(i, key, e.target.value)} />
+                <input type="number" min={more.min ?? 0} max={more.max} step={more.step} disabled={more.disabled} placeholder={more.hint} title={more.hint} value={String(l[key] ?? '')} onChange={(e) => setLine(i, key, e.target.value)} />
               </label>
             )
+            // On a line filled in from an order: how the packs typed of it stand against what is still to come, and what was paid last time.
+            const from = l.from_order
+            const standing = againstOrder(lines, i, removed)
+            const lastRate = from && from.last_rate !== null ? `last ${rupees(from.last_rate)}` : undefined
+            const lastMrp = from && from.last_mrp !== null ? `last ${rupees(from.last_mrp)}` : undefined
             // A line already saved on the invoice keeps its medicine and pack size; a new one is typed in full.
             const saved = editing?.batches?.find((b) => b.id === l.id)
             if (saved && removed.includes(saved.id)) {
@@ -332,12 +587,28 @@ export function PharmacyPurchases() {
             }
             const gone = saved ? saved.units_received - saved.units_in_stock : 0
             return (
-              <div className={`purchase-line ${editing && !saved ? 'added-line' : ''}`} key={i}>
+              <div className={`purchase-line ${editing && !saved ? 'added-line' : ''}${from ? ' from-order' : ''}`} key={i}>
                 {editing && !saved && <small className="pill status-arrived">New on this invoice</small>}
+                {from && (
+                  <p className="from-order-note">
+                    <small className="pill status-ongoing">
+                      From {from.order_no} ·{' '}
+                      {from.units_to_come === from.to_come * from.units_per_pack
+                        ? `${from.to_come} ${from.to_come === 1 ? 'pack' : 'packs'}`
+                        : `${from.units_to_come} ${from.units_to_come === 1 ? 'unit' : 'units'}`}{' '}
+                      still to come
+                    </small>
+                    {standing && <small className="pill warn">{standing}</small>}
+                    <small className="muted">
+                      {from.not_in_use ? 'Marked not in use in the medicine list. ' : ''}
+                      {from.last_on ? `Last bought ${longDate(from.last_on)} ${from.last_here ? 'from this stockist' : 'from another stockist'}.` : 'Not bought before in this pack size.'}
+                    </small>
+                  </p>
+                )}
                 <div className="purchase-fields">
                   <label className="wide">
                     Medicine
-                    <MedicineChoose medicines={medicines} value={l.medicine_id} disabled={Boolean(saved)} onChange={(id) => setLine(i, 'medicine_id', id)} onNew={(typed) => { setNewName(typed); setNewFor(i) }} label={`Medicine ${i + 1}`} />
+                    <MedicineChoose medicines={choices} value={l.medicine_id} disabled={Boolean(saved)} onChange={(id) => setLine(i, 'medicine_id', id)} onNew={(typed) => { setNewName(typed); setNewFor(i) }} label={`Medicine ${i + 1}`} />
                   </label>
                   <label>
                     Batch
@@ -353,8 +624,8 @@ export function PharmacyPurchases() {
                     <input inputMode="numeric" placeholder="10 or 10+2" value={l.packs} onChange={(e) => setLine(i, 'packs', e.target.value)} onBlur={(e) => setLine(i, 'packs', e.target.value.replace(/[^0-9]/g, ''))} />
                   </label>
                   {num('free_packs', 'Free (packs)')}
-                  {num('pack_price', 'Purchase rate / pack ₹', { step: '0.01' })}
-                  {num('pack_mrp', 'MRP / pack ₹', { step: '0.01' })}
+                  {num('pack_price', 'Purchase rate / pack ₹', { step: '0.01', hint: lastRate })}
+                  {num('pack_mrp', 'MRP / pack ₹', { step: '0.01', hint: lastMrp })}
                   {num('discount_percent', 'Discount %', { step: '0.01', max: 100 })}
                   {num('discount_amount', 'Discount ₹', { step: '0.01' })}
                   {num('gst_percent', 'GST %', { step: '0.01' })}
@@ -391,7 +662,7 @@ export function PharmacyPurchases() {
                     )}
                   </span>
                   {!saved ? (
-                    <button type="button" className="link danger" onClick={() => setLines((rows) => (rows.length > 1 ? rows.filter((_, r) => r !== i) : [emptyLine()]))}>
+                    <button type="button" className="link danger" onClick={() => setLines((rows) => (rows.length > 1 ? passNote(rows.filter((_, r) => r !== i), rows[i]?.from_order, rows[i]?.medicine_id ?? '') : [emptyLine()]))}>
                       Remove
                     </button>
                   ) : gone === 0 ? (

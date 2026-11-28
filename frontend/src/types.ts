@@ -155,6 +155,8 @@ export type Appointment = {
   /** When the front desk marked the patient as here. */
   arrived_at?: string | null
   notes: string | null
+  /** 'app' when the patient booked it themself on the patient app. */
+  booked_via?: string | null
   patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'age_label' | 'title' | 'mobile'>
   doctor: { id: number; name: string }
   service: { id: number; name: string } | null
@@ -314,7 +316,7 @@ export type RxPrint = {
 export type Visit = {
   /** How the visit's doctor wants prescriptions printed. */
   rx_print?: Pick<RxSettings, 'print_language' | 'translations' | 'capitalize_name' | 'print'>
-  appointment: { id: number; scheduled_at: string; status: AppointmentStatus; awaiting_reports?: boolean; notes: string | null }
+  appointment: { id: number; scheduled_at: string; status: AppointmentStatus; awaiting_reports?: boolean; notes: string | null; /** 'app' when the patient booked it on the patient app. The visit pad does not send it yet. */ booked_via?: string | null }
   patient: VisitPatient
   doctor: { id: number; name: string; department: string | null; signature_text: string | null }
   service: { id: number; name: string } | null
@@ -328,6 +330,8 @@ export type QueueEntry = {
   scheduled_at: string
   /** A free follow-up of an earlier consultation with this doctor. */
   is_follow_up?: boolean
+  /** 'app' when the patient booked it themself on the patient app. */
+  booked_via?: string | null
   arrived_at: string | null
   status: AppointmentStatus
   patient: VisitPatient
@@ -545,7 +549,8 @@ export type PurchaseInvoice = {
   invoice_date: string
   due_date?: string | null
   payments?: { id: number; amount: number; mode: string; reference: string | null; paid_on: string; payer?: { name: string } | null }[]
-  order?: { id: number; order_no: string } | null
+  /** Straight after the invoice is saved, also whether its order is now complete, and how much of it is still to come. */
+  order?: { id: number; order_no: string; status?: PurchaseOrder['status']; packs_to_come?: number; medicines_to_come?: number } | null
   flagged?: number
   subtotal: number
   tax: number
@@ -611,6 +616,9 @@ export type PharmacySale = {
   patient_id?: number | null
   patient?: { id: number; uhid: string; name: string } | null
   seller?: { id: number; name: string } | null
+  /** The visit whose prescription the bill was made from at the counter, if it was: only its day and doctor. */
+  consultation_id?: number | null
+  consultation?: { id: number; completed_at: string; doctor?: { id: number; name: string } | null } | null
 }
 
 export type Bed = {
@@ -818,8 +826,15 @@ export type PrescriptionForPharmacy = {
   doctor: string | null
   /** A line for the pharmacist about this card. */
   note?: string
-  /** `new`: a ward order that nothing has been billed for since it was written. */
-  medicines: { medicine: string; directions: string; match: SellableMedicine | null; new?: boolean }[]
+  /** A visit only: the pharmacy bill made from this card, else the first one made for the patient since; null for neither. */
+  bill?: { id: number; bill_no: string } | null
+  /** True when `bill` was made from this card ("Filled"), false when it is a bill for the patient made since. */
+  filled?: boolean
+  /**
+   * `new`: a ward order that nothing has been billed for since it was written.
+   * `quantity`: the tablets or capsules the line comes to, when it is written plainly enough to count, with `worked_out` saying how.
+   */
+  medicines: { medicine: string; directions: string; match: SellableMedicine | null; new?: boolean; quantity?: number | null; worked_out?: string | null }[]
 }
 
 export type OutstandingBill = { type: 'bill' | 'pharmacy'; id: number; label: string; category: string; date: string; due: number }
@@ -848,7 +863,10 @@ export type PrescriptionOrder = {
   patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'age_label' | 'title' | 'mobile'>
   doctor: string | null
   medicines: { id: number; medicine: string; dose: string | null; frequency: string | null; duration: string | null }[]
+  /** The bill made from this prescription at the counter, else the first one made for the patient since. */
   bill: { id: number; bill_no: string } | null
+  /** True when `bill` was made from this prescription ("Filled"), false when it is a bill for the patient made since. */
+  filled?: boolean
 }
 
 export type InventoryMedicine = {
@@ -883,13 +901,54 @@ export type PurchaseOrder = {
   remarks: string | null
   stockist: { id: number; name: string; phone?: string | null; address?: string | null }
   items_count?: number
-  items?: { id: number; medicine_name: string; units_per_pack: number; packs: number }[]
+  items?: { id: number; medicine_id?: number; medicine_name: string; units_per_pack: number; packs: number }[]
   match?: {
-    lines: { medicine_id: number; medicine_name: string; ordered: number; received: number; free: number; state: 'none' | 'short' | 'full' | 'over' }[]
+    /**
+     * Matched in units, as a stockist may send another pack size: ordered and received are packs (the received ones
+     * as billed, whatever their size), ordered_units and received_units the units, to_come the order's packs still to
+     * come, rounded up.
+     */
+    lines: {
+      medicine_id: number
+      medicine_name: string
+      units_per_pack?: number
+      ordered: number
+      received: number
+      free: number
+      ordered_units?: number
+      received_units?: number
+      to_come?: number
+      state: 'none' | 'short' | 'full' | 'over'
+    }[]
     extras: { medicine_name: string; received: number; free: number }[]
     invoices: { id: number; invoice_no: string; invoice_date: string; total: number }[]
     complete: boolean
   }
+  /**
+   * On an open order: each medicine not received in full yet, ready to fill the stockist's next invoice. The order's
+   * pack size and the packs not received yet, the medicine's GST, HSN code and place, and what it was last bought at
+   * in that pack size (from this stockist if it ever was), which is shown as a hint and never copied.
+   */
+  still_to_come?: {
+    medicine_id: number
+    medicine_name: string
+    units_per_pack: number
+    /** The order's packs still to come, rounded up when another pack size came before. */
+    packs: number
+    ordered: number
+    received: number
+    /** Exactly what is left of the order, in units. */
+    units_to_come?: number
+    gst_percent: number | null
+    hsn_code: string | null
+    rack_no: string | null
+    box_no: string | null
+    is_active: boolean
+    last_rate: number | null
+    last_mrp: number | null
+    last_on: string | null
+    last_from_this_stockist: boolean
+  }[]
 }
 
 export type ReportColumn = { key: string; label: string; type: 'text' | 'money' | 'number'; total: boolean }
@@ -950,12 +1009,46 @@ export type PatientOverview = {
   outstanding: number
   deposit_balance: number
   deposits: PatientDeposit[]
-  visits: { id: number; scheduled_at: string; status: AppointmentStatus; doctor: { id: number; name: string }; service: { name: string } | null; consultation: { id: number; diagnosis: string | null; completed_at: string | null } | null }[]
+  visits: { id: number; scheduled_at: string; status: AppointmentStatus; /** 'app' when the patient booked it on the patient app. */ booked_via?: string | null; doctor: { id: number; name: string }; service: { name: string } | null; consultation: { id: number; diagnosis: string | null; completed_at: string | null } | null }[]
   bills: { id: number; bill_no: string; kind: BillKind; total: number; paid: number; due: number; moved_to_ipd: number | null; created_at: string; cancelled_at?: string | null; lab_order: { order_no: string } | null }[]
   lab_orders: { id: number; order_no: string; status: string; ordered_at: string; items: { id: number; test_name: string; repeat_no?: number | null }[] }[]
   pharmacy_bills: { id: number; bill_no: string; sold_at: string; total: number; due: number; ipd_transfer: number }[]
   admissions: { id: number; ipd_no: string; status: string; admitted_at: string; discharged_at: string | null; due: number; doctor: { id: number; name: string }; bed: { ward: string; bed_no: string } | null }[]
   attachments: Attachment[]
+  /**
+   * Approved discharge summaries of the stays listed, newest first, to print. Sent only to those who read clinical
+   * notes, who also get the diagnosis, and to those who work in IPD (the front desk), who do not.
+   */
+  discharge_summaries?: { admission_id: number; ipd_no: string; status: string; admitted_at: string; discharged_at: string | null; doctor: { id: number; name: string } | null; approved_at: string; follow_up_on: string | null; diagnosis?: string | null }[]
+  /**
+   * What the latest finished visits prescribed and what approved discharge summaries sent home, newest first. Sent
+   * only to those who read clinical notes and to the pharmacy. `medicine_id` comes only for those who may open the
+   * pharmacy's screens, and only where exactly one active medicine has the very same name.
+   */
+  medicines_prescribed?: {
+    key: string
+    kind: 'visit' | 'discharge'
+    date: string
+    doctor: { id: number; name: string } | null
+    appointment_id?: number
+    admission_id?: number
+    ipd_no?: string
+    medicines: { medicine: string; directions: string; medicine_id?: number | null }[]
+  }[]
+  /** The patient's monthly medicine lists from the patient app, active and paused, the next due first. Sent only to those who read clinical notes and to the pharmacy. */
+  monthly_medicines?: {
+    id: number
+    title: string
+    status: 'active' | 'paused'
+    day_of_month: number
+    next_due_on: string
+    /** Active and due within the week the pharmacy makes packs up for. */
+    due_soon: boolean
+    last_prepared_on: string | null
+    notes: string | null
+    /** A medicine chosen from the pharmacy's list has its id; one the patient typed in has none. */
+    items: { medicine_id: number | null; name: string; quantity: number | null }[]
+  }[]
 }
 
 export type PhraseKind = 'complaint' | 'diagnosis' | 'advice'
