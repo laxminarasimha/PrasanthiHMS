@@ -1,5 +1,5 @@
-/** The prescription card a medicine on the bill was added from: its kind and id, when it was written, and whose it is. */
-export type CardTag = { kind: 'visit' | 'ward' | 'discharge'; id: number; at: string; patientId: number }
+/** The prescription card a medicine on the bill was added from: its kind and id, when it was written, whose it is, and its doctor. */
+export type CardTag = { kind: 'visit' | 'ward' | 'discharge'; id: number; at: string; patientId: number; doctor?: string | null }
 
 /**
  * A prescribed number of tablets taken from a medicine's batches: the batch that expires first, then the next, never

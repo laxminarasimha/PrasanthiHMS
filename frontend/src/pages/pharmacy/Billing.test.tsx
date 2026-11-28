@@ -3,6 +3,7 @@ import { MemoryRouter, useNavigate } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Patient, PrescriptionForPharmacy, SellableMedicine } from '../../types'
 import { PharmacyBilling } from './Billing'
+import { longDate } from '../../format'
 
 const get = vi.fn()
 const post = vi.fn()
@@ -562,7 +563,7 @@ describe('the counter, the visit a bill is linked to', () => {
     const cards = await theCards(container, 2)
     fireEvent.click(inCard(cards[1], 'Add all in stock (2)'))
     fireEvent.click(inCard(cards[0], 'On the bill'))
-    expect(screen.getByText(`Given from the prescription of ${new Date(daysAgo(4)).getDate()}`, { exact: false })).toBeTruthy()
+    expect(screen.getByText(`Given from the prescription of ${longDate(daysAgo(4))} by Dr Sample One.`)).toBeTruthy()
     expect((await saved()).consultation_id).toBe(31)
   })
 
@@ -653,5 +654,124 @@ describe('the counter, the visit a bill is linked to', () => {
     const rows = Array.from((container.querySelector('.rx-card') as HTMLElement).querySelectorAll('li'))
     expect(rows[0].textContent).toContain('Changed on the card')
     expect(rows[1].textContent).not.toContain('Changed on the card')
+  })
+})
+
+describe('the counter, safe against slow answers, midnight, typed quantities and changed cards', () => {
+  const daysAgo = (n: number) => {
+    const d = new Date()
+    d.setDate(d.getDate() - n)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+  const other = { ...patient, id: 8, uhid: 'P-0008', name: 'Sample Other' } as Patient
+  function Search() {
+    const navigate = useNavigate()
+    return (
+      <>
+        <button type="button" onClick={() => navigate('/pharmacy?patient=7')}>
+          Open patient 7
+        </button>
+        <button type="button" onClick={() => navigate('/pharmacy?patient=8')}>
+          Open patient 8
+        </button>
+      </>
+    )
+  }
+  const mount = () =>
+    render(
+      <MemoryRouter initialEntries={['/pharmacy?patient=7']}>
+        <PharmacyBilling />
+        <Search />
+      </MemoryRouter>,
+    )
+
+  it('never shows a slow answer for a patient chosen before under the patient chosen now', async () => {
+    let answer7: (cards: PrescriptionForPharmacy[]) => void = () => undefined
+    const visit8 = visitCard({ id: 41, medicines: [{ medicine: 'Sample Cefixime 200 Capsule', directions: '1 cap · BD · 5 days', match: capsule, quantity: 10, worked_out: '1 cap BD for 5 days = 10' }] })
+    get.mockImplementation((url: string, config?: { params?: { patient_id?: number } }) => {
+      if (url === '/patients/7') return Promise.resolve({ data: patient })
+      if (url === '/patients/8') return Promise.resolve({ data: other })
+      if (url === '/pharmacy/prescriptions' && config?.params?.patient_id === 7) return new Promise((done) => (answer7 = (cards) => done({ data: cards })))
+      if (url === '/pharmacy/prescriptions') return Promise.resolve({ data: [visit8] })
+      return Promise.resolve({ data: [] })
+    })
+    post.mockResolvedValue({ data: { id: 40, bill_no: 'P00040', customer_name: 'Sample Other', total: 42, ipd_transfer: 0, due: 0 } })
+    const { container } = mount()
+    await waitFor(() => expect(get).toHaveBeenCalledWith('/pharmacy/prescriptions', { params: { patient_id: 7 } }))
+    // Patient 8 is chosen before patient 7's cards come back; then patient 7's answer arrives last.
+    fireEvent.click(screen.getByRole('button', { name: 'Open patient 8' }))
+    await waitFor(() => expect(container.querySelector('.rx-card')?.textContent).toContain('Sample Cefixime'))
+    answer7([visitCard()])
+    await new Promise((r) => setTimeout(r, 0))
+    expect(container.querySelectorAll('.rx-card')).toHaveLength(1)
+    expect(container.querySelector('.rx-card')?.textContent).not.toContain('Sample Amlodipine')
+    fireEvent.click(inCard(container.querySelector('.rx-card') as HTMLElement, 'Add 10'))
+    const body = (await saved()) as unknown as { patient_id: number; consultation_id: number | null }
+    expect([body.patient_id, body.consultation_id]).toEqual([8, 41])
+  })
+
+  it('dates a bill made after midnight today, on a counter opened the day before', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(new Date(2026, 10, 28, 23, 50))
+      const lateVisit = visitCard({ id: 45, completed_at: '2026-11-29 00:05' })
+      get.mockImplementation((url: string) => Promise.resolve({ data: url === '/patients/7' ? patient : url === '/pharmacy/prescriptions' ? [lateVisit] : [] }))
+      post.mockResolvedValue({ data: { id: 40, bill_no: 'P00040', customer_name: 'Sample Patient', total: 42, ipd_transfer: 0, due: 0 } })
+      mount()
+      await screen.findByRole('button', { name: 'Add 21' })
+      // Ten past midnight: the next bill is the new day's.
+      vi.setSystemTime(new Date(2026, 10, 29, 0, 10))
+      fireEvent.click(screen.getByRole('button', { name: 'Add 21' }))
+      const body = (await saved()) as unknown as { sold_on: string | null; consultation_id: number | null }
+      expect([body.sold_on, body.consultation_id]).toEqual([null, 45])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('names the doctor of the visit the bill is linked to as the prescriber', async () => {
+    const newer = visitCard({ id: 32, completed_at: `${daysAgo(1)} 10:00`, doctor: 'Dr Sample Skin', medicines: [{ medicine: 'Sample Cefixime 200 Capsule', directions: '1 cap · BD · 5 days', match: capsule, quantity: 10, worked_out: '1 cap BD for 5 days = 10' }] })
+    const older = visitCard({ id: 31, completed_at: `${daysAgo(4)} 10:00`, doctor: 'Dr Sample Heart' })
+    const { container } = show([newer, older])
+    const cards = await theCards(container, 2)
+    fireEvent.click(inCard(cards[1], 'Add all in stock (1)'))
+    expect(screen.getByText(`Given from the prescription of ${longDate(daysAgo(4))} by Dr Sample Heart.`)).toBeTruthy()
+    const body = (await saved()) as unknown as { referred_doctor: string | null; consultation_id: number | null }
+    expect([body.consultation_id, body.referred_doctor]).toEqual([31, 'Dr Sample Heart'])
+  })
+
+  it('adds a taper’s other stage to a quantity the pharmacist typed only on purpose', async () => {
+    const amlodipine = visitCard().medicines[0]
+    show([visitCard({ medicines: [...taperRows([batch(301, 50, '2027-02-28')]), amlodipine] })])
+    fireEvent.click(await screen.findByRole('button', { name: 'Add 10' }))
+    // One strip covers the whole taper: the pharmacist types 15.
+    fireEvent.change(screen.getByLabelText('Quantity of Sample Pred 10 Tablet'), { target: { value: '15' } })
+    expect(screen.getByRole('button', { name: 'Add 5 more' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Add all in stock (3)' }))
+    expect(quantities()).toEqual([
+      ['Quantity of Sample Pred 10 Tablet', '15'],
+      ['Quantity of Sample Amlodipine 5 Tablet', '15'],
+      ['Quantity of Sample Amlodipine 5 Tablet', '6'],
+    ])
+    fireEvent.click(screen.getByRole('button', { name: 'Add 5 more' }))
+    expect(quantities()[0]).toEqual(['Quantity of Sample Pred 10 Tablet', '20'])
+    expect(screen.getByText('15 already on the bill; 1 tablet 1-0-0 for 5 days = 5')).toBeTruthy()
+  })
+
+  it('says when a medicine put on the bill from a card is no longer on it', async () => {
+    const takeHome = (medicines: PrescriptionForPharmacy['medicines']): PrescriptionForPharmacy => ({
+      id: 4, kind: 'discharge', completed_at: `${daysAgo(2)} 09:00`, doctor: 'Dr Sample One', note: 'Not approved yet: this may still change.', medicines,
+    })
+    const pred10 = { medicine: 'Sample Pred 10 Tablet', directions: '1 tablet · 1-0-1 · 5 days', match: pred([batch(301, 50, '2027-02-28')]), quantity: 10, worked_out: '1 tablet 1-0-1 for 5 days = 10' }
+    const cefixime = { medicine: 'Sample Cefixime 200 Capsule', directions: '1 cap · BD · 5 days', match: capsule, quantity: 10, worked_out: '1 cap BD for 5 days = 10' }
+    let cards = [takeHome([pred10])]
+    get.mockImplementation((url: string) => Promise.resolve({ data: url === '/patients/7' ? patient : url === '/pharmacy/prescriptions' ? cards : [] }))
+    const { container } = mount()
+    fireEvent.click(await screen.findByRole('button', { name: 'Add 10' }))
+    // The doctor writes another medicine in its place, and the card is read again.
+    cards = [takeHome([cefixime])]
+    fireEvent.click(screen.getByRole('button', { name: 'Open patient 7' }))
+    await waitFor(() => expect(container.querySelector('.rx-card')?.textContent).toContain('Sample Cefixime'))
+    expect(screen.getByText('No longer on this card: Sample Pred 10 Tablet (“1 tablet · 1-0-1 · 5 days”). The bill has 10: check it.')).toBeTruthy()
   })
 })
