@@ -4,6 +4,7 @@ import { api } from '../api'
 import { downloadCsv, rupees } from '../format'
 import type { PharmacyReport as Report, ReportColumn } from '../types'
 import { DateRange } from './DateRange'
+import { ReportCell } from './ReportCell'
 import { useChoiceInAddress, useRangeInAddress } from '../rangeInAddress'
 
 const cell = (column: ReportColumn, value: string | number | null) =>
@@ -83,7 +84,7 @@ export function ReportScreen({ base, first, firstLabel, lead }: Props) {
                   <tr key={i} className="static">
                     {report.columns.map((c) => (
                       <td key={c.key} className={c.type === 'text' ? 'wrap' : 'num'}>
-                        {cell(c, row[c.key])}
+                        <ReportCell link={row._links?.[c.key]}>{cell(c, row[c.key])}</ReportCell>
                       </td>
                     ))}
                   </tr>

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
 import { rupees } from '../format'
+import { DoctorLink } from './DoctorLink'
 
 type Day = { day: string; billed: number; collected: number; paid_out: number }
 type Owed = { key: string; label: string; owed: number; count: number }
@@ -64,7 +65,10 @@ export function OwnerFigures({ from, to }: { from: string; to: string }) {
                 return (
                   <tr key={d.day} className="static">
                     <td className="trend-day">
-                      {d.day === owner.today ? <strong>Today</strong> : dayMonth(d.day)} <small className="muted">{weekday(d.day)}</small>
+                      <Link to={`/reports?tab=detailed&report=collections&from=${d.day}&to=${d.day}`} title="Every payment taken that day">
+                        {d.day === owner.today ? <strong>Today</strong> : dayMonth(d.day)}
+                      </Link>{' '}
+                      <small className="muted">{weekday(d.day)}</small>
                     </td>
                     <td className="num">{rupees(d.billed)}</td>
                     <td className="num strong">{rupees(d.collected)}</td>
@@ -91,7 +95,7 @@ export function OwnerFigures({ from, to }: { from: string; to: string }) {
           </div>
           {owing.map((o) => (
             <div className="tile" key={o.key}>
-              <span>{o.label}</span>
+              <span>{o.key.startsWith('ipd') ? <Link to="/ipd">{o.label}</Link> : o.label}</span>
               <strong>{rupees(o.owed)}</strong>
               <small className="muted">
                 {o.count} {o.key.startsWith('ipd') ? (o.count === 1 ? 'case' : 'cases') : o.count === 1 ? 'bill' : 'bills'}
@@ -118,7 +122,9 @@ export function OwnerFigures({ from, to }: { from: string; to: string }) {
             <tbody>
               {owner.doctors.map((d) => (
                 <tr key={d.id} className="static">
-                  <td>{d.name}</td>
+                  <td>
+                    <DoctorLink id={d.id}>{d.name}</DoctorLink>
+                  </td>
                   <td className="num">{d.booked}</td>
                   <td className="num">{d.seen}</td>
                   <td className="num">{rupees(d.billed)}</td>

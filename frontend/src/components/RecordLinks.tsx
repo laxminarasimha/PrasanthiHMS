@@ -47,3 +47,15 @@ export function StockistLink({ id, children }: { id: number | null | undefined; 
     </Link>
   )
 }
+
+/** A bill's number: a front desk or lab bill opens on All bills, a pharmacy bill on the pharmacy's bills, for those who work there. */
+export function BillLink({ id, pharmacy, children }: { id: number | null | undefined; pharmacy?: boolean; children: ReactNode }) {
+  const { user } = useAuth()
+  const may = pharmacy ? user?.can_view_pharmacy || user?.can_run_pharmacy : user?.can_front_desk
+  if (!id || !may) return <>{children}</>
+  return (
+    <Link className="patient-link mono" to={`${pharmacy ? '/pharmacy/bills' : '/front-desk/bills'}?open=${id}`} title="Open this bill" onClick={stop}>
+      {children}
+    </Link>
+  )
+}

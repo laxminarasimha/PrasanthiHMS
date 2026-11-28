@@ -885,7 +885,8 @@ export type PharmacyReport = {
   from: string
   to: string
   columns: ReportColumn[]
-  rows: Record<string, string | number | null>[]
+  /** `_links`, by column: what that cell opens (the record's kind and id), where the row names one. */
+  rows: (Record<string, string | number | null> & { _links?: Record<string, ReportLink> })[]
   totals: Record<string, number>
   reports: Record<string, string>
   /** On reports about bills and payments: the money that counter received in the period, by how it was paid. */
@@ -990,3 +991,6 @@ export type AdmitAdvice = {
   patient: Patient
   doctor: { id: number; name: string } | null
 }
+
+/** What a report cell opens. */
+export type ReportLink = { kind: 'bill' | 'pharmacy_bill' | 'lab_order' | 'ipd' | 'patient' | 'doctor'; id: number }

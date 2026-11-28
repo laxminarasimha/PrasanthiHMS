@@ -114,4 +114,24 @@ class InterlinkStageBTest extends TestCase
         Sanctum::actingAs(User::factory()->create(['role' => 'staff']));
         $this->getJson('/api/search?q=searchable')->assertForbidden();
     }
+
+    public function test_report_rows_say_what_their_bill_patient_and_doctor_open(): void
+    {
+        $doctor = User::factory()->create(['role' => 'doctor']);
+        $patient = Patient::factory()->create();
+        $visit = Appointment::create(['patient_id' => $patient->id, 'doctor_id' => $doctor->id, 'scheduled_at' => now(), 'status' => 'reviewed']);
+        $bill = \App\Models\Bill::create(['patient_id' => $patient->id, 'appointment_id' => $visit->id, 'kind' => 'appointment', 'created_by' => $doctor->id]);
+        $bill->addLine('OPD consultation', 500);
+        $bill->payments()->create(['type' => 'payment', 'amount' => 500, 'mode' => 'cash', 'received_by' => $doctor->id]);
+        $bill->recalculate();
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $day = ['from' => today()->toDateString(), 'to' => today()->toDateString()];
+        $row = $this->getJson('/api/reports/list/bills?'.http_build_query($day))->assertOk()->json('rows.0');
+        $this->assertSame(['kind' => 'bill', 'id' => $bill->id], $row['_links']['bill_no']);
+        $this->assertSame(['kind' => 'patient', 'id' => $patient->id], $row['_links']['patient']);
+        // The words are unchanged, so printing and exporting are as before.
+        $this->assertSame($bill->bill_no, $row['bill_no']);
+        $this->assertSame(['kind' => 'doctor', 'id' => $doctor->id], $this->getJson('/api/reports/list/doctor-collections?'.http_build_query($day))->assertOk()->json('rows.0._links.doctor'));
+    }
 }

@@ -26,6 +26,7 @@ use App\Support\FollowUps;
 use App\Support\DoctorMoney;
 use App\Support\MoneyFigures;
 use App\Support\Referral;
+use App\Support\ReportLinks;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -99,7 +100,7 @@ class HospitalReportController extends Controller
 
         return response()->json([
             'type' => $type, 'title' => self::REPORTS[$type], 'from' => $from->toDateString(), 'to' => $to->toDateString(),
-            'columns' => $columns, 'rows' => $rows, 'totals' => $totals, 'reports' => $reports,
+            'columns' => $columns, 'rows' => ReportLinks::add(collect($rows)), 'totals' => $totals, 'reports' => $reports,
         ] + (in_array($type, ['bills', 'bill-lines', 'collections'], true) ? ['received' => MoneyFigures::received('front_desk', $from, $to)] : []));
     }
 
