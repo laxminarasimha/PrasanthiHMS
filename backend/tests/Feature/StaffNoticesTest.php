@@ -30,8 +30,8 @@ use Tests\Concerns\FakePhone;
 use Tests\TestCase;
 
 /**
- * The phone notices for staff other than doctors: a task given, leave decided, an expense decided, a stock count
- * handed in and a discharge summary to approve. Each reaches only the person it is for, never the one who did it,
+ * The phone notices for staff other than doctors: a task given, leave decided, an expense decided or ready to pay, a
+ * stock count handed in and a discharge summary to approve. Each reaches only the person it is for, never the one who did it,
  * and carries no amount, no reason or note and nothing clinical. Made-up staff, patients and figures throughout.
  */
 class StaffNoticesTest extends TestCase
@@ -103,8 +103,10 @@ class StaffNoticesTest extends TestCase
         // Summaries reach whoever may approve them and work in the IPD.
         $this->assertSame(['task', 'leave', 'expense', 'summary', 'test'], $kinds('manager', ['permissions' => ['canApproveIpd' => true]]));
         $this->assertSame(['appointment', 'lab', 'rep', 'task', 'leave', 'expense', 'test'], $kinds('doctor', ['permissions' => ['canWorkIpd' => false]]));
-        // Someone who may not ask for leave is not told about it either.
+        // Someone who may not ask for leave is not told about it either, nor someone who may not open their own record,
+        // where the notice would take them.
         $this->assertSame(['task', 'test'], $kinds('nurse', ['permissions' => ['wf:self:create' => false]]));
+        $this->assertSame(['task', 'test'], $kinds('nurse', ['permissions' => ['wf:self:view' => false]]));
 
         // Never offered anything: an own-record login, a doctor only on the lists, a wall screen, a closed login.
         $this->assertSame([], $kinds('staff'));
@@ -295,6 +297,52 @@ class StaffNoticesTest extends TestCase
         $this->assertNothingPrivate([...$this->told($cashier), ...$this->told($accountant)], ['₹', '12000', '12,000', '8000', '6000', 'Sample Electricals', 'Generator', 'quotation']);
     }
 
+    public function test_a_draft_sent_on_that_needs_no_approval_tells_whoever_entered_it_that_it_can_be_paid(): void
+    {
+        $repairs = Tenant::run($this->here->id, fn () => ExpenseCategory::create(['name' => 'Repairs and maintenance', 'approval_above' => 5000]));
+        $cashier = $this->withPhone($this->user('frontdesk'));
+        $accountant = $this->withPhone($this->user('accountant', ['name' => 'Sample Accountant']));
+        $draft = fn (array $more = []) => $this->postJson('/api/expenses', $more + ['spent_on' => today()->toDateString(), 'category_id' => $repairs->id, 'amount' => 1000, 'mode' => 'cash', 'paid_to' => 'Sample Hardware', 'description' => 'Door hinges', 'stage' => 'draft'])
+            ->assertCreated()->json();
+
+        // The cashier's draft is under the heading's limit. The accountant sends it on: it is ready to pay at once, and
+        // the cashier is told so.
+        Sanctum::actingAs($cashier);
+        $first = $draft();
+        Sanctum::actingAs($accountant);
+        $this->postJson("/api/expenses/{$first['id']}/submit")->assertOk()->assertJsonPath('status', 'approved');
+        $this->assertSame([[
+            'title' => 'Expense ready to pay',
+            'body' => $first['expense_no'].' · Repairs and maintenance · needs no approval, sent by Sample Accountant',
+            'url' => '/expenses?show=to_pay',
+            'tag' => 'expense-'.$first['id'],
+            'kind' => 'expense',
+        ]], $this->told($cashier));
+
+        // A heading typed by hand never asks for approval: told under the words that were typed.
+        Sanctum::actingAs($cashier);
+        $typed = $draft(['category_id' => null, 'category' => 'Sample typed heading', 'amount' => 300]);
+        Sanctum::actingAs($accountant);
+        $this->postJson("/api/expenses/{$typed['id']}/submit")->assertOk()->assertJsonPath('status', 'approved');
+        $this->assertSame($typed['expense_no'].' · Sample typed heading · needs no approval, sent by Sample Accountant', $this->told($cashier)[1]['body']);
+
+        // Above the limit it waits for approval: nobody is told until it is decided.
+        Sanctum::actingAs($cashier);
+        $large = $draft(['amount' => 8000]);
+        Sanctum::actingAs($accountant);
+        $this->postJson("/api/expenses/{$large['id']}/submit")->assertOk()->assertJsonPath('status', 'submitted');
+
+        // Whoever sends on a draft they entered themself already knows: the cashier's own, then the accountant's own.
+        Sanctum::actingAs($cashier);
+        $this->postJson('/api/expenses/'.$draft()['id'].'/submit')->assertOk()->assertJsonPath('status', 'approved');
+        Sanctum::actingAs($accountant);
+        $this->postJson('/api/expenses/'.$draft()['id'].'/submit')->assertOk()->assertJsonPath('status', 'approved');
+
+        $this->assertCount(2, $this->told($cashier));
+        $this->assertSame([], $this->told($accountant));
+        $this->assertNothingPrivate($this->told($cashier), ['₹', '1000', '1,000', '300', 'Sample Hardware', 'Door hinges']);
+    }
+
     public function test_a_notice_that_fails_never_turns_the_decision_into_an_error(): void
     {
         $cashier = $this->withPhone($this->user('frontdesk'));
@@ -392,6 +440,7 @@ class StaffNoticesTest extends TestCase
         $this->postJson("{$url}/ready")->assertOk()->assertJsonPath('ready_by.id', $nurse->id);
         Http::assertSentCount(1);
         $this->assertSame(1, AuditLog::where('action', 'ipd.summary_ready')->count());
+        $this->assertSame('Sent a discharge summary for approval', AuditLog::words(AuditLog::where('action', 'ipd.summary_ready')->first())['action']);
 
         // Approved, it is not handed over again; the approval withdrawn, it is no longer waiting either, and can be handed over afresh.
         Sanctum::actingAs($doctor);
@@ -447,6 +496,65 @@ class StaffNoticesTest extends TestCase
         $this->assertSame([], $this->told($otherDoctor));
     }
 
+    public function test_an_admin_who_hands_in_a_count_or_a_summary_is_not_told_of_it_and_the_other_admin_is(): void
+    {
+        $admin = $this->withPhone($this->user('admin', ['name' => 'Sample Owner']));
+        $otherAdmin = $this->withPhone($this->user('admin'));
+        $consultant = $this->user('doctor', ['sign_in_with' => 'none']); // their summaries go to those who approve them
+
+        // The first admin counts the shelf and hands the count in, then hands over a visiting consultant's summary.
+        Sanctum::actingAs($admin);
+        $medicine = Medicine::create(['name' => 'Paracetamol 650mg Tablet', 'gst_percent' => 12, 'units_per_pack' => 10, 'reorder_level' => 10]);
+        $this->postJson('/api/pharmacy/purchases', [
+            'stockist_id' => Stockist::create(['name' => 'Sample Distributors'])->id, 'invoice_no' => 'INV-P002', 'invoice_date' => now()->toDateString(),
+            'items' => [['medicine_id' => $medicine->id, 'batch_no' => 'P002', 'expiry' => now()->addYear()->format('Y-m'), 'units_per_pack' => 10, 'packs' => 10, 'pack_price' => 15, 'pack_mrp' => 28, 'gst_percent' => 12, 'rack_no' => 'A']],
+        ])->assertCreated();
+        $count = $this->postJson('/api/pharmacy/audit/counts', ['scope' => 'all'])->assertCreated()->json();
+        $this->putJson("/api/pharmacy/audit/counts/{$count['id']}/lines/{$count['rows'][0]['id']}", ['counted_units' => 97])->assertOk();
+        $this->postJson("/api/pharmacy/audit/counts/{$count['id']}/submit")->assertOk()->assertJsonPath('status', 'submitted');
+        $case = $this->postJson('/api/ipd/admissions', [
+            'patient_id' => Patient::factory()->create()->id, 'doctor_id' => $consultant->id, 'reason' => 'Observation', 'admitted_at' => now()->subDay()->format('Y-m-d H:i'),
+            'bed_id' => Bed::create(['ward' => 'General Ward', 'bed_no' => 'S1', 'daily_charge' => 800])->id,
+        ])->assertCreated()->json('id');
+        $this->putJson("/api/ipd/admissions/{$case}/summary", ['diagnosis' => 'Sample diagnosis'])->assertOk();
+        $this->postJson("/api/ipd/admissions/{$case}/summary/ready")->assertOk();
+
+        // Each reaches every admin but the one who did it: the other admin is told of each, once.
+        $this->assertSame([], $this->told($admin));
+        $this->assertSame([['stock_count', 'stock-count-'.$count['id']], ['summary', "summary-{$case}"]], array_map(fn (array $notice) => [$notice['kind'], $notice['tag']], $this->told($otherAdmin)));
+    }
+
+    public function test_the_summary_says_whether_the_doctor_of_the_case_is_the_one_told(): void
+    {
+        $doctor = $this->user('doctor');
+        $consultant = $this->user('doctor', ['sign_in_with' => 'none']);
+        $noWard = $this->user('doctor', ['permissions' => ['canWorkIpd' => false]]);
+        $beds = 0;
+        $admit = function (User $doctorOfCase) use (&$beds): int {
+            return $this->postJson('/api/ipd/admissions', [
+                'patient_id' => Patient::factory()->create()->id, 'doctor_id' => $doctorOfCase->id, 'reason' => 'Observation', 'admitted_at' => now()->subDay()->format('Y-m-d H:i'),
+                'bed_id' => Bed::create(['ward' => 'General Ward', 'bed_no' => 'S'.++$beds, 'daily_charge' => 800])->id,
+            ])->assertCreated()->json('id');
+        };
+        Sanctum::actingAs($this->user('nurse'));
+
+        // A doctor who signs in is the one told: so the screen says, before the summary is written, once it is, and once
+        // it is handed over.
+        $case = $admit($doctor);
+        $this->getJson("/api/ipd/admissions/{$case}/summary")->assertOk()->assertJsonPath('id', null)->assertJsonPath('doctor_hears', true);
+        $this->putJson("/api/ipd/admissions/{$case}/summary", ['diagnosis' => 'Sample diagnosis'])->assertOk()->assertJsonPath('doctor_hears', true);
+        $this->postJson("/api/ipd/admissions/{$case}/summary/ready")->assertOk()->assertJsonPath('doctor_hears', true);
+
+        // A consultant who never signs in, or a doctor who may not work in the IPD, is not: those who approve are told
+        // instead.
+        foreach ([$consultant, $noWard] as $notTold) {
+            $other = $admit($notTold);
+            $this->getJson("/api/ipd/admissions/{$other}/summary")->assertOk()->assertJsonPath('doctor_hears', false);
+            $this->putJson("/api/ipd/admissions/{$other}/summary", ['diagnosis' => 'Sample diagnosis'])->assertOk()->assertJsonPath('doctor_hears', false);
+            $this->postJson("/api/ipd/admissions/{$other}/summary/ready")->assertOk()->assertJsonPath('doctor_hears', false);
+        }
+    }
+
     public function test_a_device_is_let_go_of_by_whoever_holds_it_and_the_answer_is_the_same_either_way(): void
     {
         $doctor = $this->withPhone($this->user('doctor'));
@@ -460,6 +568,39 @@ class StaffNoticesTest extends TestCase
         $this->postJson('/api/me/push/release', [])->assertNoContent();
         // A phone letting go is not something a person did: the activity log is left alone.
         $this->assertSame(0, AuditLog::count());
+    }
+
+    public function test_an_own_record_login_is_refused_letting_go_of_a_device_and_the_holder_keeps_it(): void
+    {
+        $nurse = $this->withPhone($this->user('nurse'));
+        $ward = $this->user('staff', ['email' => null, 'phone' => '9000000001', 'password' => Hash::make('482915'), 'sign_in_with' => 'pin']);
+
+        // Left closed on purpose: an own-record login reaches nothing that is not named for it, and the owner has not
+        // agreed to open more. The device stays noted for the nurse.
+        Sanctum::actingAs($ward);
+        $this->postJson('/api/me/push/release', ['endpoint' => $this->phoneOf($nurse)])->assertForbidden();
+        $this->assertSame([$nurse->id], PushSubscription::pluck('user_id')->all());
+    }
+
+    public function test_a_person_can_ask_whether_the_device_in_hand_is_noted_for_them_and_learns_nothing_of_anyone_elses(): void
+    {
+        $doctor = $this->withPhone($this->user('doctor'));
+        $otherDoctor = $this->withPhone($this->user('doctor'));
+
+        Sanctum::actingAs($doctor);
+        $this->postJson('/api/me/push/held', ['endpoint' => $this->phoneOf($doctor)])->assertOk()->assertExactJson(['held' => true]);
+        // Another person's device, one never noted, or no address at all: the same plain no.
+        $this->postJson('/api/me/push/held', ['endpoint' => $this->phoneOf($otherDoctor)])->assertOk()->assertExactJson(['held' => false]);
+        $this->postJson('/api/me/push/held', ['endpoint' => 'https://fcm.googleapis.com/fcm/send/sample-never-noted'])->assertOk()->assertExactJson(['held' => false]);
+        $this->postJson('/api/me/push/held', [])->assertOk()->assertExactJson(['held' => false]);
+        $this->postJson('/api/me/push/held', ['endpoint' => ['not', 'an', 'address']])->assertOk()->assertExactJson(['held' => false]);
+        // Asking changes nothing, and is not something a person did: the activity log is left alone.
+        $this->assertSame([$doctor->id, $otherDoctor->id], PushSubscription::orderBy('id')->pluck('user_id')->all());
+        $this->assertSame(0, AuditLog::count());
+
+        // An own-record login is refused, as it is everything else of the notices.
+        Sanctum::actingAs($this->user('staff', ['email' => null, 'phone' => '9000000001', 'password' => Hash::make('482915'), 'sign_in_with' => 'pin']));
+        $this->postJson('/api/me/push/held', ['endpoint' => $this->phoneOf($doctor)])->assertForbidden();
     }
 
     public function test_signing_a_person_out_everywhere_stops_their_notices_on_every_device(): void
@@ -505,6 +646,22 @@ class StaffNoticesTest extends TestCase
         PushSubscription::create(['user_id' => $doctor->id, 'endpoint' => $broken, 'endpoint_hash' => PushSubscription::hashOf($broken), 'p256dh' => WebPush::encode("\x05".random_bytes(64)), 'auth' => $this->phoneSecret]);
         $this->postJson('/api/me/push/test', ['endpoint' => $broken])->assertOk()->assertJsonPath('sent', false)->assertJsonPath('message', 'This device had stopped accepting notifications. Switch them on again.');
         $this->assertSame(1, PushSubscription::count());
+    }
+
+    public function test_a_notice_too_long_to_send_is_reported_and_the_device_is_kept(): void
+    {
+        Exceptions::fake();
+        $nurse = $this->withPhone($this->user('nurse'));
+
+        // Words too long are not the device's fault: nothing is sent, it is reported, and the device stays.
+        $this->assertSame(0, PhoneNotice::now($nurse->id, ['title' => str_repeat('x', 4000), 'kind' => PhoneNotice::TASK]));
+        Exceptions::assertReported(fn (InvalidArgumentException $e) => $e->getMessage() === 'That is too long for a notification.');
+        Http::assertNothingSent();
+        $this->assertSame([$this->phoneOf($nurse)], PushSubscription::pluck('endpoint')->all());
+
+        // The next notice of the usual length reaches it.
+        $this->assertSame(1, PhoneNotice::now($nurse->id, ['title' => 'Sample', 'kind' => PhoneNotice::TASK]));
+        $this->assertSame(['Sample'], array_column($this->told($nurse), 'title'));
     }
 
     public function test_the_test_notice_speaks_for_every_kind_and_a_broken_letter_does_not_blank_a_notice(): void

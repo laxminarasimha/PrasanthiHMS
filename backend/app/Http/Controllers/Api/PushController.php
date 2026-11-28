@@ -80,6 +80,19 @@ class PushController extends Controller
         return response()->json(null, 204);
     }
 
+    /**
+     * Whether the device in hand is noted for the signed-in person. Only their own devices are looked at, so the answer
+     * says nothing of anyone else's: another person's device, one never noted, or no address at all is a plain no.
+     */
+    public function held(Request $request): JsonResponse
+    {
+        $endpoint = $request->input('endpoint');
+        $held = is_string($endpoint) && $endpoint !== '' && strlen($endpoint) <= 2000
+            && PushSubscription::where('user_id', $request->user()->id)->where('endpoint_hash', PushSubscription::hashOf($endpoint))->exists();
+
+        return response()->json(['held' => $held]);
+    }
+
     /** Sends a notification to this device now, so the person can see that it arrives. */
     public function test(Request $request): JsonResponse
     {

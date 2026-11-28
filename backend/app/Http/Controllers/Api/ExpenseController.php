@@ -156,6 +156,10 @@ class ExpenseController extends Controller
         $needs = ExpenseBook::needsApproval($expense->heading, (float) $expense->amount);
         $expense->update(['status' => $needs ? 'submitted' : 'approved', 'submitted_by' => $user->id, 'submitted_at' => now(), 'decided_by' => null, 'decided_at' => null, 'decision_note' => $needs ? null : 'No approval needed under this heading.']);
         AuditLog::record('expense.submitted', null, $expense, $this->words($expense).($needs ? ' · sent for approval' : ' · needs no approval, ready to pay'));
+        if (! $needs) {
+            // Ready to pay at once: whoever entered it is told, when it was someone else who sent it on.
+            PhoneNotice::expenseReady($expense, $user);
+        }
 
         return response()->json($this->present($expense->fresh($this->with()), $user));
     }

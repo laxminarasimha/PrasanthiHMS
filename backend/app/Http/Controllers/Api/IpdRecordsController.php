@@ -116,8 +116,9 @@ class IpdRecordsController extends Controller
     }
 
     /**
-     * Hands the written summary to the doctor for approval. The doctor of the case is told on their phone, once:
-     * handing it over again, before an approval is withdrawn, tells nobody a second time.
+     * Hands the written summary to the doctor for approval. The doctor of the case is told on their phone (or, where
+     * they cannot be, those who approve summaries), once: handing it over again, before an approval is withdrawn, tells
+     * nobody a second time.
      */
     public function markSummaryReady(Request $request, Admission $admission): JsonResponse
     {
@@ -153,24 +154,27 @@ class IpdRecordsController extends Controller
     }
 
     /**
-     * The summary with the people who wrote, handed over and approved it. Before one is written, the diagnosis and
-     * course are suggested from what the case already records, so the doctor is not starting blank.
+     * The summary with the people who wrote, handed over and approved it, and whether the admission's doctor is the one
+     * told when it is handed over (`doctor_hears`), so the screen names whoever really is. Before one is written, the
+     * diagnosis and course are suggested from what the case already records, so the doctor is not starting blank.
      *
      * @return array<string, mixed>
      */
     private function presentSummary(Admission $admission): array
     {
+        // The very check the notice is sent by, so the screen and the phone never disagree.
+        $doctorHears = PhoneNotice::doctorHearsSummary($admission);
         $summary = $admission->summary()->with(['preparer:id,name', 'approver:id,name,signature_text', 'readier:id,name'])->first();
         if (! $summary) {
             return [
                 'id' => null, 'diagnosis' => $admission->reason, 'course' => $admission->discharge_summary, 'medicines' => null,
-                'approved_at' => null, 'follow_up_on' => null, 'ready_at' => null, 'ready_by' => null,
+                'approved_at' => null, 'follow_up_on' => null, 'ready_at' => null, 'ready_by' => null, 'doctor_hears' => $doctorHears,
             ];
         }
         $shown = $summary->toArray();
         unset($shown['readier']);
 
-        return array_replace($shown, ['ready_by' => $summary->readier?->only(['id', 'name'])]);
+        return array_replace($shown, ['ready_by' => $summary->readier?->only(['id', 'name']), 'doctor_hears' => $doctorHears]);
     }
 
     // ---- Bill templates ----
