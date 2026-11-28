@@ -252,6 +252,7 @@ describe('entering a stockist’s invoice against a purchase order', () => {
     answer(order({ still_to_come: [still({ packs: 3, ordered: 10, received: 3, units_to_come: 25 })] }))
     show('/pharmacy/purchases?order=7')
     await waitFor(() => expect(boxes('Qty (packs)').map((b) => b.value)).toEqual(['3']))
+    expect(screen.getByText('From PO00007 · 25 units still to come')).toBeTruthy()
     // The 3 packs of 10 filled in are 5 units more than is left…
     expect(screen.getByText('5 units more than ordered')).toBeTruthy()
     // …and one pack of 25 is just what is left.

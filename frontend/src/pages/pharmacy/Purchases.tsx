@@ -592,7 +592,11 @@ export function PharmacyPurchases() {
                 {from && (
                   <p className="from-order-note">
                     <small className="pill status-ongoing">
-                      From {from.order_no} · {from.to_come} {from.to_come === 1 ? 'pack' : 'packs'} still to come
+                      From {from.order_no} ·{' '}
+                      {from.units_to_come === from.to_come * from.units_per_pack
+                        ? `${from.to_come} ${from.to_come === 1 ? 'pack' : 'packs'}`
+                        : `${from.units_to_come} ${from.units_to_come === 1 ? 'unit' : 'units'}`}{' '}
+                      still to come
                     </small>
                     {standing && <small className="pill warn">{standing}</small>}
                     <small className="muted">
