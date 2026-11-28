@@ -57,5 +57,15 @@ class AccountTest extends TestCase
         $this->putJson('/api/me/tabs', ['hidden' => ['pharmacy', 'lab', 'lab']])->assertOk()->assertJsonPath('hidden_tabs', ['pharmacy', 'lab'])->assertJsonPath('can_run_pharmacy', true);
         $this->getJson('/api/me')->assertJsonPath('hidden_tabs', ['pharmacy', 'lab']);
         $this->putJson('/api/me/tabs', ['hidden' => []])->assertOk()->assertJsonPath('hidden_tabs', []);
+
+        // The bar at the foot of the phone: the person's own places in their own order, four at most.
+        $this->getJson('/api/me')->assertOk()->assertJsonPath('bar_tabs', []);
+        $this->putJson('/api/me/bar', ['bar' => ['todo', 'pharmacy', 'billing']])->assertStatus(422);
+        $this->putJson('/api/me/bar', ['bar' => ['todo', 'todo']])->assertStatus(422);
+        $this->putJson('/api/me/bar', ['bar' => ['todo', 'lab', 'pharmacy', 'profile', 'attendance']])->assertStatus(422)->assertJsonValidationErrors('bar');
+        $this->putJson('/api/me/bar', ['bar' => ['pharmacy', 'todo', 'attendance', 'profile']])->assertOk()->assertJsonPath('bar_tabs', ['pharmacy', 'todo', 'attendance', 'profile']);
+        $this->getJson('/api/me')->assertJsonPath('bar_tabs', ['pharmacy', 'todo', 'attendance', 'profile']);
+        // An empty list gives back the usual bar.
+        $this->putJson('/api/me/bar', ['bar' => []])->assertOk()->assertJsonPath('bar_tabs', []);
     }
 }

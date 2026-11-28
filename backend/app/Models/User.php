@@ -15,7 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'branch_id', 'role', 'gender', 'phone', 'department', 'signature_text', 'is_active', 'pad_hidden_sections', 'hidden_tabs', 'appearance', 'pad_section_order', 'rx_settings', 'permissions', 'signature_path', 'seal_path', 'availability', 'slot_minutes', 'share_front_desk', 'share_lab', 'share_ipd', 'sign_in_with', 'must_change_secret', 'is_shared_screen', 'book_online'])]
+#[Fillable(['name', 'email', 'password', 'branch_id', 'role', 'gender', 'phone', 'department', 'signature_text', 'is_active', 'pad_hidden_sections', 'hidden_tabs', 'bar_tabs', 'appearance', 'pad_section_order', 'rx_settings', 'permissions', 'signature_path', 'seal_path', 'availability', 'slot_minutes', 'share_front_desk', 'share_lab', 'share_ipd', 'sign_in_with', 'must_change_secret', 'is_shared_screen', 'book_online'])]
 #[Hidden(['password', 'remember_token', 'signature_path', 'seal_path', 'permissions', 'share_front_desk', 'share_lab', 'share_ipd'])]
 class User extends Authenticatable
 {
@@ -34,6 +34,7 @@ class User extends Authenticatable
             'is_active' => 'boolean',
             'pad_hidden_sections' => 'array',
             'hidden_tabs' => 'array',
+            'bar_tabs' => 'array',
             'appearance' => 'array',
             'pad_section_order' => 'array',
             'rx_settings' => 'array',

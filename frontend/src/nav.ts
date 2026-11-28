@@ -67,6 +67,42 @@ const whole = (tab: NavTab) => [tab.to, ...(tab.also ?? [])]
  * more by what they do, and their own account. Everything else stays in the full menu, which the bar's last button opens.
  */
 export function bottomTabs(user: User): BottomTab[] {
+  // A person who has arranged their own bar gets exactly that, as far as they may still open each place.
+  const own = ownBar(user)
+  return own.length ? own : usualBar(user)
+}
+
+/** The most places on the bar; "More" always takes the last one. */
+export const BAR_MOST = 4
+
+/**
+ * Every place a person could put on the bar: each tab of their menu, and the few places that have no tab of
+ * their own. Only what they are allowed to open is offered.
+ */
+export function barChoices(user: User): BottomTab[] {
+  const tabs = allowedTabs(user)
+  const choices: BottomTab[] = tabs.map((t) => ({ key: t.key, label: t.label, to: t.to, paths: whole(t) }))
+  if (ownRecordOnly(user)) return [...choices, { key: 'profile', label: 'Profile', to: '/account', paths: ['/account'] }]
+  if (user.can_front_desk) choices.push({ key: 'schedule', label: 'Schedule', to: '/front-desk/calendar', paths: ['/front-desk/calendar'] })
+  if (!tabs.some((t) => t.key === 'patients')) choices.push({ key: 'patients', label: 'Patients', to: '/patients', paths: ['/patients'] })
+  if (user.abilities?.['wf:self:view'] && !tabs.some((t) => t.to === '/workforce/me')) choices.push({ key: 'attendance', label: 'Attendance', to: '/workforce/me', paths: ['/workforce/me'] })
+  return [...choices, { key: 'profile', label: 'Profile', to: '/account', paths: ['/account'] }]
+}
+
+/** The bar a person arranged for themself; empty when they have not, or when nothing they chose can be opened any more. */
+function ownBar(user: User): BottomTab[] {
+  const choices = barChoices(user)
+  return (user.bar_tabs ?? []).flatMap((key) => choices.find((c) => c.key === key) ?? []).slice(0, BAR_MOST)
+}
+
+/** The usual bar, told as the choices it is made of: where a person starts from when they arrange their own. */
+export function usualBarKeys(user: User): string[] {
+  const choices = barChoices(user)
+  return usualBar(user).flatMap((t) => choices.find((c) => c.to === t.to)?.key ?? [])
+}
+
+/** The bar for a person who has not arranged their own, by what their role does. */
+function usualBar(user: User): BottomTab[] {
   const tabs = menuTabs(user)
   const home = homeFor(user)
   const homeTab = tabs.find((t) => onTab(t, home))
