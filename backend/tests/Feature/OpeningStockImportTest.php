@@ -111,4 +111,53 @@ class OpeningStockImportTest extends TestCase
         $newcillin = Medicine::where('name', 'Sample Newcillin 500')->firstOrFail();
         $this->assertSame(['N1', 'N2', 'N3'], StockBatch::where('medicine_id', $newcillin->id)->orderBy('batch_no')->pluck('batch_no')->all());
     }
+
+    public function test_a_later_line_giving_a_new_medicine_another_pack_size_is_pointed_out(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        Medicine::create(['name' => 'Paracetamol 500', 'gst_percent' => 12, 'units_per_pack' => 10]);
+        $added = 'Not in the medicine list: it will be added.';
+        $rows = [
+            $this->row(['medicine' => 'Sample Newmed 10', 'batch_no' => 'N1', 'units_per_pack' => '10']),   // sheet row 2: the medicine is made from this line
+            $this->row(['medicine' => 'SAMPLE  NEWMED 10', 'batch_no' => 'N2', 'units_per_pack' => '15']),  // sheet row 3: the same medicine, another pack size
+            $this->row(['medicine' => 'sample newmed 10', 'batch_no' => 'N3', 'units_per_pack' => '10']),   // sheet row 4: the same pack size
+            $this->row(['batch_no' => 'P1', 'units_per_pack' => '15']),                                     // sheet row 5: a medicine already in the list
+        ];
+
+        $checked = $this->postJson('/api/pharmacy/opening-stock/import', ['rows' => $rows, 'add_missing' => true])->assertOk()->json();
+        $this->assertSame([
+            [$added],
+            [$added, 'Row 2 gives this new medicine 10 in a pack; this row says 15. It will be added with 10.'],
+            [$added],
+            ['The medicine list says a pack holds 10; the sheet says 15.'],
+        ], array_column($checked['rows'], 'warnings'));
+        $this->assertSame(0, $checked['totals']['with_errors']);
+
+        // As the warning says: the medicine takes the first line's pack size, and each batch keeps its own.
+        $totals = $checked['totals'];
+        $this->postJson('/api/pharmacy/opening-stock/import', ['rows' => $rows, 'add_missing' => true, 'commit' => true,
+            'confirm' => ['lines' => $totals['lines'], 'units' => $totals['units'], 'at_cost' => $totals['at_cost']]])->assertCreated()->assertJsonPath('added', 4);
+        $newmed = Medicine::where('name', 'Sample Newmed 10')->firstOrFail();
+        $this->assertSame(10, $newmed->units_per_pack);
+        $this->assertSame([10, 15, 10], StockBatch::where('medicine_id', $newmed->id)->orderBy('batch_no')->pluck('units_per_pack')->all());
+    }
+
+    public function test_a_new_medicines_pack_size_is_compared_with_its_first_line_without_mistakes(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $rows = [
+            $this->row(['medicine' => 'Sample Othermed 5', 'batch_no' => 'O1', 'units_per_pack' => '20', 'expiry' => 'Jan-20']), // sheet row 2: expired, so not the one to go by
+            $this->row(['medicine' => 'Sample Othermed 5', 'batch_no' => 'O2', 'units_per_pack' => '30']),                       // sheet row 3
+            $this->row(['medicine' => 'Sample Othermed 5', 'batch_no' => 'O3', 'units_per_pack' => '20']),                       // sheet row 4
+            $this->row(['medicine' => 'Sample Othermed 5', 'batch_no' => 'O4', 'units_per_pack' => 'ten']),                      // sheet row 5: no pack size to compare
+        ];
+
+        $checked = $this->postJson('/api/pharmacy/opening-stock/import', ['rows' => $rows, 'add_missing' => true])->assertOk()->json('rows');
+        $packWarnings = array_map(fn (array $r) => array_values(array_filter($r['warnings'], fn (string $w) => str_contains($w, 'in a pack'))), $checked);
+        $this->assertSame([[], [], ['Row 3 gives this new medicine 30 in a pack; this row says 20. It will be added with 30.'], []], $packWarnings);
+
+        // Without "Add medicines that are not in the list" nothing is added, so there is nothing to compare.
+        $checked = $this->postJson('/api/pharmacy/opening-stock/import', ['rows' => array_slice($rows, 1, 2)])->assertOk()->json('rows');
+        $this->assertSame([[], []], array_column($checked, 'warnings'));
+    }
 }

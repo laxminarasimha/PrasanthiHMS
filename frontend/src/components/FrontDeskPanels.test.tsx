@@ -14,28 +14,32 @@ const visit = (over: Partial<Appointment> = {}): Appointment => ({
 })
 const edit = (appointment: Appointment) =>
   render(<EditAppointmentPanel appointment={appointment} doctors={[{ id: 2, name: 'Dr Sample Rao', department: null }]} services={[]} onClose={() => undefined} onSaved={() => undefined} />)
+const SEEN_IN_APP = 'If the patient uses the patient app, they can see this note there.'
 
 afterEach(cleanup)
 
 describe('editing an appointment', () => {
-  it('says in its heading that the patient booked it on the app, and that the patient wrote the note and reads it', () => {
+  it('says in its heading that the patient booked it on the app, and that the app shows the note', () => {
     edit(visit())
     const heading = screen.getByText(/^Sample Mother · token/)
     expect(heading.textContent).toBe('Sample Mother · token 4 App')
     expect(heading.querySelector('[title="Booked from the patient app"]')).not.toBeNull()
     expect((screen.getByLabelText('Notes') as HTMLInputElement).value).toBe('Sample fever for three days')
-    expect(screen.getByText('The patient typed this note in the app, and sees what is written here.')).toBeTruthy()
+    expect(screen.getByText(SEEN_IN_APP)).toBeTruthy()
+    // The desk may have typed or changed the note since, so who wrote it is never said.
+    expect(screen.queryByText(/typed/)).toBeNull()
   })
 
-  it('still warns that the patient reads the note when they wrote none', () => {
+  it('says the same when the visit has no note yet', () => {
     edit(visit({ notes: null }))
-    expect(screen.getByText('The patient sees this note in the app.')).toBeTruthy()
+    expect(screen.getByText(SEEN_IN_APP)).toBeTruthy()
   })
 
-  it('says nothing of the app for a visit booked at the hospital', () => {
+  it('says the app shows the note of a visit booked at the hospital too, without marking it as an app booking', () => {
     edit(visit({ booked_via: null, notes: 'Sample desk note' }))
     expect(screen.getByText(/^Sample Mother · token/).textContent).toBe('Sample Mother · token 4 ')
     expect(screen.queryByTitle('Booked from the patient app')).toBeNull()
-    expect(screen.queryByText(/sees what is written here|sees this note in the app/)).toBeNull()
+    expect(screen.getByText(SEEN_IN_APP)).toBeTruthy()
+    expect(screen.queryByText(/typed/)).toBeNull()
   })
 })

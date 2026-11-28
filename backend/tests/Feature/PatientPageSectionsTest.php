@@ -253,6 +253,16 @@ class PatientPageSectionsTest extends TestCase
         $this->assertSame([['medicine_id' => null, 'name' => 'Sample loose item', 'quantity' => null]], $page['monthly_medicines'][0]['items']);
     }
 
+    public function test_a_diagnosis_in_telugu_or_with_a_sign_comes_through_whole(): void
+    {
+        // Both 'అ' and '★' are written with a byte that a careless search for line breaks also takes.
+        $this->stay('2026-11-01 09:00', '2026-11-02 09:00', $this->approved(['diagnosis' => "అతిసారం (Sample diarrhoea)\nTreated and settled"]));
+        $this->stay('2026-11-10 09:00', '2026-11-11 09:00', $this->approved(['diagnosis' => "★ Sample fever, stage Ⅳ\r\nSent home"]));
+
+        $page = $this->overview('doctor');
+        $this->assertSame(['★ Sample fever, stage Ⅳ', 'అతిసారం (Sample diarrhoea)'], array_column($page['discharge_summaries'], 'diagnosis'));
+    }
+
     public function test_opening_the_page_is_still_noted_once(): void
     {
         $this->visit('2026-11-10 11:00', ['Sample Paracetamol 650']);
