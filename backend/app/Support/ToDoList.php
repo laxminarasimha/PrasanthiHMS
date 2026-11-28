@@ -13,6 +13,7 @@ use App\Models\LabOrder;
 use App\Models\LabOrderItem;
 use App\Models\PastRecord;
 use App\Models\PharmacySale;
+use App\Models\RepVisit;
 use App\Models\StockCount;
 use App\Models\User;
 use App\Workforce\Models\Attendance;
@@ -107,6 +108,11 @@ class ToDoList
             self::item('to_come', 'Booked for today, not here yet', 'Still to come today.', '/doctor',
                 $today->where('status', 'booked')->map(fn (Appointment $a) => $row($a, 'Booked for '.$a->scheduled_at->format('g:i A'), '/doctor'))),
         ];
+
+        // Medical representatives who have come to meet this doctor today and are still waiting.
+        $reps = RepVisit::where('doctor_id', $user->id)->where('status', 'waiting')->whereDate('arrived_at', today())->with(['rep:id,rep_company_id,name', 'rep.company:id,name'])->orderBy('arrived_at')->get();
+        $items[] = self::item('reps', 'Medical representatives waiting', 'They are logged at the desk; see them when you are free, or ask them to come another day.', '/reps',
+            $reps->map(fn (RepVisit $v) => ['text' => $v->rep->name.' · '.$v->rep->company->name, 'detail' => 'Came at '.$v->arrived_at->format('g:i A'), 'to' => '/reps']));
 
         if ($user->allows('canWorkIpd')) {
             $stays = Admission::where('doctor_id', $user->id)->where('status', 'admitted')->with('patient:id,uhid,title,name')->orderBy('admitted_at')->get();

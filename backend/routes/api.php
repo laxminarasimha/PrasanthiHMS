@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\IpdChartController;
 use App\Http\Controllers\Api\IpdController;
 use App\Http\Controllers\Api\IpdRecordsController;
 use App\Http\Controllers\Api\LabController;
+use App\Http\Controllers\Api\MedicalRepController;
 use App\Http\Controllers\Api\PastRecordController;
 use App\Http\Controllers\Api\PatientAccountController;
 use App\Http\Controllers\Api\PatientAppController;
@@ -129,6 +130,24 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
     Route::get('/backups/{name}/download', [BackupController::class, 'download']);
     Route::put('/me/tabs', [AuthController::class, 'saveTabs']);
     Route::put('/me/bar', [AuthController::class, 'saveBar']);
+    // Medical representatives: the companies, their people, and each visit to a doctor, logged at the front desk.
+    Route::prefix('reps')->controller(MedicalRepController::class)->group(function () {
+        Route::get('/visits', 'visits');
+        Route::get('/waiting', 'waiting');
+        Route::post('/visits', 'logVisit');
+        Route::put('/visits/{visit}', 'updateVisit');
+        Route::delete('/visits/{visit}', 'removeVisit');
+        Route::get('/people', 'reps');
+        Route::post('/people', 'storeRep');
+        Route::get('/people/{rep}', 'showRep');
+        Route::put('/people/{rep}', 'updateRep');
+        Route::get('/companies', 'companies');
+        Route::put('/companies/{company}', 'updateCompany');
+        Route::post('/companies/{company}/files', 'storeFile');
+        Route::get('/files/{file}/download', 'downloadFile');
+        Route::delete('/files/{file}', 'removeFile');
+        Route::put('/hours', 'saveHours');
+    });
     // Each person's To do screen: the work waiting for them, and the tasks written for them.
     Route::controller(ToDoController::class)->group(function () {
         Route::get('/todo', 'index');
