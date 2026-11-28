@@ -18,6 +18,10 @@ use App\Models\PatientDeposit;
 use App\Models\Payment;
 use App\Models\PharmacyPayment;
 use App\Models\PrescriptionItem;
+use App\Models\MedicalRep;
+use App\Models\RepCompany;
+use App\Models\RepSample;
+use App\Models\RepVisit;
 use App\Support\FollowUps;
 use App\Support\DoctorMoney;
 use App\Support\MoneyFigures;
@@ -60,6 +64,11 @@ class HospitalReportController extends Controller
         'lab-outside' => 'Lab: tests sent to outside labs',
         'lab-referrals' => 'Referrals: lab orders by referring doctor',
         'patient-referrals' => 'Referrals: new patients by referring doctor',
+        'rep-visits' => 'Medical reps: every visit',
+        'rep-companies' => 'Medical reps: visits by company',
+        'rep-not-seen' => 'Medical reps: not come for a long time',
+        'rep-offers' => 'Medical reps: offers and schemes',
+        'rep-samples' => 'Medical reps: samples received and given',
         'earlier-day' => 'Bills and money entered for an earlier day',
         'activity' => 'Activity log: who opened and changed records',
     ];
@@ -503,6 +512,108 @@ class HospitalReportController extends Controller
         return [[
             self::col('test', 'Test'), self::col('parameter', 'Parameter'), self::col('results', 'Results', 'number'),
             self::col('normal', 'Normal', 'number'), self::col('high', 'High', 'number'), self::col('low', 'Low', 'number'),
+        ], $rows];
+    }
+
+    // ---- Medical representatives ----
+
+    private const REP_STATUS = ['waiting' => 'Waiting', 'met' => 'Met', 'not_met' => 'Not met', 'come_back' => 'Asked to come back'];
+
+    /** Each time a representative came in the period, with what was spoken about. */
+    private function repVisits(Carbon $from, Carbon $to): array
+    {
+        $rows = RepVisit::whereBetween('arrived_at', [$from, $to])->with(['rep:id,rep_company_id,name,division,mobile', 'rep.company:id,name', 'doctor:id,name'])->orderBy('arrived_at')->get()
+            ->map(fn (RepVisit $v) => [
+                'when' => $v->arrived_at->format('Y-m-d H:i'), 'rep' => $v->rep?->name, 'company' => $v->rep?->company?->name, 'division' => $v->rep?->division,
+                'doctor' => $v->doctor?->name, 'status' => self::REP_STATUS[$v->status] ?? $v->status, 'discussed' => $v->discussed, 'offers' => $v->offers,
+                'next_on' => $v->next_on?->format('Y-m-d'),
+            ]);
+
+        return [[
+            self::col('when', 'Came at'), self::col('rep', 'Representative'), self::col('company', 'Company'), self::col('division', 'Division'), self::col('doctor', 'To meet'),
+            self::col('status', 'What happened'), self::col('discussed', 'Products spoken about'), self::col('offers', 'Offers'), self::col('next_on', 'Next visit'),
+        ], $rows];
+    }
+
+    /** Each company: how often its people came in the period, how many of those visits were met, and how big its catalogue is. */
+    private function repCompanies(Carbon $from, Carbon $to): array
+    {
+        $visits = RepVisit::whereBetween('arrived_at', [$from, $to])->with('rep:id,rep_company_id')->get()->groupBy(fn (RepVisit $v) => $v->rep?->rep_company_id);
+        $rows = RepCompany::withCount(['reps', 'products'])->withMax('visits as last_visit_at', 'arrived_at')->orderBy('name')->get()
+            ->map(function (RepCompany $c) use ($visits) {
+                $own = $visits->get($c->id, collect());
+
+                return [
+                    'company' => $c->name, 'reps' => $c->reps_count, 'visits' => $own->count(), 'met' => $own->where('status', 'met')->count(),
+                    'not_met' => $own->whereIn('status', ['not_met', 'come_back'])->count(), 'brands' => $c->products_count,
+                    'last_visit' => $c->last_visit_at ? Carbon::parse($c->last_visit_at)->format('Y-m-d') : null,
+                ];
+            });
+
+        return [[
+            self::col('company', 'Company'), self::col('reps', 'Representatives', 'number'), self::col('visits', 'Visits', 'number'), self::col('met', 'Met', 'number'),
+            self::col('not_met', 'Not met', 'number'), self::col('brands', 'Brands in catalogue', 'number'), self::col('last_visit', 'Last came (any date)'),
+        ], $rows];
+    }
+
+    /**
+     * Representatives who still call but have not come in the 30 days up to the end of the period, longest away
+     * first; and those asked to come back on a day that has passed without their coming.
+     */
+    private function repNotSeen(Carbon $from, Carbon $to): array
+    {
+        $asOf = $to->copy()->min(now());
+        $rows = MedicalRep::where('is_active', true)->with(['company:id,name', 'lastVisit:id,medical_rep_id,arrived_at,status,next_on'])->get()
+            ->map(function (MedicalRep $r) use ($asOf) {
+                $last = $r->lastVisit;
+                $days = $last ? (int) $last->arrived_at->copy()->startOfDay()->diffInDays($asOf->copy()->startOfDay()) : null;
+                $missed = $last && $last->next_on && $last->next_on->lt($asOf->copy()->startOfDay());
+
+                return [
+                    'rep' => $r->name, 'company' => $r->company?->name, 'mobile' => $r->mobile, 'last_visit' => $last?->arrived_at->format('Y-m-d'), 'days' => $days,
+                    'why' => $missed ? 'Was to come on '.$last->next_on->format('j M Y') : ($last ? 'Not come for '.$days.' days' : 'Never logged as coming'),
+                    'keep' => $missed || $days === null || $days > 30,
+                ];
+            })->filter(fn (array $row) => $row['keep'])->sortByDesc(fn (array $row) => $row['days'] ?? 100000)
+            ->map(fn (array $row) => array_diff_key($row, ['keep' => 1]));
+
+        return [[
+            self::col('rep', 'Representative'), self::col('company', 'Company'), self::col('mobile', 'Mobile'), self::col('last_visit', 'Last came'),
+            self::col('days', 'Days since', 'number', false), self::col('why', 'Why listed'),
+        ], $rows];
+    }
+
+    /** Every offer or scheme a doctor wrote down after a meeting in the period. */
+    private function repOffers(Carbon $from, Carbon $to): array
+    {
+        $rows = RepVisit::whereBetween('arrived_at', [$from, $to])->whereNotNull('offers')->where('offers', '!=', '')
+            ->with(['rep:id,rep_company_id,name,mobile', 'rep.company:id,name', 'doctor:id,name'])->orderBy('arrived_at')->get()
+            ->map(fn (RepVisit $v) => [
+                'date' => $v->arrived_at->format('Y-m-d'), 'company' => $v->rep?->company?->name, 'rep' => $v->rep?->name, 'mobile' => $v->rep?->mobile,
+                'doctor' => $v->doctor?->name, 'discussed' => $v->discussed, 'offers' => $v->offers,
+            ]);
+
+        return [[
+            self::col('date', 'Date'), self::col('company', 'Company'), self::col('rep', 'Representative'), self::col('mobile', 'Mobile'), self::col('doctor', 'Told to'),
+            self::col('discussed', 'Products'), self::col('offers', 'Offer or scheme'),
+        ], $rows];
+    }
+
+    /** The samples that came in during the period: how many, how many went out or were thrown away, and what is left. */
+    private function repSamples(Carbon $from, Carbon $to): array
+    {
+        $rows = RepSample::whereBetween('received_on', [$from->toDateString(), $to->toDateString()])->with(['company:id,name', 'rep:id,name', 'doctor:id,name', 'issues'])
+            ->orderBy('received_on')->orderBy('id')->get()
+            ->map(fn (RepSample $s) => [
+                'date' => $s->received_on->format('Y-m-d'), 'company' => $s->company?->name, 'rep' => $s->rep?->name, 'sample' => $s->name, 'unit' => $s->unit,
+                'doctor' => $s->doctor?->name, 'received' => $s->quantity, 'given' => $s->given, 'discarded' => $s->discarded, 'in_hand' => $s->in_hand,
+                'expiry' => $s->expiry?->format('Y-m-d'),
+            ]);
+
+        return [[
+            self::col('date', 'Received on'), self::col('company', 'Company'), self::col('rep', 'Representative'), self::col('sample', 'Sample'), self::col('unit', 'Counted in'),
+            self::col('doctor', 'Left for'), self::col('received', 'Received', 'number'), self::col('given', 'Given out', 'number'), self::col('discarded', 'Thrown away', 'number'),
+            self::col('in_hand', 'Left', 'number'), self::col('expiry', 'Expiry'),
         ], $rows];
     }
 

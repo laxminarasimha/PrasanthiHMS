@@ -5,6 +5,7 @@ import { DoctorTabs } from '../components/DoctorTabs'
 import { FrontDeskTabs } from '../components/FrontDeskTabs'
 import { PharmacyTabs } from '../components/PharmacyTabs'
 import { RepCatalogue } from '../components/RepCatalogue'
+import { RepSamples, type SampleStart } from '../components/RepSamples'
 import { useChoiceInAddress } from '../rangeInAddress'
 import { OutsideHours } from '../components/AppointmentForm'
 import { SelectField, TextField } from '../components/Field'
@@ -50,7 +51,7 @@ const STATUS: Record<Status, { label: string; pill: string }> = {
 }
 const STATUS_CHOICES = (['met', 'come_back', 'not_met', 'waiting'] as const).map((value) => ({ value, label: STATUS[value].label }))
 const noRep = { name: '', company: '', mobile: '', division: '', area: '', manager_name: '', manager_mobile: '', notes: '' }
-const TABS = ['visits', 'reps', 'companies', 'catalogue'] as const
+const TABS = ['visits', 'reps', 'companies', 'catalogue', 'samples'] as const
 
 const hm = (time: string) => clock(`2000-01-01 ${time}`)
 /** A doctor's own hours for representatives, in words. */
@@ -77,6 +78,8 @@ export function MedicalReps() {
   const [query, setQuery] = useState('')
   const [failed, setFailed] = useState('')
   const [notice, setNotice] = useState('')
+  // Set when samples are being entered straight from a visit.
+  const [sampleStart, setSampleStart] = useState<SampleStart | null>(null)
   const [panel, setPanel] = useState<{ kind: 'log' } | { kind: 'close'; visit: Visit } | { kind: 'rep'; rep: Rep | null } | null>(null)
 
   const loadDay = useCallback(() => {
@@ -171,6 +174,17 @@ export function MedicalReps() {
             <button className={tab === 'catalogue' ? 'active' : ''} onClick={() => setTab('catalogue')}>
               Catalogue of brands
             </button>
+            {seesVisits && (
+              <button
+                className={tab === 'samples' ? 'active' : ''}
+                onClick={() => {
+                  setSampleStart(null)
+                  setTab('samples')
+                }}
+              >
+                Samples
+              </button>
+            )}
           </div>
 
           {failed && <p className="form-error">{failed}</p>}
@@ -218,6 +232,19 @@ export function MedicalReps() {
                           <button className="btn ghost small-btn" onClick={() => setPanel({ kind: 'close', visit: v })}>
                             {v.status === 'waiting' ? 'Met / not met' : 'Change'}
                           </button>
+                          {v.status === 'met' && v.rep?.company && (
+                            <button
+                              className="link"
+                              title="Enter the samples this representative left"
+                              onClick={() => {
+                                setPanel(null)
+                                setSampleStart({ companyId: v.rep!.company!.id, repId: v.rep!.id, visitId: v.id, doctorId: v.doctor?.id ?? null })
+                                setTab('samples')
+                              }}
+                            >
+                              + Samples
+                            </button>
+                          )}
                           {canLog && v.status === 'waiting' && !v.discussed && !v.offers && (
                             <button className="link danger" onClick={() => void remove(v)}>
                               Take off
@@ -290,6 +317,7 @@ export function MedicalReps() {
 
           {tab === 'companies' && <Companies companies={companies} canChange={canLog} onChange={loadCompanies} />}
           {tab === 'catalogue' && <RepCatalogue />}
+          {tab === 'samples' && seesVisits && <RepSamples key={sampleStart?.visitId ?? 'plain'} doctors={doctors} start={sampleStart} />}
         </section>
 
         {panel?.kind === 'log' && <LogVisit doctors={doctors} hours={day?.hours ?? {}} onClose={() => setPanel(null)} onLogged={(v) => done(`${v.rep?.name} is on ${v.doctor?.name}’s waiting list.`)} />}

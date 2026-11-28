@@ -13,6 +13,7 @@ use App\Models\LabOrder;
 use App\Models\LabOrderItem;
 use App\Models\PastRecord;
 use App\Models\PharmacySale;
+use App\Models\RepSample;
 use App\Models\RepVisit;
 use App\Models\StockCount;
 use App\Models\User;
@@ -152,6 +153,10 @@ class ToDoList
             self::item('follow_ups', 'Asked to come back, not come', 'Patients a doctor asked to return in the last '.self::DAYS.' days who have not been seen since.', '/front-desk',
                 $late->map(fn (array $r) => ['text' => self::who($r['patient'] ?? null), 'detail' => 'Was due '.Carbon::parse($r['follow_up_on'])->format('j M').(($r['doctor'] ?? null) ? ' · '.$r['doctor']->name : ''), 'to' => isset($r['patient']) ? '/patients/'.$r['patient']->id : null])),
         ];
+        // Samples left by representatives that are about to go out of date, or already have, and are still on the shelf.
+        $samples = RepSample::whereNotNull('expiry')->whereDate('expiry', '<=', today()->addDays(30))->with(['company:id,name', 'issues'])->orderBy('expiry')->get()->filter(fn (RepSample $s) => $s->in_hand > 0);
+        $items[] = self::item('samples_expiring', 'Samples expired or expiring within 30 days', 'Give them out while they are in date, or throw away what has expired.', '/reps?tab=samples',
+            $samples->map(fn (RepSample $s) => ['text' => $s->name.' · '.($s->company?->name ?? ''), 'detail' => $s->in_hand.' left · '.($s->expiry->lt(today()) ? 'expired ' : 'expires ').$s->expiry->format('j M Y'), 'to' => '/reps?tab=samples']));
         if ($user->allows('canFilePastRecords')) {
             $items[] = self::item('old_papers', 'Old papers waiting to be checked', 'Scanned and read; someone has to check them and file them.', '/past-records', [], false, PastRecord::where('status', 'to_check')->count());
         }
