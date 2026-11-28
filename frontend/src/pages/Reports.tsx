@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../auth'
 import { api } from '../api'
 import { DayClose } from '../components/DayClose'
 import { FindPatients } from '../components/FindPatients'
@@ -8,7 +10,7 @@ import { modeLabel, rupees, today } from '../format'
 import { MoneyByMode } from '../components/MoneyByMode'
 import { useChoiceInAddress, useRangeInAddress } from '../rangeInAddress'
 
-type Department = { label: string; billed: number; collected: Record<string, number>; collected_total: number }
+type Department = { label: string; billed: number; collected: Record<string, number>; collected_total: number; /** Bills made in the period (for the IPD, cases in the hospital) and what is still unpaid on them. */ bills?: number; due?: number }
 type Summary = {
   from: string
   to: string
@@ -30,6 +32,9 @@ const COUNTS: [string, string][] = [
   ['inpatients_now', 'Inpatients right now'],
 ]
 
+/** What each department's count is a count of. */
+const COUNTED: Record<string, [string, string]> = { consultation: ['bill', 'bills'], lab: ['lab bill', 'lab bills'], pharmacy: ['pharmacy bill', 'pharmacy bills'], ipd: ['inpatient case', 'inpatient cases'] }
+
 const firstOfMonth = () => today().slice(0, 8) + '01'
 const TABS = ['summary', 'detailed', 'find', 'close'] as const
 
@@ -39,6 +44,8 @@ export function Reports() {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [error, setError] = useState('')
   const [tab, setTab] = useChoiceInAddress('tab', 'summary', TABS)
+  const { user } = useAuth()
+  const navigate = useNavigate()
 
   useEffect(() => {
     if (from > to) return
@@ -54,6 +61,15 @@ export function Reports() {
   const departments = summary ? Object.values(summary.departments) : []
   const billed = departments.reduce((sum, d) => sum + d.billed, 0)
   const collected = departments.reduce((sum, d) => sum + d.collected_total, 0)
+  const due = Math.round(departments.reduce((sum, d) => sum + (d.due ?? 0), 0) * 100) / 100
+  const byMode = (mode: string) => Math.round(departments.reduce((sum, d) => sum + (d.collected[mode] ?? 0), 0) * 100) / 100
+  // Where each department's own detailed reports are, for a person who may open them.
+  const reportsOf: Record<string, string | null> = {
+    consultation: `/reports?tab=detailed&report=bills&from=${from}&to=${to}`,
+    lab: `/reports?tab=detailed&report=lab-tests&from=${from}&to=${to}`,
+    pharmacy: user?.can_view_pharmacy ? '/pharmacy/reports' : null,
+    ipd: user?.can_ipd ? '/ipd/reports' : null,
+  }
 
   const tabs = (
     <div className="tabs no-print">
@@ -61,8 +77,18 @@ export function Reports() {
         Summary
       </button>
       <button className={tab === 'detailed' ? 'active' : ''} onClick={() => setTab('detailed')}>
-        Front desk and doctor reports
+        Front desk, doctor and lab reports
       </button>
+      {user?.can_view_pharmacy && (
+        <button type="button" onClick={() => navigate('/pharmacy/reports')} title="Opens the pharmacy’s own reports">
+          Pharmacy reports
+        </button>
+      )}
+      {user?.can_ipd && (
+        <button type="button" onClick={() => navigate('/ipd/reports')} title="Opens the IPD’s own reports">
+          IPD reports
+        </button>
+      )}
       <button className={tab === 'find' ? 'active' : ''} onClick={() => setTab('find')}>
         Find patients
       </button>
@@ -131,15 +157,65 @@ export function Reports() {
 
       {summary && (
         <>
+          <div className="print-together">
+            <h3>The whole hospital, and each department</h3>
+            <div className="dept-cards">
+              <div className="dept-card whole">
+                <strong className="dept-name">Whole hospital</strong>
+                <dl>
+                  <dt>Billed</dt>
+                  <dd>{rupees(billed)}</dd>
+                  <dt className="strong">Collected</dt>
+                  <dd className="strong">{rupees(collected)}</dd>
+                  <dt className="sub">Cash</dt>
+                  <dd className="sub">{rupees(byMode('cash'))}</dd>
+                  <dt className="sub">UPI</dt>
+                  <dd className="sub">{rupees(byMode('upi'))}</dd>
+                  <dt className="sub">Card</dt>
+                  <dd className="sub">{rupees(byMode('card'))}</dd>
+                  <dt>Still unpaid</dt>
+                  <dd className={due > 0 ? 'due' : ''}>{rupees(due)}</dd>
+                </dl>
+              </div>
+              {Object.entries(summary.departments).map(([key, d]) => (
+                <div className="dept-card" key={key}>
+                  <strong className="dept-name">{d.label}</strong>
+                  <dl>
+                    <dt>Billed</dt>
+                    <dd>{rupees(d.billed)}</dd>
+                    <dt className="strong">Collected</dt>
+                    <dd className="strong">{rupees(d.collected_total)}</dd>
+                    <dt className="sub">Cash</dt>
+                    <dd className="sub">{rupees(d.collected.cash ?? 0)}</dd>
+                    <dt className="sub">UPI</dt>
+                    <dd className="sub">{rupees(d.collected.upi ?? 0)}</dd>
+                    <dt className="sub">Card</dt>
+                    <dd className="sub">{rupees(d.collected.card ?? 0)}</dd>
+                    <dt>Still unpaid</dt>
+                    <dd className={(d.due ?? 0) > 0 ? 'due' : ''}>{rupees(d.due ?? 0)}</dd>
+                  </dl>
+                  <small className="muted">
+                    {d.bills ?? 0} {COUNTED[key]?.[(d.bills ?? 0) === 1 ? 0 : 1] ?? 'bills'}
+                    {reportsOf[key] && (
+                      <>
+                        {' · '}
+                        <Link className="no-print" to={reportsOf[key]!}>
+                          Its reports
+                        </Link>
+                      </>
+                    )}
+                  </small>
+                </div>
+              ))}
+            </div>
+            <p className="muted small">
+              “Billed” is what was charged in these dates. “Collected” is money received in these dates, less refunds, whenever the bill was made. “Still unpaid” is what is owed today on the bills of these dates; for the IPD, on the cases that were in the
+              hospital in these dates.
+            </p>
+          </div>
+
+          <h3>What was done</h3>
           <div className="tiles">
-            <div className="tile">
-              <span>Total billed</span>
-              <strong>{rupees(billed)}</strong>
-            </div>
-            <div className="tile">
-              <span>Total collected</span>
-              <strong>{rupees(collected)}</strong>
-            </div>
             {COUNTS.map(([key, label]) => (
               <div className="tile" key={key}>
                 <span>{label}</span>

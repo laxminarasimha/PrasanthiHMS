@@ -67,6 +67,16 @@ class ReportTest extends TestCase
             ->assertJsonPath('departments.ipd.billed', 1000)
             ->assertJsonPath('departments.ipd.collected.cash', 4500)
             ->assertJsonPath('departments.ipd.collected_total', 4500)
+            // Each department's bills in the period and what is still unpaid on them.
+            ->assertJsonPath('departments.consultation.bills', 1)
+            ->assertJsonPath('departments.consultation.due', 50)
+            ->assertJsonPath('departments.lab.bills', 1)
+            ->assertJsonPath('departments.lab.due', 0)
+            ->assertJsonPath('departments.pharmacy.bills', 1)
+            ->assertJsonPath('departments.pharmacy.due', 0)
+            // The inpatient has paid more than has been charged so far, so nothing is owed.
+            ->assertJsonPath('departments.ipd.bills', 1)
+            ->assertJsonPath('departments.ipd.due', 0)
             ->assertJsonPath('counts.new_patients', 1)
             ->assertJsonPath('counts.appointments', 1)
             ->assertJsonPath('counts.lab_orders', 1)

@@ -39,6 +39,11 @@ class ReportController extends Controller
         abort_if($from->diffInDays($to) > 366, 422, 'Choose a range of one year or less.');
 
         $departments = MoneyFigures::departments($from, $to);
+        // Beside the money, how many bills each department made in the period and what is still unpaid on them,
+        // so each one's whole position can be read in one place.
+        foreach (self::unpaid($from, $to) as $key => $more) {
+            $departments[$key] += $more;
+        }
 
         return response()->json([
             'from' => $from->toDateString(),
@@ -65,6 +70,29 @@ class ReportController extends Controller
                 'inpatients_now' => Admission::where('status', 'admitted')->count(),
             ],
         ]);
+    }
+
+    /**
+     * How many bills each department made in a period, and what is still owed on them today. For the IPD it is the
+     * cases that were in the hospital during the period, and what they still owe.
+     *
+     * @return array<string, array{bills: int, due: float}>
+     */
+    private static function unpaid(Carbon $from, Carbon $to): array
+    {
+        $labBillIds = LabOrder::whereNotNull('bill_id')->pluck('bill_id')->flip();
+        [$lab, $desk] = Bill::whereBetween('created_at', [$from, $to])->whereNull('cancelled_at')->get(['id', 'total', 'paid'])
+            ->partition(fn (Bill $b) => $labBillIds->has($b->id));
+        $sales = PharmacySale::whereBetween('sold_at', [$from, $to])->whereNull('voided_at')->get(['id', 'total', 'returned', 'paid', 'ipd_transfer', 'voided_at']);
+        $stays = Admission::where('admitted_at', '<=', $to)->where(fn ($q) => $q->whereNull('discharged_at')->orWhere('discharged_at', '>=', $from))->get();
+        $owed = fn ($rows) => round((float) $rows->sum(fn ($row) => max(0, (float) $row->due)), 2);
+
+        return [
+            'consultation' => ['bills' => $desk->count(), 'due' => $owed($desk)],
+            'lab' => ['bills' => $lab->count(), 'due' => $owed($lab)],
+            'pharmacy' => ['bills' => $sales->count(), 'due' => $owed($sales)],
+            'ipd' => ['bills' => $stays->count(), 'due' => $owed($stays)],
+        ];
     }
 
     /**
