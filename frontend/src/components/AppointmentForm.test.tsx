@@ -16,7 +16,7 @@ describe('booking an appointment', () => {
         <AppointmentForm date="2026-11-24" doctors={[{ id: 2, name: 'Dr Sample Rao', department: null }]} services={[]} onClose={() => undefined} onBooked={() => undefined} />
       </MemoryRouter>,
     )
-    const help = screen.getByText('If the patient uses the patient app, they can see this note there.')
+    const help = screen.getByText('This note shows in the patient app, to the patient and to any family member who has added them there.')
     // Right under the notes box, whoever the patient is and however the visit is booked.
     expect(screen.getByLabelText('Notes (optional)').closest('label')?.nextElementSibling).toBe(help)
   })

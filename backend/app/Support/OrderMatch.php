@@ -106,6 +106,8 @@ class OrderMatch
             return [
                 'medicine_id' => $line['medicine_id'], 'medicine_name' => $medicine?->name ?? $line['medicine_name'],
                 'units_per_pack' => (int) $line['units_per_pack'], 'packs' => $line['to_come'], 'ordered' => $line['ordered'], 'received' => $line['received'],
+                // The packs are rounded up when another pack size came before; this is exactly what is left.
+                'units_to_come' => max(0, $line['ordered_units'] - $line['received_units']),
                 'gst_percent' => $medicine?->gst_percent, 'hsn_code' => $medicine?->hsn_code, 'rack_no' => $medicine?->rack_no, 'box_no' => $medicine?->box_no,
                 'is_active' => (bool) $medicine?->is_active,
                 'last_rate' => $last ? (float) $last->pack_price : null, 'last_mrp' => $last ? (float) $last->pack_mrp : null,

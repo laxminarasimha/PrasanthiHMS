@@ -246,4 +246,42 @@ describe('entering a stockist’s invoice against a purchase order', () => {
     fireEvent.change(boxes('Qty (packs)')[0], { target: { value: '5' } })
     expect(screen.getByText('25 units more than ordered')).toBeTruthy()
   })
+
+  it('works from exactly what is left when an earlier part came in a bigger pack', async () => {
+    // 10 packs of 10 ordered; 3 packs of 25 came before, so 25 units are left: shown as 3 packs to come, rounded up.
+    answer(order({ still_to_come: [still({ packs: 3, ordered: 10, received: 3, units_to_come: 25 })] }))
+    show('/pharmacy/purchases?order=7')
+    await waitFor(() => expect(boxes('Qty (packs)').map((b) => b.value)).toEqual(['3']))
+    // The 3 packs of 10 filled in are 5 units more than is left…
+    expect(screen.getByText('5 units more than ordered')).toBeTruthy()
+    // …and one pack of 25 is just what is left.
+    fireEvent.change(boxes('Units in a pack')[0], { target: { value: '25' } })
+    fireEvent.change(boxes('Qty (packs)')[0], { target: { value: '1' } })
+    expect(screen.queryByText(/stays? on order|more than ordered/)).toBeNull()
+    // Two packs of 10 leave 5 units on order, never half a pack.
+    fireEvent.change(boxes('Units in a pack')[0], { target: { value: '10' } })
+    fireEvent.change(boxes('Qty (packs)')[0], { target: { value: '2' } })
+    expect(screen.getByText('5 units stay on order')).toBeTruthy()
+  })
+
+  it('hands the order’s note to the medicine’s other line when the line holding it is removed', async () => {
+    answer(order({ still_to_come: [still({ packs: 10, received: 0 })] }))
+    await newInvoice()
+    await waitFor(() => {
+      chooseMedicine(1, 'Sampleatorva')
+      expect(boxes('Medicine 1')[0].value).toBe('Sampleatorva 10')
+    })
+    fireEvent.change(boxes('Qty (packs)')[0], { target: { value: '6' } })
+    fireEvent.click(screen.getByText('+ Add another medicine'))
+    chooseMedicine(2, 'Sampleatorva')
+    fireEvent.change(boxes('Qty (packs)')[1], { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText('Against purchase order'), { target: { value: '7' } })
+    await waitFor(() => expect(screen.getAllByText(/From PO00007/)).toHaveLength(1))
+    expect(screen.getByText('1 stays on order')).toBeTruthy()
+
+    fireEvent.click(screen.getAllByText('Remove')[0])
+    expect(boxes('Qty (packs)').map((b) => b.value)).toEqual(['3'])
+    expect(screen.getAllByText(/From PO00007/)).toHaveLength(1)
+    expect(screen.getByText('7 stay on order')).toBeTruthy()
+  })
 })

@@ -37,8 +37,10 @@ type StillToCome = NonNullable<PurchaseOrder['still_to_come']>[number]
 type FromOrder = {
   order_no: string
   name: string
-  /** Packs of it still to come on the order when it was chosen, in the order's own pack size. */
+  /** Packs of it still to come on the order when it was chosen, in the order's own pack size, rounded up. */
   to_come: number
+  /** Exactly what was left of it on the order when it was chosen, in units. */
+  units_to_come: number
   /** The order's pack size. */
   units_per_pack: number
   not_in_use: boolean
@@ -81,7 +83,7 @@ function fillFromOrder(rows: Line[], order: PurchaseOrder) {
   const blank = emptyLine()
   const toCome = order.still_to_come ?? []
   const note = (s: StillToCome, filled: Typed | null): FromOrder => ({
-    order_no: order.order_no, name: s.medicine_name, to_come: s.packs, units_per_pack: s.units_per_pack, not_in_use: !s.is_active,
+    order_no: order.order_no, name: s.medicine_name, to_come: s.packs, units_to_come: s.units_to_come ?? s.packs * s.units_per_pack, units_per_pack: s.units_per_pack, not_in_use: !s.is_active,
     last_rate: s.last_rate, last_mrp: s.last_mrp, last_on: s.last_on, last_here: s.last_from_this_stockist, filled,
   })
   const already: string[] = []
@@ -138,12 +140,24 @@ function againstOrder(rows: Line[], index: number, removed: number[]) {
   if (!typed.length) return null
   const perPack = Math.max(1, from.units_per_pack)
   const sizeOf = (r: Line) => Number(r.units_per_pack) || perPack
-  const left = from.to_come * perPack - typed.reduce((sum, r) => sum + Number(r.packs) * sizeOf(r), 0)
+  const left = from.units_to_come - typed.reduce((sum, r) => sum + Number(r.packs) * sizeOf(r), 0)
   if (left === 0) return null
-  const inPacks = typed.every((r) => sizeOf(r) === perPack)
+  // Told in packs only while it comes to whole packs of the order's size.
+  const inPacks = typed.every((r) => sizeOf(r) === perPack) && left % perPack === 0
   const n = Math.abs(left) / (inPacks ? perPack : 1)
   const what = inPacks ? String(n) : `${n} ${n === 1 ? 'unit' : 'units'}`
   return left > 0 ? `${what} ${n === 1 ? 'stays' : 'stay'} on order` : `${what} more than ordered`
+}
+
+/**
+ * When the line holding the order's note on a medicine comes off, or is changed to another medicine, the next line of
+ * that medicine takes the note, so its other batch still shows how it stands against the order. The note goes as on a
+ * line that was typed, so that line never comes off by itself.
+ */
+function passNote(rows: Line[], from: FromOrder | undefined, medicine: string) {
+  if (!from || rows.some((r) => r.from_order !== undefined && r.medicine_id === medicine)) return rows
+  const next = rows.findIndex((r) => r.medicine_id === medicine)
+  return next === -1 ? rows : rows.map((r, j) => (j === next ? { ...r, from_order: { ...from, filled: null } } : r))
 }
 
 /** What the stockist charges for the line before tax: paid packs, less the discount in % and in rupees. */
@@ -207,13 +221,15 @@ export function PharmacyPurchases() {
   const adopt = (m: Medicine, index: number) => {
     setMedicines((list) => [...list.filter((x) => x.id !== m.id), { ...m, units_in_stock: 0 }].sort((a, b) => a.name.localeCompare(b.name)))
     // A new medicine on a line filled in from an order is no longer what the order said, as when another is chosen (setLine).
-    setLines((rows) =>
-      rows.map((row, i) =>
+    setLines((rows) => {
+      const before = rows[index]
+      const changed = rows.map((row, i) =>
         i === index
           ? { ...row, medicine_id: String(m.id), units_per_pack: String(m.units_per_pack), gst_percent: String(m.gst_percent), hsn_code: m.hsn_code ?? '', rack_no: m.rack_no ?? row.rack_no, box_no: m.box_no ?? row.box_no, from_order: String(m.id) === row.medicine_id ? row.from_order : undefined }
           : row,
-      ),
-    )
+      )
+      return before && String(m.id) !== before.medicine_id ? passNote(changed, before.from_order, before.medicine_id) : changed
+    })
     setNewFor(null)
   }
   const [errors, setErrors] = useState<string[]>([])
@@ -385,8 +401,9 @@ export function PharmacyPurchases() {
   }
 
   const setLine = (index: number, key: keyof Line, value: string | boolean) =>
-    setLines((rows) =>
-      rows.map((row, i) => {
+    setLines((rows) => {
+      const before = rows[index]
+      const changed = rows.map((row, i) => {
         if (i !== index) return row
         const next = { ...row, [key]: value }
         // Choosing a medicine fills in its usual pack size and GST.
@@ -412,8 +429,9 @@ export function PharmacyPurchases() {
           }
         }
         return next
-      }),
-    )
+      })
+      return key === 'medicine_id' && before && value !== before.medicine_id ? passNote(changed, before.from_order, before.medicine_id) : changed
+    })
 
   const filled = lines.filter((l) => (l.medicine_id || l.batch_no || l.packs) && !(l.id && removed.includes(l.id)))
   const added = editing ? filled.filter((l) => !l.id) : []
@@ -640,7 +658,7 @@ export function PharmacyPurchases() {
                     )}
                   </span>
                   {!saved ? (
-                    <button type="button" className="link danger" onClick={() => setLines((rows) => (rows.length > 1 ? rows.filter((_, r) => r !== i) : [emptyLine()]))}>
+                    <button type="button" className="link danger" onClick={() => setLines((rows) => (rows.length > 1 ? passNote(rows.filter((_, r) => r !== i), rows[i]?.from_order, rows[i]?.medicine_id ?? '') : [emptyLine()]))}>
                       Remove
                     </button>
                   ) : gone === 0 ? (

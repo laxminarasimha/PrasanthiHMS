@@ -260,7 +260,7 @@ export function EditAppointmentPanel({ appointment, doctors, services, onClose, 
         <TextField label="Notes" value={notes} onChange={setNotes} />
       </div>
       {/* The patient app shows the note of every visit still to come, however it was booked and whoever typed it. */}
-      <p className="muted small">If the patient uses the patient app, they can see this note there.</p>
+      <p className="muted small">This note shows in the patient app, to the patient and to any family member who has added them there.</p>
       <p className="muted small">Changing the service here does not change a bill already made; edit the bill for that.</p>
       {errors._ && <p className="form-error">{errors._}</p>}
     </Popup>

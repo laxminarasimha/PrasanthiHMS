@@ -296,7 +296,9 @@ class DoctorLibraryController extends Controller
     public static function learn(int $doctorId, Consultation $consultation, array $medicines): void
     {
         foreach (['complaint' => $consultation->complaints, 'diagnosis' => $consultation->diagnosis, 'advice' => $consultation->advice] as $kind => $text) {
-            foreach (preg_split('/\R+/', (string) $text) as $line) {
+            // Only plain line breaks: a byte-wise \R also splits on the byte 0x85, which sits inside letters such as
+            // Telugu 'అ', and cut them into broken text the library could no longer send.
+            foreach (preg_split('/(?:\r\n|\r|\n)+/', (string) $text) ?: [] as $line) {
                 $line = trim($line);
                 if ($line === '' || mb_strlen($line) > 255) {
                     continue;

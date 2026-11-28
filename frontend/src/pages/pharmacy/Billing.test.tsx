@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useNavigate } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Patient, PrescriptionForPharmacy, SellableMedicine } from '../../types'
 import { PharmacyBilling } from './Billing'
@@ -201,7 +201,7 @@ describe('the counter, a medicine on more than one row of a card', () => {
     expect(quantities()).toEqual([['Quantity of Sample Pred 10 Tablet', '10']])
   })
 
-  it('adds the count to a medicine first picked by name, and the bill is still made from the visit', async () => {
+  it('puts the count in place of the 1 a medicine picked by name starts at, and the bill is still made from the visit', async () => {
     show([visitCard()], [tablet([batch(101, 15, '2027-01-31'), batch(102, 40, '2027-06-30')])])
     await screen.findByRole('button', { name: 'Add 21' })
 
@@ -212,14 +212,16 @@ describe('the counter, a medicine on more than one row of a card', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add 21' }))
     expect(quantities()).toEqual([
       ['Quantity of Sample Amlodipine 5 Tablet', '15'],
-      ['Quantity of Sample Amlodipine 5 Tablet', '7'],
+      ['Quantity of Sample Amlodipine 5 Tablet', '6'],
     ])
-    expect(screen.getByText('1 already on the bill; 1-1-1 for 1 week (7 days) = 21')).toBeTruthy()
+    // Said on the card's row and, as how its count was worked out, on the bill's line: nothing was 'already on the bill'.
+    expect(screen.getAllByText('1-1-1 for 1 week (7 days) = 21')).toHaveLength(2)
+    expect(screen.queryByText(/already on the bill/)).toBeNull()
     const body = await saved()
     expect(body.consultation_id).toBe(31)
     expect(body.items.map((i) => [i.stock_batch_id, i.quantity])).toEqual([
       [101, '15'],
-      [102, '7'],
+      [102, '6'],
     ])
   })
 
@@ -232,8 +234,129 @@ describe('the counter, a medicine on more than one row of a card', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Add' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add 21' }))
-    expect(quantities()).toEqual([['Quantity of Sample Amlodipine 5 Tablet', '22']])
+    // The ward row had no count, so its 1 gives way to the visit's 21.
+    expect(quantities()).toEqual([['Quantity of Sample Amlodipine 5 Tablet', '21']])
     const body = await saved()
     expect(body.consultation_id).toBe(31)
+  })
+})
+
+describe('the counter, a medicine already on the bill some other way', () => {
+  const discharge = (): PrescriptionForPharmacy => ({
+    id: 4, kind: 'discharge', completed_at: '2026-11-20 09:00', doctor: 'Dr Sample One', note: 'To take home.',
+    medicines: [{ ...visitCard().medicines[0], match: tablet([batch(101, 15, '2027-01-31'), batch(102, 40, '2027-06-30')]) }],
+  })
+
+  it('never adds a course twice from two cards without asking: the second card offers Add N more', async () => {
+    const { container } = show([visitCard(), discharge()])
+    const cards = await waitFor(() => {
+      const found = Array.from(container.querySelectorAll('.rx-card')) as HTMLElement[]
+      expect(found).toHaveLength(2)
+      return found
+    })
+    const inCard = (card: HTMLElement, name: string) => Array.from(card.querySelectorAll('button')).find((b) => b.textContent === name)!
+
+    fireEvent.click(inCard(cards[0], 'Add all in stock (1)'))
+    expect(quantities()).toEqual([
+      ['Quantity of Sample Amlodipine 5 Tablet', '15'],
+      ['Quantity of Sample Amlodipine 5 Tablet', '6'],
+    ])
+    // The discharge card lists the same 21: Add all in stock leaves it alone…
+    fireEvent.click(inCard(cards[1], 'Add all in stock (1)'))
+    expect(quantities()).toEqual([
+      ['Quantity of Sample Amlodipine 5 Tablet', '15'],
+      ['Quantity of Sample Amlodipine 5 Tablet', '6'],
+    ])
+    // …and its row says the medicine is on the bill, with its count added only on purpose.
+    expect(inCard(cards[1], 'On the bill')).toBeTruthy()
+    fireEvent.click(inCard(cards[1], 'Add 21 more'))
+    expect(quantities()).toEqual([
+      ['Quantity of Sample Amlodipine 5 Tablet', '15'],
+      ['Quantity of Sample Amlodipine 5 Tablet', '27'],
+    ])
+    expect((await saved()).consultation_id).toBe(31)
+  })
+
+  it('does not add to a quantity the pharmacist typed, unless asked to', async () => {
+    show([visitCard()], [tablet([batch(101, 15, '2027-01-31'), batch(102, 40, '2027-06-30')])])
+    await screen.findByRole('button', { name: 'Add 21' })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search medicine' }), { target: { value: 'Sample Aml' } })
+    fireEvent.click(await screen.findByText(/Batch B101/))
+    fireEvent.change(screen.getByLabelText('Quantity of Sample Amlodipine 5 Tablet'), { target: { value: '10' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add all in stock (1)' }))
+    expect(quantities()).toEqual([['Quantity of Sample Amlodipine 5 Tablet', '10']])
+    fireEvent.click(screen.getByRole('button', { name: 'Add 21 more' }))
+    expect(quantities()).toEqual([
+      ['Quantity of Sample Amlodipine 5 Tablet', '15'],
+      ['Quantity of Sample Amlodipine 5 Tablet', '16'],
+    ])
+    expect(screen.getByText('10 already on the bill; 1-1-1 for 1 week (7 days) = 21')).toBeTruthy()
+  })
+
+  it('knows the rows on the bill when the cards are read again with a row added above', async () => {
+    const amlodipine = visitCard().medicines[0]
+    const [taper] = taperRows([batch(301, 50, '2027-02-28')])
+    let cards = [visitCard({ medicines: [taper] })]
+    get.mockImplementation((url: string) => Promise.resolve({ data: url === '/patients/7' ? patient : url === '/pharmacy/prescriptions' ? cards : [] }))
+    function Again() {
+      const navigate = useNavigate()
+      return (
+        <button type="button" onClick={() => navigate('/pharmacy?patient=7')}>
+          Open again
+        </button>
+      )
+    }
+    render(
+      <MemoryRouter initialEntries={['/pharmacy?patient=7']}>
+        <PharmacyBilling />
+        <Again />
+      </MemoryRouter>,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Add 10' }))
+    // The doctor has since added a row above: read again, the card's first row is another medicine.
+    cards = [visitCard({ medicines: [amlodipine, taper] })]
+    fireEvent.click(screen.getByRole('button', { name: 'Open again' }))
+    await screen.findByRole('button', { name: 'Add 21' })
+    expect(screen.getAllByRole('button', { name: 'On the bill' })).toHaveLength(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add all in stock (2)' }))
+    expect(quantities()).toEqual([
+      ['Quantity of Sample Pred 10 Tablet', '10'],
+      ['Quantity of Sample Amlodipine 5 Tablet', '15'],
+      ['Quantity of Sample Amlodipine 5 Tablet', '6'],
+    ])
+  })
+
+  it('still knows the rows on the bill after another patient is chosen and then this one again', async () => {
+    const other = { ...patient, id: 8, uhid: 'P-0008', name: 'Sample Other' } as Patient
+    const admitted = [
+      { admission_id: 1, ipd_no: 'IPD-1', patient, bed: 'Bed 1', doctor: 'Dr Sample One', bill_approved: false },
+      { admission_id: 2, ipd_no: 'IPD-2', patient: other, bed: 'Bed 2', doctor: 'Dr Sample One', bill_approved: false },
+    ]
+    get.mockImplementation((url: string, config?: { params?: { patient_id?: number } }) =>
+      Promise.resolve({
+        data: url === '/patients/7' ? patient : url === '/pharmacy/inpatients' ? admitted : url === '/pharmacy/prescriptions' ? (config?.params?.patient_id === 7 ? [visitCard()] : []) : [],
+      }),
+    )
+    post.mockResolvedValue({ data: { id: 40, bill_no: 'P00040', customer_name: 'Sample Patient', total: 42, ipd_transfer: 42, due: 0 } })
+    const { container } = render(
+      <MemoryRouter initialEntries={['/pharmacy?patient=7']}>
+        <PharmacyBilling />
+      </MemoryRouter>,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Add 21' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Inpatient/ }))
+    const ward = container.querySelector('select') as HTMLSelectElement
+    fireEvent.change(ward, { target: { value: '2' } })
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'On the bill' })).toBeNull())
+    fireEvent.change(ward, { target: { value: '1' } })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'On the bill' }))
+    expect(quantities()).toEqual([
+      ['Quantity of Sample Amlodipine 5 Tablet', '15'],
+      ['Quantity of Sample Amlodipine 5 Tablet', '6'],
+    ])
+    expect((await saved()).consultation_id).toBe(31)
   })
 })

@@ -664,6 +664,8 @@ h2.gap-top { margin-top: 20px; }
 .rx-card strong small { font-weight: 400; margin-top: 2px; }
 .rx-card ul { list-style: none; margin: 8px 0 0; padding: 0; }
 .rx-card li { display: flex; gap: 12px; align-items: center; padding: 5px 0; border-top: 1px solid var(--border); }
+/* A row whose medicine is on the bill some other way: go to its line, or add its count on purpose. */
+.rx-row-acts { display: flex; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
 
 /* Visit pad sections matched to the reference layout */
 .allergy input { border-color: var(--border); }
@@ -1630,6 +1632,8 @@ small.soon { color: var(--warn); font-weight: 600; }
 .option-order input { width: 84px; }
 .option-row { grid-template-columns: minmax(220px, 1.2fr) 190px minmax(0, 2fr); }
 .order-bar { position: sticky; bottom: 12px; z-index: 5; margin-top: 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px; background: var(--surface); border: 1px solid var(--brand-line); border-radius: 12px; box-shadow: 0 10px 28px var(--shadow); }
+/* The brands chosen scroll inside the bar, so a long order never covers the list it is chosen from. */
+.order-bar .plain-list { max-height: 30vh; overflow-y: auto; }
 @media (max-width: 900px) { .option-row { grid-template-columns: 1fr; } }
 
 /* ---- The prescription as a numbered list, in the order the doctor wants it read ---- */

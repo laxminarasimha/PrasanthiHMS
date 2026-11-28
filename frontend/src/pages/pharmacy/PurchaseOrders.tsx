@@ -14,6 +14,22 @@ const emptyLine = (): Line => ({ medicine_id: '', units_per_pack: '', packs: '' 
 const STATUS = { draft: 'Draft, to be approved', open: 'Ordered', received: 'Received', cancelled: 'Cancelled' } as const
 const STATUS_CLASS = { draft: 'warn', open: 'status-arrived', received: 'ok', cancelled: 'off' } as const
 
+type MatchLine = NonNullable<PurchaseOrder['match']>['lines'][number]
+/**
+ * A line of the order against what came, as the server matched it: in units, as a stockist may send another pack
+ * size. Told in the order's packs while every pack that came is of the order's size, else in units.
+ */
+function orderStanding(l: MatchLine) {
+  const perPack = Math.max(1, l.units_per_pack ?? 1)
+  const ordered = l.ordered_units ?? l.ordered * perPack
+  const received = l.received_units ?? l.received * perPack
+  const mixed = received !== l.received * perPack
+  const gap = Math.abs(ordered - received)
+  const n = mixed ? gap : gap / perPack
+  const what = mixed ? `${n} ${n === 1 ? 'unit' : 'units'}` : String(n)
+  return { mixed, ordered, received, said: l.state === 'short' ? `${what} short` : `${what} more than ordered` }
+}
+
 /** Orders placed with stockists. An order is a request only; stock arrives through a purchase invoice. */
 export function PharmacyPurchaseOrders() {
   const { user } = useAuth()
@@ -293,25 +309,32 @@ export function PharmacyPurchaseOrders() {
                       </tr>
                     </thead>
                     <tbody>
-                      {viewing.match.lines.map((l) => (
-                        <tr key={l.medicine_id} className="static">
-                          <td>{l.medicine_name}</td>
-                          <td className="num">{l.ordered}</td>
-                          <td className="num">{l.received}</td>
-                          <td className="num">{l.free || '—'}</td>
-                          <td>
-                            {l.state === 'full' ? (
-                              <span className="pill ok">In full</span>
-                            ) : l.state === 'none' ? (
-                              <span className="pill off">Not received</span>
-                            ) : l.state === 'short' ? (
-                              <span className="pill warn">{l.ordered - l.received} short</span>
-                            ) : (
-                              <span className="pill warn">{l.received - l.ordered} more than ordered</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                      {viewing.match.lines.map((l) => {
+                        const s = orderStanding(l)
+                        return (
+                          <tr key={l.medicine_id} className="static">
+                            <td>{l.medicine_name}</td>
+                            <td className="num">
+                              {l.ordered}
+                              {s.mixed && <small className="muted block">{s.ordered} units</small>}
+                            </td>
+                            <td className="num">
+                              {l.received}
+                              {s.mixed && <small className="muted block">{s.received} units, in another pack size</small>}
+                            </td>
+                            <td className="num">{l.free || '—'}</td>
+                            <td>
+                              {l.state === 'full' ? (
+                                <span className="pill ok">In full</span>
+                              ) : l.state === 'none' ? (
+                                <span className="pill off">Not received</span>
+                              ) : (
+                                <span className="pill warn">{s.said}</span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
                       {viewing.match.extras.map((x) => (
                         <tr key={x.medicine_name} className="static">
                           <td>{x.medicine_name}</td>

@@ -57,6 +57,24 @@ class DoctorPadExtrasTest extends TestCase
         $this->putJson($url, ['investigations' => []])->assertOk()->assertJsonPath('consultation.investigations', null);
     }
 
+    public function test_finishing_a_visit_with_telugu_advice_keeps_the_doctors_library_whole(): void
+    {
+        $doctor = User::factory()->create(['role' => 'doctor']);
+        Sanctum::actingAs($doctor);
+        $visit = Appointment::create(['patient_id' => Patient::factory()->create()->id, 'doctor_id' => $doctor->id, 'scheduled_at' => now(), 'status' => 'arrived']);
+        // 'అ' holds the byte 0x85, which a byte-wise line break pattern takes for a line break of its own.
+        $advice = "అన్నం తిన్న తర్వాత మందులు వేసుకోండి\r\nరోజూ నడవండి";
+
+        $this->putJson("/api/appointments/{$visit->id}/consultation", ['complete' => true, 'diagnosis' => 'అలర్జీ', 'advice' => $advice])->assertOk();
+
+        $phrases = \App\Models\RememberedPhrase::where('doctor_id', $doctor->id)->orderBy('id')->pluck('text', 'id')->values()->all();
+        $this->assertSame(['అలర్జీ', 'అన్నం తిన్న తర్వాత మందులు వేసుకోండి', 'రోజూ నడవండి'], $phrases);
+        foreach ($phrases as $phrase) {
+            $this->assertTrue(mb_check_encoding($phrase, 'UTF-8'));
+        }
+        $this->getJson('/api/doctor/library')->assertOk();
+    }
+
     public function test_a_doctor_sets_their_own_prescription_lists_translations_and_medicine_library(): void
     {
         $doctor = User::factory()->create(['role' => 'doctor']);

@@ -14,7 +14,7 @@ const visit = (over: Partial<Appointment> = {}): Appointment => ({
 })
 const edit = (appointment: Appointment) =>
   render(<EditAppointmentPanel appointment={appointment} doctors={[{ id: 2, name: 'Dr Sample Rao', department: null }]} services={[]} onClose={() => undefined} onSaved={() => undefined} />)
-const SEEN_IN_APP = 'If the patient uses the patient app, they can see this note there.'
+const SEEN_IN_APP = 'This note shows in the patient app, to the patient and to any family member who has added them there.'
 
 afterEach(cleanup)
 

@@ -903,7 +903,23 @@ export type PurchaseOrder = {
   items_count?: number
   items?: { id: number; medicine_id?: number; medicine_name: string; units_per_pack: number; packs: number }[]
   match?: {
-    lines: { medicine_id: number; medicine_name: string; units_per_pack?: number; ordered: number; received: number; free: number; to_come?: number; state: 'none' | 'short' | 'full' | 'over' }[]
+    /**
+     * Matched in units, as a stockist may send another pack size: ordered and received are packs (the received ones
+     * as billed, whatever their size), ordered_units and received_units the units, to_come the order's packs still to
+     * come, rounded up.
+     */
+    lines: {
+      medicine_id: number
+      medicine_name: string
+      units_per_pack?: number
+      ordered: number
+      received: number
+      free: number
+      ordered_units?: number
+      received_units?: number
+      to_come?: number
+      state: 'none' | 'short' | 'full' | 'over'
+    }[]
     extras: { medicine_name: string; received: number; free: number }[]
     invoices: { id: number; invoice_no: string; invoice_date: string; total: number }[]
     complete: boolean
@@ -917,9 +933,12 @@ export type PurchaseOrder = {
     medicine_id: number
     medicine_name: string
     units_per_pack: number
+    /** The order's packs still to come, rounded up when another pack size came before. */
     packs: number
     ordered: number
     received: number
+    /** Exactly what is left of the order, in units. */
+    units_to_come?: number
     gst_percent: number | null
     hsn_code: string | null
     rack_no: string | null

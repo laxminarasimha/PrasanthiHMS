@@ -392,7 +392,8 @@ class PharmacyManagerTest extends TestCase
         $matched = $shown['match']['lines'][0];
         // The packs received are the paid packs as billed; the matching is in units.
         $this->assertSame([10, 3, 100, 75, 3, 'short'], [$matched['ordered'], $matched['received'], $matched['ordered_units'], $matched['received_units'], $matched['to_come'], $matched['state']]);
-        $this->assertSame([3, 10], [$shown['still_to_come'][0]['packs'], $shown['still_to_come'][0]['units_per_pack']]);
+        // 3 packs of 10 are told as still to come, rounded up; exactly 25 units are left.
+        $this->assertSame([3, 10, 25], [$shown['still_to_come'][0]['packs'], $shown['still_to_come'][0]['units_per_pack'], $shown['still_to_come'][0]['units_to_come']]);
         // On order: the 25 tablets not in yet, not 7 packs of 10.
         $this->assertSame([$m->id => 25], PharmacyDesk::onOrder([$m->id])->all());
         $row = collect($this->getJson('/api/pharmacy/manager')->assertOk()->json('reorder'))->firstWhere('medicine_id', $m->id);
