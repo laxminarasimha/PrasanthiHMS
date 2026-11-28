@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\PushSubscription;
+use App\Support\PhoneNotice;
 use App\Support\WebPush;
 use Closure;
 use Illuminate\Http\JsonResponse;
@@ -12,6 +13,8 @@ use Illuminate\Http\Request;
 /**
  * A person switching notifications on or off for the phone or computer in their hand.
  * Everything here is about the signed-in person's own devices; nobody can add or remove another person's.
+ * The one exception is letting go of the device in hand, whoever it was noted for: knowing its address is what
+ * shows it is this browser.
  */
 class PushController extends Controller
 {
@@ -62,6 +65,21 @@ class PushController extends Controller
         return response()->json(null, 204);
     }
 
+    /**
+     * Lets go of the device in hand, whoever it was noted for. Someone who is not sent notices signs in on a phone
+     * that was another person's: from then on that person's notices stop showing on it. The answer is the same
+     * whether or not anything was let go of.
+     */
+    public function release(Request $request): JsonResponse
+    {
+        $endpoint = $request->input('endpoint');
+        if (is_string($endpoint) && $endpoint !== '' && strlen($endpoint) <= 2000) {
+            PushSubscription::where('endpoint_hash', PushSubscription::hashOf($endpoint))->delete();
+        }
+
+        return response()->json(null, 204);
+    }
+
     /** Sends a notification to this device now, so the person can see that it arrives. */
     public function test(Request $request): JsonResponse
     {
@@ -73,10 +91,10 @@ class PushController extends Controller
 
         $sent = $device->deliver([
             'title' => 'Notifications are on',
-            'body' => 'This is how a new appointment will reach you.',
+            'body' => 'This is how the hospital’s notices will reach you.',
             'url' => '/account',
-            'tag' => 'test',
-            'kind' => 'test',
+            'tag' => PhoneNotice::TEST,
+            'kind' => PhoneNotice::TEST,
         ]);
 
         return response()->json([

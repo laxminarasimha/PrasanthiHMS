@@ -187,6 +187,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
     Route::get('/me/push/key', [PushController::class, 'key']);
     Route::post('/me/push', [PushController::class, 'store'])->middleware('throttle:30,1');
     Route::delete('/me/push', [PushController::class, 'destroy']);
+    Route::post('/me/push/release', [PushController::class, 'release'])->middleware('throttle:30,1');
     Route::post('/me/push/test', [PushController::class, 'test'])->middleware('throttle:6,1');
     Route::put('/me/appearance', [AuthController::class, 'saveAppearance']);
     Route::post('/me/password', [AuthController::class, 'changePassword'])->middleware('throttle:10,1');
@@ -553,6 +554,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
             Route::delete('/admissions/{admission}/notes/{note}', 'destroyNote');
             Route::get('/admissions/{admission}/summary/from-stay', 'summaryFromStay');
             Route::put('/admissions/{admission}/summary', 'saveSummary');
+            Route::post('/admissions/{admission}/summary/ready', 'markSummaryReady');
         });
         Route::middleware('ability:canManageSetup')->group(function () {
             Route::post('/templates', 'storeTemplate');

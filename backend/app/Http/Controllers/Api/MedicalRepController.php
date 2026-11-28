@@ -88,12 +88,7 @@ class MedicalRepController extends Controller
             'arrived_at' => now(), 'status' => 'waiting', 'purpose' => $data['purpose'] ?? null, 'created_by' => $user->id,
         ])->load(self::VISIT_WITH);
 
-        if ((int) $data['doctor_id'] !== $user->id) {
-            PhoneNotice::later((int) $data['doctor_id'], [
-                'title' => 'Medical representative waiting', 'body' => $visit->rep->name.' · '.$visit->rep->company->name,
-                'url' => '/reps', 'tag' => "rep-visit-{$visit->id}", 'kind' => 'rep',
-            ]);
-        }
+        PhoneNotice::repWaiting($visit, $user);
 
         return response()->json($visit, 201);
     }

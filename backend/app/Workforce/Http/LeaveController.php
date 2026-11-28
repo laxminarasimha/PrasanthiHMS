@@ -3,6 +3,7 @@
 namespace App\Workforce\Http;
 
 use App\Support\LeaveOnCalendar;
+use App\Support\PhoneNotice;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Workforce\Models\Employee;
@@ -76,6 +77,7 @@ class LeaveController extends Controller
             $leave->update(['status' => 'rejected', 'decided_by' => $user->id, 'decided_at' => now(), 'decision_note' => $data['note']]);
         }
         Audit::record($data['approve'] ? 'leave.approved' : 'leave.refused', $leave, null, ['days' => $leave->days, 'from' => $leave->from_date->format('Y-m-d'), 'to' => $leave->to_date->format('Y-m-d')], $data['note'] ?? null, $leave->employee_id);
+        PhoneNotice::leaveDecided($leave, $user);
 
         // For a doctor: which days of the calendar are now closed, and who is already booked in them.
         return response()->json($this->present($leave->fresh(['type', 'employee.department']), collect()) + ['calendar' => $data['approve'] ? LeaveOnCalendar::summary($leave) : null]);
@@ -89,6 +91,7 @@ class LeaveController extends Controller
         $reason = $request->validate(['reason' => ['required', 'string', 'max:500']], ['reason.required' => 'Say why the leave is cancelled.'])['reason'];
         $leave = LeaveBook::cancel($leave, $reason);
         Audit::record('leave.cancelled', $leave, null, ['days' => $leave->days], $reason, $leave->employee_id);
+        PhoneNotice::leaveDecided($leave, $request->user());
 
         return response()->json($this->present($leave->fresh(['type', 'employee.department']), collect()));
     }
@@ -212,9 +215,11 @@ class LeaveController extends Controller
             'days' => $days, 'reason' => $data['reason'] ?? null, 'status' => 'pending', 'requested_by' => $by->id,
         ]);
         Audit::record('leave.asked', $leave, null, ['type' => $type->code, 'from' => $data['from_date'], 'to' => $data['to_date'], 'days' => $days], $data['reason'] ?? null, $employee->id);
-        // A kind of leave that needs no approval is granted at once, if the account holds the days.
+        // A kind of leave that needs no approval is granted at once, if the account holds the days. Entered by someone
+        // else, the person is told it is theirs.
         if (! $type->needs_approval) {
             $leave = LeaveBook::approve($leave->load('type'), 'No approval needed for this kind of leave.');
+            PhoneNotice::leaveDecided($leave, $by);
         }
 
         return $this->present($leave->fresh(['type', 'employee.department']), collect()) + ($leave->status === 'approved' ? ['calendar' => LeaveOnCalendar::summary($leave)] : []);

@@ -300,7 +300,7 @@ class StaffController extends Controller
         abort_if($staff->is($request->user()), 422, 'Change your own PIN under My account.');
         $pin = StaffLogin::startingPin($staff);
         $staff->update(['password' => $pin, 'must_change_secret' => true]);
-        $staff->tokens()->delete();
+        StaffLogin::signOutEverywhere($staff);
         SignInGuard::clear('staff', StaffLogin::guardKey($staff));
         AuditLog::record('staff.pin_reset', null, $staff, "{$staff->name} · A new starting PIN was given");
 
@@ -326,7 +326,7 @@ class StaffController extends Controller
         $password = $made ? StaffLogin::startingPassword() : $data['password'];
         $mustChange = $data['must_change'] ?? true;
         $staff->update(['password' => $password, 'must_change_secret' => $mustChange]);
-        $staff->tokens()->delete();
+        StaffLogin::signOutEverywhere($staff);
         SignInGuard::clear('staff', StaffLogin::guardKey($staff));
         AuditLog::record('staff.password_reset', null, $staff, "{$staff->name} · A new password was set".($mustChange ? '; they choose their own at next sign-in' : ''));
 
@@ -432,9 +432,10 @@ class StaffController extends Controller
             AuditLog::$written = false; // the usual "Changed a staff login" line is still written as well
         }
 
-        // Switched off, or given a new password by someone else: every device signed in as this person is signed out.
+        // Switched off, or given a new password by someone else: every device signed in as this person is signed out,
+        // and none is sent their notices any more.
         if ($staff->is_active === false || $newPassword || $stops) {
-            $staff->tokens()->delete();
+            StaffLogin::signOutEverywhere($staff);
         }
         // A fresh password from the hospital opens a login that was closed after too many wrong ones.
         if ($newPassword) {
