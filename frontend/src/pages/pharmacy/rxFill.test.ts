@@ -43,7 +43,7 @@ describe('the visit a bill is made from', () => {
   const tag = (kind: CardTag['kind'], id: number, at: string, patientId = 7): CardTag => ({ kind, id, at, patientId })
 
   it('is the newest visit card that any medicine on the bill came from', () => {
-    expect(visitOf([tag('visit', 3, '2026-11-20 10:00'), undefined, tag('visit', 9, '2026-11-24 11:00'), tag('visit', 4, '2026-11-22 09:00')], 7)).toBe(9)
+    expect(visitOf([tag('visit', 3, '2026-11-20 10:00'), undefined, tag('visit', 9, '2026-11-24 11:00'), tag('visit', 4, '2026-11-22 09:00')], 7)?.id).toBe(9)
   })
 
   it('is never a ward or a discharge card', () => {
@@ -53,5 +53,12 @@ describe('the visit a bill is made from', () => {
   it('is never another patient’s card, and there is none for medicines picked by name', () => {
     expect(visitOf([tag('visit', 3, '2026-11-24 10:00', 8)], 7)).toBeNull()
     expect(visitOf([undefined, undefined], 7)).toBeNull()
+  })
+
+  it('is never a visit made after the bill’s day, for a missed bill entered later', () => {
+    const both = [tag('visit', 30, '2026-11-27 10:00'), tag('visit', 32, '2026-11-28 09:30')]
+    expect(visitOf(both, 7, '2026-11-27')?.id).toBe(30)
+    expect(visitOf(both, 7, '2026-11-28')?.id).toBe(32)
+    expect(visitOf(both, 7, '2026-11-26')).toBeNull()
   })
 })

@@ -21,11 +21,12 @@ export function fillFromBatches<B extends { id: number; units_in_stock: number }
 export const shortOf = (prescribed: number, inStock: number) => `prescribed ${prescribed}, ${inStock} in stock`
 
 /**
- * The visit a bill is made from: the newest visit card that any medicine on it came from, for this patient. Ward and
- * discharge cards are never one, and nor is another patient's card.
+ * The visit a bill is made from: the newest visit card that any medicine on it came from, for this patient, made on or
+ * before the bill's day (a bill cannot be dated before the prescription it was made from). Ward and discharge cards are
+ * never one, and nor is another patient's card.
  */
-export function visitOf(tags: (CardTag | undefined)[], patientId: number): number | null {
-  const visits = tags.filter((t): t is CardTag => t !== undefined && t.kind === 'visit' && t.patientId === patientId)
+export function visitOf(tags: (CardTag | undefined)[], patientId: number, billDay?: string): CardTag | null {
+  const visits = tags.filter((t): t is CardTag => t !== undefined && t.kind === 'visit' && t.patientId === patientId && (!billDay || t.at.slice(0, 10) <= billDay))
   if (visits.length === 0) return null
-  return visits.reduce((newest, t) => (t.at > newest.at ? t : newest)).id
+  return visits.reduce((newest, t) => (t.at > newest.at ? t : newest))
 }
