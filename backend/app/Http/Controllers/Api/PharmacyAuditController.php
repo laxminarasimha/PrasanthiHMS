@@ -13,6 +13,7 @@ use App\Models\StockCount;
 use App\Models\StockCountLine;
 use App\Models\StockMovement;
 use App\Models\User;
+use App\Support\PhoneNotice;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -260,6 +261,7 @@ class PharmacyAuditController extends Controller
             throw ValidationException::withMessages(['count' => 'Nothing has been counted yet.']);
         }
         $count->update(['status' => 'submitted', 'submitted_by' => $request->user()->id, 'submitted_at' => now()]);
+        PhoneNotice::stockCountHandedIn($count, $request->user());
 
         return response()->json($this->present($count, $request));
     }

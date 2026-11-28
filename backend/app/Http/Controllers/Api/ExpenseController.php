@@ -9,6 +9,7 @@ use App\Models\Expense;
 use App\Models\Payment;
 use App\Models\User;
 use App\Support\PaidOut;
+use App\Support\PhoneNotice;
 use App\Workforce\Models\ExpenseCategory;
 use App\Workforce\Models\ExpenseTemplate;
 use App\Workforce\Support\Audit;
@@ -175,6 +176,8 @@ class ExpenseController extends Controller
         $expense->update(['status' => $data['approve'] ? 'approved' : 'rejected', 'decided_by' => $user->id, 'decided_at' => now(), 'decision_note' => $data['note'] ?? null]);
         AuditLog::record($data['approve'] ? 'expense.approved' : 'expense.refused', null, $expense, $this->words($expense).(filled($data['note'] ?? null) ? '. Note: '.$data['note'] : ''));
         $this->trail($data['approve'] ? 'expense.approved' : 'expense.refused', $expense, ['status' => 'submitted'], ['status' => $expense->status, 'amount' => $expense->amount, 'category' => $expense->category], $data['note'] ?? null);
+        // Who entered it and who sent it are told, once the decision is saved.
+        PhoneNotice::expenseDecided($expense, $user, (bool) $data['approve']);
 
         return response()->json($this->present($expense->fresh($this->with()), $user));
     }

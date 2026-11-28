@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
+use App\Models\PushSubscription;
 use App\Models\User;
 use App\Support\DatabaseBackup;
 use App\Support\GoogleIdToken;
+use App\Support\PhoneNotice;
 use App\Support\SignInGuard;
 use App\Support\StaffLogin;
 use Illuminate\Http\JsonResponse;
@@ -136,8 +138,10 @@ class AuthController extends Controller
             throw ValidationException::withMessages(['password' => 'That PIN is too easy to guess. Do not use one digit repeated, a run like 123456, or the end of your own mobile number.']);
         }
         $user->update(['password' => $data['password'], 'must_change_secret' => false]);
-        // Sign out every other device; this one stays signed in.
+        // Sign out every other device; this one stays signed in. No device is sent the person's notices any more:
+        // the one in hand notes itself again straight away, where notifications are on.
         $user->tokens()->where('id', '!=', $user->currentAccessToken()->id)->delete();
+        PushSubscription::where('user_id', $user->id)->delete();
 
         return response()->json(['message' => $pin ? 'PIN changed.' : 'Password changed.']);
     }
@@ -243,6 +247,8 @@ class AuthController extends Controller
             'can_change_price' => $user->allows('canChangePrice'),
             'can_record_expenses' => $user->allows('canRecordExpenses'),
             'can_pay_consultants' => $user->allows('canPayConsultants'),
+            // The kinds of phone notice this person can be sent. None: this login is never offered notices.
+            'notices' => PhoneNotice::kindsFor($user),
             // Something an admin should act on about the backups, shown at the top of every screen until it is done.
             'backup_alert' => $user->role === Role::Admin ? DatabaseBackup::alert() : null,
             'pad_hidden_sections' => $user->pad_hidden_sections ?? [],
