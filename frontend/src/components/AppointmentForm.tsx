@@ -9,6 +9,7 @@ import { PatientPicker } from './PatientPicker'
 import { DiscountWhy } from './DiscountWhy'
 import { noWhy, whyFields } from './discountFields'
 import { offeredTo, usualService } from '../doctorFee'
+import { mayDateBack } from '../earlierDay'
 
 type Props = {
   date: string
@@ -107,8 +108,9 @@ export function AppointmentForm({ patient: startPatient, date, time: startTime, 
   const net = service ? Math.max(0, Number(price || 0) * Number(quantity || 1) - Number(discount || 0)) : 0
   const netWithTax = Math.round(net * (1 + (service?.gst_percent ?? 0) / 100) * 100) / 100
   const billing = Boolean(service) && !skipBilling && !free
-  // A visit entered for a day already gone was missed then: the server dates its bill and its money on that day.
-  const missed = Boolean(day) && day < today()
+  // A visit entered for a day already gone was missed then: the server dates its bill and its money on that day,
+  // for a person allowed to enter for earlier days. From anyone else the bill is today's, as before.
+  const missed = Boolean(day) && day < today() && mayDateBack(user)
 
   const chooseService = (value: string) => {
     setServiceId(value)

@@ -72,6 +72,8 @@ class IpdTest extends TestCase
 
     public function test_a_back_dated_payment_cannot_land_in_a_closed_day_and_a_repeat_entry_is_caught(): void
     {
+        // Dating money back is for those given it; this nurse has been.
+        Sanctum::actingAs(User::factory()->create(['role' => 'nurse', 'permissions' => ['canEnterEarlierDays' => true]]));
         $case = $this->admit()->assertCreated()->json();
         $url = "/api/ipd/admissions/{$case['id']}/payments";
         $yesterday = now()->subDay()->toDateString();

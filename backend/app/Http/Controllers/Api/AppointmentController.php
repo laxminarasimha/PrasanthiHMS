@@ -245,8 +245,9 @@ class AppointmentController extends Controller
                     throw ValidationException::withMessages(['discount' => 'The discount cannot be more than the charge.']);
                 }
 
-                // A visit being entered for an earlier day was missed then: its bill and its money belong to that day.
-                $at = Carbon::parse($data['scheduled_at'])->lt(today()) ? EarlierDay::at($day) : null;
+                // A visit being entered for an earlier day was missed then: its bill and its money belong to that day,
+                // when the person may enter for earlier days. From anyone else the bill is today's, as every bill of theirs is.
+                $at = Carbon::parse($data['scheduled_at'])->lt(today()) && EarlierDay::allowed() ? EarlierDay::at($day) : null;
                 $bill = EarlierDay::date(new Bill([
                     'branch_id' => $appointment->branch_id,
                     'patient_id' => $appointment->patient_id,

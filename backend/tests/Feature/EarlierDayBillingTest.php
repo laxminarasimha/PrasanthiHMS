@@ -257,4 +257,46 @@ class EarlierDayBillingTest extends TestCase
         // Nothing of a day before the patient was admitted can go on the case.
         $this->postJson('/api/pharmacy/sales', $sale + ['sold_on' => today()->subDays(6)->toDateString()])->assertStatus(422)->assertJsonValidationErrors('sold_on');
     }
+
+    public function test_only_those_given_it_may_enter_for_an_earlier_day(): void
+    {
+        $service = Service::factory()->create(['price' => 200]);
+        $batch = $this->stock();
+        $desk = User::factory()->create(['role' => 'frontdesk']);
+        Sanctum::actingAs($desk);
+        $this->assertFalse($desk->allows('canEnterEarlierDays'));
+
+        // Asking for an earlier day is refused, on a bill and on money alike, and nothing is saved.
+        $this->postJson('/api/bills', ['patient_id' => $this->patient->id, 'service_id' => $service->id, 'billed_on' => $this->then])->assertForbidden();
+        $this->postJson('/api/front-desk/charges', ['patient_id' => $this->patient->id, 'services' => [['service_id' => $service->id]], 'billed_on' => $this->then])->assertForbidden();
+        $this->postJson("/api/patients/{$this->patient->id}/deposits", ['type' => 'deposit', 'amount' => 500, 'mode' => 'cash', 'paid_on' => $this->then])->assertForbidden();
+        $this->assertSame(0, Bill::count());
+        $this->assertSame(0, PatientDeposit::count());
+
+        // Everything they enter is today's: an ordinary bill, and the bill of a visit put in for a day already gone.
+        $bill = $this->postJson('/api/bills', ['patient_id' => $this->patient->id, 'service_id' => $service->id])->assertCreated()->json('id');
+        $this->postJson("/api/bills/{$bill}/payments", ['type' => 'payment', 'amount' => 200, 'mode' => 'cash', 'paid_on' => $this->then])->assertForbidden();
+        $this->postJson("/api/bills/{$bill}/payments", ['type' => 'payment', 'amount' => 200, 'mode' => 'cash', 'paid_on' => today()->toDateString()])->assertCreated();
+        $visit = $this->postJson('/api/appointments', [
+            'patient_id' => $this->patient->id, 'doctor_id' => User::factory()->create(['role' => 'doctor'])->id, 'scheduled_at' => "{$this->then} 11:00", 'status' => 'arrived',
+            'service_id' => Service::factory()->create(['price' => 400])->id, 'paid' => 400, 'payment_mode' => 'cash',
+        ])->assertCreated()->json();
+        $old = Bill::find($visit['bills'][0]['id']);
+        $this->assertSame(today()->toDateString(), $old->created_at->toDateString());
+        $this->assertNull($old->entered_at);
+        $this->assertSame(0, AuditLog::where('action', 'billing.earlier_day')->count());
+
+        // A pharmacist is refused the same way.
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $sale = ['customer_name' => 'Walk-in Customer', 'paid' => 0, 'payment_mode' => 'cash', 'items' => [['stock_batch_id' => $batch, 'quantity' => 5]]];
+        $this->postJson('/api/pharmacy/sales', $sale + ['sold_on' => $this->then])->assertForbidden();
+        $this->assertSame(0, PharmacySale::count());
+
+        // Only an admin can give it, and once given it works.
+        $this->assertContains('canEnterEarlierDays', User::SENSITIVE);
+        $desk->update(['permissions' => ['canEnterEarlierDays' => true]]);
+        Sanctum::actingAs($desk->fresh());
+        $this->postJson('/api/bills', ['patient_id' => $this->patient->id, 'service_id' => $service->id, 'billed_on' => $this->then])->assertCreated();
+        $this->assertSame($this->then, Bill::latest('id')->first()->created_at->toDateString());
+    }
 }

@@ -518,18 +518,13 @@ class IpdController extends Controller
             throw ValidationException::withMessages(['amount' => 'This entry was recorded a moment ago. Look at the list below before entering it again.']);
         }
 
-        $paidOn = $data['paid_on'] ?? null;
+        // Reports count money on the day it was received, so a back-dated entry carries that day, from someone allowed
+        // to enter one. The date is set before saving, so a day whose accounts are closed refuses it like any other entry.
+        $at = EarlierDay::at($data['paid_on'] ?? null);
         unset($data['paid_on']);
-        $payment = $admission->payments()->make($data + ['received_by' => $request->user()->id]);
-        if ($paidOn && $paidOn !== today()->toDateString()) {
-            // Reports count money on the day it was received, so a back-dated entry carries that day.
-            // The date is set before saving, so a day whose accounts are closed refuses it like any other entry.
-            $payment->created_at = Carbon::parse($paidOn)->setTimeFrom(now());
-            $payment->entered_at = now();
-        }
-        $payment->save();
+        EarlierDay::date($admission->payments()->make($data + ['received_by' => $request->user()->id]), $at)->save();
         $admission->recalculate();
-        EarlierDay::log(EarlierDay::at($paidOn), $admission->patient_id, $admission, "{$admission->ipd_no}: ₹".(float) $data['amount'].' '.($data['type'] === 'refund' ? 'refunded' : 'received'));
+        EarlierDay::log($at, $admission->patient_id, $admission, "{$admission->ipd_no}: ₹".(float) $data['amount'].' '.($data['type'] === 'refund' ? 'refunded' : 'received'));
 
         return response()->json($this->present($admission), 201);
     }

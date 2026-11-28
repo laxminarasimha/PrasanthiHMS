@@ -81,6 +81,7 @@ class User extends Authenticatable
     public const ABILITIES = [
         'canWorkFrontDesk' => ['Front desk: appointments and billing', 'Book appointments, change their status, take vitals and make bills.'],
         'canChangePrice' => ['Change the price while billing', 'Charge a price different from the price list for a service.'],
+        'canEnterEarlierDays' => ['Bill for an earlier day', 'Enter a bill, or money that was taken, for a day already gone, so that it counts on that day in the lists and reports. Without this, everything a person enters is today’s.'],
         'canRecordExpenses' => ['Expenses', 'Write down money paid out (wages advanced, tea, repairs and the like), and correct or cancel an entry.'],
         'canFilePastRecords' => ['Old paper records', 'Scan the papers a patient brings from before, check what was read from them and file them in the record.'],
         'canConsult' => ['Doctor: visit pad', 'Open the visit pad, write notes and prescriptions, and use the doctor library.'],
@@ -121,7 +122,7 @@ class User extends Authenticatable
      * Permissions that hand over clinical authority, money or control of the system. Only an admin may give one of
      * these to a person, or give a role that carries one; anyone who manages staff may still take them away.
      */
-    public const SENSITIVE = ['canConsult', 'canApproveLab', 'canApproveIpd', 'canChangePrice', 'canSetPrices', 'canDeleteBills', 'canAuditPharmacy', 'canCloseDay', 'canExportData', 'canManageStaff', 'canPayConsultants'];
+    public const SENSITIVE = ['canConsult', 'canApproveLab', 'canApproveIpd', 'canChangePrice', 'canEnterEarlierDays', 'canSetPrices', 'canDeleteBills', 'canAuditPharmacy', 'canCloseDay', 'canExportData', 'canManageStaff', 'canPayConsultants'];
 
     /**
      * Whether this person may do this in the pharmacy: anything if they run it, or only what reads without
