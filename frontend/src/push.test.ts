@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { createElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { pushState, syncPush, turnOffPush, turnOnPush } from './push'
+import { forgetPushOnSignOut, pushState, syncPush, turnOffPush, turnOnPush } from './push'
 import { PushHint } from './components/PushControls'
 import { ARRIVED, TAPPED } from './notices'
 import type { User } from './types'
@@ -91,6 +91,19 @@ afterEach(() => {
 })
 
 describe('notifications on a device used by more than one person', () => {
+  it('lets go of the device on signing out, without asking the server for a login it never lets in', async () => {
+    await turnOnPush(nurse)
+    phone.device.sub = phone.subscription()
+    await forgetPushOnSignOut(ownRecord)
+    expect(remove).not.toHaveBeenCalled()
+    expect(phone.device.sub).toBeNull()
+
+    phone.device.sub = phone.subscription()
+    await forgetPushOnSignOut(nurse)
+    expect(remove).toHaveBeenCalledTimes(1)
+    expect(phone.device.sub).toBeNull()
+  })
+
   it('notes the device again for someone who switched them on here, each time they open the app', async () => {
     expect(await turnOnPush(nurse)).toBe('on')
     expect(joined()).toBe(1)

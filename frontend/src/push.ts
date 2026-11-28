@@ -184,10 +184,10 @@ export async function turnOnPush(user: User): Promise<PushState> {
 }
 
 /** Lets go of this device: on the server first, so nothing more is sent, then on the device itself. */
-async function leave(): Promise<void> {
+async function leave(askServer = true): Promise<void> {
   const sub = await held(await worker())
   if (!sub) return
-  await api.delete('/me/push', { data: { endpoint: sub.endpoint } }).catch(() => undefined)
+  if (askServer) await api.delete('/me/push', { data: { endpoint: sub.endpoint } }).catch(() => undefined)
   await dropHere(sub)
 }
 
@@ -199,10 +199,12 @@ export async function turnOffPush(user: User): Promise<void> {
 }
 
 /** Before signing out: the next person to use this device must not get this person's notifications. */
-export async function forgetPushOnSignOut(): Promise<void> {
+export async function forgetPushOnSignOut(user?: User | null): Promise<void> {
   if (!able() || Notification.permission !== 'granted') return
+  // A login that keeps only its own record is never let in to the device calls, so the phone simply lets go itself.
+  const askServer = !(user && ownRecordOnly(user))
   // Never holds the sign-out up for long on a bad line.
-  await Promise.race([leave(), new Promise((done) => window.setTimeout(done, 4000))])
+  await Promise.race([leave(askServer), new Promise((done) => window.setTimeout(done, 4000))])
 }
 
 /**
