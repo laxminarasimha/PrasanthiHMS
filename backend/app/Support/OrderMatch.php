@@ -21,6 +21,10 @@ class OrderMatch
     /**
      * An order line by line: packs ordered, packs received and billed, free packs, and what came without being ordered.
      *
+     * A line is matched in units, as the stockist may send another pack size: 4 packs of 25 answer an order of 10
+     * packs of 10. What is still to come is told in the order's own packs, rounded up. The packs received are the
+     * paid packs as billed, whatever their size.
+     *
      * @return array{lines: list<array<string, mixed>>, extras: list<array<string, mixed>>, invoices: list<array<string, mixed>>, complete: bool}
      */
     public static function forOrder(PurchaseOrder $order): array
@@ -30,15 +34,20 @@ class OrderMatch
         $received = StockBatch::whereIn('purchase_invoice_id', $invoices->pluck('id'))->with('medicine:id,name')->get()->groupBy('medicine_id');
 
         $lines = $order->items->map(function ($item) use ($received) {
-            $got = (int) ($received[$item->medicine_id] ?? collect())->sum('packs');
-            $free = (int) ($received[$item->medicine_id] ?? collect())->sum('free_packs');
+            $batches = $received[$item->medicine_id] ?? collect();
+            $got = (int) $batches->sum('packs');
+            $free = (int) $batches->sum('free_packs');
+            // Free packs come on top of an order, so only the paid packs count towards what was ordered.
+            $gotUnits = (int) $batches->sum(fn (StockBatch $b) => (int) $b->packs * (int) $b->units_per_pack);
+            $perPack = max(1, (int) $item->units_per_pack);
+            $orderedUnits = (int) $item->packs * $perPack;
 
             return [
                 'medicine_id' => $item->medicine_id, 'medicine_name' => $item->medicine_name, 'units_per_pack' => $item->units_per_pack,
                 'ordered' => (int) $item->packs, 'received' => $got, 'free' => $free,
-                // Free packs come on top of an order, so only the paid packs count towards what was ordered.
-                'to_come' => max(0, (int) $item->packs - $got),
-                'state' => $got === 0 ? 'none' : ($got < $item->packs ? 'short' : ($got > $item->packs ? 'over' : 'full')),
+                'ordered_units' => $orderedUnits, 'received_units' => $gotUnits,
+                'to_come' => (int) ceil(max(0, $orderedUnits - $gotUnits) / $perPack),
+                'state' => $gotUnits === 0 ? 'none' : ($gotUnits < $orderedUnits ? 'short' : ($gotUnits > $orderedUnits ? 'over' : 'full')),
             ];
         })->values();
 
@@ -50,7 +59,7 @@ class OrderMatch
         return [
             'lines' => $lines->all(), 'extras' => $extras->all(),
             'invoices' => $invoices->map(fn (PurchaseInvoice $p) => ['id' => $p->id, 'invoice_no' => $p->invoice_no, 'invoice_date' => $p->invoice_date->toDateString(), 'total' => $p->total])->all(),
-            'complete' => $lines->isNotEmpty() && $lines->every(fn ($l) => $l['received'] >= $l['ordered']),
+            'complete' => $lines->isNotEmpty() && $lines->every(fn ($l) => $l['received_units'] >= $l['ordered_units']),
         ];
     }
 
@@ -64,7 +73,8 @@ class OrderMatch
 
     /**
      * What is still to come on an open order, one line for each medicine, ready to fill a new invoice from the
-     * stockist: the order's pack size, the packs not received yet, and the medicine's GST, HSN code and place.
+     * stockist: the order's pack size, the packs not received yet (matched in units, see forOrder), and the
+     * medicine's GST, HSN code and place.
      * Each line also says what the medicine was last bought at in the same pack size, from this stockist if it
      * ever was, else from anyone: a hint to show beside the boxes, never a figure to save. Nothing is written.
      *
@@ -141,10 +151,20 @@ class OrderMatch
                 $line = $match[$batch->medicine_id] ?? null;
                 if (! $line) {
                     $notes[] = "Not on order {$invoice->order->order_no}.";
-                } elseif ($line['state'] === 'short') {
-                    $notes[] = "Ordered {$line['ordered']} packs; {$line['received']} received so far.";
-                } elseif ($line['state'] === 'over') {
-                    $notes[] = "Ordered {$line['ordered']} packs; {$line['received']} received.";
+                } else {
+                    $perPack = (int) $line['units_per_pack'];
+                    if ((int) $batch->units_per_pack !== $perPack) {
+                        $notes[] = "Came in packs of {$batch->units_per_pack}; the order is for packs of {$perPack}.";
+                    }
+                    // Told in packs while every pack that came is of the order's size, else in units.
+                    $said = $line['received_units'] === $line['received'] * $perPack
+                        ? "Ordered {$line['ordered']} packs; {$line['received']} received"
+                        : "Ordered {$line['ordered_units']} units; {$line['received_units']} received";
+                    if ($line['state'] === 'short') {
+                        $notes[] = "{$said} so far.";
+                    } elseif ($line['state'] === 'over') {
+                        $notes[] = "{$said}.";
+                    }
                 }
             }
             if ($notes) {

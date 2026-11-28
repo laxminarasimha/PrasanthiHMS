@@ -37,8 +37,10 @@ type StillToCome = NonNullable<PurchaseOrder['still_to_come']>[number]
 type FromOrder = {
   order_no: string
   name: string
-  /** Packs of it still to come on the order when it was chosen. */
+  /** Packs of it still to come on the order when it was chosen, in the order's own pack size. */
   to_come: number
+  /** The order's pack size. */
+  units_per_pack: number
   not_in_use: boolean
   last_rate: number | null
   last_mrp: number | null
@@ -72,23 +74,26 @@ const offSentence = (off: string[]) => (off.length ? `Taken off, as nothing had 
 
 /**
  * The lines once an order is chosen: one for each medicine still to come on it, with the order's pack size and the
- * packs still to come, after the lines already there. A medicine already on the invoice is not added again; that line
- * only gets the order's note. Batch, expiry, rate and MRP are left to be typed from the stockist's bill.
+ * packs still to come, after the lines already there. A medicine already on the invoice is not added again; the first
+ * line of it only gets the order's note. Batch, expiry, rate and MRP are left to be typed from the stockist's bill.
  */
 function fillFromOrder(rows: Line[], order: PurchaseOrder) {
   const blank = emptyLine()
   const toCome = order.still_to_come ?? []
   const note = (s: StillToCome, filled: Typed | null): FromOrder => ({
-    order_no: order.order_no, name: s.medicine_name, to_come: s.packs, not_in_use: !s.is_active,
+    order_no: order.order_no, name: s.medicine_name, to_come: s.packs, units_per_pack: s.units_per_pack, not_in_use: !s.is_active,
     last_rate: s.last_rate, last_mrp: s.last_mrp, last_on: s.last_on, last_here: s.last_from_this_stockist, filled,
   })
   const already: string[] = []
-  // A line with nothing typed on it makes way; every other line stays as it was typed.
+  const noted = new Set<string>()
+  // A line with nothing typed on it makes way; every other line stays as it was typed. A medicine typed on two lines,
+  // two batches of it, is told about once: how all its lines stand against the order shows on the first (againstOrder).
   const kept = rows
     .filter((l) => l.id !== undefined || l.from_order !== undefined || !sameAs(l, blank))
     .map((l) => {
-      const s = l.from_order ? undefined : toCome.find((x) => String(x.medicine_id) === l.medicine_id)
+      const s = l.from_order || noted.has(l.medicine_id) ? undefined : toCome.find((x) => String(x.medicine_id) === l.medicine_id)
       if (!s) return l
+      noted.add(l.medicine_id)
       already.push(s.medicine_name)
       return { ...l, from_order: note(s, null) }
     })
@@ -117,6 +122,28 @@ function filledSentence(order: PurchaseOrder, result: ReturnType<typeof fillFrom
   if (result.already.length) said.push(`Already on this invoice, and left as typed: ${result.already.join(', ')}.`)
   if (result.left > 0) said.push(`An invoice takes at most ${MOST_LINES} medicines, so ${result.left} more ${result.left === 1 ? 'stays' : 'stay'} on the order for the next invoice.`)
   return said.filter(Boolean).join(' ')
+}
+
+/**
+ * How the packs typed for a medicine stand against what is still to come of it on the order, over every line of that
+ * medicine: two batches of it are two lines. Worked out in units, as the order is matched with its invoices, since a
+ * stockist may send another pack size; told in the order's packs, or in units once another pack size is typed. Free
+ * packs come on top of an order and do not count. Said once, on the first line of the medicine filled in from the order.
+ */
+function againstOrder(rows: Line[], index: number, removed: number[]) {
+  const from = rows[index].from_order
+  const medicine = rows[index].medicine_id
+  if (!from || rows.findIndex((r) => r.from_order !== undefined && r.medicine_id === medicine) !== index) return null
+  const typed = rows.filter((r) => r.medicine_id === medicine && !(r.id !== undefined && removed.includes(r.id)) && r.packs.trim() !== '' && !Number.isNaN(Number(r.packs)))
+  if (!typed.length) return null
+  const perPack = Math.max(1, from.units_per_pack)
+  const sizeOf = (r: Line) => Number(r.units_per_pack) || perPack
+  const left = from.to_come * perPack - typed.reduce((sum, r) => sum + Number(r.packs) * sizeOf(r), 0)
+  if (left === 0) return null
+  const inPacks = typed.every((r) => sizeOf(r) === perPack)
+  const n = Math.abs(left) / (inPacks ? perPack : 1)
+  const what = inPacks ? String(n) : `${n} ${n === 1 ? 'unit' : 'units'}`
+  return left > 0 ? `${what} ${n === 1 ? 'stays' : 'stay'} on order` : `${what} more than ordered`
 }
 
 /** What the stockist charges for the line before tax: paid packs, less the discount in % and in rupees. */
@@ -179,7 +206,14 @@ export function PharmacyPurchases() {
   const [newName, setNewName] = useState('')
   const adopt = (m: Medicine, index: number) => {
     setMedicines((list) => [...list.filter((x) => x.id !== m.id), { ...m, units_in_stock: 0 }].sort((a, b) => a.name.localeCompare(b.name)))
-    setLines((rows) => rows.map((row, i) => (i === index ? { ...row, medicine_id: String(m.id), units_per_pack: String(m.units_per_pack), gst_percent: String(m.gst_percent), hsn_code: m.hsn_code ?? '', rack_no: m.rack_no ?? row.rack_no, box_no: m.box_no ?? row.box_no } : row)))
+    // A new medicine on a line filled in from an order is no longer what the order said, as when another is chosen (setLine).
+    setLines((rows) =>
+      rows.map((row, i) =>
+        i === index
+          ? { ...row, medicine_id: String(m.id), units_per_pack: String(m.units_per_pack), gst_percent: String(m.gst_percent), hsn_code: m.hsn_code ?? '', rack_no: m.rack_no ?? row.rack_no, box_no: m.box_no ?? row.box_no, from_order: String(m.id) === row.medicine_id ? row.from_order : undefined }
+          : row,
+      ),
+    )
     setNewFor(null)
   }
   const [errors, setErrors] = useState<string[]>([])
@@ -511,10 +545,9 @@ export function PharmacyPurchases() {
                 <input type="number" min={more.min ?? 0} max={more.max} step={more.step} disabled={more.disabled} placeholder={more.hint} title={more.hint} value={String(l[key] ?? '')} onChange={(e) => setLine(i, key, e.target.value)} />
               </label>
             )
-            // On a line filled in from an order: how the packs typed stand against what is still to come, and what was paid last time.
+            // On a line filled in from an order: how the packs typed of it stand against what is still to come, and what was paid last time.
             const from = l.from_order
-            const typedPacks = l.packs.trim() === '' || Number.isNaN(Number(l.packs)) ? null : Number(l.packs)
-            const stays = from && typedPacks !== null ? from.to_come - typedPacks : 0
+            const standing = againstOrder(lines, i, removed)
             const lastRate = from && from.last_rate !== null ? `last ${rupees(from.last_rate)}` : undefined
             const lastMrp = from && from.last_mrp !== null ? `last ${rupees(from.last_mrp)}` : undefined
             // A line already saved on the invoice keeps its medicine and pack size; a new one is typed in full.
@@ -543,8 +576,7 @@ export function PharmacyPurchases() {
                     <small className="pill status-ongoing">
                       From {from.order_no} · {from.to_come} {from.to_come === 1 ? 'pack' : 'packs'} still to come
                     </small>
-                    {stays > 0 && <small className="pill warn">{stays} {stays === 1 ? 'stays' : 'stay'} on order</small>}
-                    {stays < 0 && <small className="pill warn">{-stays} more than ordered</small>}
+                    {standing && <small className="pill warn">{standing}</small>}
                     <small className="muted">
                       {from.not_in_use ? 'Marked not in use in the medicine list. ' : ''}
                       {from.last_on ? `Last bought ${longDate(from.last_on)} ${from.last_here ? 'from this stockist' : 'from another stockist'}.` : 'Not bought before in this pack size.'}

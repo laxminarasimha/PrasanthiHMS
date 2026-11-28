@@ -108,6 +108,9 @@ class PharmacyManagerController extends Controller
             'lines.*.medicine_id.required_without' => 'Every line needs its medicine, or a brand from a catalogue.',
             'lines.*.stockist_id.required_without' => 'Choose a supplier for every ticked medicine.',
             'lines.*.rep_product_id.prohibits' => 'A line orders either a medicine or a brand from a catalogue, not both.',
+            // A brand taken out of the catalogue, perhaps on another screen, after it was chosen.
+            'lines.*.rep_product_id.exists' => 'That brand is no longer in the catalogue.',
+            'lines.*.stockist_id.exists' => 'That supplier is not in the list of stockists. Choose another.',
         ]);
         $from = $data['from'] ?? 'reorder';
         $wanted = $this->resolveLines($data['lines']);

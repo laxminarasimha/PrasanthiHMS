@@ -67,12 +67,14 @@ export function RepCatalogue() {
   const [notice, setNotice] = useState('')
   const [saving, setSaving] = useState(false)
   const [sheet, setSheet] = useState<{ companyId: string; rows: Record<string, string>[]; answer: SheetAnswer | null; error: string } | null>(null)
-  // What has been chosen to order: for each brand, how many of the pharmacy's packs and from whom. Only for those who run the pharmacy.
-  const [basket, setBasket] = useState<Record<number, { packs: string; stockist: string }>>({})
+  // What has been chosen to order: for each brand, its name and the pharmacy's pack, how many packs and from whom. Only
+  // for those who run the pharmacy. It outlasts a search, so one order can be put together over several searches.
+  const [basket, setBasket] = useState<Record<number, { name: string; perPack: number; packs: string; stockist: string }>>({})
   const [stockists, setStockists] = useState<{ id: number; name: string }[]>([])
   const [made, setMade] = useState<Made[] | null>(null)
   const [ordering, setOrdering] = useState(false)
-  const [orderError, setOrderError] = useState('')
+  // Why the draft orders were not made: beside the brand it is about, or else for the whole basket.
+  const [refused, setRefused] = useState<{ brands: Record<number, string>; all: string }>({ brands: {}, all: '' })
   const canOrder = Boolean(data?.can_order)
   useEffect(() => {
     if (canOrder) api.get<{ id: number; name: string }[]>('/pharmacy/stockists').then((res) => setStockists(res.data)).catch(() => undefined)
@@ -116,9 +118,12 @@ export function RepCatalogue() {
       setSaving(false)
     }
   }
+  const putBack = (id: number) => setBasket((now) => Object.fromEntries(Object.entries(now).filter(([key]) => Number(key) !== id)))
   const remove = async (p: Product) => {
     if (!window.confirm(`Take ${p.name} out of ${p.company?.name ?? 'the'} catalogue?`)) return
     await api.delete(`/reps/products/${p.id}`)
+    // A brand out of the catalogue cannot be ordered from it either.
+    putBack(p.id)
     setDraft(null)
     setEditing(null)
     void load()
@@ -159,19 +164,28 @@ export function RepCatalogue() {
   const ready = chosen.length > 0 && chosen.every(([, line]) => Number(line.packs) >= 1 && line.stockist)
   const order = async () => {
     setOrdering(true)
-    setOrderError('')
+    setRefused({ brands: {}, all: '' })
+    const sent = chosen.map(([id]) => Number(id))
     try {
       const res = await api.post<{ orders: Made[] }>('/pharmacy/manager/orders', { from: 'catalogue', lines: chosen.map(([id, line]) => ({ rep_product_id: Number(id), stockist_id: Number(line.stockist), packs: Number(line.packs) })) })
       setMade(res.data.orders)
       setBasket({})
       void load()
     } catch (err) {
-      setOrderError(Object.values(fieldErrors(err))[0] ?? 'The draft orders were not made.')
+      // The server names the line it refused ("lines.2.…"): that is the brand sent third.
+      const brands: Record<number, string> = {}
+      let all = ''
+      Object.entries(fieldErrors(err)).forEach(([key, message]) => {
+        const line = /^lines\.(\d+)\./.exec(key)
+        const id = line ? sent[Number(line[1])] : undefined
+        if (id === undefined) all = all || message
+        else if (!brands[id]) brands[id] = message
+      })
+      setRefused({ brands, all: all || (Object.keys(brands).length ? '' : 'The draft orders were not made.') })
     } finally {
       setOrdering(false)
     }
   }
-  const putBack = (id: number) => setBasket(Object.fromEntries(Object.entries(basket).filter(([key]) => Number(key) !== id)))
 
   if (!data) return <p className="loading">Loading…</p>
   const companies = data.companies.map((c) => ({ value: String(c.id), label: c.name }))
@@ -381,8 +395,8 @@ export function RepCatalogue() {
                             onClick={(e) => {
                               e.stopPropagation()
                               setMade(null)
-                              setOrderError('')
-                              setBasket({ ...basket, [p.id]: { packs: '1', stockist: firstSupplier(p) } })
+                              setRefused({ brands: {}, all: '' })
+                              setBasket({ ...basket, [p.id]: { name: p.name, perPack: p.medicine?.units_per_pack ?? 1, packs: '1', stockist: firstSupplier(p) } })
                             }}
                           >
                             + Order
@@ -411,11 +425,36 @@ export function RepCatalogue() {
       </div>
       {chosen.length > 0 && (
         <div className="order-bar">
-          <span>
+          <div>
             <b>{chosen.length}</b> {chosen.length === 1 ? 'brand' : 'brands'} chosen to order
             {!ready && <small className="due"> · give each one its packs and a supplier</small>}
-            {orderError && <small className="due block">{orderError}</small>}
-          </span>
+            {/* Each by name, as a search may have hidden its row, with what is still wanted of it and why it was refused. */}
+            <ul className="plain-list small">
+              {chosen.map(([id, line]) => {
+                const supplier = stockists.find((s) => String(s.id) === line.stockist)?.name
+                return (
+                  <li key={id}>
+                    <b>{line.name}</b>{' '}
+                    {!(Number(line.packs) >= 1) ? (
+                      <span className="due">· give it its packs</span>
+                    ) : !line.stockist ? (
+                      <span className="due">· choose a supplier</span>
+                    ) : (
+                      <span className="muted">
+                        · {line.packs} {Number(line.packs) === 1 ? 'pack' : 'packs'} of {line.perPack}
+                        {supplier ? ` from ${supplier}` : ''}
+                      </span>
+                    )}{' '}
+                    <button type="button" className="link danger" title={`Take ${line.name} off this order`} onClick={() => putBack(Number(id))}>
+                      Not this one
+                    </button>
+                    {refused.brands[Number(id)] && <small className="due block">{refused.brands[Number(id)]}</small>}
+                  </li>
+                )
+              })}
+            </ul>
+            {refused.all && <small className="due block">{refused.all}</small>}
+          </div>
           <span className="foot-buttons">
             <button type="button" className="link" onClick={() => setBasket({})}>
               Clear
