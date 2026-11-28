@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { activeBottom, allowedTabs, bottomTabs, onTab, patientsSection } from './nav'
+import { activeBottom, allowedTabs, barChoices, bottomTabs, onTab, patientsSection, usualBarKeys } from './nav'
 import type { User } from './types'
 
 const person = (can: Partial<User>) => ({ id: 1, name: 'Sample Person', role: 'receptionist', ...can }) as User
@@ -83,3 +83,22 @@ describe('a login that opens only the person’s own record', () => {
   })
 })
 
+describe('a bar a person arranged for themself', () => {
+  const desk = person({ role: 'frontdesk', can_front_desk: true, abilities: { 'wf:self:view': true } })
+
+  it('starts from the usual bar, told as the places it is made of', () => {
+    // Their own record is a tab of their menu, so it is offered under that name, not twice.
+    expect(barChoices(desk).map((c) => c.key)).toEqual(['todo', 'front-desk', 'lab', 'workforce', 'schedule', 'patients', 'profile'])
+    expect(usualBarKeys(desk)).toEqual(['front-desk', 'lab', 'workforce', 'profile'])
+  })
+
+  it('is shown in their order, four at most', () => {
+    const own = { ...desk, bar_tabs: ['todo', 'schedule', 'front-desk', 'profile', 'lab'] }
+    expect(bottomTabs(own).map((t) => [t.key, t.to])).toEqual([['todo', '/todo'], ['schedule', '/front-desk/calendar'], ['front-desk', '/front-desk'], ['profile', '/account']])
+  })
+
+  it('leaves out a place they may no longer open, and falls back to the usual bar when none is left', () => {
+    expect(bottomTabs({ ...desk, bar_tabs: ['pharmacy', 'todo'] }).map((t) => t.key)).toEqual(['todo'])
+    expect(bottomTabs({ ...desk, bar_tabs: ['pharmacy'] }).map((t) => t.key)).toEqual(bottomTabs(desk).map((t) => t.key))
+  })
+})

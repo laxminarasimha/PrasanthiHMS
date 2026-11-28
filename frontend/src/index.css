@@ -2276,3 +2276,12 @@ tr.cancelled td { color: var(--muted); }
 .dept-card dd.sub { font-size: 0.86rem; color: var(--muted); }
 .dept-card dd.due { color: var(--danger); font-weight: 700; }
 .dept-card small a { color: var(--brand-dark); font-weight: 600; }
+
+/* ---- Profile: a person arranging the bar at the foot of their phone ---- */
+.bar-order { list-style: none; margin: 8px 0; padding: 0; counter-reset: bar; }
+.bar-order li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 6px; background: var(--surface-2); counter-increment: bar; }
+.bar-place { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; min-width: 0; }
+.bar-place::before { content: counter(bar); min-width: 1.5em; color: var(--muted); font-weight: 700; font-variant-numeric: tabular-nums; }
+.bar-place svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.bar-acts { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.bar-acts .link { margin-left: 6px; font-size: 0.86rem; }

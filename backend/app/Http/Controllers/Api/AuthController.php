@@ -156,7 +156,13 @@ class AuthController extends Controller
         return response()->json($this->present($request->user()));
     }
 
-    public const MENU_TABS = ['front-desk', 'doctor', 'lab', 'pharmacy', 'ipd', 'patients', 'reports', 'setup'];
+    public const MENU_TABS = ['todo', 'front-desk', 'doctor', 'lab', 'pharmacy', 'ipd', 'patients', 'reports', 'workforce', 'setup'];
+
+    /** What can sit on the bar at the foot of a phone: any menu tab, and the few places that have no tab of their own. */
+    public const BAR_TABS = [...self::MENU_TABS, 'schedule', 'attendance', 'profile'];
+
+    /** The most places on that bar; "More" always takes the last one. */
+    public const BAR_MOST = 4;
 
     /** Saves which menu tabs a person does not want to see. Their permissions stay as they are. */
     public function saveTabs(Request $request): JsonResponse
@@ -166,6 +172,21 @@ class AuthController extends Controller
             'hidden.*' => ['string', Rule::in(self::MENU_TABS)],
         ]);
         $request->user()->update(['hidden_tabs' => array_values(array_unique($data['hidden'])) ?: null]);
+
+        return response()->json($this->present($request->user()));
+    }
+
+    /**
+     * Saves the places a person wants on the bar at the foot of their phone, in their order. An empty list gives
+     * back the usual bar for their role. Only the order is kept; what each place opens still follows their permissions.
+     */
+    public function saveBar(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'bar' => ['present', 'array', 'max:'.self::BAR_MOST],
+            'bar.*' => ['string', 'distinct', Rule::in(self::BAR_TABS)],
+        ], ['bar.max' => 'The bar has room for '.self::BAR_MOST.' places, besides "More".']);
+        $request->user()->update(['bar_tabs' => array_values($data['bar']) ?: null]);
 
         return response()->json($this->present($request->user()));
     }
@@ -226,6 +247,7 @@ class AuthController extends Controller
             'backup_alert' => $user->role === Role::Admin ? DatabaseBackup::alert() : null,
             'pad_hidden_sections' => $user->pad_hidden_sections ?? [],
             'hidden_tabs' => $user->hidden_tabs ?? [],
+            'bar_tabs' => $user->bar_tabs ?? [],
             'appearance' => ($user->appearance ?? []) + ['theme' => 'prasanthi', 'text' => 'normal'],
             'branch' => $user->branch?->only(['id', 'name', 'city']),
         ];

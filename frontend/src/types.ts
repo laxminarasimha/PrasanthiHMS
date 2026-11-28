@@ -44,6 +44,8 @@ export type User = {
   pad_hidden_sections?: string[]
   /** Menu tabs this person chose not to see. */
   hidden_tabs?: string[]
+  /** The places this person chose for the bar at the foot of their phone, in their order. Empty: the usual bar. */
+  bar_tabs?: string[]
   /** This person's own theme and text size. */
   appearance?: { theme: string; text: 'small' | 'normal' | 'large' }
   branch: { id: number; name: string; city: string | null } | null

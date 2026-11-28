@@ -22,7 +22,7 @@ class LoginLimits
 
     /** What an own-record login may reach. `*` stands for anything after it. */
     private const OWN_RECORD = [
-        'api/me', 'api/me/password', 'api/me/appearance', 'api/me/tabs', 'api/logout', 'api/account/google',
+        'api/me', 'api/me/password', 'api/me/appearance', 'api/me/tabs', 'api/me/bar', 'api/logout', 'api/account/google',
         'api/workforce/me', 'api/workforce/me/*', 'api/workforce/access',
     ];
 

@@ -90,7 +90,7 @@ class RecordActivity
     ];
 
     /** Changes too small or too private to be worth a line: a person's own menu and colours, and checks that change nothing. */
-    private const SKIP = ['POST logout', 'PUT me/appearance', 'PUT me/tabs', 'POST me/push', 'DELETE me/push', 'POST me/push/test', 'POST patients/{patient}/prescription-check', 'PUT doctor/pad-sections'];
+    private const SKIP = ['POST logout', 'PUT me/appearance', 'PUT me/tabs', 'PUT me/bar', 'POST me/push', 'DELETE me/push', 'POST me/push/test', 'POST patients/{patient}/prescription-check', 'PUT doctor/pad-sections'];
 
     public function handle(Request $request, Closure $next): Response
     {

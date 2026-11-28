@@ -128,6 +128,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
     Route::post('/backups/files/done', [BackupController::class, 'filesDone']);
     Route::get('/backups/{name}/download', [BackupController::class, 'download']);
     Route::put('/me/tabs', [AuthController::class, 'saveTabs']);
+    Route::put('/me/bar', [AuthController::class, 'saveBar']);
     // Each person's To do screen: the work waiting for them, and the tasks written for them.
     Route::controller(ToDoController::class)->group(function () {
         Route::get('/todo', 'index');
