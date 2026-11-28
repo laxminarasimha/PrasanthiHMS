@@ -246,4 +246,83 @@ class LinkModulesTest extends TestCase
         $this->assertSame(40, $batch->fresh()->units_in_stock);
         $this->assertEquals(50, PharmacySale::find($sale['id'])->ipd_transfer);
     }
+
+    public function test_ward_orders_and_discharge_medicines_reach_the_pharmacy_and_the_follow_up_reaches_the_desk(): void
+    {
+        $bed = Bed::create(['ward' => 'General Ward', 'bed_no' => '4', 'daily_charge' => 800]);
+        $case = $this->postJson('/api/ipd/admissions', ['patient_id' => $this->patient->id, 'doctor_id' => $this->doctor->id, 'bed_id' => $bed->id, 'admitted_at' => now()->subDays(3)->format('Y-m-d H:i')])->assertCreated()->json();
+        $url = "/api/ipd/admissions/{$case['id']}";
+        $batch = $this->stock('Inj Ceftriaxone 1g');
+
+        // The doctor orders on the ward: one medicine the pharmacy stocks under that name, one it does not, and a diet (not a medicine).
+        $this->travelTo(now()->subHours(3));
+        $this->postJson("{$url}/chart/orders", ['kind' => 'medicine', 'title' => 'Inj Ceftriaxone 1g', 'dose' => '1 g', 'route' => 'IV', 'frequency' => '12 hourly'])->assertCreated();
+        $stopped = collect($this->postJson("{$url}/chart/orders", ['kind' => 'medicine', 'title' => 'Inj Pantoprazole 40mg'])->assertCreated()->json('orders'))->firstWhere('title', 'Inj Pantoprazole 40mg')['id'];
+        $this->postJson("{$url}/chart/orders", ['kind' => 'medicine', 'title' => 'Syp Lactulose'])->assertCreated();
+        $this->postJson("{$url}/chart/orders", ['kind' => 'instruction', 'title' => 'Soft diet'])->assertCreated();
+        $this->postJson("{$url}/chart/orders/{$stopped}/stop")->assertOk();
+        $this->travelBack();
+
+        // The pharmacy sees the running orders: on the inpatient picker, on To do, and as a card at the counter.
+        Sanctum::actingAs($pharmacist = User::factory()->create(['role' => 'pharmacist']));
+        $this->getJson('/api/pharmacy/inpatients')->assertOk()->assertJsonPath('0.orders_waiting', 2);
+        $line = collect(collect($this->getJson('/api/todo')->assertOk()->json('waiting'))->firstWhere('key', 'pharmacy')['items'])->firstWhere('key', 'ward_orders');
+        $this->assertSame(2, $line['count']);
+        $this->assertTrue($line['urgent']);
+        $this->assertSame('/pharmacy?patient='.$this->patient->id, $line['rows'][0]['to']);
+        $this->assertSame('Inj Ceftriaxone 1g, Syp Lactulose', $line['rows'][0]['detail']);
+        $card = $this->getJson('/api/pharmacy/prescriptions?patient_id='.$this->patient->id)->assertOk()->assertJsonCount(1)->assertJsonPath('0.kind', 'ward')->assertJsonPath('0.doctor', $this->doctor->name)->json('0');
+        $this->assertSame(['Inj Ceftriaxone 1g', 'Syp Lactulose'], array_column($card['medicines'], 'medicine'));
+        $this->assertSame('1 g · IV · 12 hourly', $card['medicines'][0]['directions']);
+        $this->assertSame($batch->id, $card['medicines'][0]['match']['sellable_batches'][0]['id']);
+        // A name the pharmacy does not stock exactly is never guessed.
+        $this->assertNull($card['medicines'][1]['match']);
+        $this->assertTrue($card['medicines'][0]['new']);
+
+        // Once a pharmacy bill is made for the patient, nothing is waiting; the card stays, no longer marked new.
+        $this->postJson('/api/pharmacy/sales', ['patient_id' => $this->patient->id, 'customer_name' => $this->patient->name, 'admission_id' => $case['id'], 'paid' => 0, 'payment_mode' => 'cash',
+            'items' => [['stock_batch_id' => $batch->id, 'quantity' => 2]]])->assertCreated()->assertJsonPath('ipd_transfer', 10);
+        $this->getJson('/api/pharmacy/inpatients')->assertJsonPath('0.orders_waiting', 0);
+        $this->assertNull(collect(collect($this->getJson('/api/todo')->json('waiting'))->firstWhere('key', 'pharmacy')['items'] ?? [])->firstWhere('key', 'ward_orders'));
+        $this->getJson('/api/pharmacy/prescriptions?patient_id='.$this->patient->id)->assertJsonPath('0.medicines.0.new', false);
+
+        // The discharge summary: its medicines are offered at the counter even before it is approved.
+        Sanctum::actingAs($this->doctor);
+        $due = today()->subDays(2)->toDateString();
+        $this->putJson("{$url}/summary", ['diagnosis' => 'Enteric fever', 'medicines' => [['medicine' => 'Cefixime 200mg', 'frequency' => '1-0-1', 'duration' => '5 days']], 'follow_up_on' => $due])->assertOk();
+        $this->stock('Cefixime 200mg');
+        Sanctum::actingAs($pharmacist);
+        $cards = $this->getJson('/api/pharmacy/prescriptions?patient_id='.$this->patient->id)->assertOk()->assertJsonCount(2)->json();
+        $home = collect($cards)->firstWhere('kind', 'discharge');
+        $this->assertSame('Cefixime 200mg', $home['medicines'][0]['medicine']);
+        $this->assertSame('1-0-1 · 5 days', $home['medicines'][0]['directions']);
+        $this->assertNotNull($home['medicines'][0]['match']);
+        $this->assertStringContainsString('not approved yet', $home['note']);
+
+        // Still in the bed, the follow-up date on the summary is on nobody's list.
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->getJson('/api/front-desk/follow-ups?date='.$due)->assertOk()->assertJsonCount(0);
+        $this->getJson('/api/front-desk/not-returned')->assertOk()->assertJsonCount(0);
+
+        // Gone home three days ago, due back two days ago, not come: on the day's list and on "not come back".
+        Admission::whereKey($case['id'])->update(['status' => 'discharged', 'discharged_at' => now()->subDays(3)]);
+        $this->getJson('/api/front-desk/follow-ups?date='.$due)->assertJsonCount(1)->assertJsonPath('0.source', 'discharge')->assertJsonPath('0.patient.id', $this->patient->id)
+            ->assertJsonPath('0.doctor.id', $this->doctor->id)->assertJsonPath('0.booked', false)->assertJsonPath('0.follow_up_on', $due);
+        $this->getJson('/api/front-desk/not-returned')->assertJsonCount(1)->assertJsonPath('0.source', 'discharge')->assertJsonPath('0.days_late', 2)->assertJsonPath('0.diagnosis', 'Enteric fever');
+        $desk = collect($this->getJson('/api/todo')->json('waiting'))->firstWhere('key', 'front_desk');
+        $this->assertSame(1, collect($desk['items'])->firstWhere('key', 'follow_ups')['count']);
+        // The ward card has gone with the stay; the take-home medicines are still offered.
+        Sanctum::actingAs($pharmacist);
+        $this->getJson('/api/pharmacy/prescriptions?patient_id='.$this->patient->id)->assertJsonCount(1)->assertJsonPath('0.kind', 'discharge');
+
+        // They come: no longer chased. A patient who died is never listed.
+        Appointment::create(['patient_id' => $this->patient->id, 'doctor_id' => $this->doctor->id, 'scheduled_at' => now()->subDay(), 'status' => 'reviewed', 'arrived_at' => now()->subDay()]);
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->getJson('/api/front-desk/not-returned')->assertJsonCount(0);
+        Appointment::query()->delete();
+        $this->getJson('/api/front-desk/not-returned')->assertJsonCount(1);
+        Admission::whereKey($case['id'])->update(['status' => 'died']);
+        $this->getJson('/api/front-desk/not-returned')->assertJsonCount(0);
+        $this->getJson('/api/front-desk/follow-ups?date='.$due)->assertJsonCount(0);
+    }
 }

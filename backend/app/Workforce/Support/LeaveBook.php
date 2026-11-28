@@ -2,6 +2,7 @@
 
 namespace App\Workforce\Support;
 
+use App\Support\LeaveOnCalendar;
 use App\Workforce\Models\Employee;
 use App\Workforce\Models\Holiday;
 use App\Workforce\Models\HolidayCalendar;
@@ -180,6 +181,8 @@ final class LeaveBook
             }
             $request->update(['status' => 'approved', 'decided_by' => auth()->id(), 'decided_at' => now(), 'decision_note' => $note]);
             self::line($request->employee_id, $type->id, $year, 'taken', -$request->days, $request->from_date->format('Y-m-d'), "taken:{$request->id}", null, $request->id);
+            // A doctor's leave closes their appointment calendar for those days, so it is entered once.
+            LeaveOnCalendar::block($request);
 
             return $request;
         });
@@ -197,6 +200,7 @@ final class LeaveBook
                 self::line($request->employee_id, $request->leave_type_id, self::yearOf($request->from_date->format('Y-m-d')), 'reversal', $request->days, now()->toDateString(), "reversal:{$request->id}", 'Leave cancelled: '.$reason, $request->id);
             }
             $request->update(['status' => 'cancelled', 'decision_note' => $reason, 'decided_by' => auth()->id(), 'decided_at' => now()]);
+            LeaveOnCalendar::unblock($request);
 
             return $request;
         });

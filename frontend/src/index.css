@@ -647,6 +647,10 @@ tr.sub td:first-child { padding-left: 26px; }
 .lab-mini table td { padding: 3px 6px; border-bottom: 0; }
 h2.gap-top { margin-top: 20px; }
 .rx-card { border: 1px solid var(--border); border-left: 4px solid var(--brand); border-radius: 8px; padding: 10px 12px; margin-top: 12px; background: var(--surface-2); }
+.rx-card.ward { border-left-color: var(--info); }
+.rx-card.discharge { border-left-color: var(--accent); }
+.rx-card .pill { margin-left: 6px; }
+.rx-card strong small { font-weight: 400; margin-top: 2px; }
 .rx-card ul { list-style: none; margin: 8px 0 0; padding: 0; }
 .rx-card li { display: flex; gap: 12px; align-items: center; padding: 5px 0; border-top: 1px solid var(--border); }
 
@@ -997,6 +1001,7 @@ td.advice { white-space: normal; min-width: 120px; }
 .advice-chip.rx { color: var(--brand); background: var(--brand-soft); border-color: var(--brand-line); }
 .advice-chip.tests { color: var(--info); background: var(--info-soft); border-color: var(--info-line); }
 .advice-chip.next { color: var(--warn); background: var(--accent-soft); border-color: var(--accent-line); }
+.advice-chip.admit { color: var(--danger); background: var(--danger-soft); border-color: var(--danger-line); }
 .advice-chip.refer { color: var(--muted); background: var(--bg); border-color: var(--border); cursor: default; }
 .btn .count { display: inline-block; min-width: 1.5em; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 0.8rem; text-align: center; }
 .menu > button:disabled { color: var(--muted); cursor: default; }
@@ -1761,6 +1766,31 @@ table.compact td.lab-last { white-space: nowrap; font-variant-numeric: tabular-n
 /* IPD bed board */
 .view-switch { margin-left: auto; }
 .ipd-stats { margin-bottom: 16px; }
+/* Admission a doctor advised at an OPD visit: the first thing on the IPD page until it is acted on. */
+.ipd-advised { margin: 0 0 16px; padding: 10px 12px; border: 1px solid var(--danger-line); border-left: 4px solid var(--danger); border-radius: 8px; background: var(--danger-soft); }
+.ipd-advised h3 { margin: 0 0 6px; font-size: 1rem; }
+.ipd-advised h3 small { font-weight: 500; }
+.ipd-advised ul { list-style: none; margin: 0; padding: 0; }
+.ipd-advised li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--danger-line); }
+.ipd-advised li:first-child { border-top: 0; }
+.ipd-advised .grow { flex: 1 1 240px; min-width: 0; }
+/* The doctor's lab results: one block for each report, with the values outside their range written out. */
+.result-list { list-style: none; margin: 0 0 8px; padding: 0; }
+.result-list > li { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 12px; padding: 12px 0; border-top: 1px solid var(--border); }
+.result-list > li:first-child { border-top: 0; }
+.result-list > li.seen { opacity: 0.75; }
+.result-list .grow { flex: 1 1 280px; min-width: 0; }
+.result-list .pill { margin-left: 6px; text-decoration: none; }
+.result-values { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 2px; }
+.result-values li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+/* What the lab still has to do for an inpatient, above the results. */
+.ipd-awaited { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.ipd-awaited h3 { margin: 0 0 6px; font-size: 0.95rem; }
+.ipd-awaited ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ipd-awaited li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.ipd-awaited .grow { flex: 1 1 200px; display: flex; flex-wrap: wrap; gap: 4px; }
+.admit-advice { margin-top: 4px; display: grid; gap: 8px; }
+.admit-advice .check { margin-top: 10px; }
 @media (min-width: 701px) { .ipd-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .ipd-stats .tile strong small { font-size: 0.85rem; font-weight: 500; }
 .bed-board section + section { margin-top: 18px; }
@@ -2330,3 +2360,8 @@ span.soon { color: var(--warn); font-weight: 600; }
 .rep-drug .mini span { font-size: 0.72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rep-drug .check { white-space: normal; align-items: flex-start; }
 .rep-drug .check input { flex: none; margin-top: 3px; }
+
+/* What a doctor's approved leave did to the appointment calendar, shown to the person who approved it. */
+.leave-calendar { margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--info-line); border-left: 4px solid var(--info); border-radius: 8px; background: var(--info-soft); }
+.leave-calendar p { margin: 6px 0 2px; }
+.leave-calendar ul { margin: 4px 0 0; padding-left: 20px; }

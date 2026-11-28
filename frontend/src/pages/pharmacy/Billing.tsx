@@ -285,7 +285,13 @@ export function PharmacyBilling() {
                   if (patient && !inpatients.some((a) => a.patient.id === patient.id)) choosePatient(null)
                 }}
               >
-                Inpatient{inpatients.length > 0 && <span className="count">{inpatients.length}</span>}
+                Inpatient
+                {inpatients.length > 0 && (
+                  <span className="count" title={inpatients.some((a) => a.orders_waiting) ? 'Patients admitted now. Some have medicines ordered on the ward that nothing has been sent for yet.' : 'Patients admitted now'}>
+                    {inpatients.length}
+                    {inpatients.some((a) => a.orders_waiting) ? ' •' : ''}
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -327,6 +333,7 @@ export function PharmacyBilling() {
                         <option key={a.admission_id} value={a.admission_id}>
                           {a.bed ? `${a.bed} · ` : ''}
                           {a.patient.name} · {a.ipd_no}
+                          {a.orders_waiting ? ` · ${a.orders_waiting} new order${a.orders_waiting === 1 ? '' : 's'}` : ''}
                         </option>
                       ))}
                     </select>
@@ -363,11 +370,12 @@ export function PharmacyBilling() {
             prescriptions.map((rx) => {
               const available = rx.medicines.filter((m) => m.match?.sellable_batches.length)
               return (
-                <div className="rx-card" key={rx.id}>
+                <div className={`rx-card ${rx.kind ?? 'visit'}`} key={`${rx.kind ?? 'visit'}-${rx.id}`}>
                   <div className="row">
                     <strong className="grow">
-                      Prescription · {longDate(rx.completed_at)}
+                      {rx.kind === 'ward' ? 'Ward orders' : rx.kind === 'discharge' ? `Discharge medicines · ${longDate(rx.completed_at)}` : `Prescription · ${longDate(rx.completed_at)}`}
                       {rx.doctor ? ` · ${rx.doctor}` : ''}
+                      {rx.note && <small className="muted block">{rx.note}</small>}
                     </strong>
                     <button type="button" className="btn ghost" disabled={available.length === 0} onClick={() => available.forEach((m) => add(m.match!, m.match!.sellable_batches[0]))}>
                       Add all in stock ({available.length})
@@ -378,6 +386,7 @@ export function PharmacyBilling() {
                       <li key={i}>
                         <span className="grow">
                           {m.medicine}
+                          {m.new && <span className="pill status-arrived">New</span>}
                           {m.directions && <small className="muted"> · {m.directions}</small>}
                           {m.match?.sellable_batches[0] && placeLabel(m.match.sellable_batches[0].rack_no, m.match.sellable_batches[0].box_no) && (
                             <small className="shelf-place"> {placeLabel(m.match.sellable_batches[0].rack_no, m.match.sellable_batches[0].box_no)}</small>

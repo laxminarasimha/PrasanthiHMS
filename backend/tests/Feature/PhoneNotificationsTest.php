@@ -298,4 +298,85 @@ class PhoneNotificationsTest extends TestCase
         $this->postJson('/api/me/push/test', ['endpoint' => self::CHROME])->assertOk()->assertJsonPath('sent', false)->assertJsonPath('message', 'This device had stopped accepting notifications. Switch them on again.');
         $this->assertSame(0, PushSubscription::count());
     }
+
+    public function test_the_doctor_is_told_when_lab_results_are_ready_and_has_them_until_seen(): void
+    {
+        Http::fake(['*' => Http::response('', 201)]);
+        $doctor = User::factory()->create(['role' => 'doctor']);
+        $this->switchOn($doctor);
+        $cbp = \App\Models\LabTest::create(['name' => 'CBP', 'price' => 350]);
+        $cbp->parameters()->create(['name' => 'Haemoglobin', 'unit' => 'g/dL', 'reference_range' => '13 - 17', 'position' => 1]);
+        $culture = \App\Models\LabTest::create(['name' => 'Blood culture', 'price' => 900, 'outside_lab' => 'City Diagnostics']);
+        $rbs = \App\Models\LabTest::create(['name' => 'RBS', 'price' => 80]);
+
+        Sanctum::actingAs($desk = User::factory()->create(['role' => 'frontdesk']));
+        $visit = $this->book($doctor);
+        Http::assertSentCount(1); // the booking
+        Sanctum::actingAs(User::factory()->create(['role' => 'lab_tech']));
+        $order = $this->postJson('/api/lab/orders', ['patient_id' => $visit['patient_id'], 'appointment_id' => $visit['id'], 'test_ids' => [$cbp->id, $culture->id, $rbs->id]])->assertCreated()->json();
+        $item = fn (string $name) => collect($order['items'])->firstWhere('test_name', $name);
+        $save = fn (string $name, array $results = [], bool $complete = true) => $this->putJson("/api/lab/orders/{$order['id']}/items/{$item($name)['id']}", ['complete' => $complete, 'results' => $results])->assertOk();
+
+        // One of the two tests done here is finished: the doctor is not told yet.
+        $save('CBP', [['id' => $item('CBP')['results'][0]['id'], 'value' => '8.2', 'flag' => 'low']]);
+        Http::assertSentCount(1);
+        // Both done here: told once, though the culture is still with the outside lab. No values travel in the notice.
+        $save('RBS');
+        Http::assertSentCount(2);
+        $this->assertSame([
+            'title' => 'Lab results ready',
+            'body' => 'Sample Father Tester · CBP, RBS · 1 outside the normal range',
+            'url' => '/doctor/results',
+            'tag' => 'lab-'.$order['id'],
+            'kind' => 'lab',
+        ], $this->read(Http::recorded()[1][0]->body()));
+        // Saving the same result again says nothing more.
+        $save('RBS');
+        Http::assertSentCount(2);
+
+        // The doctor has it on To do and on their results list, with what is outside its range and what is still awaited.
+        Sanctum::actingAs($doctor);
+        $todo = collect($this->getJson('/api/todo')->assertOk()->json('waiting'))->firstWhere('key', 'doctor');
+        $line = collect($todo['items'])->firstWhere('key', 'results_ready');
+        $this->assertSame(1, $line['count']);
+        $this->assertTrue($line['urgent']);
+        $this->getJson('/api/doctor/ready-results')->assertOk()->assertJsonCount(1)->assertJsonPath('0.order_no', $order['order_no'])->assertJsonPath('0.seen_at', null)
+            ->assertJsonPath('0.tests', ['CBP', 'RBS'])->assertJsonPath('0.awaited', ['Blood culture (City Diagnostics)'])
+            ->assertJsonPath('0.abnormal.0.parameter', 'Haemoglobin')->assertJsonPath('0.abnormal.0.value', '8.2');
+        // Another doctor has nothing, and cannot tick these off.
+        Sanctum::actingAs($other = User::factory()->create(['role' => 'doctor']));
+        $this->getJson('/api/doctor/ready-results')->assertOk()->assertJsonCount(0);
+        $this->putJson("/api/lab/orders/{$order['id']}/seen")->assertForbidden();
+        // A nurse is shown what is waiting for every doctor, to chase.
+        Sanctum::actingAs(User::factory()->create(['role' => 'nurse']));
+        $this->getJson('/api/doctor/ready-results')->assertOk()->assertJsonCount(1)->assertJsonPath('0.mine', false)->assertJsonPath('0.doctor', $doctor->name);
+
+        Sanctum::actingAs($doctor);
+        $this->putJson("/api/lab/orders/{$order['id']}/seen")->assertNoContent();
+        $this->getJson('/api/doctor/ready-results')->assertJsonCount(1)->assertJsonPath('0.seen_at', now()->format('Y-m-d H:i'));
+        $this->assertNull(collect(collect($this->getJson('/api/todo')->json('waiting'))->firstWhere('key', 'doctor')['items'] ?? [])->firstWhere('key', 'results_ready'));
+
+        // The outside lab's result comes days later: told again, and it is back on the list as not seen.
+        Sanctum::actingAs(User::factory()->create(['role' => 'lab_tech']));
+        $save('Blood culture');
+        Http::assertSentCount(3);
+        $this->assertNull(\App\Models\LabOrder::find($order['id'])->seen_at);
+
+        // A result reopened is no longer ready; finished again by the doctor themself, there is nobody to tell.
+        $save('RBS', [], false);
+        $this->assertNull(\App\Models\LabOrder::find($order['id'])->ready_at);
+        Sanctum::actingAs($doctor);
+        $save('RBS');
+        Http::assertSentCount(3);
+        $this->assertNotNull(\App\Models\LabOrder::find($order['id'])->seen_at);
+
+        // Where the lab approves its results, the doctor is told at the approval, not when the result is typed.
+        Setting::updateOrCreate(['key' => 'lab'], ['value' => ['approval_required' => true] + Setting::group('lab', Setting::LAB_DEFAULTS)]);
+        Sanctum::actingAs($lab = User::factory()->create(['role' => 'lab_tech']));
+        $second = $this->postJson('/api/lab/orders', ['patient_id' => $visit['patient_id'], 'appointment_id' => $visit['id'], 'test_ids' => [$rbs->id]])->assertCreated()->json();
+        $this->putJson("/api/lab/orders/{$second['id']}/items/{$second['items'][0]['id']}", ['complete' => true, 'results' => []])->assertOk();
+        Http::assertSentCount(3);
+        $this->putJson("/api/lab/orders/{$second['id']}/approve")->assertOk();
+        Http::assertSentCount(4);
+    }
 }

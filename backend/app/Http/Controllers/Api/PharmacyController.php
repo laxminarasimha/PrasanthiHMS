@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Admission;
+use App\Models\DischargeSummary;
+use App\Models\AdmissionOrder;
 use App\Models\Consultation;
 use App\Models\DrugIngredient;
 use App\Models\Manufacturer;
@@ -21,6 +23,7 @@ use App\Support\EarlierDay;
 use App\Support\OrderMatch;
 use App\Support\PharmacyOnIpd;
 use App\Support\ShelfPlace;
+use App\Support\WardMedicines;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -558,23 +561,62 @@ class PharmacyController extends Controller
             ->with(['medicines', 'doctor:id,name'])
             ->latest('completed_at')->limit(3)->get();
 
-        $names = $consultations->flatMap->medicines->pluck('medicine')->map(fn ($name) => mb_strtolower(trim($name)))->unique();
+        // An inpatient: what the doctor has ordered on the ward and has not stopped.
+        $admission = Admission::where('patient_id', $data['patient_id'])->where('status', 'admitted')->with('doctor:id,name')->latest('admitted_at')->first();
+        $ward = $admission ? AdmissionOrder::where('admission_id', $admission->id)->where('kind', 'medicine')->whereNull('stopped_at')->orderBy('id')->get() : collect();
+        $lastBill = $ward->isEmpty() ? null : (WardMedicines::lastBills([(int) $data['patient_id']])[(int) $data['patient_id']] ?? null);
+        // Going home: the medicines written on the latest discharge summary, even before the doctor has approved it.
+        $summary = DischargeSummary::whereIn('admission_id', Admission::where('patient_id', $data['patient_id'])->select('id'))
+            ->where('updated_at', '>=', now()->subDays(60))->latest('updated_at')->get()
+            ->first(fn (DischargeSummary $s) => collect($s->medicines)->contains(fn ($m) => filled($m['medicine'] ?? null)));
+        $home = collect($summary?->medicines)->filter(fn ($m) => filled($m['medicine'] ?? null))->values();
+        $stay = $summary ? Admission::with('doctor:id,name')->find($summary->admission_id) : null;
+
+        $names = $consultations->flatMap->medicines->pluck('medicine')->concat($ward->pluck('title'))->concat($home->pluck('medicine'))->map(fn ($name) => mb_strtolower(trim($name)))->unique();
         $stocked = Medicine::where('is_active', true)
             ->whereIn(DB::raw('LOWER(name)'), $names)
             ->with(['sellableBatches' => fn ($q) => $q->select('id', 'medicine_id', 'batch_no', 'expiry', 'unit_mrp', 'gst_percent', 'units_in_stock', 'rack_no', 'box_no')])
             ->get(['id', 'name', 'type'])
             ->keyBy(fn (Medicine $m) => mb_strtolower($m->name));
 
-        return response()->json($consultations->map(fn (Consultation $c) => [
+        // A name the pharmacy does not stock under exactly is shown as not in stock: nothing is guessed.
+        $match = fn (?string $name) => $stocked->get(mb_strtolower(trim((string) $name)));
+        $cards = collect();
+        if ($ward->isNotEmpty()) {
+            $cards->push([
+                'id' => $admission->id, 'kind' => 'ward', 'completed_at' => $admission->admitted_at->format('Y-m-d H:i'), 'doctor' => $admission->doctor?->name,
+                'note' => "Running on the ward for {$admission->ipd_no}. Send what the ward asks for; “new” has had nothing billed since it was ordered.",
+                'medicines' => $ward->map(fn (AdmissionOrder $o) => [
+                    'medicine' => $o->title,
+                    'directions' => collect([$o->dose, $o->route, $o->frequency, $o->instructions])->filter()->implode(' · '),
+                    'match' => $match($o->title),
+                    'new' => WardMedicines::isNew($o, $lastBill),
+                ])->values(),
+            ]);
+        }
+        if ($home->isNotEmpty()) {
+            $cards->push([
+                'id' => $summary->id, 'kind' => 'discharge', 'completed_at' => $summary->updated_at->format('Y-m-d H:i'), 'doctor' => $stay?->doctor?->name,
+                'note' => $summary->approved_at ? 'To take home, from the discharge summary.' : 'To take home. The discharge summary is not approved yet, so this may still change.',
+                'medicines' => $home->map(fn ($m) => [
+                    'medicine' => $m['medicine'],
+                    'directions' => collect([$m['dose'] ?? null, $m['frequency'] ?? null, $m['timing'] ?? null, $m['duration'] ?? null])->filter()->implode(' · '),
+                    'match' => $match($m['medicine']),
+                ]),
+            ]);
+        }
+
+        return response()->json($cards->concat($consultations->map(fn (Consultation $c) => [
             'id' => $c->id,
+            'kind' => 'visit',
             'completed_at' => $c->completed_at->format('Y-m-d H:i'),
             'doctor' => $c->doctor?->name,
             'medicines' => $c->medicines->map(fn ($item) => [
                 'medicine' => $item->medicine,
                 'directions' => collect([$item->dose, $item->frequency, $item->timing, $item->duration])->filter()->implode(' · '),
-                'match' => $stocked->get(mb_strtolower(trim($item->medicine))),
+                'match' => $match($item->medicine),
             ]),
-        ]));
+        ]))->values());
     }
 
     // ---- Sales ----
@@ -744,6 +786,9 @@ class PharmacyController extends Controller
     {
         $this->authorizePharmacy($request);
 
+        // Medicines ordered on the ward that nothing has been sent for yet.
+        $waiting = WardMedicines::waiting();
+
         return response()->json(
             Admission::where('status', 'admitted')->with(['patient:id,uhid,title,name,gender,date_of_birth,mobile', 'bed:id,ward,bed_no', 'doctor:id,name'])
                 ->orderBy('admitted_at')->get()
@@ -751,6 +796,7 @@ class PharmacyController extends Controller
                     'admission_id' => $a->id, 'ipd_no' => $a->ipd_no, 'patient' => $a->patient,
                     'bed' => $a->bed ? "{$a->bed->ward} · Bed {$a->bed->bed_no}" : null, 'doctor' => $a->doctor?->name,
                     'bill_approved' => $a->bill_approved_at !== null,
+                    'orders_waiting' => $waiting->get($a->id)?->count() ?? 0,
                 ])
         );
     }

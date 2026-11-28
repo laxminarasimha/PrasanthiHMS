@@ -2,7 +2,7 @@ import { Popup } from '../components/Popup'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, fieldErrors, type FieldErrors } from '../api'
 import { SelectField, TextField } from '../components/Field'
-import { longDate } from '../format'
+import { clock, longDate } from '../format'
 import { useChoiceInAddress } from '../rangeInAddress'
 import { saveFile } from './sensitiveStep'
 import { PART_LABEL, REQUEST_CLASS, REQUEST_LABEL, days, useWorkforce, type LeaveRequest, type LeaveType, type StaffBrief } from './shared'
@@ -14,6 +14,9 @@ type Ledger = { year: number; lines: { id: number; date: string; type: string; k
 const KIND: Record<string, string> = { opening: 'Opening balance', accrual: 'Earned', taken: 'Taken', carry_forward: 'Carried', expiry: 'Lapsed', adjustment: 'Correction', reversal: 'Given back' }
 
 /** Leave: requests and their decisions, and every person's leave account. */
+/** What approving a doctor's leave did to their appointment calendar. */
+type Calendar = { doctor: string; blocked: { from: string; to: string } | null; half_day: boolean; booked: { id: number; patient: string | null; mobile: string | null; at: string }[] }
+
 export function WorkforceLeave() {
   const { can } = useWorkforce()
   const [view, setView] = useChoiceInAddress<'requests' | 'balances'>('view', 'requests', ['requests', 'balances'] as const)
@@ -51,6 +54,7 @@ function Requests() {
   const [rows, setRows] = useState<{ status: string; list: LeaveRequest[] } | null>(null)
   const [failed, setFailed] = useState('')
   const [notice, setNotice] = useState('')
+  const [calendar, setCalendar] = useState<Calendar | null>(null)
   const [busy, setBusy] = useState(0)
   const [acting, setActing] = useState<{ id: number; what: 'refuse' | 'cancel' } | null>(null)
   const [note, setNote] = useState('')
@@ -72,8 +76,10 @@ function Requests() {
     setBusy(r.id)
     setNotice('')
     try {
-      await api.post(`/workforce/leave/${r.id}/${path}`, body)
+      const res = await api.post<{ calendar?: Calendar | null }>(`/workforce/leave/${r.id}/${path}`, body)
       setNotice(done)
+      // A doctor's leave closes their appointment calendar: say so, and who is already booked in those days.
+      setCalendar(path === 'decide' && body.approve ? (res.data.calendar ?? null) : null)
       setActing(null)
       setNote('')
       load()
@@ -106,6 +112,31 @@ function Requests() {
         )}
       </div>
       {notice && <p className="notice">{notice}</p>}
+      {calendar && (
+        <div className="leave-calendar">
+          <strong>
+            {calendar.blocked
+              ? `${calendar.doctor}’s appointment calendar is now closed from ${longDate(calendar.blocked.from)} to ${longDate(calendar.blocked.to)}.`
+              : `${calendar.doctor}’s appointment calendar was not closed, because this is a half day.`}
+          </strong>
+          {calendar.half_day && <p>A half day is not blocked by itself. Block those hours under Front Desk → Calendar → Leave.</p>}
+          {calendar.booked.length > 0 && (
+            <>
+              <p>
+                {calendar.booked.length} {calendar.booked.length === 1 ? 'patient is' : 'patients are'} already booked in those days. Ring them and move the visit:
+              </p>
+              <ul>
+                {calendar.booked.map((b) => (
+                  <li key={b.id}>
+                    {b.patient} · {longDate(b.at)} {clock(b.at)}
+                    {b.mobile ? ` · ${b.mobile}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
       {failed && <div className="form-error">{failed}</div>}
       <div className={adding ? 'split' : ''}>
         <div className="table-wrap grow">

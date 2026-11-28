@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
     'branch_id', 'patient_id', 'doctor_id', 'payer_id', 'bed_id', 'admitted_at', 'discharged_at', 'status', 'reason',
-    'auto_bed_charge', 'is_day_care', 'attendant_name', 'attendant_phone', 'aadhaar_no', 'gst_no', 'discharge_summary', 'discount', 'created_by', 'bill_approved_at', 'bill_approved_by',
+    'auto_bed_charge', 'is_day_care', 'attendant_name', 'attendant_phone', 'aadhaar_no', 'gst_no', 'discharge_summary', 'discount', 'created_by', 'bill_approved_at', 'bill_approved_by', 'consultation_id',
 ])]
 class Admission extends Model
 {

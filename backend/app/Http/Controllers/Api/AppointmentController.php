@@ -39,7 +39,7 @@ class AppointmentController extends Controller
     {
         return [
             'bills' => fn ($bills) => $bills->select('id', 'appointment_id', 'bill_no', 'kind', 'total', 'paid')->whereNull('cancelled_at')->withIpdTransfers(),
-            'consultation' => fn ($c) => $c->select('id', 'appointment_id', 'completed_at', 'tests_advised', 'follow_up_on', 'refer_to')->withCount('medicines'),
+            'consultation' => fn ($c) => $c->select('id', 'appointment_id', 'completed_at', 'tests_advised', 'follow_up_on', 'refer_to', 'admit_advised_at', 'admit_reason')->withCount('medicines'),
         ];
     }
 
@@ -129,18 +129,17 @@ class AppointmentController extends Controller
         $block = DoctorBlock::create($data + ['created_by' => $request->user()->id]);
 
         // Patients already booked in that time are not moved; tell the desk how many to call.
-        $booked = Appointment::where('doctor_id', $block->doctor_id)
-            ->whereDate('scheduled_at', '>=', $data['from_date'])->whereDate('scheduled_at', '<=', $data['to_date'])
-            ->whereIn('status', ['booked', 'arrived'])
-            ->get(['id', 'scheduled_at'])
-            ->filter(fn (Appointment $a) => $block->covers(Carbon::parse($a->getRawOriginal('scheduled_at'))))
-            ->count();
+        $booked = $block->fresh()->booked()->count();
 
         return response()->json($block->load('doctor:id,name')->toArray() + ['booked' => $booked], 201);
     }
 
     public function destroyBlock(DoctorBlock $block): JsonResponse
     {
+        // A block made by an approved leave goes with the leave, so the two never disagree.
+        if ($block->leave_request_id) {
+            throw ValidationException::withMessages(['block' => 'This is the doctor’s approved leave. Cancel the leave under Workforce → Leave and the calendar opens again.']);
+        }
         $block->delete();
 
         return response()->json(null, 204);

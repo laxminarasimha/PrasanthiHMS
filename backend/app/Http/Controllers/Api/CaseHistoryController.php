@@ -194,6 +194,41 @@ class CaseHistoryController extends Controller
     }
 
     /**
+     * Results that are ready for the doctor who asked for them: those not looked at yet first, then the ones seen
+     * in the last three days. Someone who is not a doctor (a nurse, an admin) is shown what is waiting for every
+     * doctor, to chase, and cannot tick it off for them.
+     */
+    public function readyResults(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $mine = $user->role === Role::Doctor;
+        $orders = LabOrder::whereNotNull('ready_at')->whereNotNull('ready_for')->where('ready_at', '>=', now()->subDays(14))
+            ->when($mine, fn ($q) => $q->where('ready_for', $user->id))
+            ->where(fn ($q) => $q->whereNull('seen_at')->when($mine, fn ($w) => $w->orWhere('seen_at', '>=', now()->subDays(3))))
+            ->with(['patient:id,uhid,title,name,gender,date_of_birth', 'items:id,lab_order_id,test_name,repeat_no,reported_at,approved_at,outside_lab', 'items.results:id,lab_order_item_id,parameter,value,unit,reference_range,flag,is_heading'])
+            ->orderByRaw('seen_at is not null')->latest('ready_at')->limit(200)->get();
+        $doctors = \App\Models\User::whereIn('id', $orders->pluck('ready_for')->unique())->pluck('name', 'id');
+        $cases = Admission::whereIn('id', $orders->pluck('admission_id')->filter()->unique())->with('bed:id,ward,bed_no')->get(['id', 'ipd_no', 'bed_id', 'status'])->keyBy('id');
+
+        return response()->json($orders->map(function (LabOrder $o) use ($doctors, $cases, $mine) {
+            $done = $o->items->filter(fn ($i) => $i->reported_at !== null);
+            $case = $cases->get($o->admission_id);
+
+            return [
+                'id' => $o->id, 'order_no' => $o->order_no, 'ready_at' => $o->ready_at->format('Y-m-d H:i'), 'seen_at' => $o->seen_at?->format('Y-m-d H:i'),
+                'mine' => $mine,
+                'doctor' => $doctors[$o->ready_for] ?? null,
+                'patient' => $o->patient?->only(['id', 'uhid', 'title', 'name', 'gender', 'age_label']),
+                'inpatient' => $case ? ['admission_id' => $case->id, 'ipd_no' => $case->ipd_no, 'bed' => $case->status === 'admitted' && $case->bed ? "{$case->bed->ward} · Bed {$case->bed->bed_no}" : null] : null,
+                'tests' => $done->map(fn ($i) => $i->test_name.($i->repeat_no ? " ({$i->repeat_no})" : ''))->values(),
+                'awaited' => $o->items->filter(fn ($i) => $i->reported_at === null)->map(fn ($i) => $i->test_name.($i->outside_lab ? " ({$i->outside_lab})" : ''))->values(),
+                'abnormal' => $done->flatMap(fn ($i) => $i->results->filter(fn ($r) => in_array($r->flag, ['high', 'low'], true))
+                    ->map(fn ($r) => ['test' => $i->test_name, 'parameter' => $r->parameter, 'value' => $r->value, 'unit' => $r->unit, 'range' => $r->reference_range, 'flag' => $r->flag]))->values(),
+            ];
+        })->filter(fn (array $o) => $o['patient'])->values());
+    }
+
+    /**
      * Lab results outside their normal range that came back in the last week, for the patients a
      * doctor has seen lately or has in a bed. An admin who is not a doctor sees them for everyone.
      */

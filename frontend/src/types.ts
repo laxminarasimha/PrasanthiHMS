@@ -154,15 +154,17 @@ export type Appointment = {
   doctor: { id: number; name: string }
   service: { id: number; name: string } | null
   /** What the doctor decided, once the visit pad has been saved. */
-  consultation?: { id: number; completed_at: string | null; tests_advised: string | null; follow_up_on: string | null; refer_to: string | null; medicines_count: number } | null
+  consultation?: { id: number; completed_at: string | null; tests_advised: string | null; follow_up_on: string | null; refer_to: string | null; admit_advised_at?: string | null; admit_reason?: string | null; medicines_count: number } | null
   bills: { id: number; bill_no: string; kind: BillKind; total: number; paid: number; due: number; moved_to_ipd: number | null; lab_order: { id: number; order_no: string } | null }[]
 }
 
 /** Someone advised to come back whose date has passed without a visit. */
-export type NotReturned = { id: number; patient: Appointment['patient']; doctor: { id: number; name: string } | null; follow_up_on: string; days_late: number; seen_on: string; diagnosis: string | null; booked_for: string | null }
+export type NotReturned = { id: number; /** Advised at an OPD visit, or on going home from a bed. */ source?: 'visit' | 'discharge'; patient: Appointment['patient']; doctor: { id: number; name: string } | null; follow_up_on: string; days_late: number; seen_on: string; diagnosis: string | null; booked_for: string | null }
 
 export type FollowUp = {
   id: number
+  /** Advised at an OPD visit, or on going home from a bed (then `completed_at` is when they went home). */
+  source?: 'visit' | 'discharge'
   follow_up_on: string
   completed_at: string
   diagnosis: string | null
@@ -174,7 +176,7 @@ export type FollowUp = {
 export type CalendarSettings = { slot_minutes: number; slot_limit: number; morning_start: string; morning_end: string; evening_start: string; evening_end: string }
 
 /** Days, or the same hours on each of those days, when a doctor is not seeing patients. */
-export type DoctorBlock = { id: number; doctor_id: number; from_date: string; to_date: string; start_time: string | null; end_time: string | null; reason: string | null; doctor: { id: number; name: string } }
+export type DoctorBlock = { id: number; doctor_id: number; from_date: string; to_date: string; start_time: string | null; end_time: string | null; reason: string | null; /** Set when the block was made by the doctor's approved leave: it goes with the leave, not by itself. */ leave_request_id?: number | null; doctor: { id: number; name: string } }
 
 export type BillKind = 'appointment' | 'lab' | 'other'
 
@@ -266,6 +268,9 @@ export type Consultation = {
   diagnosis_codes?: { code: string; name: string }[] | null
   assessment_plan: string | null
   refer_to: string | null
+  /** When the doctor advised admission at this visit, and why. IPD is shown it until the patient is admitted. */
+  admit_advised_at?: string | null
+  admit_reason?: string | null
   tests_advised: string | null
   advice: string | null
   follow_up_on: string | null
@@ -462,6 +467,8 @@ export type LabOrder = {
   items: LabOrderItem[]
   files?: LabOrderFile[]
   bill: { id: number; bill_no: string; total: number; paid: number; due: number; moved_to_ipd?: number | null } | null
+  /** Ordered from an IPD case: which case, and the bed while the patient is still admitted. */
+  inpatient?: { admission_id: number; ipd_no: string; bed: string | null } | null
 }
 
 export type Medicine = {
@@ -732,13 +739,15 @@ export type AdmissionCharge = {
   admission_bill_id?: number | null
   /** For a pharmacy bill on the IPD bill: the medicines that were on it. */
   medicines?: { name: string; batch: string | null; quantity: number; returned: number; rate: number; amount: number }[]
+  /** The tests behind a lab line. */
+  tests?: string[]
   creator?: { id: number; name: string } | null
   deleted_at?: string | null
   deleter?: { id: number; name: string } | null
 }
 
 /** A patient admitted now, as the pharmacy counter lists them to send a bill to the IPD bill. */
-export type PharmacyInpatient = { admission_id: number; ipd_no: string; patient: Patient; bed: string | null; doctor: string | null; bill_approved: boolean }
+export type PharmacyInpatient = { admission_id: number; ipd_no: string; patient: Patient; bed: string | null; doctor: string | null; bill_approved: boolean; /** Medicines ordered on the ward that nothing has been sent for yet. */ orders_waiting?: number }
 
 /** One bed a patient occupied during a stay. `to_at` is null while they are still in it. */
 export type BedStay = { id: number; ward: string; bed_no: string; from_at: string; to_at: string | null; mover?: { id: number; name: string } | null }
@@ -758,6 +767,9 @@ export type Admission = {
   admitted_at: string
   discharged_at: string | null
   reason: string | null
+  /** The OPD visit at which a doctor advised this admission. */
+  consultation_id?: number | null
+  advised?: { appointment_id: number; on: string | null; doctor: string | null } | null
   attendant_name: string | null
   attendant_phone: string | null
   discharge_summary: string | null
@@ -785,9 +797,14 @@ export type Admission = {
 
 export type PrescriptionForPharmacy = {
   id: number
+  /** A doctor's OPD prescription, the medicines running on the ward for an inpatient, or those written to take home. */
+  kind?: 'visit' | 'ward' | 'discharge'
   completed_at: string
   doctor: string | null
-  medicines: { medicine: string; directions: string; match: SellableMedicine | null }[]
+  /** A line for the pharmacist about this card. */
+  note?: string
+  /** `new`: a ward order that nothing has been billed for since it was written. */
+  medicines: { medicine: string; directions: string; match: SellableMedicine | null; new?: boolean }[]
 }
 
 export type OutstandingBill = { type: 'bill' | 'pharmacy'; id: number; label: string; category: string; date: string; due: number }
@@ -960,4 +977,15 @@ export type ConsultRow = {
   completed_at: string
   patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'age_label' | 'title' | 'mobile'>
   doctor: { id: number; name: string }
+}
+
+/** Admission advised by a doctor on the visit pad, waiting for IPD to act on it. */
+export type AdmitAdvice = {
+  /** The visit note it was written on. */
+  id: number
+  appointment_id: number
+  advised_at: string
+  reason: string | null
+  patient: Patient
+  doctor: { id: number; name: string } | null
 }

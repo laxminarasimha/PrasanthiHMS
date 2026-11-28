@@ -152,9 +152,15 @@ function LeavePanel({ date, doctorId, doctors, blocks, onClose, onChange }: { da
                   {b.reason ? ` · ${b.reason}` : ''}
                 </small>
               </span>
-              <button type="button" className="link danger" onClick={() => remove(b)}>
-                Remove
-              </button>
+              {b.leave_request_id ? (
+                <small className="muted" title="Cancel the leave under Workforce → Leave and the calendar opens again">
+                  Approved leave
+                </small>
+              ) : (
+                <button type="button" className="link danger" onClick={() => remove(b)}>
+                  Remove
+                </button>
+              )}
             </li>
           ))}
         </ul>

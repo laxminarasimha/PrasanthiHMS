@@ -8,6 +8,7 @@ use App\Models\Appointment;
 use App\Models\Bill;
 use App\Models\Consultation;
 use App\Models\DayClose;
+use App\Models\DoctorBlock;
 use App\Models\Expense;
 use App\Models\LabOrder;
 use App\Models\LabOrderItem;
@@ -112,6 +113,12 @@ class ToDoList
 
         // Medical representatives who have come to meet this doctor today and are still waiting.
         $reps = RepVisit::where('doctor_id', $user->id)->where('status', 'waiting')->whereDate('arrived_at', today())->with(['rep:id,rep_company_id,name', 'rep.company:id,name'])->orderBy('arrived_at')->get();
+        $ready = LabOrder::unseenBy($user->id)->where('ready_at', '>=', today()->subDays(self::DAYS))->with(['patient:id,uhid,title,name', 'items:id,lab_order_id,test_name,reported_at', 'items.results:id,lab_order_item_id,flag'])->latest('ready_at')->get();
+        $outside = fn (LabOrder $o) => $o->items->flatMap->results->whereIn('flag', ['high', 'low'])->count();
+        $items[] = self::item('results_ready', 'Lab results ready to see', 'The tests you asked for are back. Open the report; it leaves this list once you have looked.', '/doctor/results',
+            $ready->map(fn (LabOrder $o) => ['text' => self::who($o->patient), 'to' => '/doctor/results',
+                'detail' => $o->items->whereNotNull('reported_at')->pluck('test_name')->unique()->take(4)->implode(', ').($outside($o) ? ' · '.$outside($o).' outside the normal range' : '').' · '.$o->ready_at->format('j M, g:i A')]),
+            $ready->contains(fn (LabOrder $o) => $outside($o) > 0));
         $items[] = self::item('reps', 'Medical representatives waiting', 'They are logged at the desk; see them when you are free, or ask them to come another day.', '/reps',
             $reps->map(fn (RepVisit $v) => ['text' => $v->rep->name.' · '.$v->rep->company->name, 'detail' => 'Came at '.$v->arrived_at->format('g:i A'), 'to' => '/reps']));
 
@@ -153,6 +160,13 @@ class ToDoList
             self::item('follow_ups', 'Asked to come back, not come', 'Patients a doctor asked to return in the last '.self::DAYS.' days who have not been seen since.', '/front-desk',
                 $late->map(fn (array $r) => ['text' => self::who($r['patient'] ?? null), 'detail' => 'Was due '.Carbon::parse($r['follow_up_on'])->format('j M').(($r['doctor'] ?? null) ? ' · '.$r['doctor']->name : ''), 'to' => isset($r['patient']) ? '/patients/'.$r['patient']->id : null])),
         ];
+        // Patients booked for a doctor on a day that doctor is now away: someone has to ring them and move the visit.
+        $blocks = DoctorBlock::whereDate('to_date', '>=', today())->with('doctor:id,name')->get();
+        $stranded = $blocks->flatMap(fn (DoctorBlock $b) => $b->booked()->where('status', 'booked')->filter(fn (Appointment $a) => $a->scheduled_at->gte(today()))
+            ->map(fn (Appointment $a) => ['id' => $a->id, 'text' => self::who($a->patient), 'detail' => ($b->doctor?->name ?? 'The doctor').' is away · booked for '.$a->scheduled_at->format('j M, g:i A'), 'to' => '/front-desk/calendar']))
+            ->unique('id')->map(fn (array $row) => array_diff_key($row, ['id' => 1]))->values();
+        $items[] = self::item('doctor_away', 'Booked on a day the doctor is away', 'Ring the patient and move the visit to another day or doctor.', '/front-desk/calendar', $stranded, true);
+
         // Representatives asked to come back today who have not been logged yet: the desk knows whom to expect.
         $due = RepVisit::where('status', 'come_back')->whereDate('next_on', today())->with(['rep:id,rep_company_id,name', 'rep.company:id,name', 'doctor:id,name'])->get()
             ->reject(fn (RepVisit $v) => RepVisit::where('medical_rep_id', $v->medical_rep_id)->whereDate('arrived_at', today())->exists());
@@ -216,7 +230,17 @@ class ToDoList
         $soon = $expiry['expiring']->where('days_left', '<=', 30);
         $batch = fn (array $b) => ['text' => $b['medicine'].' · batch '.$b['batch_no'], 'detail' => $b['units'].' on the shelf · '.Carbon::parse($b['expiry'])->format('M Y'), 'to' => '/pharmacy/manager'];
 
+        // Medicines ordered on the ward that nothing has been sent for yet, one line for each patient.
+        $ward = WardMedicines::waiting();
+        $cases = Admission::whereIn('id', $ward->keys())->with(['patient:id,uhid,title,name', 'bed:id,ward,bed_no'])->get()->keyBy('id');
+
         $items = [
+            self::item('ward_orders', 'Ward medicine orders to send', 'Ordered by a doctor for a patient in the ward; no pharmacy bill has been made for the patient since.', '/pharmacy',
+                $ward->filter(fn ($orders, $id) => $cases->has($id))->map(fn ($orders, $id) => [
+                    'text' => $cases[$id]->ipd_no.' · '.self::who($cases[$id]->patient).($cases[$id]->bed ? ' · '.$cases[$id]->bed->ward.' '.$cases[$id]->bed->bed_no : ''),
+                    'detail' => $orders->pluck('title')->take(4)->implode(', ').($orders->count() > 4 ? ' and '.($orders->count() - 4).' more' : ''),
+                    'to' => '/pharmacy?patient='.$cases[$id]->patient_id,
+                ])->values(), true, $ward->flatten(1)->count()),
             self::item('prescriptions', 'Prescriptions not billed yet', 'Written by a doctor today; no pharmacy bill has been made for the patient since.', '/pharmacy/orders',
                 $waiting->map(fn (Consultation $c) => ['text' => self::who($c->patient), 'detail' => ($c->doctor?->name ?? 'Doctor').' · '.$c->completed_at->format('g:i A'), 'to' => '/pharmacy/orders']), true),
             self::item('pharmacy_dues', 'Pharmacy bills with money due', 'From the last '.self::DAYS.' days. Collect on the bill, or take the medicines back.', '/pharmacy/bills',
@@ -251,6 +275,8 @@ class ToDoList
         $gone = Admission::where('discharged_at', '>=', today()->subDays(self::DAYS))->with($with)->latest('discharged_at')->get();
 
         $items = [
+            self::item('advised', 'Advised admission, not admitted yet', 'A doctor advised admission at an OPD visit in the last '.AdmitAdvice::DAYS.' days. Admit the patient, or mark that they are not coming.', '/ipd',
+                AdmitAdvice::waiting()->map(fn ($c) => ['text' => self::who($c->patient), 'detail' => trim(($c->doctor?->name ?? 'Doctor').' · '.$c->admit_advised_at->format('j M').($c->admit_reason ? ' · '.$c->admit_reason : '')), 'to' => '/ipd']), true),
             self::item('ready_home', 'Bill approved, patient still admitted', 'Ready to go home once the money is settled and the case is closed.', '/ipd',
                 $admitted->filter(fn (Admission $a) => $a->bill_approved_at !== null)->map(fn (Admission $a) => $stay($a, self::rupees(max(0, $a->due)).' due'))),
             self::item('gone_unpaid', 'Discharged with a balance unpaid', 'From the last '.self::DAYS.' days. Collect the balance, or give a discount on the IPD bill.', '/ipd',

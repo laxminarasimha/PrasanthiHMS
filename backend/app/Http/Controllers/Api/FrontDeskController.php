@@ -135,11 +135,14 @@ class FrontDeskController extends Controller
             ->with(['patient:id,uhid,title,name,gender,date_of_birth,mobile', 'doctor:id,name'])
             ->latest('completed_at')->get(['id', 'appointment_id', 'patient_id', 'doctor_id', 'diagnosis', 'follow_up_on', 'completed_at']);
 
+        // And those sent home from a bed with this day as their follow-up date.
+        $rows = $due->map(fn ($c) => $c->toArray() + ['source' => 'visit'])->concat(FollowUps::dischargedDueOn($day));
+
         $booked = Appointment::whereDate('scheduled_at', $day)->where('status', '!=', 'cancelled')
-            ->whereIn('patient_id', $due->pluck('patient_id'))->pluck('patient_id')->flip();
+            ->whereIn('patient_id', $rows->pluck('patient_id'))->pluck('patient_id')->flip();
 
         // One line per patient, even if two doctors gave the same date.
-        return response()->json($due->unique('patient_id')->values()->map(fn ($c) => $c->toArray() + ['booked' => $booked->has($c->patient_id)]));
+        return response()->json($rows->unique('patient_id')->values()->map(fn (array $row) => $row + ['booked' => $booked->has($row['patient_id'])]));
     }
 
     /** Patients advised to come back in the last 60 days who have not been seen since, the longest overdue last. */

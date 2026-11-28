@@ -199,6 +199,13 @@ export function Lab() {
                         {o.patient.uhid} · {o.patient.age_label} / {o.patient.gender.charAt(0).toUpperCase()}
                         {many ? ` · ${list.length} orders` : ''}
                       </small>
+                      {list.find((order) => order.inpatient) && (
+                        <small className="block">
+                          <span className="pill status-ongoing" title="Ordered from the IPD case. The sample is taken at the bed, and the bill is on the IPD bill.">
+                            IPD {list.find((order) => order.inpatient)!.inpatient!.bed ?? list.find((order) => order.inpatient)!.inpatient!.ipd_no}
+                          </span>
+                        </small>
+                      )}
                     </td>
                     <td className="wrap">
                       {items.map((i) => (

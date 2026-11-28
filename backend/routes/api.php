@@ -294,6 +294,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
     Route::get('/doctor/queue', [ConsultationController::class, 'queue']);
     Route::post('/doctor/visits', [CaseHistoryController::class, 'startVisit'])->middleware('ability:canConsult');
     Route::get('/doctor/abnormal-results', [CaseHistoryController::class, 'abnormalResults'])->middleware('ability:canConsult');
+    Route::get('/doctor/ready-results', [CaseHistoryController::class, 'readyResults'])->middleware('ability:canConsult');
     Route::controller(HealthSummaryController::class)->group(function () {
         Route::get('/patients/{patient}/health', 'show');
         Route::post('/patients/{patient}/health', 'store');
@@ -363,6 +364,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
     Route::put('/lab/orders/{order}/items/{item}/approve', [LabController::class, 'approve']);
     Route::put('/lab/orders/{order}/collect', [LabController::class, 'collectAll']);
     Route::put('/lab/orders/{order}/approve', [LabController::class, 'approveAll']);
+    Route::put('/lab/orders/{order}/seen', [LabController::class, 'seen']);
     // One payment over several of a patient's lab bills. Who may take money on each bill is checked bill by bill.
     Route::post('/lab/collect', [ChargeController::class, 'collect']);
     Route::get('/lab/packages', [LabController::class, 'packages']);
@@ -493,6 +495,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
         Route::get('/round-times', 'roundTimes');
         Route::get('/bed-charging', 'bedCharging');
         Route::get('/admissions', 'admissions');
+        Route::get('/advised', 'advised');
         Route::get('/admissions/{admission}', 'show');
         Route::get('/admissions/{admission}/outstanding', 'outstanding');
         Route::get('/admissions/{admission}/investigations', 'investigations');
@@ -513,6 +516,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
         Route::middleware('ability:canWorkIpd')->group(function () {
             Route::post('/admissions/{admission}/templates/{template}', 'applyTemplate');
             Route::post('/admissions', 'admit');
+            Route::put('/advised/{consultation}/not-coming', 'adviceNotComing');
             Route::put('/admissions/{admission}', 'update');
             Route::post('/admissions/{admission}/charges', 'addCharge');
             Route::put('/admissions/{admission}/charges/{charge}', 'updateCharge');

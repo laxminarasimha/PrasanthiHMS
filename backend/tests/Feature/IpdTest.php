@@ -255,4 +255,54 @@ class IpdTest extends TestCase
 
         $this->assertSame([$inNew, $inLong, $leftRecently, $leftLong], array_column($this->getJson('/api/ipd/admissions?status=all')->assertOk()->json(), 'id'));
     }
+
+    public function test_tests_ordered_from_the_ipd_case_go_on_the_ipd_bill_by_themselves(): void
+    {
+        $cbp = \App\Models\LabTest::create(['name' => 'CBP', 'price' => 350]);
+        $rbs = \App\Models\LabTest::create(['name' => 'RBS', 'price' => 80]);
+        $case = $this->admit()->assertCreated()->json();
+        $order = ['patient_id' => $case['patient']['id'], 'admission_id' => $case['id'], 'referred_by' => $this->doctor->name, 'test_ids' => [$cbp->id, $rbs->id], 'test_counts' => [$cbp->id => 2]];
+
+        // Another patient's case, or someone with no work in IPD or the lab, is refused.
+        $this->postJson('/api/lab/orders', ['patient_id' => Patient::factory()->create()->id] + $order)->assertStatus(422)->assertJsonValidationErrors('admission_id');
+
+        $made = $this->postJson('/api/lab/orders', $order)->assertCreated()
+            ->assertJsonPath('inpatient.ipd_no', $case['ipd_no'])->assertJsonPath('inpatient.bed', 'General Ward · Bed 1')->assertJsonPath('bill.total', 780)->assertJsonPath('bill.paid', 780)->json();
+        $bill = $made['bill']['id'];
+
+        // One line on the IPD bill for the whole order, on the day of the order, with the tests listed under it.
+        $shown = $this->getJson("/api/ipd/admissions/{$case['id']}")->assertOk()->json();
+        $line = collect($shown['charges'])->firstWhere('source_type', 'bill');
+        $this->assertSame("Lab order {$made['order_no']} (bill {$made['bill']['bill_no']})", $line['description']);
+        $this->assertSame('Lab', $line['category']);
+        $this->assertEquals(780, $line['amount']);
+        $this->assertSame(['CBP (1)', 'CBP (2)', 'RBS'], $line['tests']);
+        $this->assertSame(today()->toDateString(), substr($line['charged_on'], 0, 10));
+        // Nothing is left to move by hand, and the lab's own list says where the patient is.
+        $this->getJson("/api/ipd/admissions/{$case['id']}/outstanding")->assertOk()->assertJsonCount(0);
+        $this->getJson('/api/lab/orders')->assertOk()->assertJsonPath('0.inpatient.admission_id', $case['id']);
+
+        // The lab bill cannot now be changed on its own, and money never received on it cannot be refunded from it.
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin']));
+        $this->putJson("/api/bills/{$bill}", ['discount' => 100, 'discount_reason' => 'Staff relative'])->assertStatus(422)->assertJsonValidationErrors('discount');
+        $this->postJson("/api/bills/{$bill}/items", ['description' => 'Home collection', 'unit_price' => 100])->assertStatus(422)->assertJsonValidationErrors('description');
+        $this->postJson("/api/bills/{$bill}/payments", ['type' => 'refund', 'amount' => 80, 'mode' => 'cash'])->assertStatus(422)->assertJsonValidationErrors('amount');
+        $this->assertEquals(780, \App\Models\Bill::find($bill)->paid);
+
+        // Taking the line off the IPD bill hands the amount back to the lab bill.
+        $this->deleteJson("/api/ipd/admissions/{$case['id']}/charges/{$line['id']}")->assertOk();
+        $this->assertEquals(0, \App\Models\Bill::find($bill)->paid);
+        $this->getJson("/api/ipd/admissions/{$case['id']}/outstanding")->assertJsonCount(1)->assertJsonPath('0.due', 780);
+        // And "Add to IPD bill" by hand puts it back through the same writer.
+        $this->postJson("/api/ipd/admissions/{$case['id']}/transfer", ['type' => 'bill', 'id' => $bill])->assertCreated();
+        $this->assertEquals(780, \App\Models\Bill::find($bill)->paid);
+
+        // Once the IPD bill is approved, or the patient has gone home, nothing more goes on it this way.
+        $this->postJson("/api/ipd/admissions/{$case['id']}/approve-bill", ['approved' => true])->assertOk();
+        $this->postJson('/api/lab/orders', ['test_ids' => [$rbs->id]] + $order)->assertStatus(422)->assertJsonValidationErrors('admission_id');
+        $this->assertSame(1, \App\Models\LabOrder::count());
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $this->postJson('/api/lab/orders', $order)->assertForbidden();
+    }
 }

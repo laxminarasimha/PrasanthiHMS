@@ -10,6 +10,7 @@ use App\Models\Patient;
 use App\Models\PatientDeposit;
 use App\Models\Payment;
 use App\Models\Service;
+use App\Support\BillOnIpd;
 use App\Support\DiscountWhy;
 use App\Support\EarlierDay;
 use Illuminate\Http\JsonResponse;
@@ -144,6 +145,9 @@ class BillController extends Controller
         $wasWorth = round((float) $bill->total, 2);
 
         $changed = abs((float) $data['discount'] - $before) > 0.004;
+        if ($changed) {
+            BillOnIpd::refuseChange($bill, 'discount', 'the discount is given on the IPD bill');
+        }
         DB::transaction(function () use ($bill, $data, $excess, $request, $changed) {
             if ($changed && $data['discount'] > 0) {
                 // A new amount needs its own reason: the one given for an earlier discount does not carry over.
@@ -175,6 +179,7 @@ class BillController extends Controller
     public function addItem(Request $request, Bill $bill): JsonResponse
     {
         $bill = $this->forChange($request, $bill);
+        BillOnIpd::refuseChange($bill, 'description', 'a new charge is added on the IPD case itself');
         $this->addLineFrom($bill, $data = $request->validate($this->lineRules('required_without')));
         AuditLog::record('bill.item_added', $bill->patient_id, $bill, 'Bill '.$bill->bill_no.': '.($data['description'] ?? Service::find($data['service_id'] ?? null)?->name ?? 'a charge'));
 
@@ -230,6 +235,7 @@ class BillController extends Controller
     {
         abort_unless($item->bill_id === $bill->id, 404);
         $bill = $this->forChange($request, $bill);
+        BillOnIpd::refuseChange($bill, 'item', 'its lines cannot be removed here');
 
         $remaining = $bill->subtotal + $bill->tax - $item->amount - $item->tax;
         if ($remaining - $bill->discount < $bill->paid) {
@@ -263,6 +269,13 @@ class BillController extends Controller
         }
         if ($data['type'] === 'refund' && $data['amount'] > $bill->paid) {
             throw ValidationException::withMessages(['amount' => "Only ₹{$bill->paid} has been paid on this bill."]);
+        }
+        // Money that is being collected through an IPD bill was never received here, so it cannot be handed back here.
+        $received = round($bill->paid - BillOnIpd::held($bill), 2);
+        if ($data['type'] === 'refund' && $data['amount'] > $received) {
+            throw ValidationException::withMessages(['amount' => $received > 0
+                ? "Only ₹{$received} was received on this bill; the rest is on an IPD bill and is settled there."
+                : 'Nothing was received on this bill: it is on an IPD bill and is settled there.']);
         }
 
         EarlierDay::date($bill->payments()->make($data + ['received_by' => $request->user()->id]), $at)->save();

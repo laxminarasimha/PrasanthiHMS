@@ -197,6 +197,21 @@ export function IpdCase() {
               <dd>{admission.reason}</dd>
             </div>
           )}
+          {admission.advised && (
+            <div>
+              <dt>Advised at</dt>
+              <dd>
+                {user?.can_consult ? (
+                  <Link to={`/visits/${admission.advised.appointment_id}`} title="Open the OPD visit where admission was advised">
+                    OPD visit{admission.advised.on ? ` of ${longDate(admission.advised.on)}` : ''}
+                  </Link>
+                ) : (
+                  <>OPD visit{admission.advised.on ? ` of ${longDate(admission.advised.on)}` : ''}</>
+                )}
+                {admission.advised.doctor && <small className="muted"> · {admission.advised.doctor}</small>}
+              </dd>
+            </div>
+          )}
           {admission.payer && (
             <div>
               <dt>Bill to</dt>
@@ -246,7 +261,7 @@ export function IpdCase() {
 
         {tab === 'charts' && <IpdCharts admissionId={admission.id} userId={user?.id} canChart={Boolean(user?.can_consult)} canOrder={Boolean(user?.can_approve_ipd)} />}
         {tab === 'consultants' && <IpdConsultants admissionId={admission.id} canEdit={canEdit} minDate={admission.admitted_at.slice(0, 10)} maxDate={admission.discharged_at?.slice(0, 10)} />}
-        {tab === 'results' && <IpdInvestigations admissionId={admission.id} />}
+        {tab === 'results' && <IpdInvestigations admission={admission} canOrder={canEdit} onOrdered={() => api.get<Admission>(url).then((res) => apply(res.data))} />}
         {tab === 'forms' && <FormsPanel url={`/ipd/admissions/${admission.id}/forms`} use="ipd" canEdit={canEdit} />}
         {tab === 'files' && <AttachmentsPanel patient={{ id: admission.patient.id, name: admission.patient.name, uhid: admission.patient.uhid }} />}
         {tab === 'files' && (
@@ -327,6 +342,7 @@ export function IpdCase() {
                         </ul>
                       </details>
                     )}
+                    {c.tests && c.tests.length > 0 && <small className="muted block">{c.tests.join(', ')}</small>}
                     {c.remarks && <small className="muted block">{c.remarks}</small>}
                     {c.admission_bill_id && <small className="settled block">On bill {billNo[c.admission_bill_id] ?? ''}</small>}
                   </td>
