@@ -45,7 +45,7 @@ export function PhoneBarSettings() {
     <>
       <h3>The bar at the foot of my phone</h3>
       <p className="muted small">
-        On a phone, these are the places on the bar at the foot of the screen, from left to right. Put the ones you use most first. Up to {BAR_MOST}; “More” is always last and opens everything else.
+        On a phone, these are the places on the bar at the foot of the screen, from left to right. Put the ones you use most first. Up to {BAR_MOST}; “More” is always last and opens everything else, including “My profile”, so taking a place off the bar never loses it.
       </p>
       <ol className="bar-order">
         {keys.map((key, at) => {

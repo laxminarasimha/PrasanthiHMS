@@ -2309,3 +2309,7 @@ tr.faded td { opacity: 0.6; }
 .option-offer { font-size: 0.92rem; }
 span.soon { color: var(--warn); font-weight: 600; }
 .sample-went { margin-left: 10px; }
+
+/* "My profile" in the full menu: only on a phone, where the picture at the top is not shown. */
+.topbar nav a.nav-profile { display: none; }
+@media screen and (max-width: 768px) { .topbar nav a.nav-profile { display: inline-flex; } }

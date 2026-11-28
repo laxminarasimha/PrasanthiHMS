@@ -118,6 +118,14 @@ export function Layout() {
               )}
             </NavLink>
           ))}
+          {/* On a phone the picture at the top is not shown, and the bar at the foot may not have Profile on it:
+              the full menu always does, so a person can never lose the way to their own page. */}
+          <NavLink to="/account" className={pathname === '/account' ? 'nav-profile active' : 'nav-profile'}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d={NAV_ICONS.profile} />
+            </svg>
+            My profile
+          </NavLink>
           <div className="nav-foot">
             <div>
               <NavLink to="/account">
