@@ -129,6 +129,57 @@ class PrescriptionBillLinkTest extends TestCase
         $this->assertFalse($card['filled']);
     }
 
+    public function test_a_visit_line_whose_when_or_instructions_may_change_how_often_gets_no_count_and_its_instructions_are_shown(): void
+    {
+        foreach (['Sample Weekly Tablet', 'Sample Alternate Tablet', 'Sample Fever Tablet', 'Sample Daily Tablet'] as $name) {
+            $this->stock($name, 'Tablet');
+        }
+        $this->visit([
+            ['medicine' => 'Sample Weekly Tablet', 'dose' => '1 tablet', 'frequency' => '1-0-0', 'timing' => 'After food', 'duration' => '1 month', 'instructions' => 'Once a week'],
+            ['medicine' => 'Sample Alternate Tablet', 'dose' => '1 tablet', 'frequency' => '1-0-0', 'timing' => 'Alternate days', 'duration' => '1 month'],
+            ['medicine' => 'Sample Fever Tablet', 'dose' => '1 tablet', 'frequency' => '1-1-1', 'timing' => 'SOS', 'duration' => '5 days', 'instructions' => 'Only if fever'],
+            ['medicine' => 'Sample Daily Tablet', 'dose' => '1 tablet', 'frequency' => '1-0-1', 'timing' => 'After food', 'duration' => '5 days'],
+        ]);
+
+        $lines = collect($this->cards()[0]['medicines'])->keyBy('medicine');
+        // Once a week, alternate days and SOS are never counted as every day.
+        foreach (['Sample Weekly Tablet', 'Sample Alternate Tablet', 'Sample Fever Tablet'] as $name) {
+            $this->assertSame([null, null], [$lines[$name]['quantity'], $lines[$name]['worked_out']], $name);
+        }
+        // An ordinary When, such as after food, still gets the count.
+        $this->assertSame([10, '1 tablet 1-0-1 for 5 days = 10'], [$lines['Sample Daily Tablet']['quantity'], $lines['Sample Daily Tablet']['worked_out']]);
+        // The pharmacist sees the instructions with the rest of the directions.
+        $this->assertSame('1 tablet · 1-0-0 · After food · 1 month · Once a week', $lines['Sample Weekly Tablet']['directions']);
+        $this->assertSame('1 tablet · 1-1-1 · SOS · 5 days · Only if fever', $lines['Sample Fever Tablet']['directions']);
+        $this->assertSame('1 tablet · 1-0-1 · After food · 5 days', $lines['Sample Daily Tablet']['directions']);
+    }
+
+    public function test_a_take_home_line_whose_when_or_instructions_may_change_how_often_gets_no_count_and_its_instructions_are_shown(): void
+    {
+        foreach (['Sample Weekly Tablet', 'Sample Alternate Tablet', 'Sample Daily Tablet'] as $name) {
+            $this->stock($name, 'Tablet');
+        }
+        Sanctum::actingAs($this->doctor);
+        $case = $this->postJson('/api/ipd/admissions', [
+            'patient_id' => $this->patient->id, 'doctor_id' => $this->doctor->id, 'bed_id' => Bed::create(['ward' => 'General Ward', 'bed_no' => '1', 'daily_charge' => 800])->id,
+            'admitted_at' => now()->subDay()->format('Y-m-d H:i'),
+        ])->assertCreated()->json();
+        $this->putJson("/api/ipd/admissions/{$case['id']}/summary", ['diagnosis' => 'Sample', 'medicines' => [
+            ['medicine' => 'Sample Weekly Tablet', 'dose' => '1 tab', 'frequency' => 'OD', 'timing' => 'After food', 'duration' => '1 month', 'instructions' => 'Once a week'],
+            ['medicine' => 'Sample Alternate Tablet', 'dose' => '1 tab', 'frequency' => 'OD', 'timing' => 'Alternate days', 'duration' => '1 month'],
+            ['medicine' => 'Sample Daily Tablet', 'dose' => '1 tab', 'frequency' => 'OD', 'timing' => 'After food', 'duration' => '1 month'],
+        ]])->assertOk();
+
+        Sanctum::actingAs($this->pharmacist);
+        $lines = collect(collect($this->cards())->firstWhere('kind', 'discharge')['medicines'])->keyBy('medicine');
+        foreach (['Sample Weekly Tablet', 'Sample Alternate Tablet'] as $name) {
+            $this->assertSame([null, null], [$lines[$name]['quantity'], $lines[$name]['worked_out']], $name);
+        }
+        $this->assertSame([30, '1 tab OD for 1 month (30 days) = 30'], [$lines['Sample Daily Tablet']['quantity'], $lines['Sample Daily Tablet']['worked_out']]);
+        $this->assertSame('1 tab · OD · After food · 1 month · Once a week', $lines['Sample Weekly Tablet']['directions']);
+        $this->assertSame('1 tab · OD · Alternate days · 1 month', $lines['Sample Alternate Tablet']['directions']);
+    }
+
     public function test_ward_orders_never_get_a_quantity_take_home_medicines_do_and_neither_card_is_ever_filled(): void
     {
         $tablet = $this->stock('Sample Amlodipine 5 Tablet', 'Tablet');

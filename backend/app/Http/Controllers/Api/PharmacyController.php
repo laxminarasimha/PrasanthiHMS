@@ -615,11 +615,12 @@ class PharmacyController extends Controller
 
         // A name the pharmacy does not stock under exactly is shown as not in stock: nothing is guessed.
         $match = fn (?string $name) => $stocked->get(mb_strtolower(trim((string) $name)));
-        // The tablets or capsules a line comes to, with the working, when it is written plainly enough to count.
-        $quantity = function (?string $name, ?string $dose, ?string $frequency, ?string $duration) use ($named, $match): array {
+        // The tablets or capsules a line comes to, with the working, when it is written plainly enough to count. The When
+        // and Instructions boxes are read too: "Once a week" or "SOS" there means the medicine is not taken every day.
+        $quantity = function (?string $name, ?string $dose, ?string $frequency, ?string $duration, ?string $timing, ?string $instructions) use ($named, $match): array {
             $only = ($named[mb_strtolower(trim((string) $name))] ?? 0) === 1 ? $match($name) : null;
 
-            return RxQuantity::forStock($only, $dose, $frequency, $duration) ?? ['quantity' => null, 'worked_out' => null];
+            return RxQuantity::forStock($only, $dose, $frequency, $duration, $timing, $instructions) ?? ['quantity' => null, 'worked_out' => null];
         };
         $cards = collect();
         if ($ward->isNotEmpty()) {
@@ -643,9 +644,9 @@ class PharmacyController extends Controller
                 'note' => $summary->approved_at ? 'To take home, from the discharge summary.' : 'To take home. The discharge summary is not approved yet, so this may still change.',
                 'medicines' => $home->map(fn ($m) => [
                     'medicine' => $m['medicine'],
-                    'directions' => collect([$m['dose'] ?? null, $m['frequency'] ?? null, $m['timing'] ?? null, $m['duration'] ?? null])->filter()->implode(' · '),
+                    'directions' => collect([$m['dose'] ?? null, $m['frequency'] ?? null, $m['timing'] ?? null, $m['duration'] ?? null, $m['instructions'] ?? null])->filter()->implode(' · '),
                     'match' => $match($m['medicine']),
-                ] + $quantity($m['medicine'], $m['dose'] ?? null, $m['frequency'] ?? null, $m['duration'] ?? null)),
+                ] + $quantity($m['medicine'], $m['dose'] ?? null, $m['frequency'] ?? null, $m['duration'] ?? null, $m['timing'] ?? null, $m['instructions'] ?? null)),
             ]);
         }
 
@@ -662,9 +663,9 @@ class PharmacyController extends Controller
             'filled' => $bills[$c->id]['filled'] ?? false,
             'medicines' => $c->medicines->map(fn ($item) => [
                 'medicine' => $item->medicine,
-                'directions' => collect([$item->dose, $item->frequency, $item->timing, $item->duration])->filter()->implode(' · '),
+                'directions' => collect([$item->dose, $item->frequency, $item->timing, $item->duration, $item->instructions])->filter()->implode(' · '),
                 'match' => $match($item->medicine),
-            ] + $quantity($item->medicine, $item->dose, $item->frequency, $item->duration)),
+            ] + $quantity($item->medicine, $item->dose, $item->frequency, $item->duration, $item->timing, $item->instructions)),
         ]))->values());
     }
 
