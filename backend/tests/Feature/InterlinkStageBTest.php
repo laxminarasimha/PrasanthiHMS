@@ -110,8 +110,8 @@ class InterlinkStageBTest extends TestCase
         // A nurse opens a lab order as its report; a doctor, who also works in the lab, opens it there.
         Sanctum::actingAs(User::factory()->create(['role' => 'nurse']));
         $this->getJson('/api/search?q='.$order->order_no)->assertJsonPath('0.to', "/lab/orders/{$order->id}/print")->assertJsonPath('0.new_tab', true);
-        // A login that only keeps its own attendance finds nothing here.
+        // A login that only keeps its own attendance is not let in at all.
         Sanctum::actingAs(User::factory()->create(['role' => 'staff']));
-        $this->getJson('/api/search?q=searchable')->assertOk()->assertJsonCount(0);
+        $this->getJson('/api/search?q=searchable')->assertForbidden();
     }
 }
