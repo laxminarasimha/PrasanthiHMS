@@ -1,5 +1,6 @@
 /** A small drawing beside each menu name, so a section is found by shape as well as by word. One path each, drawn as a line. */
 export const NAV_ICONS: Record<string, string> = {
+  todo: 'M4 6.5l1.6 1.6L8.5 5M4 12.5l1.6 1.6 2.9-3.1M4 18.5l1.6 1.6 2.9-3.1M12 7h8M12 13h8M12 19h8',
   'front-desk': 'M4 5h16v4H4zM6 9v10M18 9v10M9 13h6',
   doctor: 'M6 3v6a4 4 0 0 0 8 0V3M10 13v3a5 5 0 0 0 10 0v-2M20 11a1.6 1.6 0 1 0 0 .01',
   lab: 'M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3M8 15h8',

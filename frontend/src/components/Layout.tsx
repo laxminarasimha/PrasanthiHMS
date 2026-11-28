@@ -5,6 +5,7 @@ import { BrandMark } from './Brand'
 import { ErrorBoundary } from './ErrorBoundary'
 import { InstallHint } from './InstallHint'
 import { PushHint } from './PushControls'
+import { useTodoCount } from '../todoCount'
 import { getsNotices, syncPush } from '../push'
 import { PatientSearch } from './PatientSearch'
 import { onLoadTrouble } from '../api'
@@ -34,6 +35,7 @@ function ScreenComing() {
 
 export function Layout() {
   const { user, signOut } = useAuth()
+  const todoCount = useTodoCount(user)
   const [open, setOpen] = useState(false)
   const { pathname } = useLocation()
   // Whether the last thing any screen tried to load failed to arrive.
@@ -109,6 +111,11 @@ export function Layout() {
                 </svg>
               )}
               {t.label}
+              {t.key === 'todo' && todoCount > 0 && (
+                <span className="nav-count" title={`${todoCount} of your tasks are due today or late`}>
+                  {todoCount}
+                </span>
+              )}
             </NavLink>
           ))}
           <div className="nav-foot">
