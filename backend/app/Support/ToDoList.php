@@ -179,7 +179,8 @@ class ToDoList
         $doctorOnly = $user->role === Role::Doctor ? $user->id : null;
 
         // Tests a doctor advised at a visit finished today that the lab has not been asked for, of those our own lab
-        // does, under the lab's names. The rest were advised to be done outside, and are in the tests-not-done report.
+        // does, under the lab's names: a test, or a package under the package's name. The rest were advised to be done
+        // outside, and are in the tests-not-done report.
         $tests = TestsNotDone::ourLab(TestsNotDone::between(today()->startOfDay(), today()->endOfDay(), $doctorOnly));
         $items[] = self::item('tests_not_ordered', 'Tests advised today, no lab order', 'A doctor advised these tests at today’s visit and the lab has not been asked for them. Make the lab order from the Tests button on the day list. Tests our lab does not do are left out.', '/front-desk',
             $tests->map(fn (array $r) => [
@@ -290,10 +291,11 @@ class ToDoList
 
     private static function pharmacy(User $user): array
     {
-        // Stock counts are approved by those trusted with the audit, who may be allowed only to look at the rest of the pharmacy.
-        $audit = $user->allows('canAuditPharmacy') && ($user->allows('canRunPharmacy') || $user->allows('canViewPharmacy')) ? self::pharmacyAudit() : [];
+        $audits = $user->allows('canAuditPharmacy');
         if (! $user->allows('canRunPharmacy')) {
-            return $audit;
+            // Stock counts are approved by those trusted with the audit, who may be allowed only to look at the rest of
+            // the pharmacy. Such a person cannot pay a supplier, so the suppliers' bills are not theirs.
+            return $audits && $user->allows('canViewPharmacy') ? [self::stockCounts()] : [];
         }
         // Today's prescriptions with medicines, for which no pharmacy bill has been made since.
         $written = Consultation::whereDate('completed_at', today())->whereHas('medicines')->with(['patient:id,uhid,title,name', 'doctor:id,name'])->latest('completed_at')->get();
@@ -338,21 +340,25 @@ class ToDoList
             self::item('expiring', 'Expiring within 30 days', 'Sell first, or send back to the supplier while it can still be returned.', '/pharmacy/manager', $soon->map($batch)),
         ];
 
-        return [...$items, ...$audit];
+        return [...$items, ...($audits ? [self::stockCounts(), self::supplierBills()] : [])];
     }
 
-    /** For those who approve the pharmacy's stock counts: counts handed in, and medicine suppliers' bills past their date. */
-    private static function pharmacyAudit(): array
+    /** For those who approve the pharmacy's stock counts: counts handed in, each opening its count. */
+    private static function stockCounts(): array
     {
         $counts = StockCount::where('status', 'submitted')->orderBy('submitted_at')->get(['id', 'title', 'submitted_at']);
+
+        return self::item('stock_counts', 'Stock counts waiting for approval', 'Counted and handed in; the differences have to be looked at and approved.', '/pharmacy/audit',
+            $counts->map(fn (StockCount $c) => ['text' => $c->title, 'detail' => 'Handed in '.Carbon::parse($c->submitted_at)->format('j M'), 'to' => "/pharmacy/audit/counts/{$c->id}"]));
+    }
+
+    /** For those who run the pharmacy and are trusted with its audit: medicine suppliers' bills past their date. */
+    private static function supplierBills(): array
+    {
         $overdue = PharmacyDesk::payables()['invoices']->where('days_overdue', '>', 0);
 
-        return [
-            self::item('stock_counts', 'Stock counts waiting for approval', 'Counted and handed in; the differences have to be looked at and approved.', '/pharmacy/audit',
-                $counts->map(fn (StockCount $c) => ['text' => $c->title, 'detail' => 'Handed in '.Carbon::parse($c->submitted_at)->format('j M'), 'to' => "/pharmacy/audit/counts/{$c->id}"])),
-            self::item('supplier_bills', 'Supplier bills past their date', 'Invoices from medicine suppliers that should have been paid by now.', '/pharmacy/purchases',
-                $overdue->sortByDesc('days_overdue')->map(fn (array $i) => ['text' => $i['stockist'].' · '.$i['invoice_no'], 'detail' => self::rupees((float) $i['owed']).' · '.$i['days_overdue'].' days late', 'to' => '/pharmacy/purchases'])),
-        ];
+        return self::item('supplier_bills', 'Supplier bills past their date', 'Invoices from medicine suppliers that should have been paid by now.', '/pharmacy/purchases',
+            $overdue->sortByDesc('days_overdue')->map(fn (array $i) => ['text' => $i['stockist'].' · '.$i['invoice_no'], 'detail' => self::rupees((float) $i['owed']).' · '.$i['days_overdue'].' days late', 'to' => '/pharmacy/purchases']));
     }
 
     private static function ipd(User $user): array
@@ -361,7 +367,7 @@ class ToDoList
             return [];
         }
         $with = ['patient:id,uhid,title,name', 'doctor:id,name'];
-        $stay = fn (Admission $a, string $detail) => ['text' => "{$a->ipd_no} · ".self::who($a->patient), 'detail' => $detail, 'to' => "/ipd/{$a->id}"];
+        $stay = fn (Admission $a, string $detail, string $tab = '') => ['text' => "{$a->ipd_no} · ".self::who($a->patient), 'detail' => $detail, 'to' => "/ipd/{$a->id}".($tab ? "?tab={$tab}" : '')];
         $admitted = Admission::where('status', 'admitted')->with($with)->orderBy('admitted_at')->get();
         $gone = Admission::where('discharged_at', '>=', today()->subDays(self::DAYS))->with($with)->latest('discharged_at')->get();
 
@@ -378,9 +384,10 @@ class ToDoList
         if ($user->allows('canApproveIpd')) {
             // A doctor is shown their own cases; anyone else who approves is shown them all.
             $summaries = Admission::where('admitted_at', '>=', today()->subDays(60))->when($user->role === Role::Doctor, fn ($q) => $q->where('doctor_id', $user->id))
-                ->whereHas('summary', fn ($q) => $q->whereNull('approved_at'))->with($with)->orderBy('admitted_at')->get();
+                ->whereHas('summary', fn ($q) => $q->whereNull('approved_at'))->with([...$with, 'summary:id,admission_id,ready_at'])->orderBy('admitted_at')->get();
+            // Each opens the case at its summary, saying whether it has been handed over for approval or is still a draft.
             $items[] = self::item('summaries', 'Discharge summaries to approve', 'Written, and waiting for the doctor’s approval.', '/ipd',
-                $summaries->map(fn (Admission $a) => $stay($a, 'Admitted '.$a->admitted_at->format('j M'))));
+                $summaries->map(fn (Admission $a) => $stay($a, 'Admitted '.$a->admitted_at->format('j M').' · '.($a->summary?->ready_at ? 'sent for approval '.$a->summary->ready_at->format('j M') : 'draft'), 'summary')));
         }
 
         return $items;
@@ -441,24 +448,31 @@ class ToDoList
      * Consultants whose fees for one of the last few finished months are not all paid: one line for each doctor and
      * month. The month still running is left out, as it is still being earned. Names and months only; what is owed is
      * on the Consultants page. Working a month out takes many sums, so the answer is kept for up to an hour, and is
-     * worked out afresh as soon as a payment or a ward visit is written down, changed or taken back.
+     * worked out afresh on a new day and as soon as a payment or a ward visit is written down, changed or taken back.
+     * It is kept in one place that each fresh answer writes over, so nothing old is left lying in the cache.
      */
     private static function consultants(): array
     {
         $latest = fn (string $model) => $model::query()->toBase()->selectRaw('max(id) as id, max(updated_at) as at')->first();
         [$paid, $visit] = [$latest(ConsultantPayment::class), $latest(ConsultantVisit::class)];
-        $key = 'todo.consultants.'.today()->toDateString().".{$paid?->id}.{$visit?->id}.".md5($paid?->at.'|'.$visit?->at);
+        $version = today()->toDateString().".{$paid?->id}.{$visit?->id}.".md5($paid?->at.'|'.$visit?->at);
 
-        $rows = Cache::remember($key, now()->addHour(), fn () => collect(range(self::CONSULTANT_MONTHS, 1))->flatMap(function (int $back) {
-            // From the first of the month, so the 31st never slips a month.
-            $month = today()->startOfMonth()->subMonths($back);
+        $kept = Cache::get('todo.consultants');
+        if (is_array($kept) && ($kept['version'] ?? null) === $version && is_array($kept['rows'] ?? null)) {
+            $rows = $kept['rows'];
+        } else {
+            $rows = collect(range(self::CONSULTANT_MONTHS, 1))->flatMap(function (int $back) {
+                // From the first of the month, so the 31st never slips a month.
+                $month = today()->startOfMonth()->subMonths($back);
 
-            return ConsultantFees::month($month->format('Y-m'))->filter(fn (array $r) => $r['due'] >= 0.01)->map(fn (array $r) => [
-                'text' => $r['doctor'],
-                'detail' => $month->format('F Y').' · '.($r['paid'] > 0 ? 'part paid' : 'nothing paid yet').($r['visits'] > 0 ? ' · '.$r['visits'].($r['visits'] === 1 ? ' ward visit' : ' ward visits') : ''),
-                'to' => '/workforce/consultants?month='.$month->format('Y-m'),
-            ]);
-        })->values()->all());
+                return ConsultantFees::month($month->format('Y-m'))->filter(fn (array $r) => $r['due'] >= 0.01)->map(fn (array $r) => [
+                    'text' => $r['doctor'],
+                    'detail' => $month->format('F Y').' · '.($r['paid'] > 0 ? 'part paid' : 'nothing paid yet').($r['visits'] > 0 ? ' · '.$r['visits'].($r['visits'] === 1 ? ' ward visit' : ' ward visits') : ''),
+                    'to' => '/workforce/consultants?month='.$month->format('Y-m'),
+                ]);
+            })->values()->all();
+            Cache::put('todo.consultants', ['version' => $version, 'rows' => $rows], now()->addHour());
+        }
 
         return self::item('consultants', 'Consultants to pay', 'Their share of their own cases and their ward visit fees for a finished month, not all paid yet. The amounts are on the Consultants page.',
             $rows[0]['to'] ?? '/workforce/consultants', $rows);
