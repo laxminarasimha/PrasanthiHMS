@@ -173,6 +173,12 @@ export function LabDay({ orders, settings, canRun, onClose, onChange, onOpenResu
                     {clock(o.ordered_at)}
                     {o.referred_by ? ` · referred by ${o.referred_by}` : ''}
                   </small>
+                  {o.inpatient && (
+                    <small className="block">
+                      Inpatient {o.inpatient.ipd_no}
+                      {o.inpatient.bed ? ` · ${o.inpatient.bed}` : ''} · bill on the IPD bill
+                    </small>
+                  )}
                 </div>
                 <span className={`pill ${STEP_CLASS[step]}`}>{STEP_LABEL[step]}</span>
                 <span className="row">

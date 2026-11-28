@@ -12,6 +12,8 @@ type Props = {
   packages?: LabPackage[]
   /** Set when the order comes from a doctor's visit: who it is for and what was advised. */
   visit?: { patient: Pick<Patient, 'id' | 'uhid' | 'name' | 'gender' | 'age' | 'mobile'>; appointmentId: number; doctor: string; advised: string }
+  /** Set when the tests are ordered from an IPD case: the patient is fixed and the lab bill goes on the IPD bill. */
+  admission?: { id: number; ipdNo: string; patient: Pick<Patient, 'id' | 'uhid' | 'name'>; doctor: string }
   onClose: () => void
   onCreated: (order: LabOrder) => void
 }
@@ -55,16 +57,16 @@ export function matchAdvised(advised: string, tests: LabCatalogueTest[]) {
   return { ids: [...new Set(ids)], missing }
 }
 
-export function LabOrderForm({ tests, packages = [], visit, onClose, onCreated }: Props) {
+export function LabOrderForm({ tests, packages = [], visit, admission, onClose, onCreated }: Props) {
   const advised = visit ? matchAdvised(visit.advised, tests) : null
-  const [patient, setPatient] = useState<Patient | null>((visit?.patient as Patient | undefined) ?? null)
+  const [patient, setPatient] = useState<Patient | null>(((admission?.patient ?? visit?.patient) as Patient | undefined) ?? null)
   const [chosen, setChosen] = useState<number[]>(advised?.ids ?? [])
   const [chosenPackages, setChosenPackages] = useState<number[]>([])
   // How many times a ticked test is done, when that is more than once (a CBP repeated the same day).
   const [counts, setCounts] = useState<Record<number, string>>({})
   const times = (id: number) => Math.min(9, Math.max(1, Math.floor(Number(counts[id]) || 1)))
   const [filter, setFilter] = useState('')
-  const [referredBy, setReferredBy] = useState(visit?.doctor ?? '')
+  const [referredBy, setReferredBy] = useState(admission?.doctor ?? visit?.doctor ?? '')
   const [errors, setErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
 
@@ -91,7 +93,7 @@ export function LabOrderForm({ tests, packages = [], visit, onClose, onCreated }
     setSaving(true)
     setErrors({})
     try {
-      const res = await api.post<LabOrder>('/lab/orders', { patient_id: patient.id, appointment_id: visit?.appointmentId ?? null, test_ids: chosen, package_ids: chosenPackages, referred_by: referredBy || null, billed_on: earlier(billedOn), test_counts: Object.fromEntries(chosen.filter((id) => !inPackage.has(id) && times(id) > 1).map((id) => [id, times(id)])) })
+      const res = await api.post<LabOrder>('/lab/orders', { patient_id: patient.id, appointment_id: visit?.appointmentId ?? null, admission_id: admission?.id ?? null, test_ids: chosen, package_ids: chosenPackages, referred_by: referredBy || null, billed_on: earlier(billedOn), test_counts: Object.fromEntries(chosen.filter((id) => !inPackage.has(id) && times(id) > 1).map((id) => [id, times(id)])) })
       onCreated(res.data)
     } catch (err) {
       setErrors(fieldErrors(err))
@@ -101,18 +103,29 @@ export function LabOrderForm({ tests, packages = [], visit, onClose, onCreated }
   }
 
   return (
-    <form className="card panel" onSubmit={submit} noValidate>
+    <form className={admission ? 'modal popup wide' : 'card panel'} onSubmit={submit} noValidate>
       <div className="panel-head">
-        <h2>New lab order</h2>
+        <div>
+          <h2>{admission ? 'Order lab tests' : 'New lab order'}</h2>
+          {admission && (
+            <span className="muted">
+              {admission.patient.name} · {admission.patient.uhid} · IPD {admission.ipdNo}
+            </span>
+          )}
+        </div>
         <button type="button" className="btn ghost" onClick={onClose}>
           Close
         </button>
       </div>
 
-      <PatientPicker patient={patient} onChange={setPatient} error={errors.patient_id} recent />
+      {admission ? (
+        <p className="muted">The lab is told at once, with the ward and bed. The lab bill goes on this patient’s IPD bill by itself, so nothing is paid at the lab.</p>
+      ) : (
+        <PatientPicker patient={patient} onChange={setPatient} error={errors.patient_id} recent />
+      )}
 
       <div className="gap-top">
-        <ReferredBy label="Referred by (optional)" value={referredBy} onChange={setReferredBy} error={errors.referred_by} ours={visit?.doctor} />
+        <ReferredBy label={admission ? 'Ordered by' : 'Referred by (optional)'} value={referredBy} onChange={setReferredBy} error={errors.referred_by} ours={admission?.doctor ?? visit?.doctor} />
       </div>
 
       {visit && advised && (
@@ -170,13 +183,13 @@ export function LabOrderForm({ tests, packages = [], visit, onClose, onCreated }
       {errors.test_ids && <span className="field-error">{errors.test_ids}</span>}
 
       {count > 0 && <EarlierDate what="bill" value={billedOn} onChange={setBilledOn} />}
-      {(errors._ ?? errors.billed_on) && <p className="form-error">{errors._ ?? errors.billed_on}</p>}
+      {(errors._ ?? errors.billed_on ?? errors.admission_id ?? errors.patient_id) && <p className="form-error">{errors._ ?? errors.billed_on ?? errors.admission_id ?? errors.patient_id}</p>}
       <div className="panel-foot between">
         <span>
           {count} test{count === 1 ? '' : 's'} · <strong>{rupees(total)}</strong>
         </span>
         <button className="btn primary" disabled={saving || count === 0}>
-          {saving ? 'Saving…' : 'Create order'}
+          {saving ? 'Saving…' : admission ? 'Order tests' : 'Create order'}
         </button>
       </div>
     </form>

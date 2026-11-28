@@ -1770,6 +1770,12 @@ table.compact td.lab-last { white-space: nowrap; font-variant-numeric: tabular-n
 .ipd-advised li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--danger-line); }
 .ipd-advised li:first-child { border-top: 0; }
 .ipd-advised .grow { flex: 1 1 240px; min-width: 0; }
+/* What the lab still has to do for an inpatient, above the results. */
+.ipd-awaited { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.ipd-awaited h3 { margin: 0 0 6px; font-size: 0.95rem; }
+.ipd-awaited ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ipd-awaited li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.ipd-awaited .grow { flex: 1 1 200px; display: flex; flex-wrap: wrap; gap: 4px; }
 .admit-advice { margin-top: 4px; display: grid; gap: 8px; }
 .admit-advice .check { margin-top: 10px; }
 @media (min-width: 701px) { .ipd-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }

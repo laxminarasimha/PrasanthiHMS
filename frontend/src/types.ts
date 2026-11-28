@@ -465,6 +465,8 @@ export type LabOrder = {
   items: LabOrderItem[]
   files?: LabOrderFile[]
   bill: { id: number; bill_no: string; total: number; paid: number; due: number; moved_to_ipd?: number | null } | null
+  /** Ordered from an IPD case: which case, and the bed while the patient is still admitted. */
+  inpatient?: { admission_id: number; ipd_no: string; bed: string | null } | null
 }
 
 export type Medicine = {
@@ -735,6 +737,8 @@ export type AdmissionCharge = {
   admission_bill_id?: number | null
   /** For a pharmacy bill on the IPD bill: the medicines that were on it. */
   medicines?: { name: string; batch: string | null; quantity: number; returned: number; rate: number; amount: number }[]
+  /** The tests behind a lab line. */
+  tests?: string[]
   creator?: { id: number; name: string } | null
   deleted_at?: string | null
   deleter?: { id: number; name: string } | null

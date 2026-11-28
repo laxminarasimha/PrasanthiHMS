@@ -92,7 +92,10 @@ export function IpdPrint() {
             <Fragment key={c.id}>
               <tr>
                 <td>{longDate(c.charged_on)}</td>
-                <td>{c.description}</td>
+                <td>
+                  {c.description}
+                  {c.tests && c.tests.length > 0 && <small className="block">{c.tests.join(', ')}</small>}
+                </td>
                 <td className="num">{c.quantity}</td>
                 <td className="num">
                   {rupees(c.unit_price)}

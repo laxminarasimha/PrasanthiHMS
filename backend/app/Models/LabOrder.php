@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['branch_id', 'patient_id', 'appointment_id', 'bill_id', 'referred_by', 'referral_doctor_id', 'status', 'ordered_at', 'created_by'])]
+#[Fillable(['branch_id', 'patient_id', 'appointment_id', 'bill_id', 'referred_by', 'referral_doctor_id', 'status', 'ordered_at', 'created_by', 'admission_id'])]
 class LabOrder extends Model
 {
     /**

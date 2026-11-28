@@ -23,6 +23,7 @@ use App\Models\Setting;
 use App\Models\Patient;
 use App\Support\AdmitAdvice;
 use App\Support\BedCharges;
+use App\Support\BillOnIpd;
 use App\Support\EarlierDay;
 use App\Support\PharmacyOnIpd;
 use Illuminate\Http\JsonResponse;
@@ -463,6 +464,11 @@ class IpdController extends Controller
         }
 
         DB::transaction(function () use ($entry, $admission, $request) {
+            if ($entry['type'] === 'bill') {
+                BillOnIpd::put($admission, Bill::findOrFail($entry['id']), $request->user()->id, today()->toDateString());
+
+                return;
+            }
             $charge = $admission->charges()->create([
                 'description' => $entry['label'],
                 'category' => $entry['category'],
@@ -475,16 +481,7 @@ class IpdController extends Controller
                 'source_id' => $entry['id'],
             ]);
 
-            if ($entry['type'] === 'bill') {
-                $bill = Bill::findOrFail($entry['id']);
-                $bill->payments()->create([
-                    'type' => 'payment', 'amount' => $entry['due'], 'mode' => 'ipd',
-                    'reference' => "IPD charge {$charge->id}", 'received_by' => $request->user()->id,
-                ]);
-                $bill->recalculate();
-            } else {
-                PharmacySale::whereKey($entry['id'])->increment('ipd_transfer', $entry['due']);
-            }
+            PharmacySale::whereKey($entry['id'])->increment('ipd_transfer', $entry['due']);
 
             $admission->recalculate();
         });
@@ -870,9 +867,14 @@ class IpdController extends Controller
         $admission->setAttribute('bed_charges_auto', BedCharges::settings()['auto']);
         // Under each pharmacy bill on the IPD bill, the medicines that were on it.
         $medicines = PharmacyOnIpd::medicines($admission->charges);
+        // And under each lab line, the tests that were done.
+        $tests = BillOnIpd::tests($admission->charges);
         foreach ($admission->charges as $charge) {
             if ($medicines->has($charge->id)) {
                 $charge->setAttribute('medicines', $medicines[$charge->id]);
+            }
+            if ($tests->has($charge->id)) {
+                $charge->setAttribute('tests', $tests[$charge->id]);
             }
         }
         // The OPD visit at which a doctor advised this admission, when there was one.

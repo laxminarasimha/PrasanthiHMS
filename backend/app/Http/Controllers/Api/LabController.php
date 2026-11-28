@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Admission;
 use App\Models\AuditLog;
 use App\Models\Bill;
 use App\Models\LabOrder;
@@ -13,6 +14,7 @@ use App\Models\LabResult;
 use App\Models\LabTest;
 use App\Models\Patient;
 use App\Models\Setting;
+use App\Support\BillOnIpd;
 use App\Support\EarlierDay;
 use App\Support\LabDepartments;
 use App\Support\LabRanges;
@@ -376,6 +378,7 @@ class LabController extends Controller
             ->latest('ordered_at')->latest('id')
             ->limit($patientId ? 15 : 200)
             ->get();
+        self::markInpatients($orders);
 
         return response()->json($orders);
     }
@@ -399,6 +402,8 @@ class LabController extends Controller
             'test_counts.*' => ['integer', 'between:1,'.self::MOST_TIMES],
             // The day the tests were asked for, when an order that was missed is being entered later.
             'billed_on' => EarlierDay::rule(),
+            // Ordered from an IPD case: the lab bill goes on that case's bill in the same step.
+            'admission_id' => ['nullable', 'integer', 'exists:admissions,id'],
         ], ['test_ids.required_without' => 'Choose at least one test or package.', 'test_counts.*.between' => 'A test can be done 1 to '.self::MOST_TIMES.' times on one order.'] + EarlierDay::messages('billed_on'));
         $at = EarlierDay::at($data['billed_on'] ?? null);
 
@@ -406,8 +411,28 @@ class LabController extends Controller
             throw ValidationException::withMessages(['test_ids' => 'Choose at least one test or package.']);
         }
 
+        if (isset($data['admission_id'])) {
+            abort_unless($request->user()->allows('canWorkIpd') || $request->user()->allows('canRunLab'), 403, 'You are not allowed to order tests on an IPD case.');
+        }
+
         $order = DB::transaction(function () use ($data, $request, $at) {
             $user = $request->user();
+            // The case is held while this is saved, so it cannot be closed or its bill approved half-way through.
+            $admission = isset($data['admission_id']) ? Admission::whereKey($data['admission_id'])->lockForUpdate()->first() : null;
+            if ($admission) {
+                if ($admission->status !== 'admitted') {
+                    throw ValidationException::withMessages(['admission_id' => 'This patient is no longer admitted. Order the tests in the lab, or reopen the case.']);
+                }
+                if ((int) $admission->patient_id !== (int) $data['patient_id']) {
+                    throw ValidationException::withMessages(['admission_id' => 'That IPD case belongs to another patient.']);
+                }
+                if ($admission->bill_approved_at) {
+                    throw ValidationException::withMessages(['admission_id' => "The bill of {$admission->ipd_no} has been approved, so nothing more can go on it. Withdraw the approval there, or order the tests in the lab."]);
+                }
+                if ($at && $at->toDateString() < $admission->admitted_at->toDateString()) {
+                    throw ValidationException::withMessages(['billed_on' => "This patient was admitted on {$admission->admitted_at->format('j M Y')}, so nothing of an earlier day can go on {$admission->ipd_no}."]);
+                }
+            }
             // Whose tests these are: a normal range can depend on the patient's age and sex.
             $patient = Patient::find($data['patient_id']);
             $bill = EarlierDay::date(new Bill([
@@ -424,6 +449,7 @@ class LabController extends Controller
                 'patient_id' => $data['patient_id'],
                 'appointment_id' => $data['appointment_id'] ?? null,
                 'bill_id' => $bill->id,
+                'admission_id' => $admission?->id,
                 ...Referral::fields($data['referred_by'] ?? null),
                 'ordered_at' => $at ?? now(),
                 'created_by' => $user->id,
@@ -488,11 +514,16 @@ class LabController extends Controller
                 }
             }
 
+            if ($admission) {
+                BillOnIpd::put($admission, $bill->fresh(), $user->id);
+            }
+
             return $order;
         });
 
         $made = $order->items()->get(['test_name', 'repeat_no', 'template_version'])->map(fn (LabOrderItem $i) => $this->withVersion($i))->implode(', ');
-        AuditLog::record('lab.ordered', $order->patient_id, $order, "{$order->order_no} · {$made}");
+        $ward = $order->admission_id ? ' · on the bill of '.Admission::whereKey($order->admission_id)->value('ipd_no') : '';
+        AuditLog::record('lab.ordered', $order->patient_id, $order, "{$order->order_no} · {$made}{$ward}");
         EarlierDay::log($at, $order->patient_id, $order, "Lab order {$order->order_no}");
 
         return response()->json($this->present($order), 201);
@@ -727,12 +758,32 @@ class LabController extends Controller
         abort_unless($request->user()->allows('canRunLab'), 403, 'You are not allowed to do this in the lab.');
     }
 
+    /**
+     * Orders made from an IPD case say which case and where the patient lies, so the sample is taken at the bed.
+     *
+     * @param  \Illuminate\Support\Collection<int, LabOrder>  $orders
+     */
+    private static function markInpatients(\Illuminate\Support\Collection $orders): void
+    {
+        $ids = $orders->pluck('admission_id')->filter()->unique();
+        if ($ids->isEmpty()) {
+            return;
+        }
+        $cases = Admission::whereIn('id', $ids)->with('bed:id,ward,bed_no')->get(['id', 'ipd_no', 'bed_id', 'status'])->keyBy('id');
+        foreach ($orders as $order) {
+            if ($case = $cases->get($order->admission_id)) {
+                $order->setAttribute('inpatient', ['admission_id' => $case->id, 'ipd_no' => $case->ipd_no, 'bed' => $case->status === 'admitted' && $case->bed ? "{$case->bed->ward} · Bed {$case->bed->bed_no}" : null]);
+            }
+        }
+    }
+
     private function present(LabOrder $order): LabOrder
     {
         $order = $this->withPrevious($order->fresh()->load([
             'patient:id,uhid,title,name,gender,date_of_birth,mobile', 'items.results', 'items.reporter:id,name,signature_text', 'items.approver:id,name,signature_text',
             'bill:id,bill_no,total,paid', 'files.uploader:id,name',
         ]));
+        self::markInpatients(collect([$order]));
         // A test ordered before it was filed under a department is shown under the one it has now.
         $missing = $order->items->filter(fn (LabOrderItem $item) => blank($item->department) && $item->lab_test_id);
         if ($missing->isNotEmpty()) {
