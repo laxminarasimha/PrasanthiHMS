@@ -2262,3 +2262,17 @@ tr.cancelled td { color: var(--muted); }
 }
 .todo-rows a, .todo-more a { color: var(--brand-dark); font-weight: 600; text-decoration: none; }
 .todo-rows a:hover, .todo-more a:hover { text-decoration: underline; }
+
+/* ---- Reports: the whole hospital and each department side by side ---- */
+.dept-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 8px; }
+.dept-card { display: flex; flex-direction: column; gap: 6px; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); break-inside: avoid; }
+.dept-card.whole { border-color: var(--brand); background: var(--brand-soft); }
+.dept-card .dept-name { font-size: 1rem; }
+.dept-card dl { display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; margin: 0; }
+.dept-card dt { color: var(--muted); }
+.dept-card dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.dept-card dt.strong, .dept-card dd.strong { color: var(--text); font-size: 1.12rem; }
+.dept-card dt.sub { padding-left: 12px; font-size: 0.86rem; }
+.dept-card dd.sub { font-size: 0.86rem; color: var(--muted); }
+.dept-card dd.due { color: var(--danger); font-weight: 700; }
+.dept-card small a { color: var(--brand-dark); font-weight: 600; }
