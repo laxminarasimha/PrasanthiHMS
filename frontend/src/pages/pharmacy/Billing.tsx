@@ -36,6 +36,11 @@ type Line = {
   from?: CardTag
   /** The card rows its medicine was added from (see rowKey): a row already on the bill is not added again. */
   rxRows?: string[]
+  /**
+   * Of those, the rows whose count went onto the medicine (not a row with no count, or one whose 1 later gave way).
+   * Rows of one card add up only while every count on the bill came from a row still on that card as it is now.
+   */
+  counted?: string[]
   /** How the prescription's quantity was worked out, and, when the stock was less, by how much. */
   worked?: string
   short?: string
@@ -83,16 +88,20 @@ const roomFor = (lines: Line[], match: SellableMedicine) => {
 }
 /**
  * How a card's row stands against the bill: on it already; free to add; or its medicine is on the bill some other way
- * (picked by name and given a quantity, or from another card, as when a follow-up visit repeats the discharge
- * medicines), when it is added only on purpose ("Add N more") and never by Add all in stock. Rows of one card add up,
- * as a taper's do, and a count replaces the 1 a medicine starts at.
+ * (picked by name and given a quantity, from another card, as when a follow-up visit repeats the discharge medicines,
+ * or from a row of this card that the doctor has changed since), when it is added only on purpose ("Add N more") and
+ * never by Add all in stock. Rows of one card add up, as a taper's do, while every count of the medicine on the bill
+ * came from a row still on this card as it is now; and a count replaces the 1 a medicine starts at. `changed`: the
+ * medicine went on the bill from a row of this card that is no longer on it as it was.
  */
-function rowState(lines: Line[], patientId: number, rx: PrescriptionForPharmacy, m: CardMedicine): 'placed' | 'free' | 'other' {
-  if (lines.some((l) => (l.rxRows ?? []).includes(rowKey(patientId, rx, m)))) return 'placed'
+function rowState(lines: Line[], patientId: number, rx: PrescriptionForPharmacy, m: CardMedicine): { state: 'placed' | 'free' | 'other'; changed: boolean } {
+  if (lines.some((l) => (l.rxRows ?? []).includes(rowKey(patientId, rx, m)))) return { state: 'placed', changed: false }
   const there = m.match ? lines.filter((l) => l.medicineId === m.match!.id) : []
-  if (there.length === 0 || there.every(startingOne)) return 'free'
+  if (there.length === 0 || there.every(startingOne)) return { state: 'free', changed: false }
+  const now = rx.medicines.map((x) => rowKey(patientId, rx, x))
+  if (there.every((l) => (l.counted ?? []).length > 0 && (l.counted ?? []).every((k) => now.includes(k)))) return { state: 'free', changed: false }
   const card = cardKey(patientId, rx)
-  return there.every((l) => (l.rxRows ?? []).length > 0 && (l.rxRows ?? []).every((k) => k.startsWith(card))) ? 'free' : 'other'
+  return { state: 'other', changed: there.some((l) => (l.counted ?? []).some((k) => k.startsWith(card) && !now.includes(k))) }
 }
 /**
  * The card a line counts as from, when more of its medicine is added from another card: a visit's card before a ward
@@ -105,10 +114,12 @@ const tagOf = (had: CardTag | undefined, from: CardTag): CardTag =>
  * Rows of one card, all for one medicine, put on the bill: one row, or two or more when the medicine is on several
  * rows, such as a taper (1-0-1 for 5 days, then 1-0-0 for 5 days). Their counts are added up. For a medicine already on
  * the bill they go first onto its lines there, as far as each batch has stock, then onto its other batches, soonest
- * expiry first; never more than is in stock. Lines that only hold the 1 a medicine starts at take the count in place
- * of the 1. Rows with no count start a medicine that is not on the bill yet at 1, as when it is picked by name. Every line of the medicine then carries the rows, and the card's link where it had none
- * (see tagOf), so a bill made from a visit's card is linked to that visit. Gives the bill, and the line to go to. When
- * nothing more of it is in stock, the bill is left as it was.
+ * expiry first; never more than is in stock. When every line of it only holds the 1 a medicine starts at, the count
+ * takes the place of those 1s: it is filled soonest expiry first over all its batches, and a line left with nothing
+ * comes off. Rows with no count start a medicine that is not on the bill yet at 1, as when it is picked by name. Every
+ * line of the medicine then carries the rows, and the card's link where it had none (see tagOf), so a bill made from a
+ * visit's card is linked to that visit. Gives the bill, and the line to go to. When nothing more of it is in stock,
+ * the bill is left as it was.
  */
 function withRows(lines: Line[], match: SellableMedicine, rows: CardRow[], from: CardTag): { lines: Line[]; focus?: number } {
   const { there, free } = partsOf(lines, match)
@@ -117,9 +128,15 @@ function withRows(lines: Line[], match: SellableMedicine, rows: CardRow[], from:
   // The 1 a medicine starts at, picked by name or from a row with no count, gives way to the count; it is not added to.
   const fresh = prescribed > 0 && there.length > 0 && there.every(startingOne)
   const had = (l: Line) => (fresh ? 0 : Number(l.quantity) || 0)
+  // In place of the 1s, the batch that expires first goes first, as everywhere at the counter.
+  const rank = (l: Line) => {
+    const at = match.sellable_batches.findIndex((b) => b.id === l.batchId)
+    return at < 0 ? match.sellable_batches.length : at
+  }
+  const order = fresh ? there.slice().sort((a, b) => rank(a) - rank(b)) : there
   let left = prescribed
   const onto: Record<number, number> = {}
-  for (const l of there) {
+  for (const l of order) {
     onto[l.batchId] = Math.min(left, Math.max(0, l.available - had(l)))
     left -= onto[l.batchId]
   }
@@ -128,13 +145,23 @@ function withRows(lines: Line[], match: SellableMedicine, rows: CardRow[], from:
   if (prescribed > 0 && added === 0) return { lines, focus: there.length > 0 ? there[0].batchId : undefined }
 
   // The first line to take some says how the count was worked out, and how short the stock was; any other, where the rest came from.
-  const first = there.find((l) => onto[l.batchId] > 0)?.batchId ?? (taken.length > 0 ? taken[0].batch.id : there[0].batchId)
+  const first = order.find((l) => onto[l.batchId] > 0)?.batchId ?? (taken.length > 0 ? taken[0].batch.id : there[0].batchId)
   const working = counted.map((r) => r.m.worked_out ?? '').filter(Boolean).join('; ')
   const rest = `rest of the ${prescribed} prescribed`
   const short = added >= prescribed ? undefined : there.length > 0 && !fresh ? `prescribed ${prescribed}, only ${added} more in stock` : shortOf(prescribed, added)
   const keys = rows.map((r) => r.key)
-  const mark = (l: Line): Line => ({ ...l, from: tagOf(l.from, from), rxRows: [...(l.rxRows ?? []), ...keys] })
-  const next = lines.map((l) => {
+  const countedKeys = counted.map((r) => r.key)
+  // A line that only held a 1 and took none of the count comes off; the rows and card it was from stay with the medicine.
+  const gone = fresh ? there.filter((l) => !(onto[l.batchId] > 0)) : []
+  const goneKeys = gone.reduce<string[]>((all, l) => all.concat(l.rxRows ?? []), [])
+  const goneTag = gone.reduce<CardTag | undefined>((tag, l) => (l.from ? tagOf(tag, l.from) : tag), undefined)
+  const mark = (l: Line): Line => ({
+    ...l,
+    from: tagOf(goneTag ? tagOf(l.from, goneTag) : l.from, from),
+    rxRows: [...(l.rxRows ?? []), ...goneKeys, ...keys],
+    counted: [...(fresh ? [] : (l.counted ?? [])), ...countedKeys],
+  })
+  const next = lines.filter((l) => gone.indexOf(l) < 0).map((l) => {
     if (l.medicineId !== match.id) return l
     const more = onto[l.batchId] ?? 0
     if (more === 0) return mark(l)
@@ -153,8 +180,9 @@ function withRows(lines: Line[], match: SellableMedicine, rows: CardRow[], from:
       ...taken.map((t) =>
         lineOf(match, t.batch, {
           quantity: String(t.quantity),
-          from,
-          rxRows: keys,
+          from: goneTag ? tagOf(goneTag, from) : from,
+          rxRows: [...goneKeys, ...keys],
+          counted: countedKeys,
           worked: prescribed === 0 ? undefined : t.batch.id === first ? working || undefined : rest,
           short: t.batch.id === first ? short : undefined,
         }),
@@ -308,6 +336,9 @@ export function PharmacyBilling() {
     if (!patient) return
     const from: CardTag = { kind: rx.kind ?? 'visit', id: rx.id, at: rx.completed_at, patientId: patient.id }
     const groups: { match: SellableMedicine; rows: CardRow[] }[] = []
+    // Medicines whose rows are skipped as on the bill some other way: they still take this card's link (tagOf), so a
+    // bill given from a visit's card is linked to that visit; nothing is added and the row stays as it was.
+    const carry: number[] = []
     let focus: number | undefined
     for (const index of picked) {
       const m = rx.medicines[index]
@@ -315,17 +346,18 @@ export function PharmacyBilling() {
       const key = rowKey(patient.id, rx, m)
       // The same line written twice on one card is one row.
       if (groups.some((g) => g.rows.some((r) => r.key === key))) continue
-      const state = rowState(lines, patient.id, rx, m)
+      const { state } = rowState(lines, patient.id, rx, m)
       const placed = lines.find((l) => (state === 'placed' ? (l.rxRows ?? []).includes(key) : match !== null && l.medicineId === match.id))
       if (state === 'placed' || (state === 'other' && !onPurpose)) {
         focus = placed?.batchId ?? focus
+        if (state === 'other' && match) carry.push(match.id)
       } else if (match && match.sellable_batches.length > 0) {
         const group = groups.find((g) => g.match.id === match.id)
         if (group) group.rows.push({ m, key })
         else groups.push({ match, rows: [{ m, key }] })
       }
     }
-    let next = lines
+    let next = carry.length > 0 ? lines.map((l) => (carry.indexOf(l.medicineId) >= 0 ? { ...l, from: tagOf(l.from, from) } : l)) : lines
     for (const { match, rows } of groups) {
       const added = withRows(next, match, rows, from)
       next = added.lines
@@ -567,7 +599,8 @@ export function PharmacyBilling() {
                   </div>
                   <ul>
                     {rx.medicines.map((m, i) => {
-                      const state = patient ? rowState(lines, patient.id, rx, m) : 'free'
+                      const { state, changed } = patient ? rowState(lines, patient.id, rx, m) : { state: 'free', changed: false }
+                      const onBill = m.match ? lines.filter((l) => l.medicineId === m.match!.id).reduce((sum, l) => sum + (Number(l.quantity) || 0), 0) : 0
                       // What Add puts on: the count, less what the bill already takes of the medicine's stock.
                       const room = m.match ? roomFor(lines, m.match) : 0
                       return (
@@ -585,6 +618,9 @@ export function PharmacyBilling() {
                                 {inStock(m) < m.quantity && <span className="due"> · {shortOf(m.quantity, inStock(m))}</span>}
                               </small>
                             ) : null}
+                            {state === 'other' && changed && (
+                              <small className="due block">Changed on the card after it went on the bill, which has {onBill}. Check the quantity.</small>
+                            )}
                           </span>
                           {!m.match?.sellable_batches.length ? (
                             <small className="due">Not in stock under this name</small>

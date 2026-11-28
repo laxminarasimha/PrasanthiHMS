@@ -52,6 +52,22 @@ const saved = async () => {
   return post.mock.calls[0][1] as { consultation_id: number | null; patient_id: number; items: { stock_batch_id: number; quantity: string }[] }
 }
 
+/** The cards on the screen, in the server's order, once they are in; and a card's button by its words. */
+const theCards = async (container: HTMLElement, count: number) =>
+  waitFor(() => {
+    const found = Array.from(container.querySelectorAll('.rx-card')) as HTMLElement[]
+    expect(found).toHaveLength(count)
+    return found
+  })
+const inCard = (card: HTMLElement, name: string) => Array.from(card.querySelectorAll('button')).find((b) => b.textContent === name)!
+/** The words of a card's rows' buttons, row by row. */
+const rowButtons = (card: HTMLElement) => Array.from(card.querySelectorAll('li')).map((li) => Array.from(li.querySelectorAll('button')).map((b) => b.textContent))
+/** Picks a batch of a medicine by name, as the pharmacist does in the search box. */
+const pickByName = async (typed: string, batchNo: RegExp) => {
+  fireEvent.change(screen.getByRole('combobox', { name: 'Search medicine' }), { target: { value: typed } })
+  fireEvent.click(await screen.findByText(batchNo))
+}
+
 afterEach(() => {
   cleanup()
   get.mockReset()
@@ -248,20 +264,16 @@ describe('the counter, a medicine already on the bill some other way', () => {
   })
 
   it('never adds a course twice from two cards without asking: the second card offers Add N more', async () => {
-    const { container } = show([visitCard(), discharge()])
-    const cards = await waitFor(() => {
-      const found = Array.from(container.querySelectorAll('.rx-card')) as HTMLElement[]
-      expect(found).toHaveLength(2)
-      return found
-    })
-    const inCard = (card: HTMLElement, name: string) => Array.from(card.querySelectorAll('button')).find((b) => b.textContent === name)!
+    // As the server sends them: the discharge card above the follow-up visit's card.
+    const { container } = show([discharge(), visitCard()])
+    const cards = await theCards(container, 2)
 
     fireEvent.click(inCard(cards[0], 'Add all in stock (1)'))
     expect(quantities()).toEqual([
       ['Quantity of Sample Amlodipine 5 Tablet', '15'],
       ['Quantity of Sample Amlodipine 5 Tablet', '6'],
     ])
-    // The discharge card lists the same 21: Add all in stock leaves it alone…
+    // The visit's card lists the same 21: Add all in stock adds nothing…
     fireEvent.click(inCard(cards[1], 'Add all in stock (1)'))
     expect(quantities()).toEqual([
       ['Quantity of Sample Amlodipine 5 Tablet', '15'],
@@ -269,6 +281,20 @@ describe('the counter, a medicine already on the bill some other way', () => {
     ])
     // …and its row says the medicine is on the bill, with its count added only on purpose.
     expect(inCard(cards[1], 'On the bill')).toBeTruthy()
+    expect(inCard(cards[1], 'Add 21 more')).toBeTruthy()
+    // The bill is still given from the visit's card, so it is linked to that visit.
+    const body = await saved()
+    expect(body.consultation_id).toBe(31)
+    expect(body.items.map((i) => [i.stock_batch_id, i.quantity])).toEqual([
+      [101, '15'],
+      [102, '6'],
+    ])
+  })
+
+  it('adds the second card’s count when asked to', async () => {
+    const { container } = show([discharge(), visitCard()])
+    const cards = await theCards(container, 2)
+    fireEvent.click(inCard(cards[0], 'Add all in stock (1)'))
     fireEvent.click(inCard(cards[1], 'Add 21 more'))
     expect(quantities()).toEqual([
       ['Quantity of Sample Amlodipine 5 Tablet', '15'],
@@ -292,6 +318,19 @@ describe('the counter, a medicine already on the bill some other way', () => {
       ['Quantity of Sample Amlodipine 5 Tablet', '16'],
     ])
     expect(screen.getByText('10 already on the bill; 1-1-1 for 1 week (7 days) = 21')).toBeTruthy()
+  })
+
+  it('links the bill to the visit when the visit’s card is pressed for a quantity the pharmacist typed', async () => {
+    show([visitCard()], [tablet([batch(101, 15, '2027-01-31'), batch(102, 40, '2027-06-30')])])
+    await screen.findByRole('button', { name: 'Add 21' })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search medicine' }), { target: { value: 'Sample Aml' } })
+    fireEvent.click(await screen.findByText(/Batch B101/))
+    fireEvent.change(screen.getByLabelText('Quantity of Sample Amlodipine 5 Tablet'), { target: { value: '10' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add all in stock (1)' }))
+    const body = await saved()
+    expect(body.items.map((i) => [i.stock_batch_id, i.quantity])).toEqual([[101, '10']])
+    expect(body.consultation_id).toBe(31)
   })
 
   it('knows the rows on the bill when the cards are read again with a row added above', async () => {
@@ -358,5 +397,113 @@ describe('the counter, a medicine already on the bill some other way', () => {
       ['Quantity of Sample Amlodipine 5 Tablet', '6'],
     ])
     expect((await saved()).consultation_id).toBe(31)
+  })
+})
+
+describe('the counter, a taper beside a ward order, and cards that change', () => {
+  const stock = () => [batch(301, 50, '2027-02-28')]
+  const wardCard = (): PrescriptionForPharmacy => ({
+    id: 3, kind: 'ward', completed_at: '2026-11-23 10:00', doctor: 'Dr Sample One', note: 'Running on the ward.',
+    medicines: [{ medicine: 'Sample Pred 10 Tablet', directions: '1 tab · BD', match: pred(stock()), new: true, quantity: null, worked_out: null }],
+  })
+
+  it('adds the whole take-home taper after a ward row with no count put its 1 on the bill', async () => {
+    const takeHome: PrescriptionForPharmacy = { id: 4, kind: 'discharge', completed_at: '2026-11-24 09:00', doctor: 'Dr Sample One', note: 'To take home.', medicines: taperRows(stock()) }
+    const { container } = show([wardCard(), takeHome])
+    const cards = await theCards(container, 2)
+
+    fireEvent.click(inCard(cards[0], 'Add'))
+    expect(quantities()).toEqual([['Quantity of Sample Pred 10 Tablet', '1']])
+    // The taper's first stage takes the place of the 1, and its second stage can still be added.
+    fireEvent.click(inCard(cards[1], 'Add 10'))
+    expect(quantities()).toEqual([['Quantity of Sample Pred 10 Tablet', '10']])
+    expect(rowButtons(cards[1])).toEqual([['On the bill'], ['Add 5']])
+    fireEvent.click(inCard(cards[1], 'Add all in stock (2)'))
+    expect(quantities()).toEqual([['Quantity of Sample Pred 10 Tablet', '15']])
+  })
+
+  it('keeps a visit taper’s second stage open after the ward row is pressed, and the bill is linked to the visit', async () => {
+    const { container } = show([wardCard(), visitCard({ medicines: taperRows(stock()) })])
+    const cards = await theCards(container, 2)
+
+    fireEvent.click(inCard(cards[1], 'Add 10'))
+    // The ward row has no count: it only goes to the line.
+    fireEvent.click(inCard(cards[0], 'On the bill'))
+    expect(quantities()).toEqual([['Quantity of Sample Pred 10 Tablet', '10']])
+    expect(rowButtons(cards[1])).toEqual([['On the bill'], ['Add 5']])
+    fireEvent.click(inCard(cards[1], 'Add all in stock (2)'))
+    expect(quantities()).toEqual([['Quantity of Sample Pred 10 Tablet', '15']])
+    expect((await saved()).consultation_id).toBe(31)
+  })
+
+  it('does not add a row the doctor changed after it went on the bill, and says it changed', async () => {
+    const takeHome = (days: number): PrescriptionForPharmacy => ({
+      id: 4, kind: 'discharge', completed_at: '2026-11-24 09:00', doctor: 'Dr Sample One', note: 'Not approved yet: this may still change.',
+      medicines: [{ medicine: 'Sample Pred 10 Tablet', directions: `1 tablet · 1-0-1 · ${days} days`, match: pred(stock()), quantity: days * 2, worked_out: `1 tablet 1-0-1 for ${days} days = ${days * 2}` }],
+    })
+    let cards = [takeHome(5)]
+    get.mockImplementation((url: string) => Promise.resolve({ data: url === '/patients/7' ? patient : url === '/pharmacy/prescriptions' ? cards : [] }))
+    function Again() {
+      const navigate = useNavigate()
+      return (
+        <button type="button" onClick={() => navigate('/pharmacy?patient=7')}>
+          Open again
+        </button>
+      )
+    }
+    render(
+      <MemoryRouter initialEntries={['/pharmacy?patient=7']}>
+        <PharmacyBilling />
+        <Again />
+      </MemoryRouter>,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Add all in stock (1)' }))
+    expect(quantities()).toEqual([['Quantity of Sample Pred 10 Tablet', '10']])
+
+    // The doctor makes it 7 days (14) before the summary is approved, and the card is read again.
+    cards = [takeHome(7)]
+    fireEvent.click(screen.getByRole('button', { name: 'Open again' }))
+    await screen.findByText('Changed on the card after it went on the bill, which has 10. Check the quantity.')
+    expect(screen.getByRole('button', { name: 'Add 14 more' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Add all in stock (1)' }))
+    expect(quantities()).toEqual([['Quantity of Sample Pred 10 Tablet', '10']])
+  })
+
+  it('puts exactly the count on when two batches were picked by name, soonest expiry first', async () => {
+    const two = () => tablet([batch(101, 15, '2027-01-31'), batch(102, 40, '2027-06-30')])
+    show([visitCard()], [two()])
+    await screen.findByRole('button', { name: 'Add 21' })
+    await pickByName('Sample Aml', /Batch B102/)
+    await pickByName('Sample Aml', /Batch B101/)
+    expect(quantities()).toEqual([
+      ['Quantity of Sample Amlodipine 5 Tablet', '1'],
+      ['Quantity of Sample Amlodipine 5 Tablet', '1'],
+    ])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add 21' }))
+    // 15 from B101, which expires first, and 6 from B102: 21 in all, not 22.
+    expect(quantities()).toEqual([
+      ['Quantity of Sample Amlodipine 5 Tablet', '6'],
+      ['Quantity of Sample Amlodipine 5 Tablet', '15'],
+    ])
+    const body = await saved()
+    expect(body.items.map((i) => [i.stock_batch_id, i.quantity])).toEqual([
+      [102, '6'],
+      [101, '15'],
+    ])
+    expect(body.consultation_id).toBe(31)
+  })
+
+  it('takes off a batch picked by name that the count does not need', async () => {
+    const two = () => tablet([batch(101, 15, '2027-01-31'), batch(102, 40, '2027-06-30')])
+    const ten = visitCard({ medicines: [{ ...visitCard().medicines[0], match: two(), directions: '1-0-1 · 5 days', quantity: 10, worked_out: '1-0-1 for 5 days = 10' }] })
+    show([ten], [two()])
+    await screen.findByRole('button', { name: 'Add 10' })
+    await pickByName('Sample Aml', /Batch B101/)
+    await pickByName('Sample Aml', /Batch B102/)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add 10' }))
+    expect(quantities()).toEqual([['Quantity of Sample Amlodipine 5 Tablet', '10']])
+    expect((await saved()).items.map((i) => [i.stock_batch_id, i.quantity])).toEqual([[101, '10']])
   })
 })
