@@ -49,4 +49,34 @@ class InterlinkStageBTest extends TestCase
         Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
         $this->getJson('/api/doctors/'.User::factory()->create(['role' => 'nurse'])->id.'/card')->assertNotFound();
     }
+
+    public function test_a_medicine_opens_its_own_page_with_stock_suppliers_sales_brands_and_offers(): void
+    {
+        $paracetamol = \App\Models\Medicine::create(['name' => 'Sample Para 650', 'composition' => 'Paracetamol 650mg', 'gst_percent' => 12, 'units_per_pack' => 10, 'reorder_level' => 20]);
+        $other = \App\Models\Medicine::create(['name' => 'Other Para 650', 'composition' => ' paracetamol 650MG', 'gst_percent' => 12, 'units_per_pack' => 10]);
+        \App\Models\Medicine::create(['name' => 'Para 500', 'composition' => 'Paracetamol 500mg', 'gst_percent' => 12, 'units_per_pack' => 10]);
+        $stockist = \App\Models\Stockist::create(['name' => 'Sample Pharma Distributors']);
+        $invoice = \App\Models\PurchaseInvoice::create(['stockist_id' => $stockist->id, 'invoice_no' => 'INV-77', 'invoice_date' => today()->subDays(5), 'total' => 300]);
+        $batch = \App\Models\StockBatch::create(['medicine_id' => $paracetamol->id, 'purchase_invoice_id' => $invoice->id, 'batch_no' => 'PB1', 'expiry' => now()->addYear(), 'units_per_pack' => 10, 'packs' => 10,
+            'pack_price' => 30, 'pack_mrp' => 50, 'unit_mrp' => 5, 'gst_percent' => 12, 'units_received' => 100, 'units_in_stock' => 100, 'rack_no' => 'R2']);
+        $company = \App\Models\RepCompany::create(['name' => 'Sample Labs']);
+        \App\Models\RepProduct::create(['rep_company_id' => $company->id, 'name' => 'Labs Para', 'composition' => 'Paracetamol 650mg', 'rate' => 22, 'mrp' => 45, 'scheme' => '10+1']);
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $patient = Patient::factory()->create();
+        $this->postJson('/api/pharmacy/sales', ['patient_id' => $patient->id, 'customer_name' => $patient->name, 'paid' => 30, 'payment_mode' => 'cash',
+            'items' => [['stock_batch_id' => $batch->id, 'quantity' => 6]]])->assertCreated();
+
+        $page = $this->getJson("/api/pharmacy/medicines/{$paracetamol->id}/page")->assertOk()
+            ->assertJsonPath('medicine.name', 'Sample Para 650')->assertJsonPath('on_shelf', 94)->assertJsonPath('batches.0.batch_no', 'PB1')->assertJsonPath('batches.0.rack_no', 'R2')
+            ->assertJsonPath('suppliers.0.name', 'Sample Pharma Distributors')->assertJsonPath('suppliers.0.last_rate', 30)->assertJsonPath('purchases.0.invoice_no', 'INV-77')
+            ->assertJsonPath('sales.month.units', 6)->assertJsonPath('sales.recent.0.patient_id', $patient->id)
+            ->assertJsonPath('offers.0.name', 'Labs Para')->assertJsonPath('offers.0.rate', 22)->json();
+        // Same contents however the letters were typed; a different strength is not the same medicine.
+        $this->assertSame([$other->id], array_column($page['alternatives'], 'id'));
+
+        // Someone with no work in the pharmacy cannot open it.
+        Sanctum::actingAs(User::factory()->create(['role' => 'frontdesk']));
+        $this->getJson("/api/pharmacy/medicines/{$paracetamol->id}/page")->assertForbidden();
+    }
 }

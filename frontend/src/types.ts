@@ -566,6 +566,7 @@ export type SellableMedicine = {
 export type PharmacySaleItem = {
   id: number
   stock_batch_id?: number
+  medicine_id?: number | null
   medicine_name: string
   batch_no: string
   expiry: string

@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AppointmentController;
 use App\Http\Controllers\Api\AuditController;
 use App\Http\Controllers\Api\DoctorCardController;
+use App\Http\Controllers\Api\MedicinePageController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BackupController;
 use App\Http\Controllers\Api\BillController;
@@ -390,6 +391,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
         Route::delete('/medicines/{medicine}/national-link', 'unlink');
     });
 
+    Route::get('/pharmacy/medicines/{medicine}/page', [MedicinePageController::class, 'show']);
     Route::prefix('pharmacy')->controller(PharmacyController::class)->group(function () {
         Route::get('/medicines', 'medicines');
         Route::get('/medicines/options', 'medicineOptions');

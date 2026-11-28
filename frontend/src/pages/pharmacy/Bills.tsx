@@ -17,6 +17,7 @@ import { PatientLink } from '../../components/PatientLink'
 import { PharmacyDay } from '../../components/PharmacyDay'
 import { EarlierDate } from '../../components/EarlierDate'
 import { earlier } from '../../earlierDay'
+import { MedicineLink } from '../../components/MedicineLink'
 
 type Action = 'view' | 'collect' | 'return' | 'delete' | 'edit' | 'mode'
 /** A medicine being added to a bill that is already saved. */
@@ -364,7 +365,9 @@ export function PharmacyBills() {
                   const left = item.quantity - item.returned_quantity
                   return (
                     <tr key={item.id} className="static">
-                      <td>{item.medicine_name}</td>
+                      <td>
+                        <MedicineLink id={item.medicine_id}>{item.medicine_name}</MedicineLink>
+                      </td>
                       <td>{item.batch_no}</td>
                       <td className="num">
                         {item.quantity}

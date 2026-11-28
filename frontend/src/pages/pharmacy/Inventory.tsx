@@ -7,6 +7,7 @@ import { PharmacyTabs } from '../../components/PharmacyTabs'
 import { daysUntil, downloadCsv, expiryLabel, placeLabel, rupees, today } from '../../format'
 import type { StockBatch } from '../../types'
 import { AddStockPopup, DetailsPopup, QuantityPopup } from './StockEdits'
+import { MedicineLink } from '../../components/MedicineLink'
 
 type SortBy = 'medicine' | 'batch' | 'expiry' | 'units'
 const text = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
@@ -179,7 +180,9 @@ export function PharmacyInventory() {
                   return (
                     <tr key={b.id} className={`static ${b.units_in_stock === 0 ? 'faded' : ''} ${editing?.batch.id === b.id ? 'selected' : ''}`}>
                       <td>
-                        <strong>{b.medicine?.name}</strong>
+                        <strong>
+                          <MedicineLink id={b.medicine?.id ?? b.medicine_id}>{b.medicine?.name}</MedicineLink>
+                        </strong>
                         {/* The form, unless the name already says it ("… 650mg Tablet"). */}
                         {b.medicine?.type && !b.medicine.name.toLowerCase().includes(b.medicine.type.toLowerCase()) && <small className="muted"> {b.medicine.type}</small>}
                         {b.medicine?.composition && <small className="muted block">{b.medicine.composition}</small>}
