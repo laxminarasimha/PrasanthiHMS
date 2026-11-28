@@ -76,7 +76,8 @@ final class PhoneNotice
             self::REP => $doctor,
             // Anyone with a To do screen can be given a task.
             self::TASK => true,
-            self::LEAVE => $user->allows('wf:self:create'),
+            // Leave is asked for on the person's own record, and the notice opens that record.
+            self::LEAVE => $user->allows('wf:self:view') && $user->allows('wf:self:create'),
             self::EXPENSE => $user->allows('canRecordExpenses'),
             self::STOCK_COUNT => self::approvesCounts($user),
             self::SUMMARY => $user->allows('canApproveIpd') && $user->allows('canWorkIpd'),
@@ -268,6 +269,28 @@ final class PhoneNotice
     }
 
     /**
+     * Whoever entered an expense is told when someone else sends it on and it needs no approval, so it is ready to pay
+     * at once: its number, its heading and who sent it. Never the amount, whom it was paid to or its details.
+     */
+    public static function expenseReady(Expense $expense, User $by): void
+    {
+        self::safely(function () use ($expense, $by) {
+            // Salaries and advances are written already paid by payroll and advances, and never wait to be paid.
+            if ($expense->status !== 'approved' || $expense->isPosted() || $expense->heading?->is_payroll || ! $expense->created_by || (int) $expense->created_by === $by->id) {
+                return;
+            }
+
+            self::later((int) $expense->created_by, [
+                'title' => 'Expense ready to pay',
+                'body' => implode(' · ', array_filter([$expense->expense_no, $expense->heading?->name ?? $expense->category, 'needs no approval, sent by '.$by->name])),
+                'url' => '/expenses?show=to_pay',
+                'tag' => 'expense-'.$expense->id,
+                'kind' => self::EXPENSE,
+            ]);
+        });
+    }
+
+    /**
      * Those who approve stock counts are told when one is handed in: its number, what was counted and who counted
      * it. Nothing of the differences, the units or their value travels in it.
      */
@@ -303,14 +326,25 @@ final class PhoneNotice
                 'tag' => 'summary-'.$admission->id,
                 'kind' => self::SUMMARY,
             ];
-            $doctor = $admission->doctor_id ? User::find($admission->doctor_id) : null;
-            if ($doctor && $doctor->id !== $by->id && self::hears($doctor, self::SUMMARY)) {
-                self::later($doctor->id, $message);
+            if ((int) $admission->doctor_id !== $by->id && self::doctorHearsSummary($admission)) {
+                self::later((int) $admission->doctor_id, $message);
 
                 return;
             }
             self::toEveryone(fn (User $person) => $person->role !== Role::Doctor && self::hears($person, self::SUMMARY), $message, $by->id);
         });
+    }
+
+    /**
+     * Whether the doctor of an IPD case is the one told when its summary is handed over for approval: they can be sent
+     * notices, and may approve summaries and work in the IPD. The summary screen asks this too, so it names whoever is
+     * really told.
+     */
+    public static function doctorHearsSummary(Admission $admission): bool
+    {
+        $doctor = $admission->doctor_id ? User::find($admission->doctor_id) : null;
+
+        return $doctor !== null && self::hears($doctor, self::SUMMARY);
     }
 
     /**
