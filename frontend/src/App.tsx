@@ -56,6 +56,7 @@ const AllBills = page(() => import('./pages/AllBills'), 'AllBills')
 const Expenses = page(() => import('./pages/Expenses'), 'Expenses')
 const Todo = page(() => import('./pages/Todo'), 'Todo')
 const MedicalReps = page(() => import('./pages/MedicalReps'), 'MedicalReps')
+const RepReferencePrint = page(() => import('./pages/RepReferencePrint'), 'RepReferencePrint')
 const FormPrint = page(() => import('./pages/FormPrint'), 'FormPrint')
 const Ipd = page(() => import('./pages/ipd/Ipd'), 'Ipd')
 const IpdCase = page(() => import('./pages/ipd/IpdCase'), 'IpdCase')
@@ -170,6 +171,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/queue" element={<PrintOnly><QueueBoard /></PrintOnly>} />
+          <Route path="/reps/reference/print" element={<PrintOnly><RepReferencePrint /></PrintOnly>} />
           <Route path="/bills/:id/print" element={<PrintOnly><BillPrint /></PrintOnly>} />
           <Route path="/front-desk/patients/:id/bills/:date/print" element={<PrintOnly><DayBillsPrint /></PrintOnly>} />
           <Route path="/visits/:id/print" element={<PrintOnly><PrescriptionPrint /></PrintOnly>} />

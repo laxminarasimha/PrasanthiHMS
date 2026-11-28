@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\MedicalRep;
+use App\Models\MedicineDefault;
 use App\Models\RepCompany;
 use App\Models\RepCompanyFile;
+use App\Models\RepProduct;
 use App\Models\RepVisit;
+use App\Models\RepVisitDrug;
 use App\Models\Setting;
 use App\Models\User;
 use App\Support\PhoneNotice;
@@ -15,6 +18,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -29,7 +33,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class MedicalRepController extends Controller
 {
-    private const VISIT_WITH = ['rep:id,rep_company_id,name,mobile,division', 'rep.company:id,name', 'doctor:id,name', 'logger:id,name'];
+    private const VISIT_WITH = ['rep:id,rep_company_id,name,mobile,division', 'rep.company:id,name', 'doctor:id,name', 'logger:id,name', 'drugs'];
 
     // ---- Visits ----
 
@@ -108,22 +112,136 @@ class MedicalRepController extends Controller
             'discussed' => ['nullable', 'string', 'max:5000'],
             'offers' => ['nullable', 'string', 'max:5000'],
             'next_on' => ['nullable', 'date', 'after_or_equal:'.$visit->arrived_at->toDateString(), 'required_if:status,come_back'],
-        ], ['next_on.required_if' => 'Say which day the representative should come back.', 'next_on.after_or_equal' => 'The next day cannot be before this visit.']);
+            // The drugs spoken about, one to a line as on a prescription. Sent whole: the lines given replace those there.
+            'drugs' => ['sometimes', 'array', 'max:40'],
+            'drugs.*.name' => ['required', 'string', 'min:2', 'max:255'],
+            'drugs.*.composition' => ['nullable', 'string', 'max:255'],
+            'drugs.*.uses' => ['nullable', 'string', 'max:255'],
+            'drugs.*.dose' => ['nullable', 'string', 'max:50'],
+            'drugs.*.frequency' => ['nullable', 'string', 'max:50'],
+            'drugs.*.timing' => ['nullable', 'string', 'max:30'],
+            'drugs.*.duration' => ['nullable', 'string', 'max:50'],
+            'drugs.*.note' => ['nullable', 'string', 'max:255'],
+            'drugs.*.mrp' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
+            'drugs.*.rate' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
+            'drugs.*.scheme' => ['nullable', 'string', 'max:255'],
+            'drugs.*.keep' => ['sometimes', 'boolean'],
+        ], ['next_on.required_if' => 'Say which day the representative should come back.', 'next_on.after_or_equal' => 'The next day cannot be before this visit.', 'drugs.*.name.required' => 'Each drug needs its brand name.', 'drugs.*.name.min' => 'Each drug needs its brand name.']);
+        $drugs = $data['drugs'] ?? null;
+        unset($data['drugs']);
 
         $closing = $data['status'] !== 'waiting';
-        $visit->update($data + [
-            'closed_at' => $closing ? ($visit->status === 'waiting' ? now() : $visit->closed_at) : null,
-            'closed_by' => $closing ? ($visit->status === 'waiting' ? $user->id : $visit->closed_by) : null,
-        ]);
+        DB::transaction(function () use ($visit, $data, $drugs, $closing, $user) {
+            $visit->update($data + [
+                'closed_at' => $closing ? ($visit->status === 'waiting' ? now() : $visit->closed_at) : null,
+                'closed_by' => $closing ? ($visit->status === 'waiting' ? $user->id : $visit->closed_by) : null,
+            ]);
+            if ($drugs !== null) {
+                $this->writeDrugs($visit, $drugs, $user);
+            }
+        });
 
         return response()->json($visit->load(self::VISIT_WITH));
+    }
+
+    /**
+     * Writes the drugs of a visit. A brand not yet in the company's catalogue joins it, so the catalogue grows from
+     * the meetings; one already there is only filled in where it was empty, never overwritten. A line the doctor
+     * ticked to keep becomes their usual way of giving that brand, which the prescription pad then fills in.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function writeDrugs(RepVisit $visit, array $rows, User $user): void
+    {
+        $companyId = (int) $visit->rep()->value('rep_company_id');
+        $catalogue = app(RepCatalogueController::class);
+        // Only the doctor it was for (or an admin) decides what goes into that doctor's own list.
+        $mayKeep = $user->id === $visit->doctor_id || $user->role === Role::Admin;
+        $said = fn (array $row, string $field) => filled($row[$field] ?? null) ? trim((string) $row[$field]) : null;
+
+        $visit->drugs()->delete();
+        $seen = [];
+        foreach (array_values($rows) as $position => $row) {
+            $name = trim(preg_replace('/\s+/', ' ', (string) $row['name']));
+            if (isset($seen[mb_strtolower($name)])) {
+                continue; // the same brand written twice is one line
+            }
+            $seen[mb_strtolower($name)] = true;
+
+            $product = RepProduct::where('rep_company_id', $companyId)->whereRaw('lower(name) = ?', [mb_strtolower($name)])->first();
+            if (! $product) {
+                $product = $catalogue->save(new RepProduct(['created_by' => $user->id]), ['rep_company_id' => $companyId, 'name' => $name, 'composition' => $said($row, 'composition'), 'uses' => $said($row, 'uses')]);
+            } else {
+                if (blank($product->composition) && $said($row, 'composition')) {
+                    $catalogue->save($product, ['rep_company_id' => $companyId, 'name' => $product->name, 'composition' => $said($row, 'composition')]);
+                }
+                if ($said($row, 'uses') && blank($product->uses)) {
+                    $product->update(['uses' => $said($row, 'uses')]);
+                }
+            }
+            // Prices and offers change: what is said at this visit is the latest, and becomes the catalogue's.
+            $offer = array_filter(['mrp' => $said($row, 'mrp'), 'rate' => $said($row, 'rate'), 'scheme' => $said($row, 'scheme')], fn ($value) => $value !== null);
+            if ($offer) {
+                $product->update($offer);
+            }
+            $product->refresh();
+
+            $keep = $mayKeep && ! empty($row['keep']);
+            $visit->drugs()->create([
+                'rep_product_id' => $product->id, 'name' => $product->name, 'composition' => $product->composition, 'uses' => $said($row, 'uses') ?? $product->uses,
+                'dose' => $said($row, 'dose'), 'frequency' => $said($row, 'frequency'), 'timing' => $said($row, 'timing'), 'duration' => $said($row, 'duration'),
+                'note' => $said($row, 'note'), 'mrp' => $said($row, 'mrp'), 'rate' => $said($row, 'rate'), 'scheme' => $said($row, 'scheme'), 'keep' => $keep, 'position' => $position,
+            ]);
+            if ($keep && collect(['dose', 'frequency', 'timing', 'duration', 'note'])->contains(fn ($field) => $said($row, $field) !== null)) {
+                $usual = MedicineDefault::where('doctor_id', $visit->doctor_id)->whereRaw('lower(medicine) = ?', [mb_strtolower($product->name)])->first()
+                    ?? new MedicineDefault(['doctor_id' => $visit->doctor_id, 'medicine' => $product->name]);
+                $usual->fill(['dose' => $said($row, 'dose'), 'frequency' => $said($row, 'frequency'), 'timing' => $said($row, 'timing'), 'duration' => $said($row, 'duration'),
+                    'instructions' => $said($row, 'note')])->save();
+            }
+        }
+    }
+
+    /**
+     * The drugs of one company, or those one representative has spoken about, as a reference sheet: each brand with
+     * what it contains, what it is for, and how the doctor noted they would give it. A doctor's sheet carries their
+     * own notes; the desk's and an admin's carry the latest noted by anyone.
+     */
+    public function reference(Request $request): JsonResponse
+    {
+        $user = $this->reader($request);
+        $data = $request->validate(['company_id' => ['nullable', 'required_without:rep_id', Rule::exists('rep_companies', 'id')], 'rep_id' => ['nullable', Rule::exists('medical_reps', 'id')]]);
+        $rep = isset($data['rep_id']) ? MedicalRep::with('company:id,name')->findOrFail($data['rep_id']) : null;
+        $company = $rep?->company ?? RepCompany::findOrFail($data['company_id']);
+
+        $sees = $user->allows('canWorkFrontDesk') || $user->allows('canConsult');
+        $noted = ! $sees ? collect() : RepVisitDrug::query()
+            ->whereHas('visit', fn ($q) => $this->mine($q, $user)->whereHas('rep', fn ($r) => $r->where('rep_company_id', $company->id))->when($rep, fn ($v) => $v->where('medical_rep_id', $rep->id)))
+            ->latest('id')->get()->unique(fn (RepVisitDrug $d) => mb_strtolower($d->name));
+        $byProduct = $noted->keyBy('rep_product_id');
+
+        // For one representative: the brands they spoke about. For a company: its whole catalogue.
+        $products = RepProduct::where('rep_company_id', $company->id)->when($rep, fn ($q) => $q->whereIn('id', $noted->pluck('rep_product_id')->filter()))->orderBy('name')->get();
+
+        return response()->json([
+            'company' => $company->only(['id', 'name']),
+            'rep' => $rep?->only(['id', 'name', 'mobile', 'division']),
+            'made_on' => today()->toDateString(),
+            'drugs' => $products->map(function (RepProduct $p) use ($byProduct) {
+                $line = $byProduct->get($p->id);
+
+                return [
+                    'id' => $p->id, 'name' => $p->name, 'composition' => $p->composition, 'form' => $p->form, 'pack' => $p->pack, 'mrp' => $p->mrp, 'rate' => $p->rate, 'scheme' => $p->scheme,
+                    'uses' => $line?->uses ?? $p->uses, 'dose' => $line?->dose, 'frequency' => $line?->frequency, 'timing' => $line?->timing, 'duration' => $line?->duration, 'note' => $line?->note,
+                ];
+            })->values(),
+        ]);
     }
 
     /** A visit logged by mistake is taken off, while nothing has been written on it. */
     public function removeVisit(Request $request, RepVisit $visit): JsonResponse
     {
         $this->desk($request);
-        if ($visit->status !== 'waiting' || filled($visit->discussed) || filled($visit->offers)) {
+        if ($visit->status !== 'waiting' || filled($visit->discussed) || filled($visit->offers) || $visit->drugs()->exists()) {
             throw ValidationException::withMessages(['visit' => 'This visit has been written up, so it stays on record. Change its status instead.']);
         }
         $visit->delete();
@@ -153,7 +271,7 @@ class MedicalRepController extends Controller
     {
         $user = $this->reader($request);
         $visits = $user->allows('canWorkFrontDesk') || $user->allows('canConsult')
-            ? $this->mine($rep->visits(), $user)->with(['doctor:id,name', 'logger:id,name'])->limit(100)->get()
+            ? $this->mine($rep->visits(), $user)->with(['doctor:id,name', 'logger:id,name', 'drugs'])->limit(100)->get()
             : collect();
 
         return response()->json(['rep' => $rep->load('company:id,name'), 'visits' => $visits]);

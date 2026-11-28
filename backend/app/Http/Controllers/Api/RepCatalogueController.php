@@ -185,6 +185,7 @@ class RepCatalogueController extends Controller
             'rate' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
             'scheme' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:1000'],
+            'uses' => ['nullable', 'string', 'max:255'],
         ]);
     }
 
@@ -194,7 +195,7 @@ class RepCatalogueController extends Controller
      *
      * @param  array<string, mixed>  $data
      */
-    private function save(RepProduct $product, array $data): RepProduct
+    public function save(RepProduct $product, array $data): RepProduct
     {
         $ours = Medicine::whereRaw('lower(name) = ?', [mb_strtolower(trim($data['name']))])->first(['id', 'composition']);
         // Said afresh, the composition is as said; not said at all (a sheet without that column), it stays as it was.
@@ -249,15 +250,15 @@ class RepCatalogueController extends Controller
             ->map(fn (Collection $same) => $same->map(fn (RepProduct $p) => ['id' => $p->id, 'name' => $p->name, 'company' => $p->company?->name, 'mrp' => $p->mrp, 'rate' => $p->rate, 'scheme' => $p->scheme])->values());
     }
 
-    /** The catalogue is kept by the front desk and the pharmacy. */
+    /** The catalogue, with its prices and offers, is kept by the front desk, the pharmacy and the doctors. */
     private function mayChange(User $user): bool
     {
-        return $user->allows('canWorkFrontDesk') || $user->allows('canRunPharmacy');
+        return $user->allows('canWorkFrontDesk') || $user->allows('canRunPharmacy') || $user->allows('canConsult');
     }
 
     private function changer(Request $request): User
     {
-        abort_unless($this->mayChange($request->user()), 403, 'The catalogue is kept by the front desk and the pharmacy.');
+        abort_unless($this->mayChange($request->user()), 403, 'The catalogue is kept by the front desk, the pharmacy and the doctors.');
 
         return $request->user();
     }

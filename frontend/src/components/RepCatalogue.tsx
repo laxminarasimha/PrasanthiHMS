@@ -15,6 +15,7 @@ type Product = {
   rate: number | null
   scheme: string | null
   notes: string | null
+  uses?: string | null
   medicine_id: number | null
   company?: { id: number; name: string }
   /** The pharmacy's own medicines that contain the same thing. */
@@ -26,7 +27,7 @@ type Answer = { can_change: boolean; companies: Company[]; products: Product[] }
 type SheetRow = { line: number; name: string; composition: string | null; mrp: number | null; rate: number | null; scheme: string | null; errors: string[]; already: boolean; missing_composition: boolean }
 type SheetAnswer = { rows: SheetRow[]; totals: { lines: number; good: number; wrong: number; new: number; updated: number; without_composition: number }; saved: number }
 
-const blank = { rep_company_id: '', name: '', composition: '', form: '', pack: '', mrp: '', rate: '', scheme: '', notes: '' }
+const blank = { rep_company_id: '', name: '', composition: '', uses: '', form: '', pack: '', mrp: '', rate: '', scheme: '', notes: '' }
 /** The headings a company's sheet may use for each thing we keep. The first column that fits is taken. */
 const HEADINGS: Record<string, string[]> = {
   name: ['name', 'brand', 'brand name', 'product', 'product name', 'item', 'medicine'],
@@ -70,7 +71,7 @@ export function RepCatalogue() {
     setEditing(p?.id ?? null)
     setDraft(
       p
-        ? { rep_company_id: String(p.rep_company_id), name: p.name, composition: p.composition ?? '', form: p.form ?? '', pack: p.pack ?? '', mrp: p.mrp === null ? '' : String(p.mrp), rate: p.rate === null ? '' : String(p.rate), scheme: p.scheme ?? '', notes: p.notes ?? '' }
+        ? { rep_company_id: String(p.rep_company_id), name: p.name, composition: p.composition ?? '', uses: p.uses ?? '', form: p.form ?? '', pack: p.pack ?? '', mrp: p.mrp === null ? '' : String(p.mrp), rate: p.rate === null ? '' : String(p.rate), scheme: p.scheme ?? '', notes: p.notes ?? '' }
         : { ...blank, rep_company_id: companyId },
     )
   }
@@ -169,11 +170,12 @@ export function RepCatalogue() {
             <SelectField label="Company" required value={draft.rep_company_id} onChange={set('rep_company_id')} options={companies} placeholder="Select company" error={errors.rep_company_id} />
             <TextField label="Brand name" required value={draft.name} onChange={set('name')} error={errors.name} />
             <TextField label="What it contains" value={draft.composition} onChange={set('composition')} placeholder="Pantoprazole 40 mg, or Drug A 5 mg + Drug B 10 mg" error={errors.composition} />
+            <TextField label="What it is used for" value={draft.uses} onChange={set('uses')} error={errors.uses} />
             <TextField label="Form" value={draft.form} onChange={set('form')} placeholder="Tablet, syrup, injection…" error={errors.form} />
             <TextField label="Pack" value={draft.pack} onChange={set('pack')} placeholder="Strip of 10" error={errors.pack} />
             <TextField label="MRP of a pack (₹)" type="number" min={0} step="0.01" value={draft.mrp} onChange={set('mrp')} error={errors.mrp} />
-            <TextField label="Rate offered for a pack (₹)" type="number" min={0} step="0.01" value={draft.rate} onChange={set('rate')} error={errors.rate} />
-            <TextField label="Scheme" value={draft.scheme} onChange={set('scheme')} placeholder="10 + 1, and the like" error={errors.scheme} />
+            <TextField label="Price we get a pack at (₹)" type="number" min={0} step="0.01" value={draft.rate} onChange={set('rate')} error={errors.rate} />
+            <TextField label="Offer or scheme" value={draft.scheme} onChange={set('scheme')} placeholder="10 + 1, and the like" error={errors.scheme} />
             <TextField label="Notes" value={draft.notes} onChange={set('notes')} error={errors.notes} />
           </div>
           <p className="muted small">Type what it contains as the catalogue prints it. It is what sets this brand beside the same drug in your pharmacy and in other companies’ catalogues.</p>
@@ -259,8 +261,8 @@ export function RepCatalogue() {
               <th>Company</th>
               <th>Contains</th>
               <th className="num">MRP</th>
-              <th className="num">Rate offered</th>
-              <th>Scheme</th>
+              <th className="num">Price we get</th>
+              <th>Offer</th>
               <th>In our pharmacy</th>
               <th>Same from others</th>
             </tr>
@@ -271,6 +273,7 @@ export function RepCatalogue() {
                 <td>
                   <strong>{p.name}</strong>
                   <small className="muted block">{[p.form, p.pack].filter(Boolean).join(' · ')}</small>
+                  {p.uses && <small className="muted block">For {p.uses}</small>}
                 </td>
                 <td>{p.company?.name}</td>
                 <td className="wrap">{p.composition ?? <span className="muted">Not typed yet</span>}</td>

@@ -149,6 +149,7 @@ Route::middleware(['auth:sanctum', 'actor:staff', 'limits', 'activity', 'money']
         Route::get('/files/{file}/download', 'downloadFile');
         Route::delete('/files/{file}', 'removeFile');
         Route::put('/hours', 'saveHours');
+        Route::get('/reference', 'reference');
     });
     // Samples left by representatives: what came in, what was given out, what is left. Not the pharmacy's stock.
     Route::prefix('reps/samples')->controller(RepSampleController::class)->group(function () {

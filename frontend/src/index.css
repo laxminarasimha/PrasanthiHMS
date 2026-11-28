@@ -2313,3 +2313,20 @@ span.soon { color: var(--warn); font-weight: 600; }
 /* "My profile" in the full menu: only on a phone, where the picture at the top is not shown. */
 .topbar nav a.nav-profile { display: none; }
 @media screen and (max-width: 768px) { .topbar nav a.nav-profile { display: inline-flex; } }
+
+/* ---- A representative's drugs, one to a block, written like a prescription ---- */
+.rep-drugs { display: flex; flex-direction: column; gap: 10px; }
+.rep-drug { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.rep-drug-head { display: flex; align-items: center; gap: 8px; }
+.rep-drug-head input { flex: 1; min-width: 0; font-weight: 600; }
+.rep-drug-no { flex: none; width: 1.6em; height: 1.6em; border-radius: 999px; background: var(--brand-soft); color: var(--brand-dark); font-weight: 700; font-size: 0.82rem; display: inline-flex; align-items: center; justify-content: center; }
+.rep-drug-known { padding-left: 2px; }
+.rep-drug-grid { display: grid; gap: 6px; }
+.rep-drug-grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.rep-drug-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.rep-drug .check { margin: 2px 0 0; font-size: 0.88rem; }
+@media screen and (max-width: 700px) { .rep-drug-grid.four, .rep-drug-grid.three { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.rep-drug .mini { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rep-drug .mini span { font-size: 0.72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rep-drug .check { white-space: normal; align-items: flex-start; }
+.rep-drug .check input { flex: none; margin-top: 3px; }

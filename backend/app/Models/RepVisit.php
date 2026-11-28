@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /** One time a medical representative came to meet a doctor: logged at the desk on arrival, closed after the meeting. */
 #[Fillable(['branch_id', 'medical_rep_id', 'doctor_id', 'arrived_at', 'status', 'purpose', 'discussed', 'offers', 'next_on', 'closed_at', 'closed_by', 'created_by'])]
@@ -29,6 +30,12 @@ class RepVisit extends Model
     public function doctor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'doctor_id');
+    }
+
+    /** The drugs spoken about, one to a line, in the order they were written. */
+    public function drugs(): HasMany
+    {
+        return $this->hasMany(RepVisitDrug::class)->orderBy('position')->orderBy('id');
     }
 
     public function logger(): BelongsTo

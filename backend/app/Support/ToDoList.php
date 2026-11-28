@@ -153,6 +153,12 @@ class ToDoList
             self::item('follow_ups', 'Asked to come back, not come', 'Patients a doctor asked to return in the last '.self::DAYS.' days who have not been seen since.', '/front-desk',
                 $late->map(fn (array $r) => ['text' => self::who($r['patient'] ?? null), 'detail' => 'Was due '.Carbon::parse($r['follow_up_on'])->format('j M').(($r['doctor'] ?? null) ? ' · '.$r['doctor']->name : ''), 'to' => isset($r['patient']) ? '/patients/'.$r['patient']->id : null])),
         ];
+        // Representatives asked to come back today who have not been logged yet: the desk knows whom to expect.
+        $due = RepVisit::where('status', 'come_back')->whereDate('next_on', today())->with(['rep:id,rep_company_id,name', 'rep.company:id,name', 'doctor:id,name'])->get()
+            ->reject(fn (RepVisit $v) => RepVisit::where('medical_rep_id', $v->medical_rep_id)->whereDate('arrived_at', today())->exists());
+        $items[] = self::item('reps_due', 'Medical representatives asked to come today', 'Log them under Medical reps when they arrive.', '/reps',
+            $due->map(fn (RepVisit $v) => ['text' => $v->rep->name.' · '.$v->rep->company->name, 'detail' => 'To meet '.($v->doctor?->name ?? 'the doctor'), 'to' => '/reps']));
+
         // Samples left by representatives that are about to go out of date, or already have, and are still on the shelf.
         $samples = RepSample::whereNotNull('expiry')->whereDate('expiry', '<=', today()->addDays(30))->with(['company:id,name', 'issues'])->orderBy('expiry')->get()->filter(fn (RepSample $s) => $s->in_hand > 0);
         $items[] = self::item('samples_expiring', 'Samples expired or expiring within 30 days', 'Give them out while they are in date, or throw away what has expired.', '/reps?tab=samples',

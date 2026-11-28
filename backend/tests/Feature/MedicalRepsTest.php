@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\MedicalRep;
+use App\Models\MedicineDefault;
 use App\Models\RepCompany;
+use App\Models\RepProduct;
 use App\Models\RepVisit;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -157,5 +159,74 @@ class MedicalRepsTest extends TestCase
         $this->putJson("/api/reps/companies/{$company}", ['name' => 'Sample Pharma Ltd', 'notes' => 'Cardiac and diabetes'])->assertOk()->assertJsonPath('name', 'Sample Pharma Ltd');
         $this->deleteJson("/api/reps/files/{$file}")->assertNoContent();
         $this->assertSame(0, MedicalRep::first()->company->files()->count());
+    }
+
+    public function test_the_drugs_of_a_visit_are_written_like_a_prescription_and_build_the_catalogue(): void
+    {
+        $rep = $this->rep();
+        $company = $rep['company']['id'];
+        // One brand is in the catalogue already, with what it contains and an old price.
+        $this->postJson('/api/reps/products', ['rep_company_id' => $company, 'name' => 'Samplepan 40', 'composition' => 'Pantoprazole 40 mg', 'mrp' => 100, 'rate' => 70])->assertCreated();
+        $visit = $this->postJson('/api/reps/visits', ['medical_rep_id' => $rep['id'], 'doctor_id' => $this->doctor->id])->assertCreated()->json('id');
+
+        // The desk starts the list while the representative waits: brands, prices and offers. It cannot put anything in the doctor's own list.
+        $this->putJson("/api/reps/visits/{$visit}", ['status' => 'waiting', 'drugs' => [['name' => '']]])->assertStatus(422)->assertJsonValidationErrors('drugs.0.name');
+        $this->putJson("/api/reps/visits/{$visit}", ['status' => 'waiting', 'drugs' => [
+            ['name' => 'samplepan 40', 'composition' => 'Something else 5 mg', 'mrp' => 120, 'rate' => 84.5, 'scheme' => '10 + 1', 'keep' => true, 'dose' => '1 tablet'],
+            ['name' => 'Samplecef 200', 'composition' => 'cefixime 200mg', 'uses' => 'Typhoid, urinary infection', 'mrp' => 109],
+            ['name' => 'SAMPLECEF 200'],
+        ]])->assertOk()->assertJsonPath('status', 'waiting')->assertJsonCount(2, 'drugs')
+            ->assertJsonPath('drugs.0.name', 'Samplepan 40')->assertJsonPath('drugs.0.composition', 'Pantoprazole 40 mg')->assertJsonPath('drugs.0.keep', false)
+            ->assertJsonPath('drugs.1.composition', 'Cefixime 200 mg')->assertJsonPath('drugs.1.uses', 'Typhoid, urinary infection');
+        $this->assertSame(0, MedicineDefault::count());
+
+        // The catalogue: the new brand joined it; the old one kept what it contains and took the day's price and offer.
+        $catalogue = RepProduct::where('rep_company_id', $company)->get()->keyBy('name');
+        $this->assertCount(2, $catalogue);
+        $this->assertSame('Pantoprazole 40 mg', $catalogue['Samplepan 40']->composition);
+        $this->assertEquals(120, $catalogue['Samplepan 40']->mrp);
+        $this->assertEquals(84.5, $catalogue['Samplepan 40']->rate);
+        $this->assertSame('10 + 1', $catalogue['Samplepan 40']->scheme);
+        $this->assertSame('Typhoid, urinary infection', $catalogue['Samplecef 200']->uses);
+        // A visit with drugs on it is not taken off as a mistake.
+        $this->deleteJson("/api/reps/visits/{$visit}")->assertStatus(422);
+
+        // The doctor meets them, writes how they would give it, and keeps one for their prescriptions.
+        Sanctum::actingAs($this->doctor);
+        $this->putJson("/api/reps/visits/{$visit}", ['status' => 'met', 'discussed' => 'Asked for a trial pack', 'drugs' => [
+            ['name' => 'Samplepan 40', 'dose' => '1 tablet', 'frequency' => '1-0-0', 'timing' => 'Before food', 'duration' => '14 days', 'note' => 'For reflux', 'keep' => true],
+            ['name' => 'Samplecef 200', 'dose' => '1 tablet', 'frequency' => '1-0-1'],
+        ]])->assertOk()->assertJsonPath('drugs.0.keep', true)->assertJsonPath('drugs.1.keep', false)->assertJsonPath('drugs.1.uses', 'Typhoid, urinary infection');
+        $usual = MedicineDefault::where('doctor_id', $this->doctor->id)->sole();
+        $this->assertSame(['Samplepan 40', '1 tablet', '1-0-0', 'Before food', '14 days', 'For reflux'], [$usual->medicine, $usual->dose, $usual->frequency, $usual->timing, $usual->duration, $usual->instructions]);
+        // Not said again, the price stays as the desk entered it.
+        $this->assertEquals(120, RepProduct::where('name', 'Samplepan 40')->value('mrp'));
+        // Kept again with another dose, it is the same line of the doctor's list, brought up to date.
+        $this->putJson("/api/reps/visits/{$visit}", ['status' => 'met', 'drugs' => [['name' => 'Samplepan 40', 'dose' => '2 tablets', 'keep' => true]]])->assertOk()->assertJsonCount(1, 'drugs');
+        $this->assertSame('2 tablets', MedicineDefault::where('doctor_id', $this->doctor->id)->sole()->dose);
+
+        // The reference sheet: for the representative, what they spoke about; for the company, its whole catalogue.
+        $this->getJson("/api/reps/reference?rep_id={$rep['id']}")->assertOk()->assertJsonPath('rep.name', 'Sample Rep One')->assertJsonCount(1, 'drugs')
+            ->assertJsonPath('drugs.0.name', 'Samplepan 40')->assertJsonPath('drugs.0.dose', '2 tablets')->assertJsonPath('drugs.0.rate', 84.5)->assertJsonPath('drugs.0.scheme', '10 + 1');
+        $this->getJson("/api/reps/reference?company_id={$company}")->assertOk()->assertJsonPath('company.name', 'Sample Pharma')->assertJsonCount(2, 'drugs')->assertJsonPath('drugs.0.uses', 'Typhoid, urinary infection');
+        $this->getJson("/api/reps/people/{$rep['id']}")->assertJsonPath('visits.0.drugs.0.name', 'Samplepan 40');
+        // The pharmacy reads the company's sheet without anyone's dose notes; a lab login has no way in.
+        Sanctum::actingAs(User::factory()->create(['role' => 'pharmacist']));
+        $this->getJson("/api/reps/reference?company_id={$company}")->assertOk()->assertJsonCount(2, 'drugs')->assertJsonPath('drugs.1.dose', null);
+        Sanctum::actingAs(User::factory()->create(['role' => 'lab_tech']));
+        $this->getJson("/api/reps/reference?company_id={$company}")->assertForbidden();
+    }
+
+    public function test_the_desk_is_reminded_of_a_representative_asked_to_come_today(): void
+    {
+        $rep = $this->rep();
+        RepVisit::create(['medical_rep_id' => $rep['id'], 'doctor_id' => $this->doctor->id, 'arrived_at' => now()->subDays(3), 'status' => 'come_back', 'next_on' => today()]);
+
+        $line = fn () => collect(collect($this->getJson('/api/todo')->json('waiting'))->firstWhere('key', 'front_desk')['items'] ?? [])->firstWhere('key', 'reps_due');
+        $this->assertSame(1, $line()['count']);
+        $this->assertStringContainsString('Sample Rep One · Sample Pharma', $line()['rows'][0]['text']);
+        // Once they are logged today, the reminder has done its work.
+        $this->postJson('/api/reps/visits', ['medical_rep_id' => $rep['id'], 'doctor_id' => $this->doctor->id])->assertCreated();
+        $this->assertNull($line());
     }
 }

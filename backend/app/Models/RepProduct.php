@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 /** One brand in a medicine company's catalogue, with what it contains and what is on offer. */
-#[Fillable(['rep_company_id', 'name', 'composition', 'form', 'pack', 'mrp', 'rate', 'scheme', 'notes', 'medicine_id', 'created_by'])]
+#[Fillable(['rep_company_id', 'name', 'composition', 'form', 'pack', 'mrp', 'rate', 'scheme', 'notes', 'uses', 'medicine_id', 'created_by'])]
 class RepProduct extends Model
 {
     /**
