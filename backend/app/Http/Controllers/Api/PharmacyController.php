@@ -388,6 +388,11 @@ class PharmacyController extends Controller
             'purchase_order_id.exists' => 'Choose an approved, open order placed with this stockist.',
             'due_date.after_or_equal' => 'The due date cannot be before the invoice date.',
             'items.required' => 'Add at least one medicine to the invoice.',
+            // Lines filled in from an order still need the bill's own figures typed in.
+            'items.*.batch_no.required' => 'Line :position: type the batch number from the stockist’s bill, or remove the line if it did not come.',
+            'items.*.expiry.required' => 'Line :position: type the expiry from the stockist’s bill, or remove the line if it did not come.',
+            'items.*.pack_price.required' => 'Line :position: type the purchase rate from the stockist’s bill, or remove the line if it did not come.',
+            'items.*.pack_mrp.required' => 'Line :position: type the MRP from the stockist’s bill, or remove the line if it did not come.',
             'round_off.between' => 'Rounding is a few paise or rupees either way, not more than ₹10.',
         ]);
 
@@ -452,7 +457,14 @@ class PharmacyController extends Controller
             return $invoice;
         });
 
-        return response()->json($invoice->present(), 201);
+        $shown = $invoice->present();
+        // Told back with the invoice: whether the order it answers is now complete, or how much of it is still to come.
+        if ($order = $invoice->order()->first()) {
+            $left = collect(OrderMatch::forOrder($order)['lines'])->where('to_come', '>', 0);
+            $shown['order'] += ['status' => $order->status, 'packs_to_come' => (int) $left->sum('to_come'), 'medicines_to_come' => $left->count()];
+        }
+
+        return response()->json($shown, 201);
     }
 
     // ---- Stock ----

@@ -15,8 +15,20 @@ import { clock, longDate, today } from '../format'
 import { useNotice } from '../notices'
 import type { Doctor } from '../types'
 import { DoctorLink } from '../components/DoctorLink'
+import { StockistLink } from '../components/RecordLinks'
 
-type Company = { id: number; name: string; notes: string | null; reps_count?: number; last_visit_at?: string | null; reps?: Rep[]; files?: CompanyFile[] }
+type Company = {
+  id: number
+  name: string
+  notes: string | null
+  reps_count?: number
+  last_visit_at?: string | null
+  reps?: Rep[]
+  files?: CompanyFile[]
+  /** The stockist who supplies the company's brands: a brand ordered from its catalogue goes to them. */
+  stockist_id?: number | null
+  stockist?: { id: number; name: string } | null
+}
 type CompanyFile = { id: number; title: string; original_name: string; size: number; created_at: string; uploader?: { id: number; name: string } | null }
 type Rep = {
   id: number
@@ -326,7 +338,7 @@ export function MedicalReps() {
             </div>
           )}
 
-          {tab === 'companies' && <Companies companies={companies} canChange={canLog} onChange={loadCompanies} />}
+          {tab === 'companies' && <Companies companies={companies} canChange={canLog} canChooseStockist={Boolean(user?.can_run_pharmacy)} onChange={loadCompanies} />}
           {tab === 'catalogue' && <RepCatalogue />}
           {tab === 'samples' && seesVisits && <RepSamples key={sampleStart?.visitId ?? 'plain'} doctors={doctors} start={sampleStart} />}
         </section>
@@ -656,9 +668,31 @@ function RepPanel({ rep, startName, canChange, showVisits, onClose, onSaved }: {
 }
 
 /** Each company with its people and the catalogues and price lists they handed over. */
-function Companies({ companies, canChange, onChange }: { companies: Company[] | null; canChange: boolean; onChange: () => void }) {
+function Companies({ companies, canChange, canChooseStockist, onChange }: { companies: Company[] | null; canChange: boolean; canChooseStockist: boolean; onChange: () => void }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState<number | null>(null)
+  // Which stockist supplies each company's brands is chosen by those who run the pharmacy. Only they are sent the
+  // list of stockists, as it carries what is owed to each.
+  const [stockists, setStockists] = useState<{ id: number; name: string }[]>([])
+  const [choosing, setChoosing] = useState<{ id: number; stockist: string } | null>(null)
+  const [savingStockist, setSavingStockist] = useState(false)
+  useEffect(() => {
+    if (canChooseStockist) api.get<{ id: number; name: string }[]>('/pharmacy/stockists').then((res) => setStockists(res.data)).catch(() => undefined)
+  }, [canChooseStockist])
+  const saveStockist = async () => {
+    if (!choosing) return
+    setSavingStockist(true)
+    setError('')
+    try {
+      await api.put(`/reps/companies/${choosing.id}/stockist`, { stockist_id: choosing.stockist ? Number(choosing.stockist) : null })
+      setChoosing(null)
+      onChange()
+    } catch (err) {
+      setError(Object.values(fieldErrors(err))[0] ?? 'The stockist was not saved.')
+    } finally {
+      setSavingStockist(false)
+    }
+  }
 
   const upload = async (company: Company, file: File | undefined) => {
     if (!file) return
@@ -717,6 +751,40 @@ function Companies({ companies, canChange, onChange }: { companies: Company[] | 
               {c.reps_count ?? 0} {c.reps_count === 1 ? 'representative' : 'representatives'}
               {c.last_visit_at ? ` · last came ${longDate(c.last_visit_at)}` : ''}
             </small>
+            {choosing?.id === c.id ? (
+              <div className="company-stockist">
+                <select value={choosing.stockist} onChange={(e) => setChoosing({ id: c.id, stockist: e.target.value })} aria-label={`Stockist who supplies ${c.name}`}>
+                  <option value="">No stockist</option>
+                  {stockists.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" className="btn primary small-btn" disabled={savingStockist} onClick={() => void saveStockist()}>
+                  {savingStockist ? 'Saving…' : 'Save'}
+                </button>
+                <button type="button" className="link" onClick={() => setChoosing(null)}>
+                  Cancel
+                </button>
+                <small className="muted block">A brand ordered from its catalogue goes to this stockist, unless another is chosen on the order.</small>
+              </div>
+            ) : (
+              <p className="company-stockist">
+                {c.stockist ? (
+                  <span>
+                    Supplied through <StockistLink id={c.stockist.id}>{c.stockist.name}</StockistLink>
+                  </span>
+                ) : (
+                  <span className="muted">No stockist set for its brands</span>
+                )}
+                {canChooseStockist && (
+                  <button type="button" className="link" onClick={() => setChoosing({ id: c.id, stockist: c.stockist ? String(c.stockist.id) : '' })}>
+                    {c.stockist ? 'Change' : 'Choose the stockist'}
+                  </button>
+                )}
+              </p>
+            )}
             {c.reps && c.reps.length > 0 && <p className="rep-names">{c.reps.map((r) => [r.name, r.division, r.mobile].filter(Boolean).join(' · ')).join('  |  ')}</p>}
             <ul className="history">
               {c.files?.map((f) => (

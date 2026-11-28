@@ -46,6 +46,22 @@ describe('the purchase orders page', () => {
     expect(screen.getByTestId('address').textContent).toBe('')
   })
 
+  it('offers, on an open order, to enter the stockist’s invoice for it, and only on an open one', async () => {
+    get.mockImplementation((url: string) =>
+      Promise.resolve({ data: url === '/pharmacy/purchase-orders' ? [order()] : order({ items: [{ id: 1, medicine_name: 'Sample Tablet 500', units_per_pack: 10, packs: 5 }] }) }),
+    )
+    show('/pharmacy/purchase-orders?open=7')
+
+    const enter = await screen.findByText('Enter the stockist’s invoice')
+    expect(enter.getAttribute('href')).toBe('/pharmacy/purchases?order=7')
+    cleanup()
+
+    get.mockImplementation((url: string) => Promise.resolve({ data: url === '/pharmacy/purchase-orders' ? [order({ status: 'received' })] : order({ status: 'received', items: [] }) }))
+    show('/pharmacy/purchase-orders?open=7')
+    await waitFor(() => expect(screen.getByText('Purchase order PO00007')).toBeTruthy())
+    expect(screen.queryByText('Enter the stockist’s invoice')).toBeNull()
+  })
+
   it('opens no order by itself when the address names none', async () => {
     get.mockResolvedValue({ data: [order()] })
     show('/pharmacy/purchase-orders')

@@ -7,6 +7,7 @@ use App\Models\PurchaseInvoice;
 use App\Models\PurchaseOrder;
 use App\Models\StockBatch;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Sets what was ordered beside what the supplier sent and billed: quantities short or over,
@@ -35,6 +36,8 @@ class OrderMatch
             return [
                 'medicine_id' => $item->medicine_id, 'medicine_name' => $item->medicine_name, 'units_per_pack' => $item->units_per_pack,
                 'ordered' => (int) $item->packs, 'received' => $got, 'free' => $free,
+                // Free packs come on top of an order, so only the paid packs count towards what was ordered.
+                'to_come' => max(0, (int) $item->packs - $got),
                 'state' => $got === 0 ? 'none' : ($got < $item->packs ? 'short' : ($got > $item->packs ? 'over' : 'full')),
             ];
         })->values();
@@ -57,6 +60,48 @@ class OrderMatch
         if ($order && $order->status === 'open' && self::forOrder($order)['complete']) {
             $order->update(['status' => 'received']);
         }
+    }
+
+    /**
+     * What is still to come on an open order, one line for each medicine, ready to fill a new invoice from the
+     * stockist: the order's pack size, the packs not received yet, and the medicine's GST, HSN code and place.
+     * Each line also says what the medicine was last bought at in the same pack size, from this stockist if it
+     * ever was, else from anyone: a hint to show beside the boxes, never a figure to save. Nothing is written.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function stillToCome(PurchaseOrder $order): array
+    {
+        if ($order->status !== 'open') {
+            return [];
+        }
+        $lines = collect(self::forOrder($order)['lines'])->where('to_come', '>', 0)->values();
+        if ($lines->isEmpty()) {
+            return [];
+        }
+        $ids = $lines->pluck('medicine_id')->all();
+        $medicines = Medicine::whereIn('id', $ids)->get(['id', 'name', 'gst_percent', 'hsn_code', 'rack_no', 'box_no', 'is_active'])->keyBy('id');
+        // Every purchase of these medicines on an invoice, newest first, so the first one that fits is the last time.
+        $bought = DB::table('stock_batches as b')->join('purchase_invoices as i', 'i.id', '=', 'b.purchase_invoice_id')
+            ->whereIn('b.medicine_id', $ids)->orderByDesc('i.invoice_date')->orderByDesc('b.id')
+            ->get(['b.medicine_id', 'b.units_per_pack', 'b.pack_price', 'b.pack_mrp', 'i.stockist_id', 'i.invoice_date'])->groupBy('medicine_id');
+
+        return $lines->map(function (array $line) use ($medicines, $bought, $order) {
+            $medicine = $medicines[$line['medicine_id']] ?? null;
+            // A rate for another pack size says nothing about this one.
+            $same = ($bought[$line['medicine_id']] ?? collect())->filter(fn ($b) => (int) $b->units_per_pack === (int) $line['units_per_pack']);
+            $fromThem = $same->first(fn ($b) => (int) $b->stockist_id === (int) $order->stockist_id);
+            $last = $fromThem ?? $same->first();
+
+            return [
+                'medicine_id' => $line['medicine_id'], 'medicine_name' => $medicine?->name ?? $line['medicine_name'],
+                'units_per_pack' => (int) $line['units_per_pack'], 'packs' => $line['to_come'], 'ordered' => $line['ordered'], 'received' => $line['received'],
+                'gst_percent' => $medicine?->gst_percent, 'hsn_code' => $medicine?->hsn_code, 'rack_no' => $medicine?->rack_no, 'box_no' => $medicine?->box_no,
+                'is_active' => (bool) $medicine?->is_active,
+                'last_rate' => $last ? (float) $last->pack_price : null, 'last_mrp' => $last ? (float) $last->pack_mrp : null,
+                'last_on' => $last ? substr((string) $last->invoice_date, 0, 10) : null, 'last_from_this_stockist' => $fromThem !== null,
+            ];
+        })->all();
     }
 
     /**

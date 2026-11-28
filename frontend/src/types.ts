@@ -549,7 +549,8 @@ export type PurchaseInvoice = {
   invoice_date: string
   due_date?: string | null
   payments?: { id: number; amount: number; mode: string; reference: string | null; paid_on: string; payer?: { name: string } | null }[]
-  order?: { id: number; order_no: string } | null
+  /** Straight after the invoice is saved, also whether its order is now complete, and how much of it is still to come. */
+  order?: { id: number; order_no: string; status?: PurchaseOrder['status']; packs_to_come?: number; medicines_to_come?: number } | null
   flagged?: number
   subtotal: number
   tax: number
@@ -887,13 +888,35 @@ export type PurchaseOrder = {
   remarks: string | null
   stockist: { id: number; name: string; phone?: string | null; address?: string | null }
   items_count?: number
-  items?: { id: number; medicine_name: string; units_per_pack: number; packs: number }[]
+  items?: { id: number; medicine_id?: number; medicine_name: string; units_per_pack: number; packs: number }[]
   match?: {
-    lines: { medicine_id: number; medicine_name: string; ordered: number; received: number; free: number; state: 'none' | 'short' | 'full' | 'over' }[]
+    lines: { medicine_id: number; medicine_name: string; units_per_pack?: number; ordered: number; received: number; free: number; to_come?: number; state: 'none' | 'short' | 'full' | 'over' }[]
     extras: { medicine_name: string; received: number; free: number }[]
     invoices: { id: number; invoice_no: string; invoice_date: string; total: number }[]
     complete: boolean
   }
+  /**
+   * On an open order: each medicine not received in full yet, ready to fill the stockist's next invoice. The order's
+   * pack size and the packs not received yet, the medicine's GST, HSN code and place, and what it was last bought at
+   * in that pack size (from this stockist if it ever was), which is shown as a hint and never copied.
+   */
+  still_to_come?: {
+    medicine_id: number
+    medicine_name: string
+    units_per_pack: number
+    packs: number
+    ordered: number
+    received: number
+    gst_percent: number | null
+    hsn_code: string | null
+    rack_no: string | null
+    box_no: string | null
+    is_active: boolean
+    last_rate: number | null
+    last_mrp: number | null
+    last_on: string | null
+    last_from_this_stockist: boolean
+  }[]
 }
 
 export type ReportColumn = { key: string; label: string; type: 'text' | 'money' | 'number'; total: boolean }

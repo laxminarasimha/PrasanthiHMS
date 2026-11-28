@@ -4,11 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 /** A medicine company whose representatives call on the doctors. */
-#[Fillable(['name', 'notes', 'is_active', 'created_by'])]
+#[Fillable(['name', 'notes', 'is_active', 'stockist_id', 'created_by'])]
 class RepCompany extends Model
 {
     /**
@@ -40,5 +41,11 @@ class RepCompany extends Model
     public function files(): HasMany
     {
         return $this->hasMany(RepCompanyFile::class)->orderByDesc('id');
+    }
+
+    /** The stockist who supplies the company's brands: a brand ordered from its catalogue goes to them. */
+    public function stockist(): BelongsTo
+    {
+        return $this->belongsTo(Stockist::class);
     }
 }
