@@ -174,7 +174,7 @@ export type FollowUp = {
 export type CalendarSettings = { slot_minutes: number; slot_limit: number; morning_start: string; morning_end: string; evening_start: string; evening_end: string }
 
 /** Days, or the same hours on each of those days, when a doctor is not seeing patients. */
-export type DoctorBlock = { id: number; doctor_id: number; from_date: string; to_date: string; start_time: string | null; end_time: string | null; reason: string | null; doctor: { id: number; name: string } }
+export type DoctorBlock = { id: number; doctor_id: number; from_date: string; to_date: string; start_time: string | null; end_time: string | null; reason: string | null; /** Set when the block was made by the doctor's approved leave: it goes with the leave, not by itself. */ leave_request_id?: number | null; doctor: { id: number; name: string } }
 
 export type BillKind = 'appointment' | 'lab' | 'other'
 

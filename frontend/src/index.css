@@ -2330,3 +2330,8 @@ span.soon { color: var(--warn); font-weight: 600; }
 .rep-drug .mini span { font-size: 0.72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rep-drug .check { white-space: normal; align-items: flex-start; }
 .rep-drug .check input { flex: none; margin-top: 3px; }
+
+/* What a doctor's approved leave did to the appointment calendar, shown to the person who approved it. */
+.leave-calendar { margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--info-line); border-left: 4px solid var(--info); border-radius: 8px; background: var(--info-soft); }
+.leave-calendar p { margin: 6px 0 2px; }
+.leave-calendar ul { margin: 4px 0 0; padding-left: 20px; }

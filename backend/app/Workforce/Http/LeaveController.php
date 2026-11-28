@@ -2,6 +2,7 @@
 
 namespace App\Workforce\Http;
 
+use App\Support\LeaveOnCalendar;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Workforce\Models\Employee;
@@ -76,7 +77,8 @@ class LeaveController extends Controller
         }
         Audit::record($data['approve'] ? 'leave.approved' : 'leave.refused', $leave, null, ['days' => $leave->days, 'from' => $leave->from_date->format('Y-m-d'), 'to' => $leave->to_date->format('Y-m-d')], $data['note'] ?? null, $leave->employee_id);
 
-        return response()->json($this->present($leave->fresh(['type', 'employee.department']), collect()));
+        // For a doctor: which days of the calendar are now closed, and who is already booked in them.
+        return response()->json($this->present($leave->fresh(['type', 'employee.department']), collect()) + ['calendar' => $data['approve'] ? LeaveOnCalendar::summary($leave) : null]);
     }
 
     /** Withdraws a request, by someone who may decide it. If it was approved, the days go back into the account. */
@@ -215,7 +217,7 @@ class LeaveController extends Controller
             $leave = LeaveBook::approve($leave->load('type'), 'No approval needed for this kind of leave.');
         }
 
-        return $this->present($leave->fresh(['type', 'employee.department']), collect());
+        return $this->present($leave->fresh(['type', 'employee.department']), collect()) + ($leave->status === 'approved' ? ['calendar' => LeaveOnCalendar::summary($leave)] : []);
     }
 
     /** @return array<string, mixed> */

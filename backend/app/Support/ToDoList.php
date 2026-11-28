@@ -8,6 +8,7 @@ use App\Models\Appointment;
 use App\Models\Bill;
 use App\Models\Consultation;
 use App\Models\DayClose;
+use App\Models\DoctorBlock;
 use App\Models\Expense;
 use App\Models\LabOrder;
 use App\Models\LabOrderItem;
@@ -153,6 +154,13 @@ class ToDoList
             self::item('follow_ups', 'Asked to come back, not come', 'Patients a doctor asked to return in the last '.self::DAYS.' days who have not been seen since.', '/front-desk',
                 $late->map(fn (array $r) => ['text' => self::who($r['patient'] ?? null), 'detail' => 'Was due '.Carbon::parse($r['follow_up_on'])->format('j M').(($r['doctor'] ?? null) ? ' · '.$r['doctor']->name : ''), 'to' => isset($r['patient']) ? '/patients/'.$r['patient']->id : null])),
         ];
+        // Patients booked for a doctor on a day that doctor is now away: someone has to ring them and move the visit.
+        $blocks = DoctorBlock::whereDate('to_date', '>=', today())->with('doctor:id,name')->get();
+        $stranded = $blocks->flatMap(fn (DoctorBlock $b) => $b->booked()->where('status', 'booked')->filter(fn (Appointment $a) => $a->scheduled_at->gte(today()))
+            ->map(fn (Appointment $a) => ['id' => $a->id, 'text' => self::who($a->patient), 'detail' => ($b->doctor?->name ?? 'The doctor').' is away · booked for '.$a->scheduled_at->format('j M, g:i A'), 'to' => '/front-desk/calendar']))
+            ->unique('id')->map(fn (array $row) => array_diff_key($row, ['id' => 1]))->values();
+        $items[] = self::item('doctor_away', 'Booked on a day the doctor is away', 'Ring the patient and move the visit to another day or doctor.', '/front-desk/calendar', $stranded, true);
+
         // Representatives asked to come back today who have not been logged yet: the desk knows whom to expect.
         $due = RepVisit::where('status', 'come_back')->whereDate('next_on', today())->with(['rep:id,rep_company_id,name', 'rep.company:id,name', 'doctor:id,name'])->get()
             ->reject(fn (RepVisit $v) => RepVisit::where('medical_rep_id', $v->medical_rep_id)->whereDate('arrived_at', today())->exists());

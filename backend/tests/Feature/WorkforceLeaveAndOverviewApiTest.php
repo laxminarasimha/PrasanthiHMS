@@ -205,4 +205,56 @@ class WorkforceLeaveAndOverviewApiTest extends TestCase
         $this->assertSame([$me->id], Attendance::withoutGlobalScopes()->pluck('employee_id')->all());
         $this->assertSame(['present', 480], [collect($this->getJson('/api/workforce/me')->json('days'))->firstWhere('date', '2026-03-11')['status'], $this->getJson('/api/workforce/me')->json('totals.worked_minutes')]);
     }
+
+    public function test_a_doctors_approved_leave_closes_their_appointment_calendar(): void
+    {
+        $doctorLogin = $this->user('doctor');
+        $doctor = $this->employee('Dr Sample Doctor', ['user_id' => $doctorLogin->id]);
+        $nurse = $this->employee('Nurse One', ['user_id' => $this->user('nurse')->id]);
+        $admin = $this->user('admin');
+        Sanctum::actingAs($admin);
+        $this->postJson('/api/workforce/leave/housekeeping', ['step' => 'accrue', 'year' => 2026])->assertOk();
+
+        // A patient is already booked with the doctor for Tuesday.
+        $patient = \App\Models\Patient::factory()->create(['name' => 'Sample Father Tester']);
+        $booked = $this->postJson('/api/appointments', ['patient_id' => $patient->id, 'doctor_id' => $doctorLogin->id, 'scheduled_at' => '2026-03-17 11:00', 'status' => 'booked', 'outside_hours' => true])->assertCreated()->json('id');
+
+        // The doctor's leave, Monday to Wednesday, is approved: the calendar closes for those days and the desk is told who is booked.
+        $leave = $this->postJson('/api/workforce/leave', ['employee_id' => $doctor->id, 'leave_type_id' => $this->casual->id, 'from_date' => '2026-03-16', 'to_date' => '2026-03-18', 'reason' => 'A private matter'])->assertCreated()->json();
+        $answer = $leave['status'] === 'approved' ? null : $this->postJson("/api/workforce/leave/{$leave['id']}/decide", ['approve' => true])->assertOk()->json('calendar');
+        $block = \App\Models\DoctorBlock::where('leave_request_id', $leave['id'])->sole();
+        $this->assertSame([$doctorLogin->id, '2026-03-16', '2026-03-18', 'Casual leave'], [$block->doctor_id, $block->from_date->toDateString(), $block->to_date->toDateString(), $block->reason]);
+        if ($answer) {
+            $this->assertSame(['from' => '2026-03-16', 'to' => '2026-03-18'], $answer['blocked']);
+            $this->assertSame([$booked], array_column($answer['booked'], 'id'));
+            $this->assertSame('Sample Father Tester', $answer['booked'][0]['patient']);
+        }
+
+        // Nothing more can be booked in those days; the block cannot be taken off the calendar by itself.
+        $this->postJson('/api/appointments', ['patient_id' => $patient->id, 'doctor_id' => $doctorLogin->id, 'scheduled_at' => '2026-03-18 11:00', 'status' => 'booked', 'outside_hours' => true])
+            ->assertStatus(422)->assertJsonValidationErrors('scheduled_at');
+        $this->deleteJson("/api/doctor-blocks/{$block->id}")->assertStatus(422)->assertJsonValidationErrors('block');
+        // The desk's To do names the patient to ring.
+        Sanctum::actingAs($this->user('frontdesk'));
+        $line = collect(collect($this->getJson('/api/todo')->json('waiting'))->firstWhere('key', 'front_desk')['items'])->firstWhere('key', 'doctor_away');
+        $this->assertSame(1, $line['count']);
+        $this->assertStringContainsString('Sample Father Tester', $line['rows'][0]['text']);
+
+        // Cancelled, the calendar opens again.
+        Sanctum::actingAs($admin);
+        $this->postJson("/api/workforce/leave/{$leave['id']}/cancel", ['reason' => 'Plans changed'])->assertOk();
+        $this->assertSame(0, \App\Models\DoctorBlock::count());
+        $this->postJson('/api/appointments', ['patient_id' => $patient->id, 'doctor_id' => $doctorLogin->id, 'scheduled_at' => '2026-03-18 11:00', 'status' => 'booked', 'outside_hours' => true])->assertCreated();
+
+        // A half day is not blocked: the approver blocks those hours by hand. Nor is the leave of someone who is not a doctor.
+        $half = $this->postJson('/api/workforce/leave', ['employee_id' => $doctor->id, 'leave_type_id' => $this->casual->id, 'from_date' => '2026-03-20', 'to_date' => '2026-03-20', 'from_part' => 'first_half'])->assertCreated()->json();
+        if ($half['status'] !== 'approved') {
+            $this->postJson("/api/workforce/leave/{$half['id']}/decide", ['approve' => true])->assertOk()->assertJsonPath('calendar.blocked', null)->assertJsonPath('calendar.half_day', true);
+        }
+        $other = $this->postJson('/api/workforce/leave', ['employee_id' => $nurse->id, 'leave_type_id' => $this->casual->id, 'from_date' => '2026-03-23', 'to_date' => '2026-03-24'])->assertCreated()->json();
+        if ($other['status'] !== 'approved') {
+            $this->postJson("/api/workforce/leave/{$other['id']}/decide", ['approve' => true])->assertOk()->assertJsonPath('calendar', null);
+        }
+        $this->assertSame(0, \App\Models\DoctorBlock::count());
+    }
 }
