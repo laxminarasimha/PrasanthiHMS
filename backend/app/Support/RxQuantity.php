@@ -14,7 +14,11 @@ use App\Models\Medicine;
  *    chart reads;
  *  - the dose: a number of tablets or capsules, such as "1 tab", "2 tablets", "½ tablet" or "1 cap". With a pattern
  *    and no dose, the pattern's numbers are the tablets. With OD, BD and the like the dose must be written;
- *  - for how long: days, weeks (7 days) or months (30 days).
+ *  - for how long: days, weeks (7 days) or months (30 days);
+ *  - the When and Instructions boxes: each must be empty or hold only plain meal or time words, such as "After food",
+ *    "Empty stomach", "At bedtime", "Morning and night" or "A/F" (see PLAIN_TIMES). Anything else there may change how
+ *    often the medicine is taken ("SOS", "if needed", "alternate days", "once a week", "Sundays", "then 1-0-0",
+ *    "stop after 3 days"), so any other word gives no quantity.
  * Anything else, such as SOS, Stat, alternate days, once a week, "To continue" or a strength like "40 mg", gives no
  * quantity, and the counter starts at 1 as before. Half tablets are made a whole one in the total; a capsule is never
  * halved.
@@ -41,22 +45,40 @@ class RxQuantity
     /** Words in a medicine's type that say it is not a tablet or a capsule, such as "Tablet / Syrup". */
     private const OTHER_FORMS = '/\b(syrups?|syp|suspensions?|solutions?|drops?|creams?|ointments?|gels?|lotions?|injections?|inj|liquids?|powders?|sachets?|sprays?|inhalers?)\b/u';
 
+    /** The meals a medicine is taken after, before or with. */
+    private const MEALS = 'food|meals?|breakfast|lunch|dinner|supper';
+
+    /**
+     * What a When or Instructions box may say with a count still worked out: each says only when in the day, or with
+     * what, never how often. Short forms: AF and BF (also A/F, B/F) after and before food, AC and PC before and after
+     * meals, HS at bedtime, ES (E/S) empty stomach, mane in the morning and nocte at night.
+     */
+    private const PLAIN_TIMES = [
+        '(?:after|before) (?:(?:a|the) )?(?:'.self::MEALS.')(?: (?:'.self::MEALS.'))*',
+        'with (?:(?:a|the) )?(?:'.self::MEALS.'|milk|water)(?: (?:'.self::MEALS.'|milk|water))*',
+        '(?:on )?(?:an )?empty stomach',
+        '(?:at )?bed ?time|before (?:bed|sleep|sleeping)',
+        '(?:in the )?(?:morning|afternoon|evening|night)|at (?:night|noon)|noon|mid ?day',
+        'af|bf|ac|pc|hs|es|mane|nocte',
+    ];
+
     /**
      * The count for a medicine the pharmacy stocks, or null. Only for a tablet or a capsule, by the medicine's own type,
      * sold one at a time from a strip (every batch on sale holds more than one to a pack), and only when a dose that
      * names a form names that one. The caller passes null when the name is shared by more than one medicine in use,
-     * so a count is never worked out for the wrong one.
+     * so a count is never worked out for the wrong one. Every box of the line is passed, the When ($timing) and
+     * Instructions boxes too: they can say the medicine is not taken every day.
      *
      * @return array{quantity: int, worked_out: string}|null
      */
-    public static function forStock(?Medicine $medicine, ?string $dose, ?string $frequency, ?string $duration): ?array
+    public static function forStock(?Medicine $medicine, ?string $dose, ?string $frequency, ?string $duration, ?string $timing, ?string $instructions): ?array
     {
         $form = self::formOf($medicine?->type);
         $batches = $form ? $medicine->sellableBatches : null;
         if (! $batches || $batches->isEmpty() || $batches->contains(fn ($batch) => (int) $batch->units_per_pack <= 1)) {
             return null;
         }
-        $count = self::count($dose, $frequency, $duration);
+        $count = self::count($dose, $frequency, $duration, $timing, $instructions);
         if (! $count || ($count['form'] && $count['form'] !== $form) || ($form === 'capsule' && $count['halves'])) {
             return null;
         }
@@ -71,8 +93,11 @@ class RxQuantity
      *
      * @return array{quantity: int, worked_out: string, form: ?string, halves: bool}|null
      */
-    public static function count(?string $dose, ?string $frequency, ?string $duration): ?array
+    public static function count(?string $dose, ?string $frequency, ?string $duration, ?string $timing, ?string $instructions): ?array
     {
+        if (! self::onlyWhenInTheDay($timing) || ! self::onlyWhenInTheDay($instructions)) {
+            return null; // such as SOS, alternate days, once a week or "then 1-0-0": maybe not every day
+        }
         $days = self::days(self::tidy($duration));
         $each = self::tidy($dose) === '' ? null : self::dose(self::tidy($dose));
         if (! $days || (self::tidy($dose) !== '' && ! $each)) {
@@ -177,6 +202,21 @@ class RxQuantity
         }
 
         return null;
+    }
+
+    /**
+     * True when a When or Instructions box is empty or holds only plain meal and time words (PLAIN_TIMES), one after
+     * another or joined by commas, "and" and the like, such as "After breakfast and dinner". "Or" is not read:
+     * "morning or night" leaves it unclear how many times a day.
+     */
+    private static function onlyWhenInTheDay(?string $text): bool
+    {
+        // A.C. is AC, and A/F is AF. Then commas, brackets, "and" and the like are read as spaces.
+        $text = (string) preg_replace(['/\./u', '/\b([ab])\/f\b/u', '/\be\/s\b/u'], ['', '$1f', 'es'], self::tidy($text));
+        $text = trim((string) preg_replace('/(?:[\s,;:&+\/|()·•–—-]|\band\b)+/u', ' ', $text));
+        $one = '(?:'.implode('|', self::PLAIN_TIMES).')';
+
+        return $text === '' || preg_match("/^{$one}(?: {$one})*$/u", $text) === 1;
     }
 
     /**

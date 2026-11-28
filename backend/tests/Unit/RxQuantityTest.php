@@ -48,7 +48,7 @@ class RxQuantityTest extends TestCase
     #[DataProvider('counted')]
     public function test_plain_prescriptions_are_counted_with_the_working_in_words(?string $dose, ?string $frequency, ?string $duration, int $quantity, string $workedOut): void
     {
-        $count = RxQuantity::count($dose, $frequency, $duration);
+        $count = RxQuantity::count($dose, $frequency, $duration, null, null);
 
         $this->assertNotNull($count);
         $this->assertSame($quantity, $count['quantity']);
@@ -95,7 +95,95 @@ class RxQuantityTest extends TestCase
     #[DataProvider('refused')]
     public function test_anything_not_written_plainly_gives_no_quantity(?string $dose, ?string $frequency, ?string $duration): void
     {
-        $this->assertNull(RxQuantity::count($dose, $frequency, $duration));
+        $this->assertNull(RxQuantity::count($dose, $frequency, $duration, null, null));
+    }
+
+    /** @return array<string, array{0: ?string, 1: ?string}> */
+    public static function plainWhen(): array
+    {
+        return [
+            'after food' => ['After food', null],
+            'before food' => ['Before food', null],
+            'empty stomach' => ['Empty stomach', null],
+            'on an empty stomach' => ['On an empty stomach', null],
+            'at bedtime' => ['At bedtime', null],
+            'bed time' => ['Bed time', null],
+            'with food' => ['With food', null],
+            'with milk' => ['With milk', null],
+            'morning' => ['Morning', null],
+            'afternoon' => ['Afternoon', null],
+            'in the evening' => ['In the evening', null],
+            'at night' => ['At night', null],
+            'two meals' => ['After breakfast and dinner', null],
+            'two times of day' => ['Morning & night', null],
+            'with a comma and brackets' => ['After food, (at bedtime)', null],
+            'spaces and a full stop' => ['  after   FOOD. ', null],
+            'A/F' => ['A/F', null],
+            'B/F' => ['B/F', null],
+            'A.C.' => ['A.C.', null],
+            'PC' => ['PC', null],
+            'HS' => ['HS', null],
+            'E/S' => ['E/S', null],
+            'in the instructions' => [null, 'After food'],
+            'in both' => ['Before breakfast', 'Empty stomach'],
+            'both empty' => ['', '  '],
+        ];
+    }
+
+    #[DataProvider('plainWhen')]
+    public function test_a_when_or_instructions_box_of_plain_meal_or_time_words_still_gets_the_count(?string $timing, ?string $instructions): void
+    {
+        $this->assertSame(10, RxQuantity::count('1 tablet', '1-0-1', '5 days', $timing, $instructions)['quantity'] ?? null);
+    }
+
+    /** @return array<string, array{0: ?string, 1: ?string}> */
+    public static function notPlainWhen(): array
+    {
+        return [
+            'SOS' => ['SOS', null],
+            'Stat' => ['Stat', null],
+            'PRN' => ['PRN', null],
+            'if needed' => ['If needed', null],
+            'when required' => ['When required', null],
+            'only if in pain' => ['After food', 'Only if in pain'],
+            'alternate days' => ['Alternate days', null],
+            'every other day' => [null, 'Every other day'],
+            'every other morning' => ['Every other morning', null],
+            'once a week in when' => ['Once a week', null],
+            'once a week in the instructions' => ['After food', 'Once a week'],
+            'weekly' => [null, 'Weekly'],
+            'once a month' => ['Once a month', null],
+            'monthly' => [null, 'Monthly'],
+            'a day of the week' => ['Every Sunday', null],
+            'days by name' => ['Mon, Wed, Fri', null],
+            'on sundays' => [null, 'On Sundays after food'],
+            'then' => ['After food', 'Then 1-0-0 for 5 days'],
+            'taper' => [null, 'Taper'],
+            'reduce' => [null, 'Reduce slowly'],
+            'stop' => [null, 'Stop after 3 days'],
+            'continue' => [null, 'Continue'],
+            'a word not on the list' => ['After food', 'Avoid alcohol'],
+            'a number' => ['30 min before food', null],
+            'one or the other' => ['Morning or night', null],
+            'the night before' => ['The night before', null],
+            'then, between two plain words' => ['After food then at bedtime', null],
+        ];
+    }
+
+    #[DataProvider('notPlainWhen')]
+    public function test_a_when_or_instructions_box_that_may_change_how_often_gives_no_quantity(?string $timing, ?string $instructions): void
+    {
+        // Without the When and Instructions boxes, the same line is counted.
+        $this->assertSame(10, RxQuantity::count('1 tablet', '1-0-1', '5 days', null, null)['quantity']);
+        $this->assertNull(RxQuantity::count('1 tablet', '1-0-1', '5 days', $timing, $instructions));
+    }
+
+    public function test_a_stocked_medicine_reads_the_when_and_instructions_boxes_too(): void
+    {
+        $this->assertSame(30, RxQuantity::forStock($this->medicine('Tablet'), '1 tablet', '1-0-0', '1 month', 'After food', null)['quantity']);
+        $this->assertNull(RxQuantity::forStock($this->medicine('Tablet'), '1 tablet', '1-0-0', '1 month', 'After food', 'Once a week'));
+        $this->assertNull(RxQuantity::forStock($this->medicine('Tablet'), '1 tablet', '1-0-0', '1 month', 'Alternate days', null));
+        $this->assertNull(RxQuantity::forStock($this->medicine('Capsule'), '1 cap', 'TDS', '5 days', 'SOS', null));
     }
 
     public function test_the_count_says_what_form_the_dose_named_and_whether_a_half_came_into_it(): void
@@ -109,41 +197,41 @@ class RxQuantityTest extends TestCase
 
     public function test_a_stocked_tablet_or_capsule_sold_loose_from_strips_gets_the_count(): void
     {
-        $this->assertSame(['quantity' => 10, 'worked_out' => '1-0-1 for 5 days = 10'], RxQuantity::forStock($this->medicine('Tablet'), null, '1-0-1', '5 days'));
-        $this->assertSame(14, RxQuantity::forStock($this->medicine('Capsule'), '1 cap', 'BD', '1 week')['quantity']);
-        $this->assertSame(15, RxQuantity::forStock($this->medicine('Dispersible Tablet'), '1 tab', 'TDS', '5 days')['quantity']);
-        $this->assertSame(3, RxQuantity::forStock($this->medicine('Chewable Tablet', [10, 15]), '½ tablet', '0-0-1', '5 days')['quantity']);
+        $this->assertSame(['quantity' => 10, 'worked_out' => '1-0-1 for 5 days = 10'], RxQuantity::forStock($this->medicine('Tablet'), null, '1-0-1', '5 days', null, null));
+        $this->assertSame(14, RxQuantity::forStock($this->medicine('Capsule'), '1 cap', 'BD', '1 week', null, null)['quantity']);
+        $this->assertSame(15, RxQuantity::forStock($this->medicine('Dispersible Tablet'), '1 tab', 'TDS', '5 days', null, null)['quantity']);
+        $this->assertSame(3, RxQuantity::forStock($this->medicine('Chewable Tablet', [10, 15]), '½ tablet', '0-0-1', '5 days', null, null)['quantity']);
     }
 
     public function test_only_a_tablet_or_capsule_by_its_own_type_gets_a_count(): void
     {
         foreach (['Syrup', 'Suspension', 'Drops', 'Cream', 'Injection', 'Tablet / Syrup', 'Other', '', null] as $type) {
-            $this->assertNull(RxQuantity::forStock($this->medicine($type), null, '1-0-1', '5 days'), "type {$type}");
+            $this->assertNull(RxQuantity::forStock($this->medicine($type), null, '1-0-1', '5 days', null, null), "type {$type}");
         }
     }
 
     public function test_a_medicine_sold_whole_or_with_nothing_on_sale_gets_no_count(): void
     {
         // A pack of one (a bottle, a tube) is sold whole, whatever the type says.
-        $this->assertNull(RxQuantity::forStock($this->medicine('Tablet', [1]), null, '1-0-1', '5 days'));
-        $this->assertNull(RxQuantity::forStock($this->medicine('Tablet', [10, 1]), null, '1-0-1', '5 days'));
-        $this->assertNull(RxQuantity::forStock($this->medicine('Tablet', []), null, '1-0-1', '5 days'));
-        $this->assertNull(RxQuantity::forStock(null, null, '1-0-1', '5 days'));
+        $this->assertNull(RxQuantity::forStock($this->medicine('Tablet', [1]), null, '1-0-1', '5 days', null, null));
+        $this->assertNull(RxQuantity::forStock($this->medicine('Tablet', [10, 1]), null, '1-0-1', '5 days', null, null));
+        $this->assertNull(RxQuantity::forStock($this->medicine('Tablet', []), null, '1-0-1', '5 days', null, null));
+        $this->assertNull(RxQuantity::forStock(null, null, '1-0-1', '5 days', null, null));
     }
 
     public function test_the_dose_must_name_the_form_the_pharmacy_has_and_a_capsule_is_never_halved(): void
     {
-        $this->assertNull(RxQuantity::forStock($this->medicine('Tablet'), '1 cap', 'BD', '5 days'));
-        $this->assertNull(RxQuantity::forStock($this->medicine('Capsule'), '1 tab', 'BD', '5 days'));
-        $this->assertNull(RxQuantity::forStock($this->medicine('Capsule'), '½ capsule', 'BD', '5 days'));
-        $this->assertNull(RxQuantity::forStock($this->medicine('Capsule'), null, '½-0-½', '5 days'));
-        $this->assertSame(10, RxQuantity::forStock($this->medicine('Capsule'), null, '1-0-1', '5 days')['quantity']);
+        $this->assertNull(RxQuantity::forStock($this->medicine('Tablet'), '1 cap', 'BD', '5 days', null, null));
+        $this->assertNull(RxQuantity::forStock($this->medicine('Capsule'), '1 tab', 'BD', '5 days', null, null));
+        $this->assertNull(RxQuantity::forStock($this->medicine('Capsule'), '½ capsule', 'BD', '5 days', null, null));
+        $this->assertNull(RxQuantity::forStock($this->medicine('Capsule'), null, '½-0-½', '5 days', null, null));
+        $this->assertSame(10, RxQuantity::forStock($this->medicine('Capsule'), null, '1-0-1', '5 days', null, null)['quantity']);
     }
 
     /** @return array{0: ?string, 1: bool} */
     private function formAndHalves(?string $dose, string $frequency, string $duration): array
     {
-        $count = RxQuantity::count($dose, $frequency, $duration);
+        $count = RxQuantity::count($dose, $frequency, $duration, null, null);
 
         return [$count['form'], $count['halves']];
     }

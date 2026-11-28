@@ -19,6 +19,7 @@ import { fillFromBatches, shortOf, visitOf, type CardTag } from './rxFill'
 
 type Line = {
   batchId: number
+  medicineId: number
   medicine: string
   batchNo: string
   expiry: string
@@ -30,16 +31,105 @@ type Line = {
   place: string
   /** The prescription card it was added from, if it was. A visit's card is what the saved bill remembers. */
   from?: CardTag
+  /** The card rows its medicine was added from (see rowKey): a row already on the bill is not added again. */
+  rxRows?: string[]
   /** How the prescription's quantity was worked out, and, when the stock was less, by how much. */
   worked?: string
   short?: string
 }
 type CardMedicine = PrescriptionForPharmacy['medicines'][number]
+type Batch = SellableMedicine['sellable_batches'][number]
+/** A row of a prescription card, with its key. */
+type CardRow = { m: CardMedicine; key: string }
 
 const lineAmount = (l: Line) => Math.round(Number(l.quantity || 0) * l.unitPrice * (1 - Number(l.discount || 0) / 100) * 100) / 100
 /** A line that stays on the bill when the patient is changed no longer counts as from the other patient's prescription. */
-const untag = (l: Line): Line => ({ ...l, from: undefined, worked: undefined, short: undefined })
+const untag = (l: Line): Line => ({ ...l, from: undefined, rxRows: undefined, worked: undefined, short: undefined })
 const inStock = (m: CardMedicine) => (m.match?.sellable_batches ?? []).reduce((sum, b) => sum + b.units_in_stock, 0)
+
+const lineOf = (m: SellableMedicine, batch: Batch, more: Partial<Line> = {}): Line => ({
+  batchId: batch.id, medicineId: m.id, medicine: m.name, batchNo: batch.batch_no, expiry: batch.expiry, unitPrice: batch.unit_mrp, available: batch.units_in_stock, quantity: '1', discount: '', place: placeLabel(batch.rack_no, batch.box_no), ...more,
+})
+/** A row of a card, by the card's kind and id and the row's place on it. */
+const rowKey = (rx: PrescriptionForPharmacy, index: number) => `${rx.kind ?? 'visit'}-${rx.id}-${index}`
+/** One note after another on a line. */
+const andThen = (had?: string, more?: string) => (had && more ? `${had}; ${more}` : had || more)
+/** How many more units a line's batch has beyond what the line already takes. */
+const leftIn = (l: Line) => Math.max(0, l.available - (Number(l.quantity) || 0))
+/** A medicine's lines on the bill, and its batches on sale that are not on the bill yet. */
+const partsOf = (lines: Line[], match: SellableMedicine) => {
+  const there = lines.filter((l) => l.medicineId === match.id)
+  return { there, free: match.sellable_batches.filter((b) => !there.some((l) => l.batchId === b.id)) }
+}
+/** How many more of a medicine can go on the bill, counting what its lines there already take. */
+const roomFor = (lines: Line[], match: SellableMedicine) => {
+  const { there, free } = partsOf(lines, match)
+  return there.reduce((sum, l) => sum + leftIn(l), 0) + free.reduce((sum, b) => sum + b.units_in_stock, 0)
+}
+/**
+ * The card a line counts as from, when more of its medicine is added from another card: a visit's card before a ward
+ * or discharge card, and the newer visit before an older one, as the saved bill is linked to a visit (visitOf).
+ */
+const tagOf = (had: CardTag | undefined, from: CardTag): CardTag => (!had || (from.kind === 'visit' && (had.kind !== 'visit' || from.at > had.at)) ? from : had)
+
+/**
+ * Rows of one card, all for one medicine, put on the bill: one row, or two or more when the medicine is on several
+ * rows, such as a taper (1-0-1 for 5 days, then 1-0-0 for 5 days). Their counts are added up. For a medicine already on
+ * the bill they go first onto its lines there, as far as each batch has stock, then onto its other batches, soonest
+ * expiry first; never more than is in stock. Rows with no count start a medicine that is not on the bill yet at 1, as
+ * when it is picked by name. Every line of the medicine then carries the rows, and the card's link where it had none
+ * (see tagOf), so a bill made from a visit's card is linked to that visit. Gives the bill, and the line to go to. When
+ * nothing more of it is in stock, the bill is left as it was.
+ */
+function withRows(lines: Line[], match: SellableMedicine, rows: CardRow[], from: CardTag): { lines: Line[]; focus?: number } {
+  const { there, free } = partsOf(lines, match)
+  const counted = rows.filter((r) => r.m.quantity)
+  const prescribed = counted.reduce((sum, r) => sum + (r.m.quantity ?? 0), 0)
+  let left = prescribed
+  const onto: Record<number, number> = {}
+  for (const l of there) {
+    onto[l.batchId] = Math.min(left, leftIn(l))
+    left -= onto[l.batchId]
+  }
+  const taken = there.length === 0 && prescribed === 0 ? [{ batch: match.sellable_batches[0], quantity: 1 }] : fillFromBatches(free, left)
+  const added = prescribed - left + taken.reduce((sum, t) => sum + t.quantity, 0)
+  if (prescribed > 0 && added === 0) return { lines, focus: there.length > 0 ? there[0].batchId : undefined }
+
+  // The first line to take some says how the count was worked out, and how short the stock was; any other, where the rest came from.
+  const first = there.find((l) => onto[l.batchId] > 0)?.batchId ?? (taken.length > 0 ? taken[0].batch.id : there[0].batchId)
+  const working = counted.map((r) => r.m.worked_out ?? '').filter(Boolean).join('; ')
+  const rest = `rest of the ${prescribed} prescribed`
+  const short = added >= prescribed ? undefined : there.length > 0 ? `prescribed ${prescribed}, only ${added} more in stock` : shortOf(prescribed, added)
+  const keys = rows.map((r) => r.key)
+  const mark = (l: Line): Line => ({ ...l, from: tagOf(l.from, from), rxRows: [...(l.rxRows ?? []), ...keys] })
+  const next = lines.map((l) => {
+    if (l.medicineId !== match.id) return l
+    const more = onto[l.batchId] ?? 0
+    if (more === 0) return mark(l)
+    const before = Number(l.quantity) || 0
+    return mark({
+      ...l,
+      quantity: String(before + more),
+      worked: andThen(l.worked ?? `${before} already on the bill`, l.batchId === first ? working : rest),
+      short: l.batchId === first ? andThen(l.short, short) : l.short,
+    })
+  })
+  return {
+    lines: [
+      ...next,
+      ...taken.map((t) =>
+        lineOf(match, t.batch, {
+          quantity: String(t.quantity),
+          from,
+          rxRows: keys,
+          worked: prescribed === 0 ? undefined : t.batch.id === first ? working || undefined : rest,
+          short: t.batch.id === first ? short : undefined,
+        }),
+      ),
+    ],
+    focus: first,
+  }
+}
 
 export function PharmacyBilling() {
   const { user } = useAuth()
@@ -160,9 +250,6 @@ export function PharmacyBilling() {
   // Until the cashier types an amount, assume the customer pays in full.
   const paidValue = paidTouched ? paid : String(total)
 
-  const lineOf = (m: SellableMedicine, batch: SellableMedicine['sellable_batches'][number], more: Partial<Line> = {}): Line => ({
-    batchId: batch.id, medicine: m.name, batchNo: batch.batch_no, expiry: batch.expiry, unitPrice: batch.unit_mrp, available: batch.units_in_stock, quantity: '1', discount: '', place: placeLabel(batch.rack_no, batch.box_no), ...more,
-  })
   // Straight to the quantity of that line: at once if it is on the bill already, otherwise as soon as it appears.
   const jumpToLine = (batchId: number, already: boolean) => {
     const there = quantityBoxes.current[batchId]
@@ -174,48 +261,46 @@ export function PharmacyBilling() {
     }
   }
 
-  const add = (m: SellableMedicine, batch: SellableMedicine['sellable_batches'][number], more: Partial<Line> = {}) => {
+  const add = (m: SellableMedicine, batch: Batch) => {
     setDone(null)
     setError('')
-    setLines((rows) => (rows.some((r) => r.batchId === batch.id) ? rows : [...rows, lineOf(m, batch, more)]))
+    setLines((rows) => (rows.some((r) => r.batchId === batch.id) ? rows : [...rows, lineOf(m, batch)]))
     jumpToLine(batch.id, lines.some((r) => r.batchId === batch.id))
   }
 
-  // A medicine added from a prescription card. When the card has worked out how many, they are taken from the batch
-  // that expires first, then the next, never more than is in stock. Otherwise it starts at 1, as when picked by name.
-  const addFromCard = (rx: PrescriptionForPharmacy, m: CardMedicine) => {
-    const match = m.match
-    if (!match || !patient || match.sellable_batches.length === 0) return
+  // Rows of a prescription card put on the bill: the row whose Add was pressed, or every row in stock. When the card
+  // has worked out how many, they are taken from the batch that expires first, then the next, never more than is in
+  // stock; otherwise the medicine starts at 1, as when picked by name. A row already on the bill is not added again:
+  // the cursor goes to its line. Rows of one medicine go on together (see withRows).
+  const addFromCard = (rx: PrescriptionForPharmacy, picked: number[]) => {
+    if (!patient) return
     const from: CardTag = { kind: rx.kind ?? 'visit', id: rx.id, at: rx.completed_at, patientId: patient.id }
-    if (!m.quantity) {
-      add(match, match.sellable_batches[0], { from })
-      return
+    const groups: { match: SellableMedicine; rows: CardRow[] }[] = []
+    let focus: number | undefined
+    for (const index of picked) {
+      const m = rx.medicines[index]
+      const match = m.match
+      const key = rowKey(rx, index)
+      const placed = lines.find((l) => (l.rxRows ?? []).includes(key))
+      if (placed) {
+        focus = placed.batchId
+      } else if (match && match.sellable_batches.length > 0) {
+        const group = groups.find((g) => g.match.id === match.id)
+        if (group) group.rows.push({ m, key })
+        else groups.push({ match, rows: [{ m, key }] })
+      }
     }
-    const prescribed = m.quantity
-    const taken = fillFromBatches(match.sellable_batches, prescribed)
-    if (taken.length === 0) return
-    const have = taken.reduce((sum, t) => sum + t.quantity, 0)
-    const isThis = (r: Line) => match.sellable_batches.some((b) => b.id === r.batchId)
+    let next = lines
+    for (const { match, rows } of groups) {
+      const added = withRows(next, match, rows, from)
+      next = added.lines
+      focus = added.focus ?? focus
+    }
+    if (focus === undefined) return
     setDone(null)
     setError('')
-    // A medicine already on the bill is not added again: its quantity there is the one to change.
-    setLines((rows) =>
-      rows.some(isThis)
-        ? rows
-        : [
-            ...rows,
-            ...taken.map((t, i) =>
-              lineOf(match, t.batch, {
-                quantity: String(t.quantity),
-                from,
-                worked: i === 0 ? (m.worked_out ?? undefined) : `rest of the ${prescribed} prescribed`,
-                short: i === 0 && have < prescribed ? shortOf(prescribed, have) : undefined,
-              }),
-            ),
-          ],
-    )
-    const already = lines.find(isThis)
-    jumpToLine(already ? already.batchId : taken[0].batch.id, Boolean(already))
+    setLines(next)
+    jumpToLine(focus, next === lines)
   }
 
   /** Enter in a quantity or discount box goes back to the search box for the next medicine, instead of saving. */
@@ -423,7 +508,8 @@ export function PharmacyBilling() {
 
           {!walkIn &&
             prescriptions.map((rx) => {
-              const available = rx.medicines.filter((m) => m.match?.sellable_batches.length)
+              // The card's rows that are in stock, by their place on the card.
+              const available = rx.medicines.map((m, i) => (m.match?.sellable_batches.length ? i : -1)).filter((i) => i >= 0)
               return (
                 <div className={`rx-card ${rx.kind ?? 'visit'}`} key={`${rx.kind ?? 'visit'}-${rx.id}`}>
                   <div className="row">
@@ -440,36 +526,47 @@ export function PharmacyBilling() {
                       )}
                       {rx.note && <small className="muted block">{rx.note}</small>}
                     </strong>
-                    <button type="button" className="btn ghost" disabled={available.length === 0} onClick={() => available.forEach((m) => addFromCard(rx, m))}>
+                    <button type="button" className="btn ghost" disabled={available.length === 0} onClick={() => addFromCard(rx, available)}>
                       Add all in stock ({available.length})
                     </button>
                   </div>
                   <ul>
-                    {rx.medicines.map((m, i) => (
-                      <li key={i}>
-                        <span className="grow">
-                          {m.medicine}
-                          {m.new && <span className="pill status-arrived">New</span>}
-                          {m.directions && <small className="muted"> · {m.directions}</small>}
-                          {m.match?.sellable_batches[0] && placeLabel(m.match.sellable_batches[0].rack_no, m.match.sellable_batches[0].box_no) && (
-                            <small className="shelf-place"> {placeLabel(m.match.sellable_batches[0].rack_no, m.match.sellable_batches[0].box_no)}</small>
+                    {rx.medicines.map((m, i) => {
+                      const placed = lines.some((l) => (l.rxRows ?? []).includes(rowKey(rx, i)))
+                      // What Add puts on: the count, less what the bill already takes of the medicine's stock.
+                      const room = m.match ? roomFor(lines, m.match) : 0
+                      return (
+                        <li key={i}>
+                          <span className="grow">
+                            {m.medicine}
+                            {m.new && <span className="pill status-arrived">New</span>}
+                            {m.directions && <small className="muted"> · {m.directions}</small>}
+                            {m.match?.sellable_batches[0] && placeLabel(m.match.sellable_batches[0].rack_no, m.match.sellable_batches[0].box_no) && (
+                              <small className="shelf-place"> {placeLabel(m.match.sellable_batches[0].rack_no, m.match.sellable_batches[0].box_no)}</small>
+                            )}
+                            {m.worked_out && m.quantity ? (
+                              <small className="muted block">
+                                {m.worked_out}
+                                {inStock(m) < m.quantity && <span className="due"> · {shortOf(m.quantity, inStock(m))}</span>}
+                              </small>
+                            ) : null}
+                          </span>
+                          {!m.match?.sellable_batches.length ? (
+                            <small className="due">Not in stock under this name</small>
+                          ) : placed ? (
+                            <button type="button" className="link" onClick={() => addFromCard(rx, [i])} title="Already on the bill: go to its line">
+                              On the bill
+                            </button>
+                          ) : m.quantity && room === 0 ? (
+                            <small className="due">All in stock is on the bill</small>
+                          ) : (
+                            <button type="button" className="link" onClick={() => addFromCard(rx, [i])}>
+                              {m.quantity ? `Add ${Math.min(m.quantity, room)}` : 'Add'}
+                            </button>
                           )}
-                          {m.worked_out && m.quantity ? (
-                            <small className="muted block">
-                              {m.worked_out}
-                              {inStock(m) < m.quantity && <span className="due"> · {shortOf(m.quantity, inStock(m))}</span>}
-                            </small>
-                          ) : null}
-                        </span>
-                        {m.match?.sellable_batches.length ? (
-                          <button type="button" className="link" onClick={() => addFromCard(rx, m)}>
-                            {m.quantity ? `Add ${Math.min(m.quantity, inStock(m))}` : 'Add'}
-                          </button>
-                        ) : (
-                          <small className="due">Not in stock under this name</small>
-                        )}
-                      </li>
-                    ))}
+                        </li>
+                      )
+                    })}
                   </ul>
                 </div>
               )
